@@ -1,16 +1,41 @@
-{"id":"short_001","category":"short","text":"Xin chào."}
-{"id":"short_002","category":"short","text":"Mình đang sẵn sàng."}
-{"id":"short_003","category":"short","text":"Bạn muốn mình hỗ trợ gì?"}
-{"id":"coach_001","category":"coach","text":"Mình sẽ tạo checklist hôm nay cho bạn."}
-{"id":"coach_002","category":"coach","text":"Bạn nên ưu tiên một việc chính, một việc sức khỏe và một check-in ngắn."}
-{"id":"tone_001","category":"tone","text":"Hôm nay trời khá dễ chịu, nhưng bạn vẫn nên uống nước đều."}
-{"id":"safety_001","category":"safety","text":"Nếu thấy đau nhói hoặc chóng mặt, hãy dừng buổi tập."}
-{"id":"nutrition_001","category":"nutrition","text":"Bữa sau tập nên có một nguồn đạm, rau và tinh bột vừa đủ."}
-{"id":"tracking_001","category":"tracking","text":"Cân nặng một ngày có thể dao động vì nước, muối và giấc ngủ."}
-{"id":"number_001","category":"number","text":"Hẹn giờ sau 15 phút."}
-{"id":"number_002","category":"number","text":"Mục tiêu tuần này là 150 phút vận động mức vừa."}
-{"id":"number_003","category":"number","text":"Protein có thể nằm trong khoảng 1.4 đến 2.0 gam trên mỗi ki-lô-gam mỗi ngày."}
-{"id":"datetime_001","category":"datetime","text":"Lịch check-in là 7 giờ 30 tối, ngày 29 tháng 5 năm 2026."}
-{"id":"codeswitch_001","category":"codeswitch","text":"Sơn Ca có thể dùng local knowledge, tool runtime và guardrails."}
-{"id":"codeswitch_002","category":"codeswitch","text":"Nếu Wi-Fi yếu, mình vẫn có thể chạy chế độ offline."}
-{"id":"long_001","category":"long","text":"Bạn có thể bắt đầu bằng một buổi full-body ngắn gồm squat, push-up, row và plank, mỗi bài hai đến ba hiệp."}
+{"id":"short_001","category":"short","tags":["short","assistant"],"text":"Xin chào."}
+{"id":"short_002","category":"short","tags":["short","assistant"],"text":"Mình đang sẵn sàng."}
+{"id":"short_003","category":"short","tags":["short","question"],"text":"Bạn muốn mình hỗ trợ gì?"}
+{"id":"assistant_001","category":"assistant","tags":["assistant","concise"],"text":"Mình sẽ kiểm tra ghi chú trước, rồi trả lời ngắn gọn cho bạn."}
+{"id":"assistant_002","category":"assistant","tags":["assistant","tool"],"text":"Mình chưa có dữ liệu thời gian thực, nên mình sẽ nói rõ khi không chắc."}
+{"id":"coach_001","category":"coach","tags":["coach","todo"],"text":"Mình sẽ tạo checklist hôm nay cho bạn."}
+{"id":"coach_002","category":"coach","tags":["coach","planning"],"text":"Bạn nên ưu tiên một việc chính, một việc sức khỏe và một check-in ngắn."}
+{"id":"nutrition_001","category":"nutrition","tags":["nutrition","meal"],"text":"Bữa sau tập nên có một nguồn đạm, rau và tinh bột vừa đủ."}
+{"id":"nutrition_002","category":"nutrition","tags":["nutrition","protein"],"text":"Protein có thể nằm trong khoảng một phẩy bốn đến hai phẩy không gam trên mỗi ki-lô-gam mỗi ngày."}
+{"id":"fitness_001","category":"fitness","tags":["fitness","exercise","codeswitch"],"text":"Bạn có thể bắt đầu bằng squat, push-up, row và plank, mỗi bài hai đến ba hiệp."}
+{"id":"fitness_002","category":"fitness","tags":["fitness","recovery"],"text":"Sau buổi tập nặng, hãy ưu tiên ngủ đủ, uống nước và đi bộ nhẹ để phục hồi."}
+{"id":"safety_001","category":"safety","tags":["safety","health"],"text":"Nếu thấy đau nhói hoặc chóng mặt, hãy dừng buổi tập."}
+{"id":"safety_002","category":"safety","tags":["safety","medical"],"text":"Nếu triệu chứng kéo dài hoặc nặng lên, bạn nên hỏi bác sĩ hoặc chuyên gia phù hợp."}
+{"id":"tracking_001","category":"tracking","tags":["tracking","weight"],"text":"Cân nặng một ngày có thể dao động vì nước, muối và giấc ngủ."}
+{"id":"tracking_002","category":"tracking","tags":["tracking","checkin"],"text":"Tối nay bạn chỉ cần ghi cân nặng, số bước chân và cảm giác năng lượng trong ngày."}
+{"id":"number_001","category":"number","tags":["number","timer"],"text":"Hẹn giờ sau mười lăm phút."}
+{"id":"number_002","category":"number","tags":["number","fitness"],"text":"Mục tiêu tuần này là một trăm năm mươi phút vận động mức vừa."}
+{"id":"number_003","category":"number","tags":["number","decimal"],"text":"Tỷ lệ hoàn thành hôm nay là tám mươi bảy phẩy năm phần trăm."}
+{"id":"datetime_001","category":"datetime","tags":["datetime","checkin"],"text":"Lịch check-in là bảy giờ ba mươi tối, ngày hai mươi chín tháng năm năm hai nghìn không trăm hai mươi sáu."}
+{"id":"datetime_002","category":"datetime","tags":["datetime","schedule"],"text":"Buổi tập tiếp theo bắt đầu lúc sáu giờ mười lăm sáng thứ Hai."}
+{"id":"currency_001","category":"currency","tags":["currency","vnd"],"text":"Chi phí bữa ăn hôm nay là một trăm hai mươi lăm nghìn đồng, chưa bao gồm VAT."}
+{"id":"currency_002","category":"currency","tags":["currency","budget"],"text":"Ngân sách tuần này còn khoảng ba trăm nghìn đồng cho thực phẩm tươi."}
+{"id":"measurement_001","category":"measurement","tags":["measurement","nutrition"],"text":"Bạn có thể dùng hai trăm gam ức gà, một bát cơm nhỏ và một đĩa rau luộc."}
+{"id":"measurement_002","category":"measurement","tags":["measurement","fitness"],"text":"Hãy nghỉ sáu mươi đến chín mươi giây giữa các hiệp nếu nhịp tim còn quá cao."}
+{"id":"name_place_001","category":"name_place","tags":["name","place"],"text":"Sơn Ca ghi chú rằng Minh Thịnh đang sống ở Thành phố Hồ Chí Minh."}
+{"id":"name_place_002","category":"name_place","tags":["name","place"],"text":"Ngày mai nếu đi qua quận Bình Thạnh, bạn có thể ghé siêu thị trước buổi tập."}
+{"id":"abbreviation_001","category":"abbreviation","tags":["abbrev","fitness"],"text":"Chỉ số BMI không phản ánh đầy đủ tỷ lệ cơ, mỡ và mức độ vận động của bạn."}
+{"id":"abbreviation_002","category":"abbreviation","tags":["abbrev","tech"],"text":"Sơn Ca có thể dùng ASR, LLM, TTS và VAD trong cùng một vòng hội thoại."}
+{"id":"punctuation_001","category":"punctuation","tags":["punctuation","intonation"],"text":"Khoan đã, hôm nay bạn muốn tập nhẹ, tập vừa, hay nghỉ hoàn toàn?"}
+{"id":"punctuation_002","category":"punctuation","tags":["punctuation","quote"],"text":"Bạn ghi chú: hôm nay mệt nhưng vẫn muốn hoàn thành một việc nhỏ."}
+{"id":"codeswitch_001","category":"codeswitch","tags":["codeswitch","tech"],"text":"Sơn Ca có thể dùng local knowledge, tool runtime và guardrails."}
+{"id":"codeswitch_002","category":"codeswitch","tags":["codeswitch","network"],"text":"Nếu Wi-Fi yếu, mình vẫn có thể chạy chế độ offline."}
+{"id":"codeswitch_003","category":"codeswitch","tags":["codeswitch","fitness"],"text":"Hôm nay mình sẽ check workout plan, protein intake và recovery của bạn."}
+{"id":"formal_001","category":"formal","tags":["formal","instruction"],"text":"Vui lòng xác nhận lại mục tiêu chính của hôm nay trước khi bắt đầu lịch làm việc."}
+{"id":"formal_002","category":"formal","tags":["formal","summary"],"text":"Tóm tắt ngắn gọn: bạn cần ăn đủ đạm, ngủ đúng giờ và hoàn thành bài tập chính."}
+{"id":"casual_001","category":"casual","tags":["casual","conversation"],"text":"Ổn rồi, hôm nay mình làm vừa sức thôi, không cần ép quá."}
+{"id":"casual_002","category":"casual","tags":["casual","conversation"],"text":"Nếu mệt quá thì mình đổi sang đi bộ nhẹ, vẫn tính là giữ nhịp."}
+{"id":"asr_noisy_001","category":"asr_noisy","tags":["asr","noisy_text"],"text":"tôi muốn kiểm tra lịch tập hôm nay và nhắc tôi uống nước"}
+{"id":"asr_noisy_002","category":"asr_noisy","tags":["asr","noisy_text"],"text":"cho tôi biết bữa tối nên ăn gì nếu vừa tập xong"}
+{"id":"long_001","category":"long","tags":["long","fitness"],"text":"Bạn có thể bắt đầu bằng một buổi full-body ngắn gồm squat, push-up, row và plank, mỗi bài hai đến ba hiệp, sau đó ghi lại mức mệt từ một đến mười."}
+{"id":"long_002","category":"long","tags":["long","nutrition"],"text":"Nếu hôm nay bạn ăn hơi thiếu đạm, bữa tiếp theo có thể bổ sung trứng, sữa chua Hy Lạp, đậu phụ hoặc cá, nhưng vẫn nên giữ tổng năng lượng trong mức phù hợp."}

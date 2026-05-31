@@ -54,7 +54,7 @@ class F5VietnameseTTS:
         except ImportError as exc:
             raise TTSRuntimeUnavailableError(
                 "F5 Vietnamese TTS requires f5-tts. Install in a compatible env with: "
-                "uv pip install f5-tts"
+                "uv sync --extra tts-f5"
             ) from exc
 
         if not self.config.hf_repo or not self.config.hf_model_file:

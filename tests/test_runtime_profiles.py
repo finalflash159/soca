@@ -33,15 +33,15 @@ def test_quality_profile_uses_omnivoice_saved_voice():
     assert profile.asr_model == "phowhisper_small"
     assert profile.llm_model == "arcee_vylinh_3b_q4_k_m"
     assert profile.tts_model == "omnivoice"
-    assert profile.voice == "emgai_dangiu"
-    assert TTS_MODEL_REGISTRY[profile.tts_model].default_voice == "emgai_dangiu"
+    assert profile.tts_voice == "emgai_dangiu"
+    assert TTS_MODEL_REGISTRY[profile.tts_model].default_voice == "auto"
 
 
 def test_edge_profile_defers_to_tts_registry_default_voice():
     profile = get_voice_runtime_profile("edge")
 
     assert profile.tts_model == "piper_vi_vivos_x_low"
-    assert profile.voice is None
+    assert profile.tts_voice is None
 
 
 def test_unknown_profile_raises_clear_error():

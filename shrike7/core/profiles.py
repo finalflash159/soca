@@ -14,7 +14,7 @@ class VoiceRuntimeProfile:
     asr_model: str
     llm_model: str
     tts_model: str
-    voice: str | None = None
+    tts_voice: str | None = None
     endpoint_silence_ms: int = 700
     max_record_ms: int = 10000
     max_tokens: int = 160
@@ -31,7 +31,7 @@ VOICE_RUNTIME_PROFILES: dict[str, VoiceRuntimeProfile] = {
         asr_model="phowhisper_base",
         llm_model="arcee_vylinh_3b_q4_k_m",
         tts_model="valtec_multispeaker",
-        voice="NF",
+        tts_voice="NF",
     ),
     "quality": VoiceRuntimeProfile(
         key="quality",
@@ -39,7 +39,7 @@ VOICE_RUNTIME_PROFILES: dict[str, VoiceRuntimeProfile] = {
         asr_model="phowhisper_small",
         llm_model="arcee_vylinh_3b_q4_k_m",
         tts_model="omnivoice",
-        voice="emgai_dangiu",
+        tts_voice="emgai_dangiu",
     ),
     "edge": VoiceRuntimeProfile(
         key="edge",
@@ -47,7 +47,7 @@ VOICE_RUNTIME_PROFILES: dict[str, VoiceRuntimeProfile] = {
         asr_model="phowhisper_base",
         llm_model="qwen3_0_6b_q8_0",
         tts_model="piper_vi_vivos_x_low",
-        voice=None,
+        tts_voice=None,
     ),
 }
 
@@ -78,7 +78,7 @@ def validate_voice_runtime_profiles() -> list[str]:
         if profile.tts_model not in TTS_MODEL_REGISTRY:
             errors.append(f"{key}: unknown TTS model {profile.tts_model!r}")
 
-        if profile.voice is not None and not profile.voice.strip():
-            errors.append(f"{key}: voice must be None or a non-empty string")
+        if profile.tts_voice is not None and not profile.tts_voice.strip():
+            errors.append(f"{key}: tts_voice must be None or a non-empty string")
 
     return errors

@@ -190,10 +190,13 @@ TTS_MODEL_REGISTRY: dict[str, TTSModelConfig] = {
         display_name="k2-fsa/OmniVoice",
         role="quality_baseline",
         runner="omnivoice",
-        default_voice="emgai_dangiu",
+        default_voice="auto",
         license="Apache-2.0",
         source_url="https://huggingface.co/k2-fsa/OmniVoice",
-        notes="Massively multilingual zero-shot TTS baseline; heavy but direct Python API exists.",
+        notes=(
+            "Massively multilingual zero-shot TTS baseline; heavy but direct Python API exists. "
+            "Registry default uses auto voice-design mode; saved voices are selected explicitly."
+        ),
         hf_repo="k2-fsa/OmniVoice",
         voices_env_var="SHRIKE7_TTS_OMNIVOICE_VOICES",
         voice_designs={

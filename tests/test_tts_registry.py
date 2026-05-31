@@ -130,8 +130,7 @@ def test_omnivoice_exposes_registry_voice_designs_by_default(
 
     engine = OmniVoiceTTS(config, lazy=True)
 
-    assert engine.list_voices()[:6] == [
-        "emgai_dangiu",
+    assert engine.list_voices()[:5] == [
         "auto",
         "female_young",
         "female_high",

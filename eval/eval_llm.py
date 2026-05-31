@@ -16,6 +16,8 @@ from rich.console import Console
 from rich.progress import track
 from rich.table import Table
 
+from eval.result_io import make_eval_run_paths, update_latest_eval_report
+from eval.system_metrics import get_current_memory_mb
 from shrike7.llm import LLMResult, LocalLlamaCppLLM
 from shrike7.llm.registry import (
     DEFAULT_LLM_MODEL_KEY,
@@ -224,14 +226,6 @@ def summarize(values: Sequence[float]) -> dict[str, float]:
         "min": min(values),
         "max": max(values),
     }
-
-
-def get_current_memory_mb() -> float | None:
-    try:
-        import psutil
-    except ImportError:
-        return None
-    return psutil.Process().memory_info().rss / (1024 * 1024)
 
 
 def run_model_eval(
@@ -520,11 +514,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    json_path = args.output_dir / f"llm_bakeoff_{timestamp}.json"
-    md_path = args.output_dir / f"llm_bakeoff_{timestamp}.md"
+    run_paths = make_eval_run_paths(args.output_dir, "llm_bakeoff", timestamp)
+    run_paths.run_dir.mkdir(parents=True, exist_ok=True)
+    json_path = run_paths.json_path
+    md_path = run_paths.md_path
     json_path.write_text(json.dumps(reports, ensure_ascii=False, indent=2), encoding="utf-8")
     write_markdown_report(md_path, reports)
+    update_latest_eval_report(run_paths)
 
     print_summary_table(reports)
     console.print(f"\n[green]Saved[/green] {json_path}")

@@ -105,7 +105,7 @@ def resolve_runtime_args(args: argparse.Namespace) -> argparse.Namespace:
     if args.voice is not None:
         args.voice = args.voice
     elif resolved_tts_model == profile.tts_model:
-        args.voice = profile.voice or TTS_MODEL_REGISTRY[resolved_tts_model].default_voice
+        args.voice = profile.tts_voice or TTS_MODEL_REGISTRY[resolved_tts_model].default_voice
     else:
         args.voice = TTS_MODEL_REGISTRY[resolved_tts_model].default_voice
 

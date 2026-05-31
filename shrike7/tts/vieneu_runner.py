@@ -36,7 +36,8 @@ class VieneuTTS:
             from vieneu import Vieneu
         except ImportError as exc:
             raise TTSRuntimeUnavailableError(
-                "VieNeu TTS requires the vieneu SDK. Install with: uv pip install vieneu"
+                "VieNeu TTS requires the vieneu SDK. Install with: "
+                "uv sync --extra tts-vieneu"
             ) from exc
 
         kwargs: dict[str, Any] = {}
