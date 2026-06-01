@@ -72,6 +72,18 @@ UNSUPPORTED_DEVICE_PATTERNS = (
     "khoi dong lai",
     "gui email",
 )
+UNSUPPORTED_SCHEDULING_PATTERNS = (
+    "dat hen gio",
+    "hen gio",
+    "dat bao thuc",
+    "bao thuc luc",
+)
+HOWTO_PATTERNS = (
+    "lam sao",
+    "lam the nao",
+    "cach",
+    "huong dan",
+)
 WEATHER_PATTERNS = (
     "thoi tiet",
     "troi mua",
@@ -238,6 +250,13 @@ def check_input_text(
             "Mình chưa có quyền điều khiển thiết bị hoặc thao tác file.",
         )
 
+    if is_unsupported_scheduling_action(text):
+        return block(
+            GuardrailStage.INPUT,
+            "unsupported_scheduling_action",
+            "Mình chưa có công cụ hẹn giờ hoặc báo thức thật đang bật.",
+        )
+
     if contains_any(text, WEATHER_PATTERNS):
         return block(
             GuardrailStage.INPUT,
@@ -250,6 +269,13 @@ def check_input_text(
 
 def is_time_question(text: str) -> bool:
     return contains_any(text, TIME_PATTERNS)
+
+
+def is_unsupported_scheduling_action(text: str) -> bool:
+    normalized = normalize_vi(text)
+    asks_howto = any(pattern in normalized for pattern in HOWTO_PATTERNS)
+    asks_to_schedule = any(pattern in normalized for pattern in UNSUPPORTED_SCHEDULING_PATTERNS)
+    return asks_to_schedule and not asks_howto
 
 
 def check_untrusted_text(

@@ -26,12 +26,14 @@ def test_assistant_runtime_eval_default_suite_passes() -> None:
 
 
 def test_disabled_tool_case_blocks_before_tool_execution() -> None:
-    case = next(case for case in load_cases(DEFAULT_PROMPT_PATH) if case.case_id == "timer_disabled_001")
+    case = next(
+        case for case in load_cases(DEFAULT_PROMPT_PATH) if case.case_id == "knowledge_disabled_001"
+    )
 
     sample = evaluate_case(case)
 
     assert sample.passed is True
-    assert sample.tool_calls == ("local_timer.set",)
+    assert sample.tool_calls == ("knowledge.search",)
     assert sample.tool_results == ()
     assert "tool_disabled" in sample.guardrail_reasons
 

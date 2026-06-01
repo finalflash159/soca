@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -36,11 +35,6 @@ Quy tắc:
 - Nếu không biết, hãy nói rõ là bạn không biết.
 """
 
-TIMER_RE = re.compile(
-    r"(?:dat\s+)?(?:hen\s+gio|bao\s+thuc).*?(?P<value>\d+)\s*(?P<unit>giay|phut|gio|tieng)"
-)
-
-
 @dataclass(frozen=True)
 class RuntimeOptions:
     max_tokens: int = 128
@@ -68,23 +62,16 @@ class DefaultRuntimeToolRouter:
         knowledge_search_prefixes: tuple[str, ...] = ("wiki:", "knowledge:"),
         enable_markdown_read: bool = True,
         enable_time: bool = True,
-        enable_timer: bool = True,
     ) -> None:
         self.knowledge_search_prefixes = knowledge_search_prefixes
         self.enable_markdown_read = enable_markdown_read
         self.enable_time = enable_time
-        self.enable_timer = enable_timer
 
     def select(self, text: str, *, knowledge_limit: int) -> ToolCall | None:
         if self.enable_markdown_read:
             path = self._first_markdown_path(text)
             if path is not None:
                 return ToolCall("knowledge.read", {"path": path})
-
-        if self.enable_timer:
-            timer_arguments = self._parse_timer_arguments(text)
-            if timer_arguments is not None:
-                return ToolCall("local_timer.set", timer_arguments)
 
         if self.enable_time and is_time_question(text):
             return ToolCall("local_time.now", {})
@@ -104,26 +91,6 @@ class DefaultRuntimeToolRouter:
     def _first_markdown_path(self, text: str) -> str | None:
         paths = extract_markdown_paths(text)
         return paths[0] if paths else None
-
-    def _parse_timer_arguments(self, text: str) -> dict[str, Any] | None:
-        normalized_text = normalize_vi(text)
-        match = TIMER_RE.search(normalized_text)
-        if match is None:
-            return None
-
-        value = int(match.group("value"))
-        unit = match.group("unit")
-        if unit == "giay":
-            duration_seconds = value
-        elif unit == "phut":
-            duration_seconds = value * 60
-        else:
-            duration_seconds = value * 3600
-
-        return {
-            "duration_seconds": duration_seconds,
-            "label": "hẹn giờ",
-        }
 
     def _parse_knowledge_search_query(self, text: str) -> str | None:
         stripped = text.strip()

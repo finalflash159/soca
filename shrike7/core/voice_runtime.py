@@ -16,7 +16,6 @@ from shrike7.memory import MarkdownLongTermMemory, MemoryContextBuilder, Session
 from shrike7.tools import (
     KnowledgeReadTool,
     KnowledgeSearchTool,
-    LocalTimerTool,
     LocalTimeTool,
     ToolRuntime,
 )
@@ -147,7 +146,7 @@ def build_voice_runtime(config: ResolvedVoiceRuntimeConfig) -> VoiceRuntimeBundl
     knowledge_status = "disabled"
     memory_builder = None
     knowledge_builder = None
-    tools = [LocalTimeTool(), LocalTimerTool()]
+    tools = [LocalTimeTool()]
 
     if config.vault.is_dir():
         source = MarkdownVaultKnowledgeSource(config.vault, include_globs=("wiki/**/*.md",))

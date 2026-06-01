@@ -36,7 +36,7 @@ Audio input
        -> model-specific confidence / BoH guards
   -> AssistantRuntime
        -> guardrails
-       -> ToolRuntime for time/timer/knowledge
+       -> ToolRuntime for time/knowledge
        -> manual profile memory + RAM session memory
        -> llama.cpp GGUF LLM fallback
   -> sentence chunking
@@ -288,7 +288,7 @@ shrike7/
   tts/        Valtec TTS wrapper and audio result types
   knowledge/  Markdown vault search and context packing
   memory/     manual long-term profile memory and RAM session memory
-  tools/      ToolRuntime, tool specs, local time/timer/knowledge tools
+  tools/      ToolRuntime, tool specs, local time/knowledge tools
 
 scripts/      local demos, smoke tests, download helpers
 eval/         ASR and LLM evaluation harnesses

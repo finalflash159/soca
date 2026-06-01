@@ -11,7 +11,6 @@ from shrike7.knowledge import MarkdownVaultKnowledgeSource
 from shrike7.tools import (
     KnowledgeReadTool,
     KnowledgeSearchTool,
-    LocalTimerTool,
     LocalTimeTool,
     SideEffectLevel,
     ToolCall,
@@ -122,19 +121,6 @@ def test_local_time_tool_returns_current_time() -> None:
     assert result.data["timezone"] == "Asia/Ho_Chi_Minh"
     assert result.data["hour"] == 9
     assert result.data["minute"] == 30
-
-
-def test_local_timer_tool_sets_in_memory_timer() -> None:
-    fixed_now = datetime(2026, 5, 29, 9, 30, tzinfo=ZoneInfo("Asia/Ho_Chi_Minh"))
-    tool = LocalTimerTool(now_fn=lambda: fixed_now)
-
-    result = tool.run({"duration_seconds": 90, "label": "nghỉ mắt"})
-
-    assert result.ok is True
-    assert result.content == "Đã đặt nghỉ mắt trong 1 phút 30 giây."
-    assert result.data["id"] == "timer-001"
-    assert result.data["duration_seconds"] == 90
-    assert len(tool.timers) == 1
 
 
 def test_knowledge_search_tool_returns_hits(tmp_path: Path) -> None:

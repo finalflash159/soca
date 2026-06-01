@@ -67,6 +67,19 @@ def test_unsupported_device_action_is_blocked() -> None:
     assert event.reason == "unsupported_device_action"
 
 
+def test_unsupported_scheduling_action_is_blocked_without_real_scheduler() -> None:
+    event = check_input_text("Đặt hẹn giờ 5 phút giúp tôi")
+
+    assert event.blocked is True
+    assert event.reason == "unsupported_scheduling_action"
+
+
+def test_scheduling_howto_question_is_allowed_for_llm() -> None:
+    event = check_input_text("Làm sao để đặt báo thức trên điện thoại?")
+
+    assert event.action == GuardrailAction.ALLOW
+
+
 def test_weather_realtime_request_is_blocked_without_weather_tool() -> None:
     event = check_input_text("Thời tiết hiện tại ở Hà Nội thế nào?")
 
@@ -133,7 +146,7 @@ def test_tool_call_blocks_unknown_disabled_side_effect_and_bad_schema() -> None:
 
 
 def test_tool_result_failure_is_blocked() -> None:
-    result = ToolResult(name="local_timer.set", ok=False, content="", error="bad duration")
+    result = ToolResult(name="demo.action", ok=False, content="", error="bad action")
 
     event = check_tool_result(result)
 
@@ -164,8 +177,8 @@ def test_final_output_requires_citation_when_knowledge_was_used() -> None:
 
 def test_final_output_blocks_success_claim_when_tool_failed() -> None:
     event = check_final_output(
-        "Mình đã đặt hẹn giờ cho bạn rồi.",
-        tool_results=(ToolResult(name="local_timer.set", ok=False, content="", error="bad"),),
+        "Mình đã thực hiện yêu cầu cho bạn rồi.",
+        tool_results=(ToolResult(name="demo.action", ok=False, content="", error="bad"),),
     )
 
     assert event.blocked is True

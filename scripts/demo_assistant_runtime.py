@@ -18,7 +18,6 @@ from shrike7.memory import MarkdownLongTermMemory, MemoryContextBuilder, Session
 from shrike7.tools import (
     KnowledgeReadTool,
     KnowledgeSearchTool,
-    LocalTimerTool,
     LocalTimeTool,
     ToolRuntime,
 )
@@ -58,7 +57,6 @@ def print_help() -> None:
             "\n".join(
                 [
                     "mấy giờ rồi                  -> local_time.now",
-                    "đặt hẹn giờ 5 phút           -> local_timer.set",
                     "wiki: chất đạm               -> knowledge.search",
                     "đọc wiki/path/note.md        -> knowledge.read",
                     "/k câu hỏi                   -> ask LLM with knowledge context",
@@ -81,7 +79,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     tool_runtime = ToolRuntime(
         [
             LocalTimeTool(),
-            LocalTimerTool(),
             KnowledgeSearchTool(source),
             KnowledgeReadTool(source),
         ]
@@ -178,4 +175,3 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

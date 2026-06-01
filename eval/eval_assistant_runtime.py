@@ -177,47 +177,25 @@ class TraceLLM:
         )
 
 
-class FailingTimerTool:
+class DisabledKnowledgeSearchTool:
     @property
     def spec(self) -> ToolSpec:
         return ToolSpec(
-            name="local_timer.set",
-            description="Failing test timer.",
+            name="knowledge.search",
+            description="Disabled test knowledge search.",
             input_schema=object_schema(
                 properties={
-                    "duration_seconds": {"type": "integer"},
-                    "label": {"type": "string"},
+                    "query": {"type": "string"},
+                    "limit": {"type": "integer"},
                 },
-                required=["duration_seconds"],
+                required=["query"],
             ),
-            side_effect=SideEffectLevel.LOCAL_STATE,
+            side_effect=SideEffectLevel.READ_ONLY,
+            enabled=False,
         )
 
     def run(self, arguments: dict[str, Any]) -> ToolResult:
-        return ToolResult(
-            name=self.spec.name,
-            ok=False,
-            content="",
-            error="simulated timer failure",
-        )
-
-
-class DisabledTimerTool(FailingTimerTool):
-    @property
-    def spec(self) -> ToolSpec:
-        return ToolSpec(
-            name="local_timer.set",
-            description="Disabled test timer.",
-            input_schema=object_schema(
-                properties={
-                    "duration_seconds": {"type": "integer"},
-                    "label": {"type": "string"},
-                },
-                required=["duration_seconds"],
-            ),
-            side_effect=SideEffectLevel.LOCAL_STATE,
-            enabled=False,
-        )
+        return ToolResult(name=self.spec.name, ok=True, content="")
 
 
 def load_cases(path: Path, limit: int | None = None) -> list[RuntimeEvalCase]:
@@ -272,17 +250,12 @@ def build_runtime(case: RuntimeEvalCase) -> AssistantRuntime:
     knowledge_source = EvalKnowledgeSource(empty=case.scenario == "knowledge_empty")
     tools = [
         LocalTimeTool(now_fn=lambda: FIXED_NOW),
-        KnowledgeSearchTool(knowledge_source),
         KnowledgeReadTool(knowledge_source),
     ]
-    if case.scenario == "timer_fail":
-        tools.append(FailingTimerTool())
-    elif case.scenario == "timer_disabled":
-        tools.append(DisabledTimerTool())
+    if case.scenario == "knowledge_disabled":
+        tools.append(DisabledKnowledgeSearchTool())
     else:
-        from shrike7.tools import LocalTimerTool
-
-        tools.append(LocalTimerTool())
+        tools.append(KnowledgeSearchTool(knowledge_source))
 
     session = SessionMemory()
     memory_builder = MemoryContextBuilder(

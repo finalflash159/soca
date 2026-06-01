@@ -381,13 +381,13 @@ input. This complements the TTS-only bake-off above.
 | Runtime | `VoicePipeline.turn_streaming()` with `AssistantRuntime` |
 | Input audio | `eval/audio/voice_loop_smoke/*.wav` generated from `eval/prompts/voice_loop_smoke_vi.jsonl` |
 | Fixture generator | `omnivoice`, saved voice `emgai_dangiu` |
-| Fixture prompts | 6 Vietnamese utterances: greeting, nutrition, time, knowledge-search prefix, safety, timer |
+| Fixture prompts | 6 Vietnamese utterances: greeting, nutrition, time, knowledge-search prefix, safety, unsupported scheduling |
 | Knowledge vault | `eval/fixtures/knowledge_vault` |
 | Memory | Disabled (`--no-memory`) to avoid personal/local profile state |
 | Playback | `NullAudioPlayer`; audio is synthesized but not sent to speakers |
 | Process policy | One fresh shell command per profile for cleaner load/memory readings |
 | Run date | 2026-06-01 |
-| Output paths | `eval/results/voice_loop/20260601_185218`, `20260601_184628`, `20260601_184640`, `20260601_184708` (gitignored) |
+| Output paths | `eval/results/voice_loop/20260601_190159`, `20260601_190228`, `20260601_190239`, `20260601_190309` (gitignored) |
 
 **Measured profiles**
 
@@ -464,10 +464,10 @@ uv run --extra tts --extra tts-omnivoice python eval/eval_voice_loop.py \
 
 | Profile | Load ms | ASR p50 ms | Runtime p50 ms | TTS0 p50 ms | TTFA p50 ms | TTFA p95 ms | Total p50 ms | Total p95 ms | Avg chunks | Peak MB | Error |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `edge` | 1934 | 342 | 124 | 46 | 510 | 683 | 510 | 683 | 1.0 | 3044 | 0.0% |
-| `balanced_vieneu` | 2369 | 323 | 590 | 353 | 1234 | 3258 | 1623 | 7451 | 5.5 | 4986 | 0.0% |
-| `baseline` | 1706 | 356 | 586 | 655 | 1512 | 3866 | 2285 | 8556 | 5.5 | 5038 | 0.0% |
-| `quality` | 3704 | 1287 | 554 | 7042 | 9198 | 12662 | 16769 | 79925 | 5.3 | 5468 | 0.0% |
+| `edge` | 1867 | 326 | 85 | 46 | 487 | 677 | 487 | 677 | 1.0 | 3090 | 0.0% |
+| `balanced_vieneu` | 2219 | 343 | 561 | 385 | 1190 | 3285 | 1763 | 7542 | 5.3 | 4872 | 0.0% |
+| `baseline` | 1428 | 364 | 555 | 696 | 1331 | 3694 | 1957 | 8391 | 5.3 | 5004 | 0.0% |
+| `quality` | 5593 | 1278 | 507 | 7054 | 9211 | 12691 | 14270 | 79801 | 5.2 | 6044 | 0.0% |
 
 **Observed transcripts and route caveat**
 
@@ -484,14 +484,15 @@ failures are useful product findings rather than benchmark noise:
 | time | `mấy giờ rồi` | `mấy giờ rồi.` |
 | knowledge | `wiki chất đạm` | `quy ki chất đạm.` |
 | safety | `nếu tập mà chóng mặt thì nên làm gì` | `nếu tập mà chóng mặt thì nên làm gì.` |
-| timer | `đặt hẹn giờ 5 phút` | `đặt hẹn giờ năm phút.` |
+| unsupported scheduling | `đặt hẹn giờ 5 phút` | `đặt hẹn giờ năm phút.` |
 
-The route counts for each profile were `tool_direct: 1` and `llm_fallback: 5`.
-That confirms the full audio path can reach a tool route, but this fixture set
-still does not validate knowledge routing or timer routing end-to-end. The
-knowledge prompt is too brittle around the spoken word `wiki`, and the timer
-router currently accepts digit forms but not Vietnamese number words such as
-`năm phút`.
+The route counts for each profile were `tool_direct: 1`, `blocked: 1`, and
+`llm_fallback: 4`. That confirms the full audio path can reach a tool route and
+can also block unsupported scheduling requests before LLM execution. This
+fixture set still does not validate knowledge routing end-to-end because the
+knowledge prompt is too brittle around the spoken word `wiki`. The old
+in-memory timer prototype has been removed because it did not set a real OS/app
+timer; scheduling requests stay blocked until a real scheduler backend exists.
 
 **Decision**
 
@@ -513,8 +514,8 @@ router currently accepts digit forms but not Vietnamese number words such as
 - Add route-specific fixtures for knowledge retrieval, likely with a more
   natural phrase such as `tìm trong ghi chú về chất đạm` instead of relying on
   the spoken token `wiki`.
-- Extend timer parsing to Vietnamese number words so `năm phút` maps to
-  `5 phút`.
+- Keep scheduling/timer requests blocked unless a real scheduler backend is
+  implemented.
 - Add an optional real-mic fixture set that stays local/ignored if it contains
   personal voice data.
 
