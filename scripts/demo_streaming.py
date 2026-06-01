@@ -6,8 +6,8 @@ from collections.abc import Sequence
 
 from rich.console import Console
 
-from shrike7.llm import LocalLlamaCppLLM
-from shrike7.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
+from soca.llm import LocalLlamaCppLLM
+from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
 
 console = Console()
 PROMPT = "Giải thích ngắn gọn về trí tuệ nhân tạo cho tôi học sinh cấp 2."

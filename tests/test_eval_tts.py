@@ -23,8 +23,8 @@ from eval.eval_tts import (
     validate_prompt_coverage,
     worker_payload,
 )
-from shrike7.tts import DEFAULT_TTS_MODEL_KEY, TIER_A_TTS_MODEL_KEYS, TTSResult
-from shrike7.tts.errors import TTSRuntimeUnavailableError
+from soca.tts import DEFAULT_TTS_MODEL_KEY, TIER_A_TTS_MODEL_KEYS, TTSResult
+from soca.tts.errors import TTSRuntimeUnavailableError
 
 
 def test_load_prompts_reads_jsonl_and_respects_limit(tmp_path: Path) -> None:

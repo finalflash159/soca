@@ -34,7 +34,7 @@ from rich.progress import track
 from rich.table import Table
 
 from local import config as cfg
-from shrike7.asr import VietnameseASR
+from soca.asr import VietnameseASR
 
 console = Console()
 

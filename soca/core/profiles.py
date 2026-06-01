@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from shrike7.asr.registry import ASR_MODEL_REGISTRY
-from shrike7.llm.registry import LLM_MODEL_REGISTRY
-from shrike7.tts.registry import TTS_MODEL_REGISTRY
+from soca.asr.registry import ASR_MODEL_REGISTRY
+from soca.llm.registry import LLM_MODEL_REGISTRY
+from soca.tts.registry import TTS_MODEL_REGISTRY
 
 
 @dataclass(frozen=True)

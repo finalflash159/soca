@@ -1,5 +1,5 @@
 [project]
-name = "shrike7"
+name = "soca"
 version = "0.1.0"
 description = "On-device Vietnamese voice assistant"
 authors = [{name = "Minh-Thinh Vo", email = "vo.m.thinh@gmail.com"}]
@@ -64,7 +64,7 @@ tts-f5 = [
 ]
 
 [project.scripts]
-shrike-7 = "shrike7.cli:main"
+soca = "soca.cli:main"
 
 [tool.uv]
 package = true
@@ -84,7 +84,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["shrike7"]
+packages = ["soca"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from shrike7.core.metrics import MetricsLogger
+from soca.core.metrics import MetricsLogger
 
 
 def test_metrics_stage_records_latency() -> None:

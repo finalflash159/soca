@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from shrike7.knowledge import KnowledgeSource
-from shrike7.tools.base import SideEffectLevel, ToolResult, ToolSpec, object_schema
+from soca.knowledge import KnowledgeSource
+from soca.tools.base import SideEffectLevel, ToolResult, ToolSpec, object_schema
 
 
 class KnowledgeSearchTool:

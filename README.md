@@ -1,8 +1,8 @@
-# Shrike-7
+# Soca
 
 Offline-first Vietnamese voice assistant toolkit for local ASR, LLM, TTS, knowledge, memory, and tool-runtime experiments.
 
-Shrike-7 is being built as a fully local Vietnamese assistant. The current repo already runs a local voice loop on macOS: microphone input is endpointed with VAD, transcribed by PhoWhisper ONNX, answered by a local GGUF LLM through llama.cpp, synthesized with Valtec TTS, and played back through the system audio device.
+Soca is being built as a fully local Vietnamese assistant. The current repo already runs a local voice loop on macOS: microphone input is endpointed with VAD, transcribed by PhoWhisper ONNX, answered by a local GGUF LLM through llama.cpp, synthesized with Valtec TTS, and played back through the system audio device.
 
 The project is intentionally research-heavy: every model choice is backed by small local bake-offs before it becomes the default path.
 
@@ -59,7 +59,7 @@ User turn / ASR transcript
 
 ### 1. Create the Python environment
 
-Shrike-7 uses Python 3.11 and `uv`.
+Soca uses Python 3.11 and `uv`.
 
 ```bash
 uv sync --extra dev --extra eval --extra tts
@@ -75,8 +75,8 @@ CMAKE_ARGS="-DGGML_METAL=on" FORCE_CMAKE=1 \
 ### 2. Inspect registered models
 
 ```bash
-uv run shrike-7 asr-models
-uv run shrike-7 llm-models
+uv run soca asr-models
+uv run soca llm-models
 ```
 
 ### 3. Download local models
@@ -281,7 +281,7 @@ The Valtec model weights are downloaded by the upstream package into the user ca
 ## Repository Layout
 
 ```text
-shrike7/
+soca/
   asr/        PhoWhisper ONNX runtime, VAD, RobustASR, BoH, de-looping
   core/       endpointing, streaming pipeline, metrics, audio output
   llm/        llama.cpp runner, prompt styles, model registry, memory wrapper
@@ -301,16 +301,16 @@ zplan/        local planning docs, gitignored
 Run focused checks while developing:
 
 ```bash
-uv run ruff check shrike7 tests --fix
-uv run python -m compileall -q shrike7 tests
+uv run ruff check soca tests --fix
+uv run python -m compileall -q soca tests
 uv run pytest -q
 ```
 
 LLM and ASR smoke tests require downloaded models:
 
 ```bash
-uv run shrike-7 asr-smoke --model phowhisper_base
-uv run shrike-7 llm-smoke --model arcee_vylinh_3b_q4_k_m
+uv run soca asr-smoke --model phowhisper_base
+uv run soca llm-smoke --model arcee_vylinh_3b_q4_k_m
 ```
 
 ## Artifact Policy
@@ -344,4 +344,4 @@ Near-term work:
 
 ## License
 
-Shrike-7 project code is MIT licensed. Third-party models, datasets, and vendored source packages keep their own licenses and model-card restrictions.
+Soca project code is MIT licensed. Third-party models, datasets, and vendored source packages keep their own licenses and model-card restrictions.

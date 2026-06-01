@@ -1,7 +1,7 @@
 import numpy as np
 
-from shrike7.core import endpoint as endpoint_module
-from shrike7.core.endpoint import (
+from soca.core import endpoint as endpoint_module
+from soca.core.endpoint import (
     EndpointConfig,
     block_samples,
     record_until_silence,

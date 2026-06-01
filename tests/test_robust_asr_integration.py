@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from shrike7.asr.boh import BoHMatch
-from shrike7.asr.robust_asr import RobustASR
-from shrike7.asr.vad import VADResult
-from shrike7.asr.whisper_onnx import ASRResult
+from soca.asr.boh import BoHMatch
+from soca.asr.robust_asr import RobustASR
+from soca.asr.vad import VADResult
+from soca.asr.whisper_onnx import ASRResult
 
 DUMMY_AUDIO = np.zeros(16000, dtype=np.float32)
 

@@ -1,5 +1,5 @@
-from shrike7.knowledge.base import KnowledgeDocument, KnowledgeHit, KnowledgeSource
-from shrike7.knowledge.markdown_vault import MarkdownVaultKnowledgeSource, SearchScoringConfig
+from soca.knowledge.base import KnowledgeDocument, KnowledgeHit, KnowledgeSource
+from soca.knowledge.markdown_vault import MarkdownVaultKnowledgeSource, SearchScoringConfig
 
 from .context import KnowledgeCitation, KnowledgeContext, KnowledgeContextBuilder
 

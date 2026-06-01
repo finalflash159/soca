@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from shrike7.llm.base import LLMEngine, LLMResult
-from shrike7.memory import MemoryContext, MemoryContextBuilder
+from soca.llm.base import LLMEngine, LLMResult
+from soca.memory import MemoryContext, MemoryContextBuilder
 
 
 def build_memory_prompt(user_msg: str, memory_context: MemoryContext) -> str:

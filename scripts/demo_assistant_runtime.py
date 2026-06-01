@@ -1,4 +1,4 @@
-"""Interactive text demo for the Shrike-7 AssistantRuntime."""
+"""Interactive text demo for the Soca AssistantRuntime."""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
-from shrike7.core import AssistantRuntime, RuntimeOptions
-from shrike7.knowledge import KnowledgeContextBuilder, MarkdownVaultKnowledgeSource
-from shrike7.llm import LocalLlamaCppLLM
-from shrike7.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
-from shrike7.memory import MarkdownLongTermMemory, MemoryContextBuilder, SessionMemory
-from shrike7.tools import (
+from soca.core import AssistantRuntime, RuntimeOptions
+from soca.knowledge import KnowledgeContextBuilder, MarkdownVaultKnowledgeSource
+from soca.llm import LocalLlamaCppLLM
+from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
+from soca.memory import MarkdownLongTermMemory, MemoryContextBuilder, SessionMemory
+from soca.tools import (
     KnowledgeReadTool,
     KnowledgeSearchTool,
     LocalTimeTool,
@@ -27,7 +27,7 @@ EXIT_COMMANDS = {"/exit", "/quit", ":q", "q"}
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the text-only Shrike-7 AssistantRuntime.")
+    parser = argparse.ArgumentParser(description="Run the text-only Soca AssistantRuntime.")
     parser.add_argument(
         "--vault",
         type=Path,

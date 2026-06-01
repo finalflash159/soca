@@ -9,14 +9,14 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 
-from shrike7.knowledge import (
+from soca.knowledge import (
     KnowledgeContext,
     KnowledgeContextBuilder,
     MarkdownVaultKnowledgeSource,
 )
-from shrike7.llm import LocalLlamaCppLLM
-from shrike7.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
-from shrike7.memory import MarkdownLongTermMemory, MemoryContext, MemoryContextBuilder
+from soca.llm import LocalLlamaCppLLM
+from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
+from soca.memory import MarkdownLongTermMemory, MemoryContext, MemoryContextBuilder
 
 console = Console()
 

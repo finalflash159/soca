@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from shrike7.llm import LocalLlamaCppLLM
+from soca.llm import LocalLlamaCppLLM
 
 
 class FakeLlama:
@@ -34,7 +34,7 @@ class FakeLlama:
 @pytest.fixture(autouse=True)
 def fake_llama(monkeypatch: pytest.MonkeyPatch) -> None:
     FakeLlama.instances = []
-    monkeypatch.setattr("shrike7.llm.llamacpp_runner.Llama", FakeLlama)
+    monkeypatch.setattr("soca.llm.llamacpp_runner.Llama", FakeLlama)
 
 
 def touch_model(tmp_path: Path) -> Path:
@@ -103,7 +103,7 @@ def test_qwen_stream_output_strips_think_blocks(
             yield {"choices": [{"delta": {"content": "<think>hidden</think>"}}]}
             yield {"choices": [{"delta": {"content": "Trả lời ngắn."}}]}
 
-    monkeypatch.setattr("shrike7.llm.llamacpp_runner.Llama", ThinkingFakeLlama)
+    monkeypatch.setattr("soca.llm.llamacpp_runner.Llama", ThinkingFakeLlama)
 
     llm = LocalLlamaCppLLM(
         model_key="qwen3_0_6b_q8_0",

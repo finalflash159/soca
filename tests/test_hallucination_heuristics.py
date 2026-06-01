@@ -1,8 +1,8 @@
-"""Unit tests for shrike7.asr.hallucination_heuristics."""
+"""Unit tests for soca.asr.hallucination_heuristics."""
 
 from __future__ import annotations
 
-from shrike7.asr.hallucination_heuristics import (
+from soca.asr.hallucination_heuristics import (
     check_heuristics,
     compression_ratio,
     is_filler_only,

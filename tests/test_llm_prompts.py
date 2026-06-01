@@ -1,13 +1,13 @@
 import pytest
 
-from shrike7.llm.prompts import (
+from soca.llm.prompts import (
     StreamingOutputCleaner,
     build_chat_messages,
     build_completion_prompt,
     clean_model_output,
     uses_completion_prompt,
 )
-from shrike7.llm.registry import get_model_config
+from soca.llm.registry import get_model_config
 
 
 def test_phogpt_completion_prompt_preserves_template() -> None:

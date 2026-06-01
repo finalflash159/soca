@@ -3,7 +3,7 @@ from dataclasses import fields
 
 import pytest
 
-from shrike7.llm.registry import (
+from soca.llm.registry import (
     BAKEOFF_MODEL_KEYS,
     DEFAULT_LLM_MODEL_KEY,
     FULL_MODEL_KEYS,

@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.progress import track
 from rich.table import Table
 
-from shrike7.asr import (
+from soca.asr import (
     ASR_MODEL_REGISTRY,
     DEFAULT_ASR_MODEL_KEY,
     VietnameseASR,
@@ -162,7 +162,7 @@ def run_model_eval(
 
 
 def print_summary(reports: Sequence[dict]) -> None:
-    table = Table(title="Shrike-7 PhoWhisper ASR Bakeoff")
+    table = Table(title="Soca PhoWhisper ASR Bakeoff")
     table.add_column("Model", style="cyan")
     table.add_column("Params", justify="right")
     table.add_column("WER", justify="right")

@@ -1,4 +1,4 @@
-"""Unit tests for shrike7.asr.boh."""
+"""Unit tests for soca.asr.boh."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from shrike7.asr.boh import VietnameseBoH
+from soca.asr.boh import VietnameseBoH
 
 
 @pytest.fixture

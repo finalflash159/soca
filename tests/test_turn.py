@@ -1,4 +1,4 @@
-from shrike7.core import RuntimeResult, RuntimeRoute, RuntimeTrace, TurnFrame
+from soca.core import RuntimeResult, RuntimeRoute, RuntimeTrace, TurnFrame
 
 
 def test_turn_frame_defaults_to_text_source() -> None:

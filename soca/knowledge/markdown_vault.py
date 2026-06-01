@@ -7,7 +7,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from shrike7.knowledge.base import KnowledgeDocument, KnowledgeHit
+from soca.knowledge.base import KnowledgeDocument, KnowledgeHit
 
 TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 DEFAULT_EXCLUDE_DIRS = (".obsidian", ".trash", "private")

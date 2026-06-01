@@ -49,7 +49,7 @@ LLM_MODEL_REGISTRY: dict[str, LLMModelConfig] = {
         prompt_style="phogpt_completion",
         role="baseline",
         context_window=2048,
-        license_note="BSD-3-Clause model card; keep as current Shrike-7 baseline.",
+        license_note="BSD-3-Clause model card; keep as current Soca baseline.",
         source_url="https://huggingface.co/vinai/PhoGPT-4B-Chat-gguf",
         stop_sequences=("### Câu hỏi:",),
     ),

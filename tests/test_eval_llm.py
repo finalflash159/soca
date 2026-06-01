@@ -24,7 +24,7 @@ from eval.eval_llm import (
     select_model_keys,
     summarize,
 )
-from shrike7.llm.registry import DEFAULT_LLM_MODEL_KEY
+from soca.llm.registry import DEFAULT_LLM_MODEL_KEY
 
 
 def test_select_model_keys_defaults_to_registry_default() -> None:

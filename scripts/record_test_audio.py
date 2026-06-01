@@ -7,7 +7,7 @@ OUT_DIR = Path(__file__).parent.parent / "data" / "test_audio"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 PROMPTS = [
-    ("sample_01_greeting", "Xin chào, tôi là Shrike-7.", 3),
+    ("sample_01_greeting", "Xin chào, tôi là Soca.", 3),
     ("sample_02_question", "Hôm nay thời tiết Sài Gòn thế nào?", 4),
     ("sample_03_command", "Đặt báo thức lúc bảy giờ sáng mai.", 4),
 ]

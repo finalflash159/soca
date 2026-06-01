@@ -1,4 +1,4 @@
-# Shrike-7 — Benchmarks
+# Soca — Benchmarks
 
 > Last updated: 2026-06-01. All measurements are from real local runs;
 > raw output JSON lives under `eval/results/` (gitignored).
@@ -69,7 +69,7 @@ changing the default ASR model.
 
 | Field | Value |
 | --- | --- |
-| Runtime | `shrike7.asr.VietnameseASR` with model registry selection |
+| Runtime | `soca.asr.VietnameseASR` with model registry selection |
 | Decode | Same greedy autoregressive decoder, no KV cache |
 | Providers | `CoreMLExecutionProvider`, `CPUExecutionProvider` fallback |
 | Eval data | FLEURS Vietnamese local slice |
@@ -132,7 +132,7 @@ changing the default ASR model.
 | Seed              | 42                                                                       |
 | Decode            | Streaming sampling, `temperature=0.7`, `top_p=0.95`, `max_tokens=128`    |
 | Prompt template   | `### Câu hỏi: {persona}\n\nCâu hỏi của tôi: {user}\n### Trả lời:`        |
-| Persona injection | "Bạn là Shrike-7, trợ lý ảo tiếng Việt..." (first turn only)             |
+| Persona injection | "Bạn là Soca, trợ lý ảo tiếng Việt..." (first turn only)             |
 | Eval prompts      | 15 hand-crafted Vietnamese prompts (factual / reasoning / commands)      |
 | Run date          | 2026-05-19                                                               |
 | Device label      | "Mac 4 (Metal)" in JSON — actually MacBook M4 Pro                        |
@@ -166,15 +166,15 @@ changing the default ASR model.
 
 ## D2.1 — LLM Bake-Off (Generic llama.cpp Registry)
 
-**Purpose:** compare the practical local LLM candidates for the Shrike-7 voice
+**Purpose:** compare the practical local LLM candidates for the Soca voice
 assistant before changing the runtime default.
 
 **Setup**
 
 | Field | Value |
 | --- | --- |
-| Runtime | `shrike7.llm.LocalLlamaCppLLM` (`llama-cpp-python`, Metal) |
-| Model selection | `shrike7/llm/registry.py`, profile `bakeoff` |
+| Runtime | `soca.llm.LocalLlamaCppLLM` (`llama-cpp-python`, Metal) |
+| Model selection | `soca/llm/registry.py`, profile `bakeoff` |
 | Prompt set | `eval/prompts/llm_bakeoff_vi.jsonl`, 50 Vietnamese prompts |
 | Categories | `assistant_command`, `local_utility`, `conversation`, `unknown_refusal`, `asr_noisy`, `coding` |
 | Decode | Streaming, `temperature=0.2`, `top_p=0.9`, `max_tokens=96` |
@@ -219,7 +219,7 @@ loop before changing the default TTS engine.
 
 | Field | Value |
 | --- | --- |
-| Runtime | `shrike7.tts` registry + per-model runners |
+| Runtime | `soca.tts` registry + per-model runners |
 | Model selection | `--all` registry candidates |
 | Prompt set | `eval/prompts/tts_bakeoff_vi.jsonl`, 41 Vietnamese prompts |
 | Categories | `short`, `assistant`, `coach`, `nutrition`, `fitness`, `safety`, `tracking`, `number`, `datetime`, `currency`, `measurement`, `name_place`, `abbreviation`, `punctuation`, `codeswitch`, `formal`, `casual`, `asr_noisy`, `long` |
@@ -231,12 +231,12 @@ loop before changing the default TTS engine.
 
 **Candidate pool and sources**
 
-The candidate list is defined in `shrike7/tts/registry.py`. It intentionally
+The candidate list is defined in `soca/tts/registry.py`. It intentionally
 mixes production-usable local runners and heavier quality baselines:
 
 | Model key | Upstream/source | Why included |
 | --- | --- | --- |
-| `valtec_multispeaker` | `https://github.com/tronghieuit/valtec-tts` | Current Shrike-7 baseline; local Vietnamese multi-speaker runtime. |
+| `valtec_multispeaker` | `https://github.com/tronghieuit/valtec-tts` | Current Soca baseline; local Vietnamese multi-speaker runtime. |
 | `mms_tts_vie` | `https://huggingface.co/facebook/mms-tts-vie` | Small VITS-style Vietnamese baseline through Transformers. |
 | `piper_vi_vivos_x_low` | `https://huggingface.co/speaches-ai/piper-vi_VN-vivos-x_low`, artifact path from `rhasspy/piper-voices` | ONNX/Piper edge fallback candidate. |
 | `vieneu_v2_turbo` | `https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2-Turbo` | Main runtime challenger: Vietnamese-focused, CPU/GGUF-oriented path through the VieNeu SDK. |
@@ -258,7 +258,7 @@ is to stress the text-to-audio layer that Sơn Ca will actually speak:
 - Numbers, dates, currency, measurement: common Vietnamese TTS failure modes.
 - Names/places and abbreviations: local assistant identity + technical terms.
 - Punctuation and quote-like text: prosody and pause handling.
-- Code-switching: English terms that appear in real Shrike-7 responses.
+- Code-switching: English terms that appear in real Soca responses.
 - ASR-noisy text: no punctuation/casing, similar to raw ASR output.
 - Long prompts: latency/RTF stability on longer assistant responses.
 
@@ -323,7 +323,7 @@ uv run --extra tts --extra tts-piper --extra tts-omnivoice --extra tts-vieneu \
 
 | Model | Reason | Next action |
 | --- | --- | --- |
-| `kani_370m_vie` | `kani-tts-2` conflicts with Shrike-7's main Hugging Face stack. | Test in a separate `uv` environment. |
+| `kani_370m_vie` | `kani-tts-2` conflicts with Soca's main Hugging Face stack. | Test in a separate `uv` environment. |
 | `viet_tts_onnx` | Local VietTTS server was not running at `http://127.0.0.1:8298`. | Start the server and rerun this model only. |
 | `vixtts` | External command runner was not configured. | Set `SHRIKE7_TTS_VIXTTS_COMMAND`. |
 | `f5_vi_hynt` | Missing reference audio/text env vars. | Set `SHRIKE7_TTS_F5_HYNT_REF_AUDIO` and `SHRIKE7_TTS_F5_HYNT_REF_TEXT`. |
@@ -525,7 +525,7 @@ timer; scheduling requests stay blocked until a real scheduler backend exists.
 
 Five sub-deliverables: **(A)** non-speech dataset, **(B)** Vietnamese BoH
 construction, **(C)** heuristic threshold calibration, **(D)** runtime
-pipeline (`shrike7.asr.RobustASR`), **(E)** Table VII-style benchmark.
+pipeline (`soca.asr.RobustASR`), **(E)** Table VII-style benchmark.
 
 ### A. Non-speech dataset
 
@@ -605,7 +605,7 @@ real Vietnamese speech, so they characterize what natural speech looks like.
 | Derivation policy | `recommended = p99 × (1 + margin)`                                              |
 | Margins           | 0.15 for repetition metrics, 0.50 for density                                   |
 | Default rounding  | Recommended rounded **up** to leave headroom                                    |
-| Applied where     | `shrike7.asr.hallucination_heuristics.check_heuristics`, Stage 5 of `RobustASR` |
+| Applied where     | `soca.asr.hallucination_heuristics.check_heuristics`, Stage 5 of `RobustASR` |
 | Run date          | 2026-05-20                                                                      |
 | Output path       | `data/asr/threshold_calibration.json` (gitignored)                              |
 | Reproducible via  | `uv run python -m local.calibrate_thresholds`                                   |
@@ -624,7 +624,7 @@ real Vietnamese speech, so they characterize what natural speech looks like.
 | 3gram_repetition   | 0.006 | 0.000 | 0.022 | 0.038 | 0.095 | 0.114 | 0.110       | **0.12**          |
 | chars_per_100ms    | 1.092 | 1.082 | 1.346 | 1.427 | 1.567 | 1.751 | 2.350       | **2.50**          |
 
-Defaults are hard-coded in [shrike7/asr/hallucination_heuristics.py:73-78](shrike7/asr/hallucination_heuristics.py#L73-L78).
+Defaults are hard-coded in [soca/asr/hallucination_heuristics.py:73-78](soca/asr/hallucination_heuristics.py#L73-L78).
 
 **Expected false-positive rate**
 
@@ -641,7 +641,7 @@ Section E: 0/100 real-speech samples were flagged by heuristics).
   slightly. Monitor false-rejection in Section E as the ground-truth check.
 - Vietnamese-specific. Other languages need their own calibration.
 
-### D. Runtime pipeline (`shrike7.asr.RobustASR`)
+### D. Runtime pipeline (`soca.asr.RobustASR`)
 
 Six stages, all configurable:
 

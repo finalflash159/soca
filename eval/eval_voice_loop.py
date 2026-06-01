@@ -1,4 +1,4 @@
-"""Benchmark Shrike-7 end-to-end voice-loop latency from audio input to first audio."""
+"""Benchmark Soca end-to-end voice-loop latency from audio input to first audio."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from rich.table import Table
 
 from eval.result_io import EvalRunPaths, make_eval_run_paths, update_latest_eval_report
 from eval.system_metrics import get_current_memory_mb
-from shrike7.core import (
+from soca.core import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
     VOICE_RUNTIME_PROFILES,
     NullAudioPlayer,
@@ -30,7 +30,7 @@ from shrike7.core import (
     build_voice_runtime,
     resolve_voice_runtime_config,
 )
-from shrike7.tts import TTS_MODEL_REGISTRY, TTSRuntimeUnavailableError, create_tts_engine
+from soca.tts import TTS_MODEL_REGISTRY, TTSRuntimeUnavailableError, create_tts_engine
 
 console = Console(width=180)
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -433,7 +433,7 @@ def format_percent(value: float | None) -> str:
 
 
 def render_summary(results: Sequence[dict[str, Any]]) -> None:
-    table = Table(title="Shrike-7 E2E Voice Loop Benchmark", show_lines=True)
+    table = Table(title="Soca E2E Voice Loop Benchmark", show_lines=True)
     table.add_column("Profile", style="cyan")
     table.add_column("ASR")
     table.add_column("LLM")
@@ -525,7 +525,7 @@ def write_outputs(
     run_paths.json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
     lines = [
-        "# Shrike-7 E2E Voice Loop Benchmark",
+        "# Soca E2E Voice Loop Benchmark",
         "",
         f"- Created at: `{run_paths.run_dir.name}`",
         f"- Sample count: `{len(samples)}`",
@@ -614,7 +614,7 @@ def parse_profiles(values: Sequence[str], all_profiles: bool) -> list[str]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run Shrike-7 E2E voice-loop benchmark.")
+    parser = argparse.ArgumentParser(description="Run Soca E2E voice-loop benchmark.")
     parser.add_argument("--profile", action="append", default=[], help="Runtime profile. Can be comma-separated.")
     parser.add_argument("--all-profiles", action="store_true", help="Run every runtime profile.")
     parser.add_argument("--audio-dir", type=Path, default=DEFAULT_AUDIO_DIR)

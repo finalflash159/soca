@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from shrike7.asr.registry import (
+from soca.asr.registry import (
     ASR_BAKEOFF_MODEL_KEYS,
     ASR_FULL_MODEL_KEYS,
     ASR_MODEL_REGISTRY,
@@ -11,7 +11,7 @@ from shrike7.asr.registry import (
     get_asr_model_config,
     get_asr_profile_model_keys,
 )
-from shrike7.asr.whisper_onnx import VietnameseASR
+from soca.asr.whisper_onnx import VietnameseASR
 
 
 def test_default_asr_model_key_exists() -> None:

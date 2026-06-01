@@ -1,8 +1,8 @@
-"""Unit tests for shrike7.asr.deloop."""
+"""Unit tests for soca.asr.deloop."""
 
 from __future__ import annotations
 
-from shrike7.asr.deloop import has_excessive_repetition, remove_consecutive_repeats
+from soca.asr.deloop import has_excessive_repetition, remove_consecutive_repeats
 
 
 class TestRemoveConsecutiveRepeats:

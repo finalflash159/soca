@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from shrike7.tts import TTSResult, VietnameseTTS
+from soca.tts import TTSResult, VietnameseTTS
 
 
 def test_tts_result_is_frozen():

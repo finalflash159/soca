@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from shrike7.llm import LLMEngine, LLMResult, LocalLlamaCppLLM
-from shrike7.llm.registry import DEFAULT_LLM_MODEL_KEY, get_model_config
+from soca.llm import LLMEngine, LLMResult, LocalLlamaCppLLM
+from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, get_model_config
 
 
 def test_llm_package_exports_generic_runtime_types_only() -> None:

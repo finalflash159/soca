@@ -25,7 +25,7 @@ Usage:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import click
 import numpy as np
@@ -34,7 +34,7 @@ from rich.console import Console
 from rich.table import Table
 
 from local import config as cfg
-from shrike7.asr.hallucination_heuristics import n_gram_repetition, repetition_ratio
+from soca.asr.hallucination_heuristics import n_gram_repetition, repetition_ratio
 
 console = Console()
 
@@ -148,10 +148,10 @@ def main(repetition_margin: float, density_margin: float) -> None:
             "chars_per_100ms": density_margin,
         },
         "created_by": "local.calibrate_thresholds",
-        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "created_at_utc": datetime.now(UTC).isoformat(),
         "usage_note": (
             "Recommended values are p99 + margin. Copy these into the defaults "
-            "of shrike7.asr.hallucination_heuristics.check_heuristics, or pass "
+            "of soca.asr.hallucination_heuristics.check_heuristics, or pass "
             "them via kwargs at call site."
         ),
     }

@@ -4,9 +4,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from shrike7.core.guardrails import GuardrailEvent
-from shrike7.knowledge import KnowledgeCitation
-from shrike7.tools import ToolCall, ToolResult
+from soca.core.guardrails import GuardrailEvent
+from soca.knowledge import KnowledgeCitation
+from soca.tools import ToolCall, ToolResult
 
 
 class RuntimeRoute(Enum):

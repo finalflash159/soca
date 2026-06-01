@@ -13,8 +13,8 @@ from rich.console import Console
 from rich.progress import track
 from rich.table import Table
 
-from shrike7.core.audio_out import SoundDevicePlayer
-from shrike7.tts import TTS_MODEL_REGISTRY, create_tts_engine
+from soca.core.audio_out import SoundDevicePlayer
+from soca.tts import TTS_MODEL_REGISTRY, create_tts_engine
 
 console = Console(width=180)
 REPO_ROOT = Path(__file__).resolve().parents[1]

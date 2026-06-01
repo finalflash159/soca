@@ -9,7 +9,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from shrike7.tts import OmniVoiceTTS, create_tts_engine
+from soca.tts import OmniVoiceTTS, create_tts_engine
 
 console = Console()
 

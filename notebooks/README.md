@@ -1,6 +1,6 @@
-# Shrike-7 Colab Notebooks
+# Soca Colab Notebooks
 
-This folder contains notebooks for Shrike-7 research, data collection, training, calibration, and export work.
+This folder contains notebooks for Soca research, data collection, training, calibration, and export work.
 
 The D2.5 ASR robustness notebooks can run in two modes:
 
@@ -28,7 +28,7 @@ Keep the boundary clear:
 ## Standard Colab Header
 
 ```python
-PROJECT = "shrike-7"
+PROJECT = "soca"
 RUN_NAME = "d2_5_asr_robustness"
 SEED = 42
 ```
@@ -36,9 +36,9 @@ SEED = 42
 ```python
 from pathlib import Path
 
-GITHUB_REPO_URL = "https://github.com/finalflash159/shrike-7.git"
-REPO_DIR = Path("/content/shrike-7")
-DRIVE_ROOT = Path("/content/drive/MyDrive/shrike-7")
+GITHUB_REPO_URL = "https://github.com/finalflash159/soca.git"
+REPO_DIR = Path("/content/soca")
+DRIVE_ROOT = Path("/content/drive/MyDrive/soca")
 ```
 
 ```python
@@ -85,7 +85,7 @@ For local CPU runs, keep `MAX_FILES` small in notebook 02 first, for example `20
 Use this layout on Google Drive:
 
 ```text
-/content/drive/MyDrive/shrike-7/
+/content/drive/MyDrive/soca/
 ├── datasets/
 ├── checkpoints/
 ├── exports/

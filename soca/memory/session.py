@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Iterable
 
-from shrike7.memory.base import MemoryRole, MemoryTurn
+from soca.memory.base import MemoryRole, MemoryTurn
 
 RECENT_CONVERSATION_HEADER = "Recent conversation:"
 VALID_ROLES = {"user", "assistant"}

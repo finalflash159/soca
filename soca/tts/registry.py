@@ -61,7 +61,7 @@ TTS_MODEL_REGISTRY: dict[str, TTSModelConfig] = {
         default_voice="NF",
         license="CC BY-NC 4.0",
         source_url="https://github.com/tronghieuit/valtec-tts",
-        notes="Current Shrike-7 baseline; local CPU runtime; five Vietnamese voices.",
+        notes="Current Soca baseline; local CPU runtime; five Vietnamese voices.",
     ),
     "mms_tts_vie": TTSModelConfig(
         key="mms_tts_vie",
@@ -147,7 +147,7 @@ TTS_MODEL_REGISTRY: dict[str, TTSModelConfig] = {
         source_url="https://huggingface.co/capleaf/viXTTS",
         notes=(
             "Quality baseline. The upstream demo notes Ubuntu/WSL focus and Coqui-library "
-            "incompatibility, so Shrike-7 calls a configured external command."
+            "incompatibility, so Soca calls a configured external command."
         ),
         hf_repo="capleaf/viXTTS",
         command_env_var="SHRIKE7_TTS_VIXTTS_COMMAND",

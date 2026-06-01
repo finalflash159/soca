@@ -14,9 +14,9 @@ import soundfile as sf
 from rich.console import Console
 from rich.panel import Panel
 
-from shrike7.asr import VietnameseASR
-from shrike7.llm import LocalLlamaCppLLM
-from shrike7.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
+from soca.asr import VietnameseASR
+from soca.llm import LocalLlamaCppLLM
+from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
 
 console = Console()
 SAMPLE_RATE = 16000
@@ -55,7 +55,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sd.wait()
         audio = audio.flatten()
 
-        tmp_path = Path("/tmp/shrike7_last.wav")
+        tmp_path = Path("/tmp/soca_last.wav")
         sf.write(str(tmp_path), audio, SAMPLE_RATE)
         console.print(f"[dim]Saved to {tmp_path}[/dim]")
 

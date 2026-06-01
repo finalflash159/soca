@@ -3,8 +3,8 @@ from pathlib import Path
 import soundfile as sf
 from rich.console import Console
 
-from shrike7.asr import SpeechDetector
-from shrike7.core import EndpointConfig, record_until_silence
+from soca.asr import SpeechDetector
+from soca.core import EndpointConfig, record_until_silence
 
 console = Console()
 
@@ -17,7 +17,7 @@ console.print(
 detector = SpeechDetector()
 audio = record_until_silence(detector, config=config)
 
-out = Path("/tmp/shrike7_endpoint.wav")
+out = Path("/tmp/soca_endpoint.wav")
 sf.write(out, audio, config.sample_rate)
 
 console.print(f"Saved: {out}")

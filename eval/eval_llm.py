@@ -18,8 +18,8 @@ from rich.table import Table
 
 from eval.result_io import make_eval_run_paths, update_latest_eval_report
 from eval.system_metrics import get_current_memory_mb
-from shrike7.llm import LLMResult, LocalLlamaCppLLM
-from shrike7.llm.registry import (
+from soca.llm import LLMResult, LocalLlamaCppLLM
+from soca.llm.registry import (
     DEFAULT_LLM_MODEL_KEY,
     LLM_MODEL_REGISTRY,
     PROFILE_MODEL_KEYS,
@@ -385,7 +385,7 @@ def run_model_eval(
 
 
 def print_summary_table(reports: Sequence[dict[str, Any]]) -> None:
-    table = Table(title="Shrike-7 LLM Bakeoff")
+    table = Table(title="Soca LLM Bakeoff")
     table.add_column("Model", style="cyan")
     table.add_column("Role")
     table.add_column("TTFT p50", justify="right")
@@ -425,7 +425,7 @@ def print_summary_table(reports: Sequence[dict[str, Any]]) -> None:
 
 def write_markdown_report(path: Path, reports: Sequence[dict[str, Any]]) -> None:
     lines = [
-        "# Shrike-7 LLM Bakeoff",
+        "# Soca LLM Bakeoff",
         "",
         "| Model | Role | TTFT p50 ms | TTFT p95 ms | tok/s mean | Total p95 ms | Too long | VI signal | CJK leak | EN leak | Uncertain | Cmd refuse | Cmd ack | RT safe | RT hallu | Privacy safe | Privacy hallu | Peak MB |",
         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
@@ -454,7 +454,7 @@ def write_markdown_report(path: Path, reports: Sequence[dict[str, Any]]) -> None
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Benchmark registered Shrike-7 LLM candidates.")
+    parser = argparse.ArgumentParser(description="Benchmark registered Soca LLM candidates.")
     parser.add_argument(
         "--model",
         action="append",

@@ -22,8 +22,8 @@ from eval.eval_voice_loop import (
     write_outputs,
 )
 from eval.result_io import make_eval_run_paths
-from shrike7.core.streaming import StreamingEvent
-from shrike7.tts import TTSResult
+from soca.core.streaming import StreamingEvent
+from soca.tts import TTSResult
 
 
 def write_wav(path: Path) -> None:
@@ -291,4 +291,4 @@ def test_write_outputs_creates_report_and_latest(tmp_path: Path) -> None:
     assert md_path.exists()
     assert run_paths.latest_json_path.exists()
     assert run_paths.latest_md_path.exists()
-    assert "Shrike-7 E2E Voice Loop Benchmark" in md_path.read_text(encoding="utf-8")
+    assert "Soca E2E Voice Loop Benchmark" in md_path.read_text(encoding="utf-8")

@@ -1,4 +1,4 @@
-"""Deterministic eval harness for the Shrike-7 AssistantRuntime.
+"""Deterministic eval harness for the Soca AssistantRuntime.
 
 This evaluator intentionally scores runtime traces, not surface text only. It
 checks route, tool calls, guardrail reasons, LLM usage, knowledge citations, and
@@ -23,18 +23,18 @@ from rich.console import Console
 from rich.progress import track
 from rich.table import Table
 
-from shrike7.core import AssistantRuntime, RuntimeOptions, RuntimeRoute
-from shrike7.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
-from shrike7.llm import LLMResult
-from shrike7.memory import MemoryContextBuilder, SessionMemory
-from shrike7.tools import (
+from soca.core import AssistantRuntime, RuntimeOptions, RuntimeRoute
+from soca.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
+from soca.llm import LLMResult
+from soca.memory import MemoryContextBuilder, SessionMemory
+from soca.tools import (
     KnowledgeReadTool,
     KnowledgeSearchTool,
     LocalTimeTool,
     ToolResult,
     ToolRuntime,
 )
-from shrike7.tools.base import SideEffectLevel, ToolSpec, object_schema
+from soca.tools.base import SideEffectLevel, ToolSpec, object_schema
 
 console = Console()
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -448,7 +448,7 @@ def sample_to_dict(sample: RuntimeEvalSample) -> dict[str, Any]:
 def write_markdown_report(path: Path, report: dict[str, Any]) -> None:
     summary = report["summary"]
     lines = [
-        "# Shrike-7 AssistantRuntime Eval",
+        "# Soca AssistantRuntime Eval",
         "",
         "## Summary",
         "",
@@ -492,7 +492,7 @@ def write_markdown_report(path: Path, report: dict[str, Any]) -> None:
 
 def print_summary_table(report: dict[str, Any]) -> None:
     summary = report["summary"]
-    table = Table(title="Shrike-7 AssistantRuntime Eval")
+    table = Table(title="Soca AssistantRuntime Eval")
     table.add_column("Cases", justify="right")
     table.add_column("Pass", justify="right")
     table.add_column("Route", justify="right")
@@ -534,7 +534,7 @@ def run_eval(cases: Sequence[RuntimeEvalCase]) -> dict[str, Any]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evaluate Shrike-7 AssistantRuntime behavior.")
+    parser = argparse.ArgumentParser(description="Evaluate Soca AssistantRuntime behavior.")
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPT_PATH)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)

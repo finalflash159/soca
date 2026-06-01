@@ -1,6 +1,6 @@
 import pytest
 
-from shrike7.memory import MemoryContextBuilder, MemoryTurn, SessionMemory
+from soca.memory import MemoryContextBuilder, MemoryTurn, SessionMemory
 
 
 def test_session_memory_renders_recent_conversation():

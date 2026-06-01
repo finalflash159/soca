@@ -1,14 +1,14 @@
 import pytest
 
-from shrike7.asr.registry import ASR_MODEL_REGISTRY
-from shrike7.core.profiles import (
+from soca.asr.registry import ASR_MODEL_REGISTRY
+from soca.core.profiles import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
     VOICE_RUNTIME_PROFILES,
     get_voice_runtime_profile,
     validate_voice_runtime_profiles,
 )
-from shrike7.llm.registry import LLM_MODEL_REGISTRY
-from shrike7.tts.registry import TTS_MODEL_REGISTRY
+from soca.llm.registry import LLM_MODEL_REGISTRY
+from soca.tts.registry import TTS_MODEL_REGISTRY
 
 
 def test_default_voice_runtime_profile_exists():

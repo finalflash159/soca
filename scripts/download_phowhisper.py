@@ -7,7 +7,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
-from shrike7.asr.registry import (
+from soca.asr.registry import (
     ASR_MODEL_REGISTRY,
     DEFAULT_ASR_MODEL_KEY,
     PHOWHISPER_ALLOW_PATTERNS,
@@ -60,7 +60,7 @@ def download_model(config: ASRModelConfig, models_dir: Path | None = None) -> Pa
 
 
 def print_model_table(configs: Sequence[ASRModelConfig], models_dir: Path | None = None) -> None:
-    table = Table(title="Shrike-7 PhoWhisper ONNX Models")
+    table = Table(title="Soca PhoWhisper ONNX Models")
     table.add_column("Key", style="cyan")
     table.add_column("Role")
     table.add_column("Params", justify="right")
@@ -120,7 +120,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--drive-root",
         type=Path,
-        default=Path("/content/drive/MyDrive/shrike-7"),
+        default=Path("/content/drive/MyDrive/soca"),
         help="Google Drive project root used when --storage=drive.",
     )
     return parser.parse_args()

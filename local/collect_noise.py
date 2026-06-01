@@ -14,8 +14,7 @@ from __future__ import annotations
 
 import json
 import random
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
 import click
 import librosa
@@ -153,14 +152,14 @@ def main(target: int, seed: int, force: bool) -> None:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     snapshot = {
-        "project": "shrike-7",
+        "project": "soca",
         "run_name": "d2_5_noise_collection_local",
         "execution_mode": "local",
         "seed": seed,
         "sample_rate": cfg.SAMPLE_RATE,
         "target_total_samples": target,
         "num_rows": len(rows),
-        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "created_at_utc": datetime.now(UTC).isoformat(),
         "noise_sources": cfg.NOISE_SOURCES,
         "synthetic_noise": cfg.SYNTHETIC_NOISE,
         "manifest": str(cfg.NOISE_MANIFEST),

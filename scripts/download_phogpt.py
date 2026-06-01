@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 
 from scripts.download_llm import main
-from shrike7.llm.registry import DEFAULT_LLM_MODEL_KEY
+from soca.llm.registry import DEFAULT_LLM_MODEL_KEY
 
 if __name__ == "__main__":
     raise SystemExit(main(["--model", DEFAULT_LLM_MODEL_KEY, *sys.argv[1:]]))

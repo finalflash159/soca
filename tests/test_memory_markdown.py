@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from shrike7.memory import MarkdownLongTermMemory
+from soca.memory import MarkdownLongTermMemory
 
 
 def test_reads_manual_profile_memory(tmp_path: Path):

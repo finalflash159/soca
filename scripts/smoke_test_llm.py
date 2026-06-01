@@ -8,8 +8,8 @@ from collections.abc import Sequence
 from rich.console import Console
 from rich.table import Table
 
-from shrike7.llm import LocalLlamaCppLLM
-from shrike7.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
+from soca.llm import LocalLlamaCppLLM
+from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
 
 console = Console()
 
@@ -23,7 +23,7 @@ TEST_PROMPTS = [
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run a quick Shrike-7 LLM smoke test.")
+    parser = argparse.ArgumentParser(description="Run a quick Soca LLM smoke test.")
     parser.add_argument(
         "--model",
         default=DEFAULT_LLM_MODEL_KEY,

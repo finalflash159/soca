@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from scripts.download_llm import format_bytes, select_configs
-from shrike7.llm.registry import DEFAULT_LLM_MODEL_KEY
+from soca.llm.registry import DEFAULT_LLM_MODEL_KEY
 
 
 def test_select_configs_defaults_to_minimal_profile() -> None:

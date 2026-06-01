@@ -1,4 +1,4 @@
-from shrike7.core.streaming import pop_ready_sentence
+from soca.core.streaming import pop_ready_sentence
 
 
 def test_pop_ready_sentence_waits_for_min_chars():

@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -55,8 +55,8 @@ from rich.progress import track
 from rich.table import Table
 
 from local import config as cfg
-from shrike7.asr import SpeechDetector, VietnameseASR
-from shrike7.asr.hallucination_heuristics import compression_ratio
+from soca.asr import SpeechDetector, VietnameseASR
+from soca.asr.hallucination_heuristics import compression_ratio
 
 console = Console()
 
@@ -491,7 +491,7 @@ def main(
     )
     console.print(threshold_table)
 
-    created_at = datetime.now(timezone.utc).isoformat()
+    created_at = datetime.now(UTC).isoformat()
     calibration_payload = {
         "dataset": {
             "speech": f"{cfg.FLEURS_REPO}:{cfg.FLEURS_LANG}:{cfg.FLEURS_SPLIT}",

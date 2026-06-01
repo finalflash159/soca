@@ -38,7 +38,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import click
@@ -51,9 +51,9 @@ from rich.progress import track
 from rich.table import Table
 
 from local import config as cfg
-from shrike7.asr import (
-    SpeechDetector,
+from soca.asr import (
     RobustASR,
+    SpeechDetector,
     VietnameseASR,
     VietnameseBoH,
     remove_consecutive_repeats,
@@ -246,10 +246,10 @@ def compute_metrics(items: list[Item], predictions: list[str], latencies_ms: lis
     speech_refs = [it.ground_truth.lower().strip() for it in items if it.kind == "speech"]
     speech_preds = [
         (p or "<empty>").lower().strip()
-        for it, p in zip(items, predictions)
+        for it, p in zip(items, predictions, strict=False)
         if it.kind == "speech"
     ]
-    noise_preds = [p for it, p in zip(items, predictions) if it.kind == "noise"]
+    noise_preds = [p for it, p in zip(items, predictions, strict=False) if it.kind == "noise"]
     n_noise = sum(1 for it in items if it.kind == "noise")
 
     wer_val = wer(speech_refs, speech_preds) if speech_refs else float("nan")
@@ -387,7 +387,7 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str) -> None:
             "speech_dataset": f"{cfg.FLEURS_REPO}:{cfg.FLEURS_LANG}:{cfg.FLEURS_SPLIT}",
             "noise_dataset": "ESC-50 (filtered) + synthetic silence/white/pink",
             "created_by": "local.eval_table7",
-            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "created_at_utc": datetime.now(UTC).isoformat(),
         },
         "results": {
             code: {

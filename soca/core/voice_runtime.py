@@ -3,23 +3,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from shrike7.asr import ASR_MODEL_REGISTRY, SpeechDetector
-from shrike7.asr.robust_asr import RobustASR
-from shrike7.asr.whisper_onnx import VietnameseASR
-from shrike7.core.pipeline import VoicePipeline
-from shrike7.core.profiles import get_voice_runtime_profile
-from shrike7.core.runtime import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
-from shrike7.knowledge import KnowledgeContextBuilder, MarkdownVaultKnowledgeSource
-from shrike7.llm import LocalLlamaCppLLM
-from shrike7.llm.registry import LLM_MODEL_REGISTRY
-from shrike7.memory import MarkdownLongTermMemory, MemoryContextBuilder, SessionMemory
-from shrike7.tools import (
+from soca.asr import ASR_MODEL_REGISTRY, SpeechDetector
+from soca.asr.robust_asr import RobustASR
+from soca.asr.whisper_onnx import VietnameseASR
+from soca.core.pipeline import VoicePipeline
+from soca.core.profiles import get_voice_runtime_profile
+from soca.core.runtime import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
+from soca.knowledge import KnowledgeContextBuilder, MarkdownVaultKnowledgeSource
+from soca.llm import LocalLlamaCppLLM
+from soca.llm.registry import LLM_MODEL_REGISTRY
+from soca.memory import MarkdownLongTermMemory, MemoryContextBuilder, SessionMemory
+from soca.tools import (
     KnowledgeReadTool,
     KnowledgeSearchTool,
     LocalTimeTool,
     ToolRuntime,
 )
-from shrike7.tts import TTS_MODEL_REGISTRY, create_tts_engine
+from soca.tts import TTS_MODEL_REGISTRY, create_tts_engine
 
 
 @dataclass(frozen=True)

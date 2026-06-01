@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from shrike7.core.text_chunking import split_sentences
+from soca.core.text_chunking import split_sentences
 
 
 def test_split_sentences_keeps_terminal_punctuation() -> None:

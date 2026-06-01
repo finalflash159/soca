@@ -9,7 +9,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
-from shrike7.knowledge import KnowledgeContextBuilder, MarkdownVaultKnowledgeSource
+from soca.knowledge import KnowledgeContextBuilder, MarkdownVaultKnowledgeSource
 
 console = Console()
 

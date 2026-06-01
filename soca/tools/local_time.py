@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from shrike7.tools.base import SideEffectLevel, ToolResult, ToolSpec, object_schema
+from soca.tools.base import SideEffectLevel, ToolResult, ToolSpec, object_schema
 
 
 class LocalTimeTool:

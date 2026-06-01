@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from shrike7.memory.base import LongTermMemorySource, SessionMemorySource
+from soca.memory.base import LongTermMemorySource, SessionMemorySource
 
 
 def _truncate(text: str, max_chars: int) -> str:

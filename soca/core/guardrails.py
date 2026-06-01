@@ -7,7 +7,7 @@ from enum import Enum
 from pathlib import PurePosixPath
 from typing import Any
 
-from shrike7.tools.base import (
+from soca.tools.base import (
     SIDE_EFFECT_RANK,
     SideEffectLevel,
     ToolCall,

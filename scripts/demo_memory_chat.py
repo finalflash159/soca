@@ -1,4 +1,4 @@
-"""Interactive terminal chat using Shrike-7 long-term and session memory."""
+"""Interactive terminal chat using Soca long-term and session memory."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
-from shrike7.llm import LocalLlamaCppLLM
-from shrike7.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
-from shrike7.memory import (
+from soca.llm import LocalLlamaCppLLM
+from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
+from soca.memory import (
     MarkdownLongTermMemory,
     MemoryContext,
     MemoryContextBuilder,

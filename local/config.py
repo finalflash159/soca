@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from shrike7.asr.registry import ASR_MODEL_REGISTRY, PHOWHISPER_ALLOW_PATTERNS
+from soca.asr.registry import ASR_MODEL_REGISTRY, PHOWHISPER_ALLOW_PATTERNS
 
 # Repo root resolved at import time. `local/` is one level below the root.
 REPO_ROOT = Path(__file__).resolve().parents[1]

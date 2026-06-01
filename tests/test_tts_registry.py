@@ -5,7 +5,7 @@ import json
 import numpy as np
 import pytest
 
-from shrike7.tts import (
+from soca.tts import (
     DEFAULT_TTS_MODEL_KEY,
     TIER_A_TTS_MODEL_KEYS,
     TIER_B_TTS_MODEL_KEYS,
@@ -20,8 +20,8 @@ from shrike7.tts import (
     create_tts_engine,
     get_tts_model_config,
 )
-from shrike7.tts.mms_runner import MMSTTS
-from shrike7.tts.piper_runner import PiperTTS
+from soca.tts.mms_runner import MMSTTS
+from soca.tts.piper_runner import PiperTTS
 
 
 def test_default_tts_model_key_exists() -> None:
@@ -162,7 +162,7 @@ def test_omnivoice_lists_saved_voice_artifacts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ) -> None:
-    import shrike7.tts.registry as registry
+    import soca.tts.registry as registry
 
     monkeypatch.setattr(registry, "TTS_MODELS_ROOT", tmp_path)
     config = registry.TTSModelConfig(

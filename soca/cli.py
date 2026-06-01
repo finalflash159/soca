@@ -8,8 +8,8 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from shrike7.asr.registry import ASR_MODEL_REGISTRY, DEFAULT_ASR_MODEL_KEY, get_asr_model_config
-from shrike7.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY, get_model_config
+from soca.asr.registry import ASR_MODEL_REGISTRY, DEFAULT_ASR_MODEL_KEY, get_asr_model_config
+from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY, get_model_config
 
 console = Console()
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -28,9 +28,9 @@ def run_script(script: str, *args: str) -> None:
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
-@click.version_option(package_name="shrike7")
+@click.version_option(package_name="soca")
 def main() -> None:
-    """Shrike-7 local Vietnamese voice assistant toolkit."""
+    """Soca local Vietnamese voice assistant toolkit."""
 
 
 @main.command()
@@ -47,7 +47,7 @@ def status() -> None:
         "Threshold calibration": REPO_ROOT / "data" / "asr" / "threshold_calibration.json",
     }
 
-    table = Table(title="Shrike-7 Local Status")
+    table = Table(title="Soca Local Status")
     table.add_column("Artifact", style="cyan")
     table.add_column("Exists", justify="center")
     table.add_column("Path")
@@ -73,7 +73,7 @@ def asr_smoke(model: str) -> None:
 @main.command("asr-models")
 def asr_models() -> None:
     """List registered PhoWhisper ONNX candidates."""
-    table = Table(title="Shrike-7 ASR Registry")
+    table = Table(title="Soca ASR Registry")
     table.add_column("Key", style="cyan")
     table.add_column("Role")
     table.add_column("Params", justify="right")
@@ -107,7 +107,7 @@ def llm_smoke(model: str) -> None:
 @main.command("llm-models")
 def llm_models() -> None:
     """List registered local LLM candidates."""
-    table = Table(title="Shrike-7 LLM Registry")
+    table = Table(title="Soca LLM Registry")
     table.add_column("Key", style="cyan")
     table.add_column("Role")
     table.add_column("Prompt")

@@ -1,4 +1,4 @@
-from shrike7.tools.base import (
+from soca.tools.base import (
     SideEffectLevel,
     Tool,
     ToolCall,
@@ -7,8 +7,8 @@ from shrike7.tools.base import (
     ToolSpec,
     object_schema,
 )
-from shrike7.tools.knowledge_tools import KnowledgeReadTool, KnowledgeSearchTool
-from shrike7.tools.local_time import LocalTimeTool
+from soca.tools.knowledge_tools import KnowledgeReadTool, KnowledgeSearchTool
+from soca.tools.local_time import LocalTimeTool
 
 __all__ = [
     "KnowledgeReadTool",

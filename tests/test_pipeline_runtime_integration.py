@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from shrike7.core import NullAudioPlayer, RuntimeResult, RuntimeRoute, RuntimeTrace, VoicePipeline
-from shrike7.tts import TTSResult
+from soca.core import NullAudioPlayer, RuntimeResult, RuntimeRoute, RuntimeTrace, VoicePipeline
+from soca.tts import TTSResult
 
 
 @dataclass(frozen=True)

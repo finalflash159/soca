@@ -18,7 +18,7 @@ Usage:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import click
 import librosa
@@ -92,14 +92,14 @@ def main(target: int, split: str, force: bool) -> None:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     snapshot = {
-        "project": "shrike-7",
+        "project": "soca",
         "run_name": "fleurs_vi_download_local",
         "dataset": cfg.FLEURS_REPO,
         "language": cfg.FLEURS_LANG,
         "split": split,
         "num_rows": len(rows),
         "target": target,
-        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "created_at_utc": datetime.now(UTC).isoformat(),
     }
     (cfg.FLEURS_DIR / "fleurs_download_config.json").write_text(
         json.dumps(snapshot, ensure_ascii=False, indent=2), encoding="utf-8"

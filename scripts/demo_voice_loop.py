@@ -7,8 +7,8 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 
-from shrike7.asr import ASR_MODEL_REGISTRY
-from shrike7.core import (
+from soca.asr import ASR_MODEL_REGISTRY
+from soca.core import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
     VOICE_RUNTIME_PROFILES,
     EndpointConfig,
@@ -17,14 +17,14 @@ from shrike7.core import (
     record_until_silence,
     resolve_voice_runtime_config,
 )
-from shrike7.llm.registry import LLM_MODEL_REGISTRY
-from shrike7.tts import TTS_MODEL_REGISTRY
+from soca.llm.registry import LLM_MODEL_REGISTRY
+from soca.tts import TTS_MODEL_REGISTRY
 
 console = Console()
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the local Shrike-7 voice loop.")
+    parser = argparse.ArgumentParser(description="Run the local Soca voice loop.")
     parser.add_argument(
         "--profile",
         default=DEFAULT_VOICE_RUNTIME_PROFILE_KEY,

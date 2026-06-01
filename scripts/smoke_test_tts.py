@@ -10,8 +10,8 @@ import soundfile as sf
 from rich.console import Console
 from rich.table import Table
 
-from shrike7.core.audio_out import SoundDevicePlayer
-from shrike7.tts import (
+from soca.core.audio_out import SoundDevicePlayer
+from soca.tts import (
     DEFAULT_TTS_MODEL_KEY,
     TTS_MODEL_REGISTRY,
     TTSRuntimeUnavailableError,
@@ -102,7 +102,7 @@ def build_voice_jobs(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run a quick Shrike-7 TTS smoke test.")
+    parser = argparse.ArgumentParser(description="Run a quick Soca TTS smoke test.")
     parser.add_argument(
         "--model",
         default=DEFAULT_TTS_MODEL_KEY,

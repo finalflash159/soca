@@ -7,7 +7,7 @@ import onnxruntime as ort
 from rich.console import Console
 from rich.table import Table
 
-from shrike7.asr import (
+from soca.asr import (
     ASR_MODEL_REGISTRY,
     DEFAULT_ASR_MODEL_KEY,
     VietnameseASR,

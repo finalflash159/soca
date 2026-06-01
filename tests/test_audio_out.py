@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import soundfile as sf
 
-from shrike7.core.audio_out import (
+from soca.core.audio_out import (
     NullAudioPlayer,
     SoundDevicePlayer,
     WavFileSink,
@@ -53,7 +53,7 @@ def test_sound_device_player_uses_resampled_output_rate(monkeypatch) -> None:
     def fake_play(audio, samplerate, blocking=True):
         calls.append((audio, samplerate, blocking))
 
-    monkeypatch.setattr("shrike7.core.audio_out.sd.play", fake_play)
+    monkeypatch.setattr("soca.core.audio_out.sd.play", fake_play)
     player = SoundDevicePlayer(output_sample_rate=8000)
     audio = np.ones(16000, dtype=np.float32)
 

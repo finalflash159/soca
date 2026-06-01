@@ -9,11 +9,11 @@ from typing import Any
 
 import numpy as np
 
-from shrike7.core.audio_out import AudioSink, NullAudioPlayer
-from shrike7.core.metrics import MetricsLogger
-from shrike7.core.streaming import StreamingEvent, pop_ready_sentence
-from shrike7.core.text_chunking import split_sentences
-from shrike7.tts import TTSResult
+from soca.core.audio_out import AudioSink, NullAudioPlayer
+from soca.core.metrics import MetricsLogger
+from soca.core.streaming import StreamingEvent, pop_ready_sentence
+from soca.core.text_chunking import split_sentences
+from soca.tts import TTSResult
 
 
 @dataclass(frozen=True)

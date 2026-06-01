@@ -106,7 +106,7 @@ Output:
 data/asr/threshold_calibration.json
 ```
 
-Sau khi xong, đọc giá trị recommended từ table, paste vào defaults trong [shrike7/asr/hallucination_heuristics.py](../shrike7/asr/hallucination_heuristics.py) hoặc pass kwargs khi gọi `check_heuristics()`.
+Sau khi xong, đọc giá trị recommended từ table, paste vào defaults trong [soca/asr/hallucination_heuristics.py](../soca/asr/hallucination_heuristics.py) hoặc pass kwargs khi gọi `check_heuristics()`.
 
 ### Bước 5: Table VII benchmark (~10-30 phút trên M4 Pro)
 

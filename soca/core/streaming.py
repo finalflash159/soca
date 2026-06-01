@@ -6,7 +6,7 @@ from typing import Literal
 
 import numpy as np
 
-from shrike7.tts import TTSResult
+from soca.tts import TTSResult
 
 _SENTENCE_END_RE = re.compile(r"([.!?\u2026]+)(\s+|$)")
 

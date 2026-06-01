@@ -5,11 +5,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from shrike7.core import AssistantRuntime, RuntimeRoute
-from shrike7.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
-from shrike7.llm import LLMResult
-from shrike7.memory import MemoryContextBuilder, SessionMemory
-from shrike7.tools import KnowledgeReadTool, KnowledgeSearchTool, LocalTimeTool, ToolRuntime
+from soca.core import AssistantRuntime, RuntimeRoute
+from soca.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
+from soca.llm import LLMResult
+from soca.memory import MemoryContextBuilder, SessionMemory
+from soca.tools import KnowledgeReadTool, KnowledgeSearchTool, LocalTimeTool, ToolRuntime
 
 
 @dataclass(frozen=True)

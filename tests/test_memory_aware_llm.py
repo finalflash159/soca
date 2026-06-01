@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from shrike7.llm import LLMResult, MemoryAwareLLM, build_memory_prompt
-from shrike7.memory import MemoryContext, MemoryContextBuilder, SessionMemory
+from soca.llm import LLMResult, MemoryAwareLLM, build_memory_prompt
+from soca.memory import MemoryContext, MemoryContextBuilder, SessionMemory
 
 
 class FakeLongTermMemory:

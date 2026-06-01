@@ -1,4 +1,4 @@
-"""Evaluate Shrike-7 knowledge and memory context assembly.
+"""Evaluate Soca knowledge and memory context assembly.
 
 This suite is model-free. It checks retrieval hits, citation formatting,
 path-safety policy, untrusted note warnings, and memory budget behavior before
@@ -20,14 +20,14 @@ from rich.console import Console
 from rich.progress import track
 from rich.table import Table
 
-from shrike7.core.guardrails import (
+from soca.core.guardrails import (
     GuardrailAction,
     GuardrailStage,
     check_knowledge_read_path,
     check_untrusted_text,
 )
-from shrike7.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
-from shrike7.memory import MemoryContextBuilder, SessionMemory
+from soca.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
+from soca.memory import MemoryContextBuilder, SessionMemory
 
 console = Console()
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -371,7 +371,7 @@ def sample_to_dict(sample: KnowledgeMemorySample) -> dict[str, Any]:
 def write_markdown_report(path: Path, report: dict[str, Any]) -> None:
     summary = report["summary"]
     lines = [
-        "# Shrike-7 Knowledge/Memory Eval",
+        "# Soca Knowledge/Memory Eval",
         "",
         "## Summary",
         "",
@@ -412,7 +412,7 @@ def write_markdown_report(path: Path, report: dict[str, Any]) -> None:
 
 def print_summary_table(report: dict[str, Any]) -> None:
     summary = report["summary"]
-    table = Table(title="Shrike-7 Knowledge/Memory Eval")
+    table = Table(title="Soca Knowledge/Memory Eval")
     table.add_column("Cases", justify="right")
     table.add_column("Pass", justify="right")
     table.add_column("Retrieval", justify="right")
@@ -452,7 +452,7 @@ def run_eval(cases: Sequence[KnowledgeMemoryCase]) -> dict[str, Any]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evaluate Shrike-7 knowledge and memory contexts.")
+    parser = argparse.ArgumentParser(description="Evaluate Soca knowledge and memory contexts.")
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPT_PATH)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import click
@@ -50,7 +50,7 @@ def render_phrase(item: dict, index: int, total: int) -> None:
     body_lines = [
         f"[bold]Count:[/bold]    {count}",
         f"[bold]Length:[/bold]   {length} chars",
-        f"[bold]Status:[/bold]   "
+        "[bold]Status:[/bold]   "
         + ("[green]keep=True[/green]" if keep else "[red]keep=False[/red]")
         + ("  [dim](reviewed)[/dim]" if reviewed else "  [dim](unreviewed)[/dim]"),
         "",
@@ -193,7 +193,7 @@ def main(boh_path: str, unreviewed_only: bool, start: int, reset: bool) -> None:
     review_log = meta.setdefault("manual_review", [])
     review_log.append(
         {
-            "applied_at_utc": datetime.now(timezone.utc).isoformat(),
+            "applied_at_utc": datetime.now(UTC).isoformat(),
             "applied_by": "local.boh_manual_review (interactive)",
             "n_decisions": counters["kept"] + counters["rejected"],
             "n_kept": counters["kept"],

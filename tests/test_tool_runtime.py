@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from shrike7.knowledge import MarkdownVaultKnowledgeSource
-from shrike7.tools import (
+from soca.knowledge import MarkdownVaultKnowledgeSource
+from soca.tools import (
     KnowledgeReadTool,
     KnowledgeSearchTool,
     LocalTimeTool,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from shrike7.core.guardrails import (
+from soca.core.guardrails import (
     GuardrailAction,
     GuardrailStage,
     check_final_output,
@@ -12,7 +12,7 @@ from shrike7.core.guardrails import (
     check_tool_result,
     check_untrusted_text,
 )
-from shrike7.tools import (
+from soca.tools import (
     SideEffectLevel,
     ToolCall,
     ToolResult,

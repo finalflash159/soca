@@ -4,7 +4,7 @@ import sounddevice as sd
 from rich.console import Console
 from rich.table import Table
 
-from shrike7.asr.vad import SpeechDetector
+from soca.asr.vad import SpeechDetector
 
 console = Console()
 detector = SpeechDetector(threshold=0.5)

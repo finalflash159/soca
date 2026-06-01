@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from shrike7.core.guardrails import (
+from soca.core.guardrails import (
     DEFAULT_POLICY,
     GuardrailEvent,
     GuardrailPolicy,
@@ -19,11 +19,11 @@ from shrike7.core.guardrails import (
     is_time_question,
     normalize_vi,
 )
-from shrike7.core.turn import RuntimeResult, RuntimeRoute, RuntimeTrace, TurnFrame
-from shrike7.knowledge import KnowledgeCitation, KnowledgeContext, KnowledgeContextBuilder
-from shrike7.llm import LLMEngine
-from shrike7.memory import MemoryContext, MemoryContextBuilder
-from shrike7.tools import ToolCall, ToolResult, ToolRuntime
+from soca.core.turn import RuntimeResult, RuntimeRoute, RuntimeTrace, TurnFrame
+from soca.knowledge import KnowledgeCitation, KnowledgeContext, KnowledgeContextBuilder
+from soca.llm import LLMEngine
+from soca.memory import MemoryContext, MemoryContextBuilder
+from soca.tools import ToolCall, ToolResult, ToolRuntime
 
 RUNTIME_SYSTEM_PROMPT = """Bạn là Sơn Ca, trợ lý tiếng Việt.
 

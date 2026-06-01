@@ -1,5 +1,5 @@
-from shrike7.knowledge.base import KnowledgeDocument, KnowledgeHit
-from shrike7.knowledge.context import KnowledgeContextBuilder
+from soca.knowledge.base import KnowledgeDocument, KnowledgeHit
+from soca.knowledge.context import KnowledgeContextBuilder
 
 
 class FakeKnowledgeSource:
