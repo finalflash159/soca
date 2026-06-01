@@ -121,9 +121,7 @@ Your local vault contents are not committed to this repo.
 ### 5. Run the voice loop
 
 ```bash
-uv run python scripts/demo_voice_loop.py \
-  --asr-model phowhisper_base \
-  --llm-model arcee_vylinh_3b_q4_k_m
+uv run python scripts/demo_voice_loop.py --profile baseline
 ```
 
 Then press Enter, speak, stop speaking, and wait for the assistant to answer.
@@ -131,6 +129,18 @@ Then press Enter, speak, stop speaking, and wait for the assistant to answer.
 Useful variants:
 
 ```bash
+# Stable local baseline
+uv run python scripts/demo_voice_loop.py --profile baseline
+
+# Lightweight/fast fallback
+uv run --extra tts-piper python scripts/demo_voice_loop.py --profile edge
+
+# Higher-quality saved OmniVoice voice
+uv run --extra tts-omnivoice python scripts/demo_voice_loop.py --profile quality
+
+# Practical VieNeu Turbo challenger
+uv run --extra tts-vieneu python scripts/demo_voice_loop.py --profile balanced_vieneu
+
 # Disable memory
 uv run python scripts/demo_voice_loop.py --no-memory
 
@@ -191,6 +201,45 @@ Smoke-test the knowledge vault after adding notes under `~/KnowledgeVault/wiki/`
 uv run python scripts/smoke_test_knowledge.py --query "bữa sáng nhanh lành mạnh"
 ```
 
+Run an end-to-end voice-loop benchmark from reproducible WAV fixtures:
+
+```bash
+uv run --extra tts --extra tts-omnivoice python eval/eval_voice_loop.py \
+  --profile baseline \
+  --generate-fixtures \
+  --overwrite-fixtures \
+  --fixture-tts-model omnivoice \
+  --fixture-voice emgai_dangiu \
+  --vault eval/fixtures/knowledge_vault \
+  --no-memory \
+  --no-playback
+```
+
+Quickly compare the current runtime profiles in one process:
+
+```bash
+uv run --extra tts --extra tts-piper --extra tts-omnivoice --extra tts-vieneu \
+  python eval/eval_voice_loop.py \
+  --profile baseline,edge,quality,balanced_vieneu \
+  --generate-fixtures \
+  --fixture-tts-model omnivoice \
+  --fixture-voice emgai_dangiu \
+  --vault eval/fixtures/knowledge_vault \
+  --no-memory \
+  --no-playback
+```
+
+The benchmark writes grouped reports under `eval/results/voice_loop/<timestamp>/`
+and updates `eval/results/voice_loop/latest.md`. Generated fixture audio under
+`eval/audio/voice_loop_smoke/` is local runtime data and is not committed.
+
+The published fixture set currently uses OmniVoice `emgai_dangiu`; the earlier
+Valtec-generated fixtures were useful for finding ASR fragility, but too noisy
+for route-coverage claims.
+
+For publishable numbers, run one profile per shell command so each profile gets
+a fresh process; see [BENCHMARKS.md](BENCHMARKS.md) for the exact commands.
+
 ## Benchmarks
 
 Detailed benchmark notes are in [BENCHMARKS.md](BENCHMARKS.md). The short version:
@@ -199,6 +248,7 @@ Detailed benchmark notes are in [BENCHMARKS.md](BENCHMARKS.md). The short versio
 - ASR model-size bake-off showed `phowhisper_base` as the best next real-time candidate among tiny/base/small for the current greedy decoder path.
 - PhoGPT-4B Q4_K_M baseline through llama.cpp/Metal: about 61 ms TTFT and 62.8 tok/s in the D2 run.
 - LLM bake-off currently keeps PhoGPT as the historical baseline, Arcee-VyLinh as the leading free-chat candidate, and Qwen3-0.6B as a low-RAM fallback.
+- TTS bake-off keeps Valtec as the stable baseline, Piper as the fastest edge fallback, VieNeu Turbo as the practical challenger, and OmniVoice as the saved-voice quality path.
 - RobustASR for `phowhisper_tiny` reduced tested non-speech hallucinations to explicit rejects in the D2.5 pilot benchmark while keeping speech false positives at zero in that pilot slice.
 
 Important caveats:

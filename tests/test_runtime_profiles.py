@@ -44,6 +44,15 @@ def test_edge_profile_defers_to_tts_registry_default_voice():
     assert profile.tts_voice is None
 
 
+def test_balanced_vieneu_profile_uses_turbo_challenger():
+    profile = get_voice_runtime_profile("balanced_vieneu")
+
+    assert profile.asr_model == "phowhisper_base"
+    assert profile.llm_model == "arcee_vylinh_3b_q4_k_m"
+    assert profile.tts_model == "vieneu_v2_turbo"
+    assert profile.tts_voice == "XuanVinh"
+
+
 def test_unknown_profile_raises_clear_error():
     with pytest.raises(ValueError, match="Unknown voice runtime profile"):
         get_voice_runtime_profile("not_real")

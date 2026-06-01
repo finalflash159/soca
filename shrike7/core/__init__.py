@@ -25,6 +25,12 @@ from .runtime import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions,
 from .streaming import StreamingEvent, pop_ready_sentence
 from .text_chunking import split_sentences
 from .turn import RuntimeResult, RuntimeRoute, RuntimeTrace, TurnFrame
+from .voice_runtime import (
+    ResolvedVoiceRuntimeConfig,
+    VoiceRuntimeBundle,
+    build_voice_runtime,
+    resolve_voice_runtime_config,
+)
 
 __all__ = [
     "AudioSink",
@@ -43,11 +49,13 @@ __all__ = [
     "RuntimeRoute",
     "RuntimeTrace",
     "RuntimeToolRouter",
+    "ResolvedVoiceRuntimeConfig",
     "SoundDevicePlayer",
     "WavFileSink",
     "PipelineResult",
     "TurnFrame",
     "VoicePipeline",
+    "VoiceRuntimeBundle",
     "block_samples",
     "check_final_output",
     "check_input_text",
@@ -65,4 +73,6 @@ __all__ = [
     "VoiceRuntimeProfile",
     "get_voice_runtime_profile",
     "validate_voice_runtime_profiles",
+    "build_voice_runtime",
+    "resolve_voice_runtime_config",
 ]

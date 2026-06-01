@@ -368,6 +368,158 @@ uv run --extra tts --extra tts-piper --extra tts-omnivoice --extra tts-vieneu \
 
 ---
 
+## D3.1 — E2E Voice Loop Benchmark (audio fixture → ASR → runtime → TTS)
+
+**Purpose:** measure the full Sơn Ca voice loop from audio input to first
+available output audio, using fixed WAV fixtures rather than live microphone
+input. This complements the TTS-only bake-off above.
+
+**Setup**
+
+| Field | Value |
+| --- | --- |
+| Runtime | `VoicePipeline.turn_streaming()` with `AssistantRuntime` |
+| Input audio | `eval/audio/voice_loop_smoke/*.wav` generated from `eval/prompts/voice_loop_smoke_vi.jsonl` |
+| Fixture generator | `omnivoice`, saved voice `emgai_dangiu` |
+| Fixture prompts | 6 Vietnamese utterances: greeting, nutrition, time, knowledge-search prefix, safety, timer |
+| Knowledge vault | `eval/fixtures/knowledge_vault` |
+| Memory | Disabled (`--no-memory`) to avoid personal/local profile state |
+| Playback | `NullAudioPlayer`; audio is synthesized but not sent to speakers |
+| Process policy | One fresh shell command per profile for cleaner load/memory readings |
+| Run date | 2026-06-01 |
+| Output paths | `eval/results/voice_loop/20260601_185218`, `20260601_184628`, `20260601_184640`, `20260601_184708` (gitignored) |
+
+**Measured profiles**
+
+| Profile | ASR | LLM | TTS | Voice | Role |
+| --- | --- | --- | --- | --- | --- |
+| `baseline` | `phowhisper_base` | `arcee_vylinh_3b_q4_k_m` | `valtec_multispeaker` | `NF` | Stable local baseline |
+| `edge` | `phowhisper_base` | `qwen3_0_6b_q8_0` | `piper_vi_vivos_x_low` | `VIVOSSPK13` | Low-latency fallback |
+| `balanced_vieneu` | `phowhisper_base` | `arcee_vylinh_3b_q4_k_m` | `vieneu_v2_turbo` | `XuanVinh` | Practical quality/latency challenger |
+| `quality` | `phowhisper_small` | `arcee_vylinh_3b_q4_k_m` | `omnivoice` | `emgai_dangiu` | Saved-voice quality profile |
+
+**Measurement method**
+
+For each profile:
+
+1. Load ASR, LLM, TTS, knowledge source, tool runtime, and AssistantRuntime.
+2. Read each fixture WAV, resample to 16 kHz mono, and call
+   `VoicePipeline.turn_streaming()`.
+3. Record ASR latency, runtime latency, first TTS chunk latency, TTFA, total
+   turn latency, route, transcript, response text, chunk count, reject status,
+   error status, and process RSS.
+4. Use `NullAudioPlayer` so playback hardware latency does not affect TTFA.
+
+`TTFA` means **time to first audio chunk available**, measured from the start of
+pipeline processing to the first synthesized TTS chunk. `Total` means the full
+turn until all chunks are synthesized and the pipeline emits `done`.
+
+**Fixture generation command**
+
+```bash
+uv run --extra tts --extra tts-omnivoice python eval/eval_voice_loop.py \
+  --profile baseline \
+  --generate-fixtures \
+  --overwrite-fixtures \
+  --fixture-tts-model omnivoice \
+  --fixture-voice emgai_dangiu \
+  --vault eval/fixtures/knowledge_vault \
+  --no-memory \
+  --no-playback
+```
+
+The fixture-generation run is not used as the official profile measurement,
+because it loads the fixture TTS engine before benchmark timing. The profile
+measurements below were run afterwards in separate fresh processes.
+
+**Profile run commands**
+
+```bash
+uv run --extra tts python eval/eval_voice_loop.py \
+  --profile baseline \
+  --vault eval/fixtures/knowledge_vault \
+  --no-memory \
+  --no-playback
+
+uv run --extra tts --extra tts-piper python eval/eval_voice_loop.py \
+  --profile edge \
+  --vault eval/fixtures/knowledge_vault \
+  --no-memory \
+  --no-playback
+
+uv run --extra tts --extra tts-vieneu python eval/eval_voice_loop.py \
+  --profile balanced_vieneu \
+  --vault eval/fixtures/knowledge_vault \
+  --no-memory \
+  --no-playback
+
+uv run --extra tts --extra tts-omnivoice python eval/eval_voice_loop.py \
+  --profile quality \
+  --vault eval/fixtures/knowledge_vault \
+  --no-memory \
+  --no-playback
+```
+
+**Results**
+
+| Profile | Load ms | ASR p50 ms | Runtime p50 ms | TTS0 p50 ms | TTFA p50 ms | TTFA p95 ms | Total p50 ms | Total p95 ms | Avg chunks | Peak MB | Error |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `edge` | 1934 | 342 | 124 | 46 | 510 | 683 | 510 | 683 | 1.0 | 3044 | 0.0% |
+| `balanced_vieneu` | 2369 | 323 | 590 | 353 | 1234 | 3258 | 1623 | 7451 | 5.5 | 4986 | 0.0% |
+| `baseline` | 1706 | 356 | 586 | 655 | 1512 | 3866 | 2285 | 8556 | 5.5 | 5038 | 0.0% |
+| `quality` | 3704 | 1287 | 554 | 7042 | 9198 | 12662 | 16769 | 79925 | 5.3 | 5468 | 0.0% |
+
+**Observed transcripts and route caveat**
+
+This run uses OmniVoice-generated fixtures because the earlier Valtec-generated
+fixtures caused severe ASR keyword drift. OmniVoice substantially improved the
+audio fixture quality: common natural utterances were transcribed correctly, and
+the realtime question now routes through `local_time.now`. The remaining route
+failures are useful product findings rather than benchmark noise:
+
+| Fixture intent | Expected text | Observed transcript (`baseline`) |
+| --- | --- | --- |
+| greeting | `xin chào` | `xin chào.` |
+| nutrition | `bữa sáng nhanh nhưng đủ chất nên ăn gì` | `bữa sáng nhanh nhưng đủ chất nên ăn gì.` |
+| time | `mấy giờ rồi` | `mấy giờ rồi.` |
+| knowledge | `wiki chất đạm` | `quy ki chất đạm.` |
+| safety | `nếu tập mà chóng mặt thì nên làm gì` | `nếu tập mà chóng mặt thì nên làm gì.` |
+| timer | `đặt hẹn giờ 5 phút` | `đặt hẹn giờ năm phút.` |
+
+The route counts for each profile were `tool_direct: 1` and `llm_fallback: 5`.
+That confirms the full audio path can reach a tool route, but this fixture set
+still does not validate knowledge routing or timer routing end-to-end. The
+knowledge prompt is too brittle around the spoken word `wiki`, and the timer
+router currently accepts digit forms but not Vietnamese number words such as
+`năm phút`.
+
+**Decision**
+
+- `edge` is the fastest E2E profile by a large margin, but it uses the weakest
+  LLM fallback and Piper emitted missing-phoneme warnings in the TTS bake-off.
+- `balanced_vieneu` remains the best practical quality/latency challenger, but
+  on this fixture set its longer generated responses make total latency higher
+  than the `edge` profile and slightly better than `baseline`.
+- `baseline` remains the stable integration default until subjective listening
+  and route-coverage fixtures are improved.
+- `quality` with OmniVoice `emgai_dangiu` is too slow for default interactive
+  use in this measured configuration, but remains useful for voice-quality
+  demos and offline response generation.
+
+**Next E2E benchmark**
+
+- Keep the OmniVoice fixture set for latency regression and realtime-tool
+  coverage.
+- Add route-specific fixtures for knowledge retrieval, likely with a more
+  natural phrase such as `tìm trong ghi chú về chất đạm` instead of relying on
+  the spoken token `wiki`.
+- Extend timer parsing to Vietnamese number words so `năm phút` maps to
+  `5 phút`.
+- Add an optional real-mic fixture set that stays local/ignored if it contains
+  personal voice data.
+
+---
+
 ## D2.5 — ASR Robustness (adapted from Barański et al. ICASSP 2025)
 
 Five sub-deliverables: **(A)** non-speech dataset, **(B)** Vietnamese BoH

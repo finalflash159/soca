@@ -49,6 +49,14 @@ VOICE_RUNTIME_PROFILES: dict[str, VoiceRuntimeProfile] = {
         tts_model="piper_vi_vivos_x_low",
         tts_voice=None,
     ),
+    "balanced_vieneu": VoiceRuntimeProfile(
+        key="balanced_vieneu",
+        description="Practical quality/latency challenger using VieNeu Turbo.",
+        asr_model="phowhisper_base",
+        llm_model="arcee_vylinh_3b_q4_k_m",
+        tts_model="vieneu_v2_turbo",
+        tts_voice="XuanVinh",
+    ),
 }
 
 
