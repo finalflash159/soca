@@ -1,6 +1,6 @@
 # Shrike-7 — Benchmarks
 
-> Last updated: 2026-05-27. All measurements are from real local runs;
+> Last updated: 2026-06-01. All measurements are from real local runs;
 > raw output JSON lives under `eval/results/` (gitignored).
 
 ## Common hardware
@@ -207,6 +207,164 @@ assistant before changing the runtime default.
 - These numbers are Mac local measurements, not Raspberry Pi or ARM board claims.
 - Behavioral rates are heuristic screeners, not human ratings; inspect the JSON
   responses before making public claims.
+
+---
+
+## D3 — TTS Bake-Off (Vietnamese local runtimes)
+
+**Purpose:** compare the practical Vietnamese TTS runtimes for the Sơn Ca voice
+loop before changing the default TTS engine.
+
+**Setup**
+
+| Field | Value |
+| --- | --- |
+| Runtime | `shrike7.tts` registry + per-model runners |
+| Model selection | `--all` registry candidates |
+| Prompt set | `eval/prompts/tts_bakeoff_vi.jsonl`, 41 Vietnamese prompts |
+| Categories | `short`, `assistant`, `coach`, `nutrition`, `fitness`, `safety`, `tracking`, `number`, `datetime`, `currency`, `measurement`, `name_place`, `abbreviation`, `punctuation`, `codeswitch`, `formal`, `casual`, `asr_noisy`, `long` |
+| Voice policy | Registry default voice only |
+| Process policy | `--isolate-model-process`, one fresh subprocess per model |
+| Audio output | Disabled for this timing run (`--no-write-audio`) |
+| Run date | 2026-06-01 |
+| Output path | `eval/results/tts_bakeoff/20260601_022154/{report.json,report.md,analysis.md}` (gitignored) |
+
+**Candidate pool and sources**
+
+The candidate list is defined in `shrike7/tts/registry.py`. It intentionally
+mixes production-usable local runners and heavier quality baselines:
+
+| Model key | Upstream/source | Why included |
+| --- | --- | --- |
+| `valtec_multispeaker` | `https://github.com/tronghieuit/valtec-tts` | Current Shrike-7 baseline; local Vietnamese multi-speaker runtime. |
+| `mms_tts_vie` | `https://huggingface.co/facebook/mms-tts-vie` | Small VITS-style Vietnamese baseline through Transformers. |
+| `piper_vi_vivos_x_low` | `https://huggingface.co/speaches-ai/piper-vi_VN-vivos-x_low`, artifact path from `rhasspy/piper-voices` | ONNX/Piper edge fallback candidate. |
+| `vieneu_v2_turbo` | `https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2-Turbo` | Main runtime challenger: Vietnamese-focused, CPU/GGUF-oriented path through the VieNeu SDK. |
+| `vieneu_v2_standard` | `https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2` | Higher-quality VieNeu path; included to measure quality/runtime trade-off. |
+| `kani_370m_vie` | `https://huggingface.co/pnnbao-ump/kani-tts-370m-vie` | Expressive Vietnamese candidate; kept in registry but tested separately due dependency conflict. |
+| `viet_tts_onnx` | `https://github.com/dangvansam/viet-tts` | ONNX/server-style Vietnamese TTS candidate. |
+| `vixtts` | `https://huggingface.co/capleaf/viXTTS` | Quality/voice-clone baseline; exposed through an external command adapter. |
+| `f5_vi_hynt` | `https://huggingface.co/hynt/F5-TTS-Vietnamese-ViVoice` | F5-TTS Vietnamese quality baseline requiring reference audio. |
+| `f5_vi_zalopay` | `https://huggingface.co/zalopay/vietnamese-tts` | Secondary F5 Vietnamese artifact requiring reference audio. |
+| `omnivoice` | `https://huggingface.co/k2-fsa/OmniVoice` | Multilingual zero-shot/voice-clone quality path. |
+
+**Prompt corpus design**
+
+The benchmark uses a hand-authored text corpus, not a speech dataset. The goal
+is to stress the text-to-audio layer that Sơn Ca will actually speak:
+
+- Short assistant turns: latency and clipping on very short outputs.
+- Coach/nutrition/fitness/safety/tracking: project-specific assistant domain.
+- Numbers, dates, currency, measurement: common Vietnamese TTS failure modes.
+- Names/places and abbreviations: local assistant identity + technical terms.
+- Punctuation and quote-like text: prosody and pause handling.
+- Code-switching: English terms that appear in real Shrike-7 responses.
+- ASR-noisy text: no punctuation/casing, similar to raw ASR output.
+- Long prompts: latency/RTF stability on longer assistant responses.
+
+`--strict-prompts` validates that every required category is present before the
+benchmark starts. In this run, all required categories were present; the
+coverage summary is stored in `report.json` and printed in `report.md`.
+
+**Measurement method**
+
+For each selected model:
+
+1. Create the TTS engine with `lazy=False`; this measures model/runtime load
+   time separately as `load_ms`.
+2. Query available voices and select only the registry default voice. This keeps
+   the benchmark about model/runtime comparison, not voice-search.
+3. Synthesize all 41 prompts.
+4. For each output, record latency, sample rate, sample count, audio duration,
+   RTF, clipping ratio, requested voice, resolved voice, and error status.
+5. Aggregate p50/p95 latency and RTF across successful prompts.
+6. Mark the model `ok`, `partial`, `failed`, or `skipped_unavailable`.
+
+`RTF = synthesis_latency_ms / generated_audio_duration_ms`; lower is better,
+and values below 1.0 are faster than real-time. `Peak MB` is measured inside
+the per-model subprocess using `psutil` when available, otherwise Python's
+`resource.getrusage` fallback on macOS/Linux.
+
+The run uses `--isolate-model-process` so each model is measured in a fresh
+Python process. That avoids one model's loaded weights or native allocator state
+polluting the next model's load time and memory reading.
+
+**Why audio was disabled**
+
+This run is the timing/runtime pass. `--no-write-audio` avoids disk I/O noise
+and keeps the result folder small. Subjective quality is intentionally deferred
+to a separate audio-writing pass, because runtime metrics alone cannot rank
+naturalness, accent, or prosody.
+
+**Run command**
+
+```bash
+uv run --extra tts --extra tts-piper --extra tts-omnivoice --extra tts-vieneu \
+  python eval/eval_tts.py \
+  --all \
+  --isolate-model-process \
+  --strict-prompts \
+  --voice-policy default \
+  --no-write-audio
+```
+
+**Results**
+
+| Model | Tier | Runner | Status | Voice | Load ms | Lat p50 ms | Lat p95 ms | RTF p50 | RTF p95 | Peak MB | Notes |
+| --- | ---: | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `piper_vi_vivos_x_low` | A | `piper` | ok | `VIVOSSPK13` | 1078 | 51 | 83 | 0.01 | 0.01 | 706 | Fastest and lightest; terminal emitted missing-phoneme warnings, so treat as edge fallback rather than quality voice. |
+| `vieneu_v2_turbo` | A | `vieneu` | ok | `XuanVinh` | 2152 | 335 | 579 | 0.09 | 0.11 | 1616 | Strongest runtime challenger in this run. |
+| `valtec_multispeaker` | A | `valtec` | ok | `NF` | 1024 | 418 | 550 | 0.10 | 0.14 | 2254 | Current stable baseline; good integration default. |
+| `mms_tts_vie` | A | `mms_transformers` | ok | `default` | 2162 | 478 | 610 | 0.09 | 0.11 | 2477 | Useful baseline, but measured peak memory is not lower than Valtec here. |
+| `vieneu_v2_standard` | A | `vieneu` | ok | `TrucLy` | 50540 | 800 | 1142 | 0.20 | 0.22 | 1684 | Works, but load time is very high. Use only if subjective quality beats Turbo. |
+| `omnivoice` | B | `omnivoice` | ok | `auto` | 2852 | 2767 | 4378 | 0.71 | 0.78 | 3031 | Quality/voice-clone path, not a low-latency default in auto mode. |
+
+**Skipped candidates**
+
+| Model | Reason | Next action |
+| --- | --- | --- |
+| `kani_370m_vie` | `kani-tts-2` conflicts with Shrike-7's main Hugging Face stack. | Test in a separate `uv` environment. |
+| `viet_tts_onnx` | Local VietTTS server was not running at `http://127.0.0.1:8298`. | Start the server and rerun this model only. |
+| `vixtts` | External command runner was not configured. | Set `SHRIKE7_TTS_VIXTTS_COMMAND`. |
+| `f5_vi_hynt` | Missing reference audio/text env vars. | Set `SHRIKE7_TTS_F5_HYNT_REF_AUDIO` and `SHRIKE7_TTS_F5_HYNT_REF_TEXT`. |
+| `f5_vi_zalopay` | Missing reference audio/text env vars. | Set `SHRIKE7_TTS_F5_ZALOPAY_REF_AUDIO` and `SHRIKE7_TTS_F5_ZALOPAY_REF_TEXT`. |
+
+**Decision**
+
+- Keep `valtec_multispeaker` as the stable baseline/default until subjective
+  audio review is complete.
+- Promote `vieneu_v2_turbo` to the leading runtime challenger: it is faster
+  than Valtec/MMS in this run, has moderate memory, and produced 100% non-empty
+  outputs with 0% errors.
+- Keep `piper_vi_vivos_x_low` as the edge fallback: extremely fast and light,
+  but needs listening review because of missing-phoneme warnings.
+- Keep `omnivoice` for quality/voice-clone experiments. The saved
+  `emgai_dangiu` voice must be benchmarked separately; this run intentionally
+  used registry default `auto`.
+- Do not prioritize `vieneu_v2_standard` for the interactive loop unless human
+  listening shows a clear quality win over Turbo; 50.5s load time is too high
+  for a default runtime.
+
+**Next benchmark**
+
+Run an audio-writing pass for subjective listening:
+
+```bash
+uv run --extra tts --extra tts-piper --extra tts-omnivoice --extra tts-vieneu \
+  python eval/eval_tts.py \
+  --model vieneu_v2_turbo,valtec_multispeaker,piper_vi_vivos_x_low,omnivoice \
+  --voice-map omnivoice=emgai_dangiu \
+  --isolate-model-process \
+  --strict-prompts \
+  --voice-policy default
+```
+
+**Caveats**
+
+- This is a timing/runtime bake-off, not a final perceptual-quality ranking.
+- `Peak MB` is per subprocess and includes Python/runtime overhead.
+- Audio was not saved in this run, so quality conclusions must wait for the
+  subjective listening pass.
 
 ---
 
