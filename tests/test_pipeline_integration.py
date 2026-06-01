@@ -102,7 +102,7 @@ def test_voice_pipeline_reject_path_skips_llm_and_tts() -> None:
 
     assert result.rejected is True
     assert result.transcript == ""
-    assert result.response_text == "Mình chưa nghe rõ, bạn nói lại nhé."
+    assert result.response_text == pipeline.reject_response
     assert result.rejection_reason == "no_speech"
     assert result.tts is None
     assert asr.calls == 1

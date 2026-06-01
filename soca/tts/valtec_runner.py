@@ -20,14 +20,12 @@ class VietnameseTTS:
     def __init__(
         self,
         voice: str = "NF",
-        lazy: bool = True,
         source_dir: str | Path | None = None,
     ) -> None:
         self.voice = voice
         self._model: Any | None = None
         self.source_dir = self._resolve_source_dir(source_dir)
-        if not lazy:
-            self._ensure_loaded()
+        self._ensure_loaded()
 
     @classmethod
     def _resolve_source_dir(cls, source_dir: str | Path | None) -> Path | None:

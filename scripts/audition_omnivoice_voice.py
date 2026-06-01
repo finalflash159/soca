@@ -70,7 +70,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise ValueError("--samples-per-voice must be >= 1")
 
     config = TTS_MODEL_REGISTRY["omnivoice"]
-    engine = create_tts_engine("omnivoice", lazy=False)
+    engine = create_tts_engine("omnivoice")
     available_voices = engine.list_voices()
     selected_voices = select_voices(
         available_voices,

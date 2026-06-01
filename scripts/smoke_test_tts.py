@@ -176,7 +176,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     console.print(f"[bold]Loading TTS:[/bold] {args.model}")
     try:
-        engine = create_tts_engine(args.model, voice=args.voice[0] if args.voice else None, lazy=False)
+        engine = create_tts_engine(args.model, voice=args.voice[0] if args.voice else None)
     except TTSRuntimeUnavailableError as exc:
         console.print(f"[yellow]Runtime unavailable:[/yellow] {exc}")
         return 2

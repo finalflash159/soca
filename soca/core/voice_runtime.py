@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
+
+import numpy as np
 
 from soca.asr import ASR_MODEL_REGISTRY, SpeechDetector
 from soca.asr.robust_asr import RobustASR
@@ -60,6 +63,14 @@ class VoiceRuntimeBundle:
     @property
     def asr_guard_status(self) -> str:
         return f"BoH={self.asr.boh_status}; confidence={self.asr.confidence_guard_status}"
+
+
+@dataclass(frozen=True)
+class VoiceRuntimeWarmupResult:
+    component: str
+    ok: bool
+    latency_ms: float
+    detail: str = ""
 
 
 def resolve_voice_runtime_config(
@@ -192,7 +203,7 @@ def build_voice_runtime(config: ResolvedVoiceRuntimeConfig) -> VoiceRuntimeBundl
         ),
     )
 
-    tts = create_tts_engine(config.tts_model, voice=config.tts_voice, lazy=False)
+    tts = create_tts_engine(config.tts_model, voice=config.tts_voice)
     pipeline = VoicePipeline(asr=asr, llm=llm, tts=tts, assistant_runtime=assistant_runtime)
     return VoiceRuntimeBundle(
         config=config,
@@ -205,3 +216,90 @@ def build_voice_runtime(config: ResolvedVoiceRuntimeConfig) -> VoiceRuntimeBundl
         memory_status=memory_status,
         knowledge_status=knowledge_status,
     )
+
+
+def warm_up_voice_runtime(
+    bundle: VoiceRuntimeBundle,
+    *,
+    asr_seconds: float = 1.0,
+    llm_prompt: str = "xin chào",
+    tts_text: str = "Xin chào, tôi là Sơn Ca.",
+) -> tuple[VoiceRuntimeWarmupResult, ...]:
+    """Eagerly trigger first-call paths before entering the live loop.
+
+    Constructors load the major model artifacts, but several runtimes still do
+    work on first inference: ONNX kernel setup, llama.cpp first token path,
+    TTS speaker/voice prompt loading, or backend kernel caches. Warmup pays
+    that cost once at startup instead of on the user's first spoken turn.
+    """
+    results = [
+        _warm_up_asr(bundle, seconds=asr_seconds),
+        _warm_up_llm(bundle, prompt=llm_prompt),
+        _warm_up_tts(bundle, text=tts_text),
+    ]
+    return tuple(results)
+
+
+def _warm_up_asr(bundle: VoiceRuntimeBundle, *, seconds: float) -> VoiceRuntimeWarmupResult:
+    t0 = time.perf_counter()
+    try:
+        sample_rate = getattr(bundle.asr.asr, "SAMPLING_RATE", 16000)
+        audio = np.zeros(max(int(sample_rate * seconds), 1), dtype=np.float32)
+        bundle.asr.asr.transcribe(audio, max_new_tokens=1)
+        return VoiceRuntimeWarmupResult(
+            component="asr",
+            ok=True,
+            latency_ms=(time.perf_counter() - t0) * 1000,
+            detail=bundle.config.asr_model,
+        )
+    except Exception as exc:
+        return VoiceRuntimeWarmupResult(
+            component="asr",
+            ok=False,
+            latency_ms=(time.perf_counter() - t0) * 1000,
+            detail=str(exc),
+        )
+
+
+def _warm_up_llm(bundle: VoiceRuntimeBundle, *, prompt: str) -> VoiceRuntimeWarmupResult:
+    t0 = time.perf_counter()
+    try:
+        bundle.llm.generate(
+            prompt,
+            max_tokens=1,
+            temperature=0.0,
+            top_p=1.0,
+            inject_persona=True,
+        )
+        return VoiceRuntimeWarmupResult(
+            component="llm",
+            ok=True,
+            latency_ms=(time.perf_counter() - t0) * 1000,
+            detail=bundle.config.llm_model,
+        )
+    except Exception as exc:
+        return VoiceRuntimeWarmupResult(
+            component="llm",
+            ok=False,
+            latency_ms=(time.perf_counter() - t0) * 1000,
+            detail=str(exc),
+        )
+
+
+def _warm_up_tts(bundle: VoiceRuntimeBundle, *, text: str) -> VoiceRuntimeWarmupResult:
+    t0 = time.perf_counter()
+    try:
+        bundle.tts.synthesize(text)
+        return VoiceRuntimeWarmupResult(
+            component="tts",
+            ok=True,
+            latency_ms=(time.perf_counter() - t0) * 1000,
+            detail=f"{bundle.config.tts_model}:{bundle.config.tts_voice}",
+        )
+    except Exception as exc:
+        return VoiceRuntimeWarmupResult(
+            component="tts",
+            ok=False,
+            latency_ms=(time.perf_counter() - t0) * 1000,
+            detail=str(exc),
+        )

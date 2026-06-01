@@ -23,13 +23,21 @@ from .profiles import (
 )
 from .runtime import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions, RuntimeToolRouter
 from .streaming import StreamingEvent, pop_ready_sentence
-from .text_chunking import split_sentences
-from .turn import RuntimeResult, RuntimeRoute, RuntimeTrace, TurnFrame
+from .text_chunking import chunk_text_for_tts, split_sentences
+from .turn import (
+    RuntimeResult,
+    RuntimeRoute,
+    RuntimeStreamEvent,
+    RuntimeTrace,
+    TurnFrame,
+)
 from .voice_runtime import (
     ResolvedVoiceRuntimeConfig,
     VoiceRuntimeBundle,
+    VoiceRuntimeWarmupResult,
     build_voice_runtime,
     resolve_voice_runtime_config,
+    warm_up_voice_runtime,
 )
 
 __all__ = [
@@ -47,6 +55,7 @@ __all__ = [
     "RuntimeOptions",
     "RuntimeResult",
     "RuntimeRoute",
+    "RuntimeStreamEvent",
     "RuntimeTrace",
     "RuntimeToolRouter",
     "ResolvedVoiceRuntimeConfig",
@@ -56,6 +65,7 @@ __all__ = [
     "TurnFrame",
     "VoicePipeline",
     "VoiceRuntimeBundle",
+    "VoiceRuntimeWarmupResult",
     "block_samples",
     "check_final_output",
     "check_input_text",
@@ -66,6 +76,7 @@ __all__ = [
     "record_until_silence",
     "should_stop_recording",
     "split_sentences",
+    "chunk_text_for_tts",
     "StreamingEvent",
     "pop_ready_sentence",
     "DEFAULT_VOICE_RUNTIME_PROFILE_KEY",
@@ -75,4 +86,5 @@ __all__ = [
     "validate_voice_runtime_profiles",
     "build_voice_runtime",
     "resolve_voice_runtime_config",
+    "warm_up_voice_runtime",
 ]

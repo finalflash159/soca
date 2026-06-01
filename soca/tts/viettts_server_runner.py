@@ -22,13 +22,11 @@ class VietTTSServerTTS:
         config: TTSModelConfig,
         *,
         voice: str | None = None,
-        lazy: bool = True,
     ) -> None:
         self.config = config
         self.voice = voice or config.default_voice
         self.base_url = os.environ.get(config.server_url_env_var or "", self.DEFAULT_BASE_URL).rstrip("/")
-        if not lazy:
-            self._ensure_loaded()
+        self._ensure_loaded()
 
     def _ensure_loaded(self) -> None:
         return
@@ -101,4 +99,3 @@ class VietTTSServerTTS:
             voice=selected_voice,
             engine=self.ENGINE_NAME,
         )
-

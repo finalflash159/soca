@@ -48,7 +48,7 @@ cannot rely on an English hallucination phrase list.
 
 Soca adapts the paper's approach to a different runtime:
 
-| Component | Paper                        | Soca                       |
+| Component | Paper                        | Soca                           |
 | --------- | ---------------------------- | ------------------------------ |
 | Model     | Whisper-large-v3             | PhoWhisper-tiny ONNX           |
 | Language  | English-centered benchmark   | Vietnamese                     |

@@ -15,11 +15,10 @@ from .registry import TTSModelConfig
 class PiperTTS:
     ENGINE_NAME = "piper-tts"
 
-    def __init__(self, config: TTSModelConfig, lazy: bool = True) -> None:
+    def __init__(self, config: TTSModelConfig) -> None:
         self.config = config
         self._voice: Any | None = None
-        if not lazy:
-            self._ensure_loaded()
+        self._ensure_loaded()
 
     def _ensure_loaded(self) -> None:
         if self._voice is not None:

@@ -17,13 +17,11 @@ class KaniTTSRunner:
         config: TTSModelConfig,
         *,
         voice: str | None = None,
-        lazy: bool = True,
     ) -> None:
         self.config = config
         self.voice = voice or config.default_voice
         self._model: Any | None = None
-        if not lazy:
-            self._ensure_loaded()
+        self._ensure_loaded()
 
     def _ensure_loaded(self) -> None:
         if self._model is not None:

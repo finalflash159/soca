@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -19,7 +20,15 @@ from soca.core.guardrails import (
     is_time_question,
     normalize_vi,
 )
-from soca.core.turn import RuntimeResult, RuntimeRoute, RuntimeTrace, TurnFrame
+from soca.core.streaming import pop_ready_sentence
+from soca.core.text_chunking import chunk_text_for_tts
+from soca.core.turn import (
+    RuntimeResult,
+    RuntimeRoute,
+    RuntimeStreamEvent,
+    RuntimeTrace,
+    TurnFrame,
+)
 from soca.knowledge import KnowledgeCitation, KnowledgeContext, KnowledgeContextBuilder
 from soca.llm import LLMEngine
 from soca.memory import MemoryContext, MemoryContextBuilder
@@ -166,6 +175,219 @@ class AssistantRuntime:
         knowledge_context = self._build_knowledge_context(frame, draft)
 
         return self._run_llm_turn(frame, draft, memory_context, knowledge_context)
+
+    def stream_text_turn(
+        self,
+        text: str,
+        *,
+        source: str = "text",
+        metadata: dict[str, Any] | None = None,
+        min_sentence_chars: int = 24,
+        first_sentence_min_chars: int | None = None,
+    ) -> Iterator[RuntimeStreamEvent]:
+        """Streaming counterpart of run_text_turn.
+
+        Yields ``token`` events for each raw LLM token, ``sentence`` events for
+        each guardrail-passed chunk ready for TTS, and a final ``result`` event
+        carrying the complete RuntimeResult. Only the LLM route streams
+        token-by-token; tool/knowledge-direct and blocked routes resolve to a
+        fixed text that is chunked and emitted as sentences.
+
+        ``first_sentence_min_chars`` lets the very first chunk flush at a smaller
+        length than the rest, so the first audio reaches the speaker sooner
+        (lower time-to-first-audio). When ``None`` every chunk uses
+        ``min_sentence_chars``.
+        """
+        frame = TurnFrame(text=text, source=source, metadata=metadata or {})
+        draft = _TraceDraft([], [], [], [], [], {})
+
+        with self._stage(draft, "input_guardrail"):
+            input_event = check_input_text(frame.text, self.guardrail_policy)
+        draft.guardrail_events.append(input_event)
+        if input_event.blocked:
+            result = self._blocked_result(
+                frame,
+                draft,
+                reason=input_event.message or self._safe_block_message(input_event.reason),
+            )
+            yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
+            return
+
+        tool_call = self.tool_router.select(
+            frame.text,
+            knowledge_limit=self.options.knowledge_limit,
+        )
+        if tool_call is not None:
+            result = self._run_tool_turn(frame, tool_call, draft)
+            yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
+            return
+
+        memory_context = self._build_memory_context(draft)
+        knowledge_context = self._build_knowledge_context(frame, draft)
+        yield from self._stream_llm_turn(
+            frame,
+            draft,
+            memory_context,
+            knowledge_context,
+            min_sentence_chars=min_sentence_chars,
+            first_sentence_min_chars=first_sentence_min_chars,
+        )
+
+    def _emit_fixed_result(
+        self,
+        result: RuntimeResult,
+        *,
+        min_sentence_chars: int,
+    ) -> Iterator[RuntimeStreamEvent]:
+        """Emit a non-streamed result: chunk its text, then the result event."""
+        for chunk in chunk_text_for_tts(result.response_text, min_chars=min_sentence_chars):
+            yield RuntimeStreamEvent(type="sentence", text=chunk)
+        yield RuntimeStreamEvent(type="result", result=result)
+
+    def _guard_sentence(
+        self,
+        sentence: str,
+        knowledge_used: bool,
+        citations: tuple[KnowledgeCitation, ...],
+    ) -> GuardrailEvent:
+        """Apply the streaming-safe subset of the output guardrail to one chunk.
+
+        For the LLM route, check_final_output reduces to a stateless substring
+        scan (realtime-claim detection), which decomposes cleanly per sentence,
+        so this is semantically equivalent to checking the full response.
+        """
+        return check_final_output(
+            sentence,
+            knowledge_used=knowledge_used,
+            citations=citations,
+            tool_results=(),
+            realtime_tool_used=False,
+            policy=self.guardrail_policy,
+        )
+
+    def _stream_llm_turn(
+        self,
+        frame: TurnFrame,
+        draft: _TraceDraft,
+        memory_context: MemoryContext | None,
+        knowledge_context: KnowledgeContext | None,
+        *,
+        min_sentence_chars: int,
+        first_sentence_min_chars: int | None = None,
+    ) -> Iterator[RuntimeStreamEvent]:
+        if self.llm is None:
+            result = self._blocked_result(
+                frame,
+                draft,
+                reason="Mình chưa có LLM để trả lời câu này.",
+                route=RuntimeRoute.BLOCKED,
+            )
+            yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
+            return
+
+        prompt = self._build_llm_prompt(frame.text, memory_context, knowledge_context)
+        citations = tuple(draft.citations)
+        knowledge_used = bool(citations)
+
+        buffer = ""
+        response_parts: list[str] = []
+        spoken_sentences: list[str] = []
+        block_event: GuardrailEvent | None = None
+
+        started = time.perf_counter()
+        stream = self.llm.generate_stream(
+            prompt,
+            max_tokens=self.options.max_tokens,
+            temperature=self.options.temperature,
+            top_p=self.options.top_p,
+            inject_persona=False,
+        )
+        try:
+            for token in stream:
+                response_parts.append(token)
+                buffer += token
+                yield RuntimeStreamEvent(type="token", text=token)
+
+                while True:
+                    active_min = (
+                        first_sentence_min_chars
+                        if (not spoken_sentences and first_sentence_min_chars is not None)
+                        else min_sentence_chars
+                    )
+                    sentence, buffer = pop_ready_sentence(buffer, min_chars=active_min)
+                    if sentence is None:
+                        break
+                    guard = self._guard_sentence(sentence, knowledge_used, citations)
+                    draft.guardrail_events.append(guard)
+                    if guard.blocked:
+                        block_event = guard
+                        break
+                    spoken_sentences.append(sentence)
+                    yield RuntimeStreamEvent(type="sentence", text=sentence)
+                if block_event is not None:
+                    break
+        finally:
+            close = getattr(stream, "close", None)
+            if callable(close):
+                close()
+        draft.stage_latencies_ms["llm"] = (time.perf_counter() - started) * 1000
+
+        if block_event is None:
+            tail = buffer.strip()
+            if tail:
+                guard = self._guard_sentence(tail, knowledge_used, citations)
+                draft.guardrail_events.append(guard)
+                if guard.blocked:
+                    block_event = guard
+                else:
+                    spoken_sentences.append(tail)
+                    yield RuntimeStreamEvent(type="sentence", text=tail)
+
+        full_text = "".join(response_parts).strip()
+
+        if block_event is None:
+            # Belt-and-suspenders: re-check the full text in case a blocked
+            # phrase straddled two streamed sentence boundaries. Per-sentence
+            # checks above cover the common case, so this rarely fires.
+            with self._stage(draft, "output_guardrail"):
+                final_event = check_final_output(
+                    full_text,
+                    knowledge_used=knowledge_used,
+                    citations=citations,
+                    tool_results=tuple(draft.tool_results),
+                    realtime_tool_used=False,
+                    policy=self.guardrail_policy,
+                )
+            draft.guardrail_events.append(final_event)
+            if final_event.blocked:
+                block_event = final_event
+
+        if block_event is not None:
+            safe_message = block_event.message or self._safe_block_message(block_event.reason)
+            yield RuntimeStreamEvent(type="sentence", text=safe_message)
+            spoken = " ".join([*spoken_sentences, safe_message]).strip()
+            result = self._result(
+                frame,
+                draft,
+                response_text=spoken,
+                route=RuntimeRoute.BLOCKED,
+                used_tool=False,
+                used_llm=True,
+                blocked=True,
+            )
+            yield RuntimeStreamEvent(type="result", result=result)
+            return
+
+        self._append_safe_session_turn(frame.text, full_text)
+        result = self._result(
+            frame,
+            draft,
+            response_text=full_text,
+            route=RuntimeRoute.KNOWLEDGE_LLM if knowledge_used else RuntimeRoute.LLM_FALLBACK,
+            used_tool=False,
+            used_llm=True,
+        )
+        yield RuntimeStreamEvent(type="result", result=result)
 
     def _run_tool_turn(
         self,

@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 import numpy as np
 
-from soca.core import NullAudioPlayer, RuntimeResult, RuntimeRoute, RuntimeTrace, VoicePipeline
+from soca.core import (
+    NullAudioPlayer,
+    PlaybackResult,
+    RuntimeResult,
+    RuntimeRoute,
+    RuntimeTrace,
+    VoicePipeline,
+)
 from soca.tts import TTSResult
 
 
@@ -102,6 +110,28 @@ class SpyTTS:
         )
 
 
+class SlowAudioSink:
+    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True) -> PlaybackResult:
+        time.sleep(0.05)
+        return PlaybackResult(
+            played=True,
+            sample_rate=sample_rate,
+            audio_duration_ms=100.0,
+            latency_ms=50.0,
+        )
+
+    def stop(self) -> None:
+        return None
+
+
+class FailingAudioSink:
+    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True) -> PlaybackResult:
+        raise RuntimeError("playback failed")
+
+    def stop(self) -> None:
+        return None
+
+
 def test_turn_delegates_transcript_to_assistant_runtime_instead_of_llm() -> None:
     asr = FakeASR("mấy giờ rồi")
     llm = SpyLLM()
@@ -194,6 +224,52 @@ def test_streaming_runtime_path_emits_runtime_event_and_tts_without_llm_stream()
     assert events[-1].metadata["runtime_route"] == RuntimeRoute.TOOL_DIRECT.value
 
 
+def test_streaming_runtime_path_synthesizes_next_chunk_while_audio_is_playing() -> None:
+    asr = FakeASR("xin chào")
+    llm = SpyLLM()
+    tts = SpyTTS()
+    runtime = SpyRuntime("Câu trả lời đầu tiên đủ dài. Câu trả lời thứ hai cũng đủ dài.")
+    pipeline = VoicePipeline(asr=asr, llm=llm, tts=tts, assistant_runtime=runtime)
+
+    events = list(
+        pipeline.turn_streaming(
+            np.zeros(16000, dtype=np.float32),
+            audio_sink=SlowAudioSink(),
+            min_sentence_chars=8,
+        )
+    )
+
+    event_types = [event.type for event in events]
+    tts_indexes = [index for index, event in enumerate(events) if event.type == "tts"]
+    first_audio_index = event_types.index("audio")
+    tts_events = [event for event in events if event.type == "tts"]
+
+    assert len(tts_indexes) == 2
+    assert tts_indexes[1] < first_audio_index
+    assert "ttfa_ms" in tts_events[0].metadata
+    assert "ttfa_ms" not in tts_events[1].metadata
+
+
+def test_streaming_runtime_path_yields_error_when_audio_playback_fails() -> None:
+    pipeline = VoicePipeline(
+        asr=FakeASR("xin chào"),
+        llm=SpyLLM(),
+        tts=SpyTTS(),
+        assistant_runtime=SpyRuntime("Một câu trả lời đủ dài để phát loa."),
+    )
+
+    events = list(
+        pipeline.turn_streaming(
+            np.zeros(16000, dtype=np.float32),
+            audio_sink=FailingAudioSink(),
+            min_sentence_chars=8,
+        )
+    )
+
+    assert any(event.type == "error" and event.text == "playback failed" for event in events)
+    assert events[-1].type == "done"
+
+
 def test_streaming_runtime_blocked_response_is_still_spoken_safely() -> None:
     runtime = SpyRuntime(
         response_text="Mình không thể xử lý yêu cầu này một cách an toàn.",
@@ -219,4 +295,3 @@ def test_streaming_runtime_blocked_response_is_still_spoken_safely() -> None:
     assert tts.calls == ["Mình không thể xử lý yêu cầu này một cách an toàn."]
     assert events[-1].metadata["runtime_blocked"] is True
     assert events[-1].metadata["rejected"] is False
-

@@ -14,12 +14,11 @@ class MMSTTS:
     ENGINE_NAME = "mms-tts-vie"
     DEFAULT_VOICE = "default"
 
-    def __init__(self, model_id: str = DEFAULT_MODEL_ID, lazy: bool = True) -> None:
+    def __init__(self, model_id: str = DEFAULT_MODEL_ID) -> None:
         self.model_id = model_id
         self._tokenizer: Any | None = None
         self._model: Any | None = None
-        if not lazy:
-            self._ensure_loaded()
+        self._ensure_loaded()
 
     def _ensure_loaded(self) -> None:
         if self._model is not None and self._tokenizer is not None:

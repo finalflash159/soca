@@ -26,8 +26,9 @@ def test_tts_result_is_frozen():
         result.text = "changed"
 
 
-def test_empty_text_returns_empty_audio_without_loading_model():
-    tts = VietnameseTTS(lazy=True)
+def test_empty_text_returns_empty_audio_after_eager_init(monkeypatch):
+    monkeypatch.setattr(VietnameseTTS, "_ensure_loaded", lambda self: None)
+    tts = VietnameseTTS()
 
     result = tts.synthesize("   ")
 
@@ -37,7 +38,7 @@ def test_empty_text_returns_empty_audio_without_loading_model():
     assert result.rtf == 0.0
 
 
-def test_vietnamese_tts_wraps_existing_model_without_importing_valtec():
+def test_vietnamese_tts_wraps_existing_model(monkeypatch):
     class FakeModel:
         def list_speakers(self):
             return ["NF", "SM"]
@@ -47,7 +48,8 @@ def test_vietnamese_tts_wraps_existing_model_without_importing_valtec():
             assert speaker == "NF"
             return np.ones(2400, dtype=np.float32) * 0.1, 24000
 
-    tts = VietnameseTTS(lazy=True)
+    monkeypatch.setattr(VietnameseTTS, "_ensure_loaded", lambda self: None)
+    tts = VietnameseTTS()
     tts._model = FakeModel()
 
     result = tts.synthesize("Xin chào", voice="NF")
@@ -66,11 +68,12 @@ def test_vietnamese_tts_rejects_invalid_source_dir(tmp_path):
         VietnameseTTS(source_dir=tmp_path)
 
 
-def test_vietnamese_tts_accepts_valid_source_dir_without_loading(tmp_path):
+def test_vietnamese_tts_accepts_valid_source_dir(tmp_path, monkeypatch):
     (tmp_path / "infer.py").write_text("", encoding="utf-8")
     (tmp_path / "src").mkdir()
 
-    tts = VietnameseTTS(source_dir=tmp_path, lazy=True)
+    monkeypatch.setattr(VietnameseTTS, "_ensure_loaded", lambda self: None)
+    tts = VietnameseTTS(source_dir=tmp_path)
 
     assert tts.source_dir == tmp_path.resolve()
 

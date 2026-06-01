@@ -364,7 +364,7 @@ def run_model_eval(
     console.print(f"\n[bold]Loading[/bold] {model_key} ({config.runner})")
     load_start = time.perf_counter()
     try:
-        engine = create_tts_engine(model_key, voice=target.requested_voice, lazy=False)
+        engine = create_tts_engine(model_key, voice=target.requested_voice)
     except (NotImplementedError, TTSRuntimeUnavailableError) as exc:
         message = f"{model_key}: {exc}"
         if skip_unavailable:

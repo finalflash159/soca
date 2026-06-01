@@ -26,14 +26,12 @@ class OmniVoiceTTS:
         config: TTSModelConfig,
         *,
         voice: str | None = None,
-        lazy: bool = True,
     ) -> None:
         self.config = config
         self.voice = voice or config.default_voice
         self._model: Any | None = None
         self._voice_prompt_cache: dict[str, Any] = {}
-        if not lazy:
-            self._ensure_loaded()
+        self._ensure_loaded()
 
     def _device_and_dtype(self) -> tuple[str, Any]:
         try:

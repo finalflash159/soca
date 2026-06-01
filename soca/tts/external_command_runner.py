@@ -23,12 +23,10 @@ class ExternalCommandTTS:
         config: TTSModelConfig,
         *,
         voice: str | None = None,
-        lazy: bool = True,
     ) -> None:
         self.config = config
         self.voice = voice or config.default_voice
-        if not lazy:
-            self._ensure_loaded()
+        self._ensure_loaded()
 
     def _command_template(self) -> str:
         command_env_var = self.config.command_env_var

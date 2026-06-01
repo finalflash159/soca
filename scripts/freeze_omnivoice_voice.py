@@ -84,7 +84,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not ref_text:
         raise ValueError("Could not find reference text. Pass --ref-text or provide a matching audition manifest.")
 
-    engine = create_tts_engine("omnivoice", lazy=False)
+    engine = create_tts_engine("omnivoice")
     if not isinstance(engine, OmniVoiceTTS):
         raise TypeError(f"Expected OmniVoiceTTS, got {type(engine).__name__}")
 

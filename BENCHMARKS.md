@@ -67,29 +67,29 @@ changing the default ASR model.
 
 **Setup**
 
-| Field | Value |
-| --- | --- |
-| Runtime | `soca.asr.VietnameseASR` with model registry selection |
-| Decode | Same greedy autoregressive decoder, no KV cache |
-| Providers | `CoreMLExecutionProvider`, `CPUExecutionProvider` fallback |
-| Eval data | FLEURS Vietnamese local slice |
-| Run date | 2026-05-27 |
-| Main output | `eval/results/asr_bakeoff_profile_bakeoff_n20_20260527_014702.json` (gitignored) |
-| Medium sanity output | `eval/results/asr_bakeoff_profile_full_n5_20260527_015434.json` (gitignored) |
+| Field                | Value                                                                            |
+| -------------------- | -------------------------------------------------------------------------------- |
+| Runtime              | `soca.asr.VietnameseASR` with model registry selection                           |
+| Decode               | Same greedy autoregressive decoder, no KV cache                                  |
+| Providers            | `CoreMLExecutionProvider`, `CPUExecutionProvider` fallback                       |
+| Eval data            | FLEURS Vietnamese local slice                                                    |
+| Run date             | 2026-05-27                                                                       |
+| Main output          | `eval/results/asr_bakeoff_profile_bakeoff_n20_20260527_014702.json` (gitignored) |
+| Medium sanity output | `eval/results/asr_bakeoff_profile_full_n5_20260527_015434.json` (gitignored)     |
 
 **Main result: tiny/base/small on 20 FLEURS samples**
 
-| Model | Params | WER | CER | Avg RTF | P95 RTF | P50 latency | P95 latency |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `phowhisper_tiny` | 39M | 15.58% | 6.96% | 0.118 | 0.161 | 1342 ms | 1967 ms |
-| `phowhisper_base` | 74M | 11.78% | 5.45% | 0.230 | 0.318 | 2709 ms | 3855 ms |
-| `phowhisper_small` | 244M | 10.33% | 5.12% | 0.647 | 0.902 | 7695 ms | 10583 ms |
+| Model              | Params |    WER |   CER | Avg RTF | P95 RTF | P50 latency | P95 latency |
+| ------------------ | -----: | -----: | ----: | ------: | ------: | ----------: | ----------: |
+| `phowhisper_tiny`  |    39M | 15.58% | 6.96% |   0.118 |   0.161 |     1342 ms |     1967 ms |
+| `phowhisper_base`  |    74M | 11.78% | 5.45% |   0.230 |   0.318 |     2709 ms |     3855 ms |
+| `phowhisper_small` |   244M | 10.33% | 5.12% |   0.647 |   0.902 |     7695 ms |    10583 ms |
 
 **Medium sanity check: 5 FLEURS samples**
 
-| Model | Params | WER | CER | Avg RTF | P95 RTF | P50 latency | P95 latency |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `phowhisper_medium` | 769M | 5.88% | 1.52% | 1.744 | 1.967 | 15222 ms | 16734 ms |
+| Model               | Params |   WER |   CER | Avg RTF | P95 RTF | P50 latency | P95 latency |
+| ------------------- | -----: | ----: | ----: | ------: | ------: | ----------: | ----------: |
+| `phowhisper_medium` |   769M | 5.88% | 1.52% |   1.744 |   1.967 |    15222 ms |    16734 ms |
 
 **Decision**
 
@@ -132,7 +132,7 @@ changing the default ASR model.
 | Seed              | 42                                                                       |
 | Decode            | Streaming sampling, `temperature=0.7`, `top_p=0.95`, `max_tokens=128`    |
 | Prompt template   | `### Câu hỏi: {persona}\n\nCâu hỏi của tôi: {user}\n### Trả lời:`        |
-| Persona injection | "Bạn là Soca, trợ lý ảo tiếng Việt..." (first turn only)             |
+| Persona injection | "Bạn là Soca, trợ lý ảo tiếng Việt..." (first turn only)                 |
 | Eval prompts      | 15 hand-crafted Vietnamese prompts (factual / reasoning / commands)      |
 | Run date          | 2026-05-19                                                               |
 | Device label      | "Mac 4 (Metal)" in JSON — actually MacBook M4 Pro                        |
@@ -171,25 +171,25 @@ assistant before changing the runtime default.
 
 **Setup**
 
-| Field | Value |
-| --- | --- |
-| Runtime | `soca.llm.LocalLlamaCppLLM` (`llama-cpp-python`, Metal) |
-| Model selection | `soca/llm/registry.py`, profile `bakeoff` |
-| Prompt set | `eval/prompts/llm_bakeoff_vi.jsonl`, 50 Vietnamese prompts |
-| Categories | `assistant_command`, `local_utility`, `conversation`, `unknown_refusal`, `asr_noisy`, `coding` |
-| Decode | Streaming, `temperature=0.2`, `top_p=0.9`, `max_tokens=96` |
-| Run command | `uv run python eval/eval_llm.py --profile bakeoff` |
-| Run date | 2026-05-27 |
-| Output path | `eval/results/llm_bakeoff_20260527_012847.{json,md}` (gitignored) |
+| Field           | Value                                                                                          |
+| --------------- | ---------------------------------------------------------------------------------------------- |
+| Runtime         | `soca.llm.LocalLlamaCppLLM` (`llama-cpp-python`, Metal)                                        |
+| Model selection | `soca/llm/registry.py`, profile `bakeoff`                                                      |
+| Prompt set      | `eval/prompts/llm_bakeoff_vi.jsonl`, 50 Vietnamese prompts                                     |
+| Categories      | `assistant_command`, `local_utility`, `conversation`, `unknown_refusal`, `asr_noisy`, `coding` |
+| Decode          | Streaming, `temperature=0.2`, `top_p=0.9`, `max_tokens=96`                                     |
+| Run command     | `uv run python eval/eval_llm.py --profile bakeoff`                                             |
+| Run date        | 2026-05-27                                                                                     |
+| Output path     | `eval/results/llm_bakeoff_20260527_012847.{json,md}` (gitignored)                              |
 
 **Results**
 
-| Model | Role | TTFT p50 ms | TTFT p95 ms | tok/s mean | Total p95 ms | Too long | VI signal | CJK leak | EN leak | Cmd refuse | RT hallu | Privacy hallu | Peak MB |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `phogpt_4b_q4_k_m` | baseline | 62 | 63 | 62.1 | 2031 | 30.0% | 100.0% | 0.0% | 0.0% | 40.0% | 38.5% | 16.7% | 3096 |
-| `arcee_vylinh_3b_q4_k_m` | primary candidate | 51 | 52 | 76.5 | 559 | 0.0% | 96.0% | 4.0% | 2.0% | 20.0% | 38.5% | 33.3% | 2161 |
-| `qwen3_0_6b_q8_0` | low-RAM fallback | 14 | 14 | 156.9 | 364 | 0.0% | 98.0% | 0.0% | 2.0% | 50.0% | 7.7% | 16.7% | 1277 |
-| `vinallama_2_7b_q5_0` | Vietnamese-trained small candidate | 47 | 47 | 54.2 | 1761 | 14.0% | 98.0% | 0.0% | 0.0% | 70.0% | 23.1% | 16.7% | 3278 |
+| Model                    | Role                               | TTFT p50 ms | TTFT p95 ms | tok/s mean | Total p95 ms | Too long | VI signal | CJK leak | EN leak | Cmd refuse | RT hallu | Privacy hallu | Peak MB |
+| ------------------------ | ---------------------------------- | ----------: | ----------: | ---------: | -----------: | -------: | --------: | -------: | ------: | ---------: | -------: | ------------: | ------: |
+| `phogpt_4b_q4_k_m`       | baseline                           |          62 |          63 |       62.1 |         2031 |    30.0% |    100.0% |     0.0% |    0.0% |      40.0% |    38.5% |         16.7% |    3096 |
+| `arcee_vylinh_3b_q4_k_m` | primary candidate                  |          51 |          52 |       76.5 |          559 |     0.0% |     96.0% |     4.0% |    2.0% |      20.0% |    38.5% |         33.3% |    2161 |
+| `qwen3_0_6b_q8_0`        | low-RAM fallback                   |          14 |          14 |      156.9 |          364 |     0.0% |     98.0% |     0.0% |    2.0% |      50.0% |     7.7% |         16.7% |    1277 |
+| `vinallama_2_7b_q5_0`    | Vietnamese-trained small candidate |          47 |          47 |       54.2 |         1761 |    14.0% |     98.0% |     0.0% |    0.0% |      70.0% |    23.1% |         16.7% |    3278 |
 
 **Decision**
 
@@ -217,36 +217,36 @@ loop before changing the default TTS engine.
 
 **Setup**
 
-| Field | Value |
-| --- | --- |
-| Runtime | `soca.tts` registry + per-model runners |
-| Model selection | `--all` registry candidates |
-| Prompt set | `eval/prompts/tts_bakeoff_vi.jsonl`, 41 Vietnamese prompts |
-| Categories | `short`, `assistant`, `coach`, `nutrition`, `fitness`, `safety`, `tracking`, `number`, `datetime`, `currency`, `measurement`, `name_place`, `abbreviation`, `punctuation`, `codeswitch`, `formal`, `casual`, `asr_noisy`, `long` |
-| Voice policy | Registry default voice only |
-| Process policy | `--isolate-model-process`, one fresh subprocess per model |
-| Audio output | Disabled for this timing run (`--no-write-audio`) |
-| Run date | 2026-06-01 |
-| Output path | `eval/results/tts_bakeoff/20260601_022154/{report.json,report.md,analysis.md}` (gitignored) |
+| Field           | Value                                                                                                                                                                                                                            |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime         | `soca.tts` registry + per-model runners                                                                                                                                                                                          |
+| Model selection | `--all` registry candidates                                                                                                                                                                                                      |
+| Prompt set      | `eval/prompts/tts_bakeoff_vi.jsonl`, 41 Vietnamese prompts                                                                                                                                                                       |
+| Categories      | `short`, `assistant`, `coach`, `nutrition`, `fitness`, `safety`, `tracking`, `number`, `datetime`, `currency`, `measurement`, `name_place`, `abbreviation`, `punctuation`, `codeswitch`, `formal`, `casual`, `asr_noisy`, `long` |
+| Voice policy    | Registry default voice only                                                                                                                                                                                                      |
+| Process policy  | `--isolate-model-process`, one fresh subprocess per model                                                                                                                                                                        |
+| Audio output    | Disabled for this timing run (`--no-write-audio`)                                                                                                                                                                                |
+| Run date        | 2026-06-01                                                                                                                                                                                                                       |
+| Output path     | `eval/results/tts_bakeoff/20260601_022154/{report.json,report.md,analysis.md}` (gitignored)                                                                                                                                      |
 
 **Candidate pool and sources**
 
 The candidate list is defined in `soca/tts/registry.py`. It intentionally
 mixes production-usable local runners and heavier quality baselines:
 
-| Model key | Upstream/source | Why included |
-| --- | --- | --- |
-| `valtec_multispeaker` | `https://github.com/tronghieuit/valtec-tts` | Current Soca baseline; local Vietnamese multi-speaker runtime. |
-| `mms_tts_vie` | `https://huggingface.co/facebook/mms-tts-vie` | Small VITS-style Vietnamese baseline through Transformers. |
-| `piper_vi_vivos_x_low` | `https://huggingface.co/speaches-ai/piper-vi_VN-vivos-x_low`, artifact path from `rhasspy/piper-voices` | ONNX/Piper edge fallback candidate. |
-| `vieneu_v2_turbo` | `https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2-Turbo` | Main runtime challenger: Vietnamese-focused, CPU/GGUF-oriented path through the VieNeu SDK. |
-| `vieneu_v2_standard` | `https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2` | Higher-quality VieNeu path; included to measure quality/runtime trade-off. |
-| `kani_370m_vie` | `https://huggingface.co/pnnbao-ump/kani-tts-370m-vie` | Expressive Vietnamese candidate; kept in registry but tested separately due dependency conflict. |
-| `viet_tts_onnx` | `https://github.com/dangvansam/viet-tts` | ONNX/server-style Vietnamese TTS candidate. |
-| `vixtts` | `https://huggingface.co/capleaf/viXTTS` | Quality/voice-clone baseline; exposed through an external command adapter. |
-| `f5_vi_hynt` | `https://huggingface.co/hynt/F5-TTS-Vietnamese-ViVoice` | F5-TTS Vietnamese quality baseline requiring reference audio. |
-| `f5_vi_zalopay` | `https://huggingface.co/zalopay/vietnamese-tts` | Secondary F5 Vietnamese artifact requiring reference audio. |
-| `omnivoice` | `https://huggingface.co/k2-fsa/OmniVoice` | Multilingual zero-shot/voice-clone quality path. |
+| Model key              | Upstream/source                                                                                         | Why included                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `valtec_multispeaker`  | `https://github.com/tronghieuit/valtec-tts`                                                             | Current Soca baseline; local Vietnamese multi-speaker runtime.                                   |
+| `mms_tts_vie`          | `https://huggingface.co/facebook/mms-tts-vie`                                                           | Small VITS-style Vietnamese baseline through Transformers.                                       |
+| `piper_vi_vivos_x_low` | `https://huggingface.co/speaches-ai/piper-vi_VN-vivos-x_low`, artifact path from `rhasspy/piper-voices` | ONNX/Piper edge fallback candidate.                                                              |
+| `vieneu_v2_turbo`      | `https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2-Turbo`                                                 | Main runtime challenger: Vietnamese-focused, CPU/GGUF-oriented path through the VieNeu SDK.      |
+| `vieneu_v2_standard`   | `https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2`                                                       | Higher-quality VieNeu path; included to measure quality/runtime trade-off.                       |
+| `kani_370m_vie`        | `https://huggingface.co/pnnbao-ump/kani-tts-370m-vie`                                                   | Expressive Vietnamese candidate; kept in registry but tested separately due dependency conflict. |
+| `viet_tts_onnx`        | `https://github.com/dangvansam/viet-tts`                                                                | ONNX/server-style Vietnamese TTS candidate.                                                      |
+| `vixtts`               | `https://huggingface.co/capleaf/viXTTS`                                                                 | Quality/voice-clone baseline; exposed through an external command adapter.                       |
+| `f5_vi_hynt`           | `https://huggingface.co/hynt/F5-TTS-Vietnamese-ViVoice`                                                 | F5-TTS Vietnamese quality baseline requiring reference audio.                                    |
+| `f5_vi_zalopay`        | `https://huggingface.co/zalopay/vietnamese-tts`                                                         | Secondary F5 Vietnamese artifact requiring reference audio.                                      |
+| `omnivoice`            | `https://huggingface.co/k2-fsa/OmniVoice`                                                               | Multilingual zero-shot/voice-clone quality path.                                                 |
 
 **Prompt corpus design**
 
@@ -270,8 +270,9 @@ coverage summary is stored in `report.json` and printed in `report.md`.
 
 For each selected model:
 
-1. Create the TTS engine with `lazy=False`; this measures model/runtime load
-   time separately as `load_ms`.
+1. Create the TTS engine. TTS engines now load eagerly at construction time, so
+   `load_ms` measures model/runtime readiness instead of a deferred first-call
+   load.
 2. Query available voices and select only the registry default voice. This keeps
    the benchmark about model/runtime comparison, not voice-search.
 3. Synthesize all 41 prompts.
@@ -310,24 +311,24 @@ uv run --extra tts --extra tts-piper --extra tts-omnivoice --extra tts-vieneu \
 
 **Results**
 
-| Model | Tier | Runner | Status | Voice | Load ms | Lat p50 ms | Lat p95 ms | RTF p50 | RTF p95 | Peak MB | Notes |
-| --- | ---: | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| `piper_vi_vivos_x_low` | A | `piper` | ok | `VIVOSSPK13` | 1078 | 51 | 83 | 0.01 | 0.01 | 706 | Fastest and lightest; terminal emitted missing-phoneme warnings, so treat as edge fallback rather than quality voice. |
-| `vieneu_v2_turbo` | A | `vieneu` | ok | `XuanVinh` | 2152 | 335 | 579 | 0.09 | 0.11 | 1616 | Strongest runtime challenger in this run. |
-| `valtec_multispeaker` | A | `valtec` | ok | `NF` | 1024 | 418 | 550 | 0.10 | 0.14 | 2254 | Current stable baseline; good integration default. |
-| `mms_tts_vie` | A | `mms_transformers` | ok | `default` | 2162 | 478 | 610 | 0.09 | 0.11 | 2477 | Useful baseline, but measured peak memory is not lower than Valtec here. |
-| `vieneu_v2_standard` | A | `vieneu` | ok | `TrucLy` | 50540 | 800 | 1142 | 0.20 | 0.22 | 1684 | Works, but load time is very high. Use only if subjective quality beats Turbo. |
-| `omnivoice` | B | `omnivoice` | ok | `auto` | 2852 | 2767 | 4378 | 0.71 | 0.78 | 3031 | Quality/voice-clone path, not a low-latency default in auto mode. |
+| Model                  | Tier | Runner             | Status | Voice        | Load ms | Lat p50 ms | Lat p95 ms | RTF p50 | RTF p95 | Peak MB | Notes                                                                                                                 |
+| ---------------------- | ---: | ------------------ | -----: | ------------ | ------: | ---------: | ---------: | ------: | ------: | ------: | --------------------------------------------------------------------------------------------------------------------- |
+| `piper_vi_vivos_x_low` |    A | `piper`            |     ok | `VIVOSSPK13` |    1078 |         51 |         83 |    0.01 |    0.01 |     706 | Fastest and lightest; terminal emitted missing-phoneme warnings, so treat as edge fallback rather than quality voice. |
+| `vieneu_v2_turbo`      |    A | `vieneu`           |     ok | `XuanVinh`   |    2152 |        335 |        579 |    0.09 |    0.11 |    1616 | Strongest runtime challenger in this run.                                                                             |
+| `valtec_multispeaker`  |    A | `valtec`           |     ok | `NF`         |    1024 |        418 |        550 |    0.10 |    0.14 |    2254 | Current stable baseline; good integration default.                                                                    |
+| `mms_tts_vie`          |    A | `mms_transformers` |     ok | `default`    |    2162 |        478 |        610 |    0.09 |    0.11 |    2477 | Useful baseline, but measured peak memory is not lower than Valtec here.                                              |
+| `vieneu_v2_standard`   |    A | `vieneu`           |     ok | `TrucLy`     |   50540 |        800 |       1142 |    0.20 |    0.22 |    1684 | Works, but load time is very high. Use only if subjective quality beats Turbo.                                        |
+| `omnivoice`            |    B | `omnivoice`        |     ok | `auto`       |    2852 |       2767 |       4378 |    0.71 |    0.78 |    3031 | Quality/voice-clone path, not a low-latency default in auto mode.                                                     |
 
 **Skipped candidates**
 
-| Model | Reason | Next action |
-| --- | --- | --- |
-| `kani_370m_vie` | `kani-tts-2` conflicts with Soca's main Hugging Face stack. | Test in a separate `uv` environment. |
-| `viet_tts_onnx` | Local VietTTS server was not running at `http://127.0.0.1:8298`. | Start the server and rerun this model only. |
-| `vixtts` | External command runner was not configured. | Set `SHRIKE7_TTS_VIXTTS_COMMAND`. |
-| `f5_vi_hynt` | Missing reference audio/text env vars. | Set `SHRIKE7_TTS_F5_HYNT_REF_AUDIO` and `SHRIKE7_TTS_F5_HYNT_REF_TEXT`. |
-| `f5_vi_zalopay` | Missing reference audio/text env vars. | Set `SHRIKE7_TTS_F5_ZALOPAY_REF_AUDIO` and `SHRIKE7_TTS_F5_ZALOPAY_REF_TEXT`. |
+| Model           | Reason                                                           | Next action                                                                   |
+| --------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `kani_370m_vie` | `kani-tts-2` conflicts with Soca's main Hugging Face stack.      | Test in a separate `uv` environment.                                          |
+| `viet_tts_onnx` | Local VietTTS server was not running at `http://127.0.0.1:8298`. | Start the server and rerun this model only.                                   |
+| `vixtts`        | External command runner was not configured.                      | Set `SHRIKE7_TTS_VIXTTS_COMMAND`.                                             |
+| `f5_vi_hynt`    | Missing reference audio/text env vars.                           | Set `SHRIKE7_TTS_F5_HYNT_REF_AUDIO` and `SHRIKE7_TTS_F5_HYNT_REF_TEXT`.       |
+| `f5_vi_zalopay` | Missing reference audio/text env vars.                           | Set `SHRIKE7_TTS_F5_ZALOPAY_REF_AUDIO` and `SHRIKE7_TTS_F5_ZALOPAY_REF_TEXT`. |
 
 **Decision**
 
@@ -376,27 +377,27 @@ input. This complements the TTS-only bake-off above.
 
 **Setup**
 
-| Field | Value |
-| --- | --- |
-| Runtime | `VoicePipeline.turn_streaming()` with `AssistantRuntime` |
-| Input audio | `eval/audio/voice_loop_smoke/*.wav` generated from `eval/prompts/voice_loop_smoke_vi.jsonl` |
-| Fixture generator | `omnivoice`, saved voice `emgai_dangiu` |
-| Fixture prompts | 6 Vietnamese utterances: greeting, nutrition, time, knowledge-search prefix, safety, unsupported scheduling |
-| Knowledge vault | `eval/fixtures/knowledge_vault` |
-| Memory | Disabled (`--no-memory`) to avoid personal/local profile state |
-| Playback | `NullAudioPlayer`; audio is synthesized but not sent to speakers |
-| Process policy | One fresh shell command per profile for cleaner load/memory readings |
-| Run date | 2026-06-01 |
-| Output paths | `eval/results/voice_loop/20260601_190159`, `20260601_190228`, `20260601_190239`, `20260601_190309` (gitignored) |
+| Field             | Value                                                                                                           |
+| ----------------- | --------------------------------------------------------------------------------------------------------------- |
+| Runtime           | `VoicePipeline.turn_streaming()` with `AssistantRuntime`                                                        |
+| Input audio       | `eval/audio/voice_loop_smoke/*.wav` generated from `eval/prompts/voice_loop_smoke_vi.jsonl`                     |
+| Fixture generator | `omnivoice`, saved voice `emgai_dangiu`                                                                         |
+| Fixture prompts   | 6 Vietnamese utterances: greeting, nutrition, time, knowledge-search prefix, safety, unsupported scheduling     |
+| Knowledge vault   | `eval/fixtures/knowledge_vault`                                                                                 |
+| Memory            | Disabled (`--no-memory`) to avoid personal/local profile state                                                  |
+| Playback          | `NullAudioPlayer`; audio is synthesized but not sent to speakers                                                |
+| Process policy    | One fresh shell command per profile for cleaner load/memory readings                                            |
+| Run date          | 2026-06-01                                                                                                      |
+| Output paths      | `eval/results/voice_loop/20260601_190159`, `20260601_190228`, `20260601_190239`, `20260601_190309` (gitignored) |
 
 **Measured profiles**
 
-| Profile | ASR | LLM | TTS | Voice | Role |
-| --- | --- | --- | --- | --- | --- |
-| `baseline` | `phowhisper_base` | `arcee_vylinh_3b_q4_k_m` | `valtec_multispeaker` | `NF` | Stable local baseline |
-| `edge` | `phowhisper_base` | `qwen3_0_6b_q8_0` | `piper_vi_vivos_x_low` | `VIVOSSPK13` | Low-latency fallback |
-| `balanced_vieneu` | `phowhisper_base` | `arcee_vylinh_3b_q4_k_m` | `vieneu_v2_turbo` | `XuanVinh` | Practical quality/latency challenger |
-| `quality` | `phowhisper_small` | `arcee_vylinh_3b_q4_k_m` | `omnivoice` | `emgai_dangiu` | Saved-voice quality profile |
+| Profile           | ASR                | LLM                      | TTS                    | Voice          | Role                                 |
+| ----------------- | ------------------ | ------------------------ | ---------------------- | -------------- | ------------------------------------ |
+| `baseline`        | `phowhisper_base`  | `arcee_vylinh_3b_q4_k_m` | `valtec_multispeaker`  | `NF`           | Stable local baseline                |
+| `edge`            | `phowhisper_base`  | `qwen3_0_6b_q8_0`        | `piper_vi_vivos_x_low` | `VIVOSSPK13`   | Low-latency fallback                 |
+| `balanced_vieneu` | `phowhisper_base`  | `arcee_vylinh_3b_q4_k_m` | `vieneu_v2_turbo`      | `XuanVinh`     | Practical quality/latency challenger |
+| `quality`         | `phowhisper_small` | `arcee_vylinh_3b_q4_k_m` | `omnivoice`            | `emgai_dangiu` | Saved-voice quality profile          |
 
 **Measurement method**
 
@@ -462,12 +463,12 @@ uv run --extra tts --extra tts-omnivoice python eval/eval_voice_loop.py \
 
 **Results**
 
-| Profile | Load ms | ASR p50 ms | Runtime p50 ms | TTS0 p50 ms | TTFA p50 ms | TTFA p95 ms | Total p50 ms | Total p95 ms | Avg chunks | Peak MB | Error |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `edge` | 1867 | 326 | 85 | 46 | 487 | 677 | 487 | 677 | 1.0 | 3090 | 0.0% |
-| `balanced_vieneu` | 2219 | 343 | 561 | 385 | 1190 | 3285 | 1763 | 7542 | 5.3 | 4872 | 0.0% |
-| `baseline` | 1428 | 364 | 555 | 696 | 1331 | 3694 | 1957 | 8391 | 5.3 | 5004 | 0.0% |
-| `quality` | 5593 | 1278 | 507 | 7054 | 9211 | 12691 | 14270 | 79801 | 5.2 | 6044 | 0.0% |
+| Profile           | Load ms | ASR p50 ms | Runtime p50 ms | TTS0 p50 ms | TTFA p50 ms | TTFA p95 ms | Total p50 ms | Total p95 ms | Avg chunks | Peak MB | Error |
+| ----------------- | ------: | ---------: | -------------: | ----------: | ----------: | ----------: | -----------: | -----------: | ---------: | ------: | ----: |
+| `edge`            |    1867 |        326 |             85 |          46 |         487 |         677 |          487 |          677 |        1.0 |    3090 |  0.0% |
+| `balanced_vieneu` |    2219 |        343 |            561 |         385 |        1190 |        3285 |         1763 |         7542 |        5.3 |    4872 |  0.0% |
+| `baseline`        |    1428 |        364 |            555 |         696 |        1331 |        3694 |         1957 |         8391 |        5.3 |    5004 |  0.0% |
+| `quality`         |    5593 |       1278 |            507 |        7054 |        9211 |       12691 |        14270 |        79801 |        5.2 |    6044 |  0.0% |
 
 **Observed transcripts and route caveat**
 
@@ -477,14 +478,14 @@ audio fixture quality: common natural utterances were transcribed correctly, and
 the realtime question now routes through `local_time.now`. The remaining route
 failures are useful product findings rather than benchmark noise:
 
-| Fixture intent | Expected text | Observed transcript (`baseline`) |
-| --- | --- | --- |
-| greeting | `xin chào` | `xin chào.` |
-| nutrition | `bữa sáng nhanh nhưng đủ chất nên ăn gì` | `bữa sáng nhanh nhưng đủ chất nên ăn gì.` |
-| time | `mấy giờ rồi` | `mấy giờ rồi.` |
-| knowledge | `wiki chất đạm` | `quy ki chất đạm.` |
-| safety | `nếu tập mà chóng mặt thì nên làm gì` | `nếu tập mà chóng mặt thì nên làm gì.` |
-| unsupported scheduling | `đặt hẹn giờ 5 phút` | `đặt hẹn giờ năm phút.` |
+| Fixture intent         | Expected text                            | Observed transcript (`baseline`)          |
+| ---------------------- | ---------------------------------------- | ----------------------------------------- |
+| greeting               | `xin chào`                               | `xin chào.`                               |
+| nutrition              | `bữa sáng nhanh nhưng đủ chất nên ăn gì` | `bữa sáng nhanh nhưng đủ chất nên ăn gì.` |
+| time                   | `mấy giờ rồi`                            | `mấy giờ rồi.`                            |
+| knowledge              | `wiki chất đạm`                          | `quy ki chất đạm.`                        |
+| safety                 | `nếu tập mà chóng mặt thì nên làm gì`    | `nếu tập mà chóng mặt thì nên làm gì.`    |
+| unsupported scheduling | `đặt hẹn giờ 5 phút`                     | `đặt hẹn giờ năm phút.`                   |
 
 The route counts for each profile were `tool_direct: 1`, `blocked: 1`, and
 `llm_fallback: 4`. That confirms the full audio path can reach a tool route and
@@ -596,19 +597,19 @@ real Vietnamese speech, so they characterize what natural speech looks like.
 
 **Setup**
 
-| Field             | Value                                                                           |
-| ----------------- | ------------------------------------------------------------------------------- |
-| Dataset           | `google/fleurs`, config `vi_vn`, split `test` (first 200 streamed samples)      |
-| Sample rate       | 16 kHz mono (resampled if needed)                                               |
-| Inputs to metrics | Ground-truth `raw_transcription` text + audio duration                          |
-| Metrics           | 3 (see below)                                                                   |
-| Derivation policy | `recommended = p99 × (1 + margin)`                                              |
-| Margins           | 0.15 for repetition metrics, 0.50 for density                                   |
-| Default rounding  | Recommended rounded **up** to leave headroom                                    |
+| Field             | Value                                                                        |
+| ----------------- | ---------------------------------------------------------------------------- |
+| Dataset           | `google/fleurs`, config `vi_vn`, split `test` (first 200 streamed samples)   |
+| Sample rate       | 16 kHz mono (resampled if needed)                                            |
+| Inputs to metrics | Ground-truth `raw_transcription` text + audio duration                       |
+| Metrics           | 3 (see below)                                                                |
+| Derivation policy | `recommended = p99 × (1 + margin)`                                           |
+| Margins           | 0.15 for repetition metrics, 0.50 for density                                |
+| Default rounding  | Recommended rounded **up** to leave headroom                                 |
 | Applied where     | `soca.asr.hallucination_heuristics.check_heuristics`, Stage 5 of `RobustASR` |
-| Run date          | 2026-05-20                                                                      |
-| Output path       | `data/asr/threshold_calibration.json` (gitignored)                              |
-| Reproducible via  | `uv run python -m local.calibrate_thresholds`                                   |
+| Run date          | 2026-05-20                                                                   |
+| Output path       | `data/asr/threshold_calibration.json` (gitignored)                           |
+| Reproducible via  | `uv run python -m local.calibrate_thresholds`                                |
 
 **Metric definitions**
 

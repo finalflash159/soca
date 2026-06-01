@@ -4,23 +4,16 @@ import argparse
 from collections.abc import Sequence
 from pathlib import Path
 
-from rich.console import Console
-from rich.panel import Panel
-
+from soca.app import run_voice_loop
 from soca.asr import ASR_MODEL_REGISTRY
 from soca.core import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
     VOICE_RUNTIME_PROFILES,
-    EndpointConfig,
-    SoundDevicePlayer,
-    build_voice_runtime,
-    record_until_silence,
+    ResolvedVoiceRuntimeConfig,
     resolve_voice_runtime_config,
 )
 from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.tts import TTS_MODEL_REGISTRY
-
-console = Console()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -76,11 +69,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Do not speak the fallback response when ASR rejects a turn.",
     )
+    parser.add_argument(
+        "--press-enter-to-record",
+        action="store_true",
+        help="Wait for ENTER before each recorded turn. Useful for debugging.",
+    )
+    parser.add_argument(
+        "--no-warmup",
+        action="store_true",
+        help="Skip ASR/LLM/TTS first-call warmup before listening.",
+    )
     return parser
 
 
-def resolve_runtime_args(args: argparse.Namespace) -> argparse.Namespace:
-    config = resolve_voice_runtime_config(
+def build_runtime_config(args: argparse.Namespace) -> ResolvedVoiceRuntimeConfig:
+    return resolve_voice_runtime_config(
         profile_key=args.profile,
         asr_model=args.asr_model,
         llm_model=args.llm_model,
@@ -99,6 +102,10 @@ def resolve_runtime_args(args: argparse.Namespace) -> argparse.Namespace:
         session_turns=args.session_turns,
         turn_chars=args.turn_chars,
     )
+
+
+def resolve_runtime_args(args: argparse.Namespace) -> argparse.Namespace:
+    config = build_runtime_config(args)
     args.asr_model = config.asr_model
     args.llm_model = config.llm_model
     args.tts_model = config.tts_model
@@ -114,75 +121,12 @@ def resolve_runtime_args(args: argparse.Namespace) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = resolve_runtime_args(build_parser().parse_args(argv))
-    runtime_config = resolve_voice_runtime_config(
-        profile_key=args.profile,
-        asr_model=args.asr_model,
-        llm_model=args.llm_model,
-        tts_model=args.tts_model,
-        tts_voice=args.voice,
-        endpoint_silence_ms=args.endpoint_silence_ms,
-        max_record_ms=args.max_record_ms,
-        max_tokens=args.max_tokens,
-        temperature=args.temperature,
-        top_p=args.top_p,
-        vault=args.vault,
-        no_memory=args.no_memory,
-        memory_chars=args.memory_chars,
-        profile_chars=args.profile_chars,
-        session_chars=args.session_chars,
-        session_turns=args.session_turns,
-        turn_chars=args.turn_chars,
+    return run_voice_loop(
+        build_runtime_config(args),
+        no_speak_rejections=args.no_speak_rejections,
+        press_enter_to_record=args.press_enter_to_record,
+        warmup=not args.no_warmup,
     )
-    bundle = build_voice_runtime(runtime_config)
-    detector = bundle.detector
-    tts = bundle.tts
-    player = SoundDevicePlayer()
-
-    pipeline = bundle.pipeline
-    endpoint_config = EndpointConfig(
-        endpoint_silence_ms=args.endpoint_silence_ms,
-        max_record_ms=args.max_record_ms,
-    )
-
-    console.print(
-        f"[green]Voice loop ready[/green] profile={args.profile} ASR={args.asr_model} "
-        f"LLM={args.llm_model} TTS={args.tts_model} voice={args.voice}"
-    )
-    console.print(f"[dim]Memory:[/dim] {bundle.memory_status}")
-    console.print(f"[dim]Knowledge:[/dim] {bundle.knowledge_status}")
-    console.print(f"[dim]ASR guards:[/dim] {bundle.asr_guard_status}")
-
-    while True:
-        input("\nPress ENTER and speak. Ctrl+C to quit.")
-        console.print("[cyan]Recording...[/cyan] Speak now. Stop talking to end the turn.")
-        audio = record_until_silence(detector, config=endpoint_config)
-        duration_s = (
-            len(audio) / endpoint_config.sample_rate if endpoint_config.sample_rate > 0 else 0.0
-        )
-        console.print(f"[dim]Recorded {duration_s:.2f}s. Processing...[/dim]")
-
-        for event in pipeline.turn_streaming(audio, audio_sink=player):
-            if event.type == "asr":
-                console.print(Panel(event.text or "<empty>", title="ASR"))
-            elif event.type == "runtime":
-                route = event.metadata.get("route") if event.metadata else ""
-                title = f"Runtime: {route}" if route else "Runtime"
-                console.print(Panel(event.text or "<empty>", title=title, border_style="blue"))
-            elif event.type == "audio":
-                console.print(f"[dim]Played chunk:[/dim] {event.text}")
-            elif event.type == "tts":
-                ttfa_ms = event.metadata.get("ttfa_ms") if event.metadata else None
-                suffix = f" ({ttfa_ms:.0f} ms TTFA)" if ttfa_ms is not None else ""
-                console.print(f"[green]Speaking chunk:[/green] {event.text}{suffix}")
-            elif event.type == "error":
-                console.print(f"[red]Streaming error:[/red] {event.text}")
-            elif event.type == "done":
-                rejected = bool(event.metadata and event.metadata.get("rejected"))
-                if rejected and event.text and not args.no_speak_rejections:
-                    console.print(f"[yellow]Fallback:[/yellow] {event.text}")
-                    tts_result = tts.synthesize(event.text)
-                    player.play(tts_result.audio, tts_result.sample_rate, blocking=True)
-                console.print(f"\n[dim]Done in {event.latency_ms:.0f} ms[/dim]")
 
 
 if __name__ == "__main__":

@@ -159,7 +159,7 @@ def generate_audio_fixtures(
         raise ValueError(f"Unknown fixture TTS model: {tts_model}. Valid keys: {valid}")
 
     audio_dir.mkdir(parents=True, exist_ok=True)
-    engine = create_tts_engine(tts_model, voice=voice, lazy=False)
+    engine = create_tts_engine(tts_model, voice=voice)
     rows: list[dict[str, Any]] = []
     for prompt in prompts:
         audio_path = audio_dir / f"{prompt.prompt_id}.wav"

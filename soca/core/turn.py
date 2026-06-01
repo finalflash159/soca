@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from soca.core.guardrails import GuardrailEvent
 from soca.knowledge import KnowledgeCitation
@@ -47,4 +47,21 @@ class RuntimeResult:
     trace: RuntimeTrace | None = None
     frame: TurnFrame | None = None
     llm_result: Any | None = None
+
+
+RuntimeStreamEventType = Literal["token", "sentence", "result"]
+
+
+@dataclass(frozen=True)
+class RuntimeStreamEvent:
+    """Incremental output from AssistantRuntime.stream_text_turn.
+
+    - ``token``: a raw LLM token, useful for live on-screen display.
+    - ``sentence``: a guardrail-passed chunk ready to be sent to TTS.
+    - ``result``: the terminal event carrying the full RuntimeResult.
+    """
+
+    type: RuntimeStreamEventType
+    text: str = ""
+    result: RuntimeResult | None = None
 
