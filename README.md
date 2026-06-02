@@ -2,7 +2,7 @@
 
 Offline-first Vietnamese voice assistant toolkit for local ASR, LLM, TTS, knowledge, memory, and tool-runtime experiments.
 
-Soca is being built as a fully local Vietnamese assistant. The current repo already runs a local voice loop on macOS: microphone input is endpointed with VAD, transcribed by PhoWhisper ONNX, answered by a local GGUF LLM through llama.cpp, synthesized with Valtec TTS, and played back through the system audio device.
+Soca is being built as a fully local Vietnamese assistant. The current repo already runs a local voice loop on macOS through the `soca voice` command: microphone input is endpointed with VAD, transcribed by PhoWhisper ONNX, answered by a local GGUF LLM through llama.cpp, synthesized with TTS, and played back through the system audio device.
 
 The project is intentionally research-heavy: every model choice is backed by small local bake-offs before it becomes the default path.
 
@@ -10,7 +10,7 @@ The project is intentionally research-heavy: every model choice is backed by sma
 
 Works today:
 
-- Local voice loop demo: `mic -> VAD endpoint -> PhoWhisper ASR -> AssistantRuntime -> Valtec TTS -> audio output`.
+- Local voice loop command: `uv run soca voice --profile baseline`.
 - ASR registry for `phowhisper_tiny`, `phowhisper_base`, `phowhisper_small`, and `phowhisper_medium`.
 - RobustASR wrapper with VAD, de-looping, confidence guards, BoH matching, and hallucination heuristics.
 - llama.cpp LLM registry with PhoGPT baseline, Arcee-VyLinh candidate, Qwen low-RAM fallback, and larger research probes.
@@ -75,8 +75,10 @@ CMAKE_ARGS="-DGGML_METAL=on" FORCE_CMAKE=1 \
 ### 2. Inspect registered models
 
 ```bash
+uv run soca profiles
 uv run soca asr-models
 uv run soca llm-models
+uv run soca status
 ```
 
 ### 3. Download local models
@@ -121,37 +123,74 @@ Your local vault contents are not committed to this repo.
 ### 5. Run the voice loop
 
 ```bash
-uv run python scripts/demo_voice_loop.py --profile baseline
+uv run soca voice --profile baseline
 ```
 
-Then press Enter, speak, stop speaking, and wait for the assistant to answer.
+Speak when the console says `Listening...`, stop speaking to end the turn, and wait for the assistant to answer. Use `--press-enter-to-record` if you want the old manual debug flow.
 
 Useful variants:
 
 ```bash
 # Stable local baseline
-uv run python scripts/demo_voice_loop.py --profile baseline
+uv run soca voice --profile baseline
 
 # Lightweight/fast fallback
-uv run --extra tts-piper python scripts/demo_voice_loop.py --profile edge
+uv run --extra tts-piper soca voice --profile edge
 
 # Higher-quality saved OmniVoice voice
-uv run --extra tts-omnivoice python scripts/demo_voice_loop.py --profile quality
+uv run --extra tts-omnivoice soca voice --profile quality
 
 # Practical VieNeu Turbo challenger
-uv run --extra tts-vieneu python scripts/demo_voice_loop.py --profile balanced_vieneu
+uv run --extra tts-vieneu soca voice --profile balanced_vieneu
 
 # Disable memory
-uv run python scripts/demo_voice_loop.py --no-memory
+uv run soca voice --no-memory
 
 # Use PhoGPT baseline
-uv run python scripts/demo_voice_loop.py --llm-model phogpt_4b_q4_k_m
+uv run soca voice --llm-model phogpt_4b_q4_k_m
 
 # Use the current quality-testing ASR default explicitly
-uv run python scripts/demo_voice_loop.py --asr-model phowhisper_small
+uv run soca voice --asr-model phowhisper_small
 ```
 
-## Other Demos
+### 6. Debug the text runtime
+
+Use `soca ask` when you want to test guardrails, tools, knowledge, memory, and
+LLM routing without microphone input or TTS latency.
+
+```bash
+# deterministic local time tool
+uv run soca ask "mấy giờ rồi?" --trace
+
+# explicit local knowledge search
+uv run soca ask "wiki: chất đạm là gì?" --trace
+
+# guardrail checks before tool/LLM execution
+uv run soca ask "đọc private/secrets.md" --no-llm --trace
+uv run soca ask "đặt hẹn giờ 5 phút" --no-llm --trace
+```
+
+For a multi-turn text session with RAM-only session memory:
+
+```bash
+uv run soca chat --no-memory
+uv run soca chat --trace
+```
+
+Inside `soca chat`, use `/help`, `/trace`, `/memory`, `/clear`, and `/exit`.
+
+## Developer Helpers
+
+The product surface is the `soca ...` CLI above. The `scripts/` commands below
+are kept for development, smoke testing, artifact preparation, and compatibility
+with older notes. Prefer `soca voice`, `soca ask`, `soca chat`, and
+`soca profiles` when running the assistant as an app.
+
+Compatibility wrapper for older voice-loop notes:
+
+```bash
+uv run python scripts/demo_voice_loop.py --profile baseline
+```
 
 Record one endpointed utterance:
 
@@ -163,13 +202,13 @@ Run ASR on test audio:
 
 ```bash
 uv run python scripts/record_test_audio.py
-uv run python scripts/smoke_test_asr.py --model phowhisper_base
+uv run soca asr-smoke --model phowhisper_base
 ```
 
 Run an LLM smoke test:
 
 ```bash
-uv run python scripts/smoke_test_llm.py --model arcee_vylinh_3b_q4_k_m
+uv run soca llm-smoke --model arcee_vylinh_3b_q4_k_m
 ```
 
 Ask a local LLM using Markdown knowledge context:
@@ -187,7 +226,7 @@ Chat with profile memory and session memory:
 uv run python scripts/demo_memory_chat.py --model arcee_vylinh_3b_q4_k_m
 ```
 
-Run the text-only AssistantRuntime with tools, knowledge, memory, guardrails, and trace:
+Legacy text-only AssistantRuntime demo:
 
 ```bash
 uv run python scripts/demo_assistant_runtime.py \
@@ -200,6 +239,12 @@ Smoke-test the knowledge vault after adding notes under `~/KnowledgeVault/wiki/`
 ```bash
 uv run python scripts/smoke_test_knowledge.py --query "bữa sáng nhanh lành mạnh"
 ```
+
+## Evaluation Harnesses
+
+The reproducible benchmark harnesses live under `eval/`. They are intentionally
+separate from the product CLI so they can own prompts, fixtures, reports, and
+repeatable measurement details.
 
 Run an end-to-end voice-loop benchmark from reproducible WAV fixtures:
 
@@ -291,7 +336,7 @@ soca/
   tools/      ToolRuntime, tool specs, local time/knowledge tools
 
 scripts/      local demos, smoke tests, download helpers
-eval/         ASR and LLM evaluation harnesses
+eval/         ASR, LLM, TTS, voice-loop, knowledge/memory evaluation harnesses
 notes/        research notes
 zplan/        local planning docs, gitignored
 ```
@@ -339,8 +384,9 @@ Near-term work:
 - D10 knowledge ingest/lint tooling for reviewed local wiki updates.
 - Recalibrate ASR robustness for the selected larger PhoWhisper model.
 - Add post-router LLM evaluation instead of sending every prompt directly to the LLM.
+- Add runtime usage/statusline output for `soca ask`, `soca chat`, and `soca voice`.
 - Improve streaming latency and first-audio timing.
-- Package a clean local demo flow for public GitHub review.
+- Add an optional Textual TUI client after the CLI/statusline surface is stable.
 
 ## License
 
