@@ -168,7 +168,7 @@ def test_run_profile_eval_with_fake_runtime(monkeypatch, tmp_path: Path) -> None
                 type="runtime",
                 text="Chào bạn.",
                 metadata={
-                    "route": "llm_fallback",
+                    "route": "free_chat",
                     "blocked": False,
                     "used_tool": False,
                     "used_llm": True,
@@ -196,7 +196,7 @@ def test_run_profile_eval_with_fake_runtime(monkeypatch, tmp_path: Path) -> None
                 latency_ms=60.0,
                 metadata={
                     "rejected": False,
-                    "runtime_route": "llm_fallback",
+                    "runtime_route": "free_chat",
                     "stage_latencies_ms": {
                         "asr": 10.0,
                         "runtime": 20.0,
@@ -239,7 +239,7 @@ def test_run_profile_eval_with_fake_runtime(monkeypatch, tmp_path: Path) -> None
     assert result["status"] == "ok"
     assert result["ttfa_ms"]["median"] == pytest.approx(30.0)
     assert result["total_latency_ms"]["median"] == pytest.approx(60.0)
-    assert result["route_counts"] == {"llm_fallback": 1}
+    assert result["route_counts"] == {"free_chat": 1}
     assert result["rows"][0]["transcript"] == "xin chào"
 
 
@@ -270,7 +270,7 @@ def test_write_outputs_creates_report_and_latest(tmp_path: Path) -> None:
             {
                 "id": "hello",
                 "transcript": "xin chào",
-                "runtime_route": "llm_fallback",
+                "runtime_route": "free_chat",
                 "stage_latencies_ms": {"asr": 10.0, "runtime": 20.0, "tts_0": 8.0},
                 "ttfa_ms": 30.0,
                 "total_latency_ms": 60.0,
@@ -291,4 +291,4 @@ def test_write_outputs_creates_report_and_latest(tmp_path: Path) -> None:
     assert md_path.exists()
     assert run_paths.latest_json_path.exists()
     assert run_paths.latest_md_path.exists()
-    assert "Soca E2E Voice Loop Benchmark" in md_path.read_text(encoding="utf-8")
+    assert "SoCa E2E Voice Loop Benchmark" in md_path.read_text(encoding="utf-8")

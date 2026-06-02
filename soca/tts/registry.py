@@ -61,7 +61,7 @@ TTS_MODEL_REGISTRY: dict[str, TTSModelConfig] = {
         default_voice="NF",
         license="CC BY-NC 4.0",
         source_url="https://github.com/tronghieuit/valtec-tts",
-        notes="Current Soca baseline; local CPU runtime; five Vietnamese voices.",
+        notes="Current SoCa baseline; local CPU runtime; five Vietnamese voices.",
     ),
     "mms_tts_vie": TTSModelConfig(
         key="mms_tts_vie",
@@ -95,7 +95,7 @@ TTS_MODEL_REGISTRY: dict[str, TTSModelConfig] = {
         license="Apache-2.0",
         source_url="https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2-Turbo",
         notes=(
-            "CPU/GGUF Turbo path through the vieneu SDK; primary challenger for Sơn Ca."
+            "CPU/GGUF Turbo path through the vieneu SDK; primary challenger for SoCa."
         ),
         hf_repo="pnnbao-ump/VieNeu-TTS-v2-Turbo-GGUF",
         hf_model_file="vieneu-tts-v2-turbo.gguf",
@@ -147,7 +147,7 @@ TTS_MODEL_REGISTRY: dict[str, TTSModelConfig] = {
         source_url="https://huggingface.co/capleaf/viXTTS",
         notes=(
             "Quality baseline. The upstream demo notes Ubuntu/WSL focus and Coqui-library "
-            "incompatibility, so Soca calls a configured external command."
+            "incompatibility, so SoCa calls a configured external command."
         ),
         hf_repo="capleaf/viXTTS",
         command_env_var="SHRIKE7_TTS_VIXTTS_COMMAND",

@@ -11,12 +11,12 @@ def test_turn_frame_defaults_to_text_source() -> None:
 
 def test_runtime_trace_captures_route_and_flags() -> None:
     trace = RuntimeTrace(
-        route=RuntimeRoute.LLM_FALLBACK,
+        route=RuntimeRoute.FREE_CHAT,
         used_llm=True,
         stage_latencies_ms={"llm": 12.5},
     )
 
-    assert trace.route == RuntimeRoute.LLM_FALLBACK
+    assert trace.route == RuntimeRoute.FREE_CHAT
     assert trace.used_llm is True
     assert trace.used_tool is False
     assert trace.blocked is False
@@ -37,4 +37,3 @@ def test_runtime_result_links_trace_and_frame() -> None:
     assert result.frame is frame
     assert result.trace is trace
     assert result.route == RuntimeRoute.TOOL_DIRECT
-

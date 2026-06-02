@@ -31,7 +31,7 @@ class KaniTTSRunner:
             from kani_tts import KaniTTS
         except ImportError as exc:
             raise TTSRuntimeUnavailableError(
-                "Kani TTS requires kani-tts-2. This currently conflicts with Soca's "
+                "Kani TTS requires kani-tts-2. This currently conflicts with SoCa's "
                 "main Hugging Face stack; test it in a separate env or install manually with: "
                 "uv pip install kani-tts-2"
             ) from exc

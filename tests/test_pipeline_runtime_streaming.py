@@ -82,7 +82,7 @@ class SpyStreamingRuntime:
         self,
         sentences: list[str],
         *,
-        route: RuntimeRoute = RuntimeRoute.LLM_FALLBACK,
+        route: RuntimeRoute = RuntimeRoute.FREE_CHAT,
         blocked: bool = False,
         used_tool: bool = False,
         used_llm: bool = True,
@@ -158,7 +158,7 @@ def test_pipeline_prefers_stream_text_turn_and_emits_streaming_events() -> None:
     assert tts.calls == ["Câu một đủ dài rồi.", "Câu hai cũng đủ dài."]
     assert runtime.calls[0]["min_sentence_chars"] == 8
     assert runtime.calls[0]["source"] == "asr"
-    assert events[-1].metadata["runtime_route"] == RuntimeRoute.LLM_FALLBACK.value
+    assert events[-1].metadata["runtime_route"] == RuntimeRoute.FREE_CHAT.value
     assert events[-1].metadata["rejected"] is False
 
 

@@ -41,7 +41,7 @@ class SpyLLM:
 
     def generate_stream(self, text: str, max_tokens: int = 128, temperature: float = 0.0):
         self.calls.append(text)
-        yield from ["Xin chào bạn. ", "Mình là Sơn Ca."]
+        yield from ["Xin chào bạn. ", "Mình là SoCa."]
 
 
 class SpyTTS:
@@ -154,7 +154,7 @@ def test_voice_pipeline_streaming_yields_asr_tokens_sentences_audio_and_done():
     assert event_types[-1] == "done"
     assert asr.calls == 1
     assert llm.calls == ["xin chao"]
-    assert tts.calls == ["Xin chào bạn.", "Mình là Sơn Ca."]
+    assert tts.calls == ["Xin chào bạn.", "Mình là SoCa."]
 
 
 def test_voice_pipeline_streaming_reject_path_skips_llm_and_tts():

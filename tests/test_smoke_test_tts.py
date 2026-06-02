@@ -74,7 +74,7 @@ def test_custom_texts_keep_voice_intro() -> None:
 def test_build_voice_jobs_groups_sentences_by_default() -> None:
     jobs = build_voice_jobs("female_young", "full", [])
 
-    assert jobs == ["Đây là giọng female young. Xin chào, tôi là Sơn Ca. Bạn muốn mình hỗ trợ gì hôm nay?"]
+    assert jobs == ["Đây là giọng female young. Xin chào, tôi là SoCa. Bạn muốn mình hỗ trợ gì hôm nay?"]
 
 
 def test_build_voice_jobs_can_split_sentences_for_latency_debugging() -> None:
@@ -82,6 +82,6 @@ def test_build_voice_jobs_can_split_sentences_for_latency_debugging() -> None:
 
     assert jobs == [
         "Đây là giọng female young.",
-        "Xin chào, tôi là Sơn Ca.",
+        "Xin chào, tôi là SoCa.",
         "Bạn muốn mình hỗ trợ gì hôm nay?",
     ]

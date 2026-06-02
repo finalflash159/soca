@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from soca.app.text_runtime import (
+    TextRuntimeConfig,
+    build_text_runtime,
+    normalize_text_turn,
+)
+
+
+def _config(vault: Path, **overrides) -> TextRuntimeConfig:
+    base = {
+        "vault": vault,
+        "no_llm": True,  # keep tests model-free
+    }
+    base.update(overrides)
+    return TextRuntimeConfig(**base)
+
+
+def test_session_memory_enabled_without_vault(tmp_path: Path) -> None:
+    missing_vault = tmp_path / "no-vault"
+    bundle = build_text_runtime(_config(missing_vault, no_memory=False))
+
+    # RAM session memory must exist even though the vault is missing.
+    assert bundle.session_memory is not None
+    assert bundle.memory_status.startswith("session-only")
+    assert "vault_missing" in bundle.memory_status
+
+
+def test_no_memory_disables_session_even_with_vault(tmp_path: Path) -> None:
+    (tmp_path / "wiki").mkdir()
+    bundle = build_text_runtime(_config(tmp_path, no_memory=True))
+
+    assert bundle.session_memory is None
+    assert bundle.memory_status == "disabled"
+
+
+def test_session_memory_records_turn_without_vault(tmp_path: Path) -> None:
+    bundle = build_text_runtime(_config(tmp_path / "absent", no_memory=False))
+
+    # A deterministic tool turn (time question) still appends to session memory.
+    bundle.runtime.run_text_turn("mấy giờ rồi?", source="test")
+
+    assert bundle.session_memory is not None
+    assert [turn.role for turn in bundle.session_memory.turns] == ["user", "assistant"]
+
+
+def test_normalize_text_turn_extracts_knowledge_prefix() -> None:
+    assert normalize_text_turn("xin chào") == ("xin chào", {})
+    assert normalize_text_turn("  /k chất đạm là gì?  ") == (
+        "chất đạm là gì?",
+        {"use_knowledge": True},
+    )

@@ -104,7 +104,7 @@ def _collect(
 
 
 def test_stream_llm_route_emits_tokens_then_sentences_then_result() -> None:
-    llm = StreamSpyLLM(["Xin chào bạn. ", "Mình là Sơn Ca."])
+    llm = StreamSpyLLM(["Xin chào bạn. ", "Mình là SoCa."])
     runtime = AssistantRuntime(llm=llm)
 
     events = list(runtime.stream_text_turn("xin chào", min_sentence_chars=8))
@@ -116,13 +116,13 @@ def test_stream_llm_route_emits_tokens_then_sentences_then_result() -> None:
     assert "sentence" in types
 
     sentences = [e.text for e in events if e.type == "sentence"]
-    assert sentences == ["Xin chào bạn.", "Mình là Sơn Ca."]
+    assert sentences == ["Xin chào bạn.", "Mình là SoCa."]
 
     result = events[-1].result
     assert result is not None
-    assert result.route == RuntimeRoute.LLM_FALLBACK
+    assert result.route == RuntimeRoute.FREE_CHAT
     assert result.blocked is False
-    assert result.response_text == "Xin chào bạn. Mình là Sơn Ca."
+    assert result.response_text == "Xin chào bạn. Mình là SoCa."
     assert llm.stream_calls and llm.stream_calls[0]["inject_persona"] is False
     assert llm.generate_calls == []
 

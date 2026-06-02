@@ -32,7 +32,7 @@ def test_freeze_finds_sample_text_from_manifest(tmp_path: Path) -> None:
             {
                 "audio_path": str(sample),
                 "voice": "female_young",
-                "text": "Xin chào, tôi là Sơn Ca.",
+                "text": "Xin chào, tôi là SoCa.",
             },
             ensure_ascii=False,
         )
@@ -43,4 +43,4 @@ def test_freeze_finds_sample_text_from_manifest(tmp_path: Path) -> None:
     row = find_sample_row(sample, manifest)
 
     assert row is not None
-    assert row["text"] == "Xin chào, tôi là Sơn Ca."
+    assert row["text"] == "Xin chào, tôi là SoCa."

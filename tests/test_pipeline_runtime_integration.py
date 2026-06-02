@@ -177,7 +177,7 @@ def test_turn_empty_transcript_skips_assistant_runtime() -> None:
 def test_turn_keeps_llm_result_from_runtime_when_runtime_used_llm() -> None:
     runtime = SpyRuntime(
         response_text="LLM fallback.",
-        route=RuntimeRoute.LLM_FALLBACK,
+        route=RuntimeRoute.FREE_CHAT,
         used_tool=False,
         used_llm=True,
     )

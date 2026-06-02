@@ -34,7 +34,7 @@ from soca.llm import LLMEngine
 from soca.memory import MemoryContext, MemoryContextBuilder
 from soca.tools import ToolCall, ToolResult, ToolRuntime
 
-RUNTIME_SYSTEM_PROMPT = """Bạn là Sơn Ca, trợ lý tiếng Việt.
+RUNTIME_SYSTEM_PROMPT = """Bạn là SoCa, trợ lý tiếng Việt.
 
 Quy tắc:
 - Trả lời bằng tiếng Việt, ngắn gọn nhưng đủ ý.
@@ -383,7 +383,7 @@ class AssistantRuntime:
             frame,
             draft,
             response_text=full_text,
-            route=RuntimeRoute.KNOWLEDGE_LLM if knowledge_used else RuntimeRoute.LLM_FALLBACK,
+            route=RuntimeRoute.KNOWLEDGE_LLM if knowledge_used else RuntimeRoute.FREE_CHAT,
             used_tool=False,
             used_llm=True,
         )
@@ -519,7 +519,7 @@ class AssistantRuntime:
             frame,
             draft,
             response_text=response_text,
-            route=RuntimeRoute.KNOWLEDGE_LLM if knowledge_used else RuntimeRoute.LLM_FALLBACK,
+            route=RuntimeRoute.KNOWLEDGE_LLM if knowledge_used else RuntimeRoute.FREE_CHAT,
             used_tool=False,
             used_llm=True,
             llm_result=llm_result,

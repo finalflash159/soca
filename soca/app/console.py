@@ -23,7 +23,7 @@ def print_runtime_header(
 ) -> None:
     """Print the resolved voice runtime before entering the recording loop."""
     console.print(
-        f"[green]Sơn Ca ready[/green] profile={profile_key} ASR={asr_model} "
+        f"[green]SoCa ready[/green] profile={profile_key} ASR={asr_model} "
         f"LLM={llm_model} TTS={tts_model} voice={voice}"
     )
     console.print(f"[dim]Memory:[/dim] {memory_status}")

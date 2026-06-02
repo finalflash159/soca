@@ -14,7 +14,9 @@ class RuntimeRoute(Enum):
     TOOL_DIRECT = "tool_direct"
     KNOWLEDGE_DIRECT = "knowledge_direct"
     KNOWLEDGE_LLM = "knowledge_llm"
-    LLM_FALLBACK = "llm_fallback"
+    FREE_CHAT = "free_chat"
+    # Backward-compatible alias for older tests/reports that imported the enum name.
+    LLM_FALLBACK = "free_chat"
 
 
 @dataclass(frozen=True)
@@ -64,4 +66,3 @@ class RuntimeStreamEvent:
     type: RuntimeStreamEventType
     text: str = ""
     result: RuntimeResult | None = None
-

@@ -223,7 +223,7 @@ def warm_up_voice_runtime(
     *,
     asr_seconds: float = 1.0,
     llm_prompt: str = "xin chào",
-    tts_text: str = "Xin chào, tôi là Sơn Ca.",
+    tts_text: str = "Xin chào, tôi là SoCa.",
 ) -> tuple[VoiceRuntimeWarmupResult, ...]:
     """Eagerly trigger first-call paths before entering the live loop.
 

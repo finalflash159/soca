@@ -179,7 +179,7 @@ def test_runtime_does_not_auto_retrieve_knowledge_from_domain_keyword() -> None:
 
     result = runtime.run_text_turn("Protein là gì?")
 
-    assert result.route == RuntimeRoute.LLM_FALLBACK
+    assert result.route == RuntimeRoute.FREE_CHAT
     assert result.trace is not None
     assert result.trace.knowledge_hits == ()
     assert source.search_calls == []

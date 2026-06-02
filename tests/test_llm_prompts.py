@@ -23,7 +23,7 @@ def test_phogpt_completion_prompt_injects_persona() -> None:
 
     prompt = build_completion_prompt("Bạn là ai?", config, inject_persona=True)
 
-    assert "Bạn là Sơn Ca" in prompt
+    assert "Bạn là SoCa" in prompt
     assert "Câu hỏi của tôi: Bạn là ai?" in prompt
 
 
@@ -40,7 +40,7 @@ def test_chat_messages_include_system_and_user() -> None:
     messages = build_chat_messages("Xin chào", config, inject_persona=True)
 
     assert messages[0]["role"] == "system"
-    assert "Bạn là Sơn Ca" in messages[0]["content"]
+    assert "Bạn là SoCa" in messages[0]["content"]
     assert messages[1] == {"role": "user", "content": "Xin chào"}
 
 

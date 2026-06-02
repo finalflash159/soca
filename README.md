@@ -1,8 +1,8 @@
-# Soca
+# SoCa
 
 Offline-first Vietnamese voice assistant toolkit for local ASR, LLM, TTS, knowledge, memory, and tool-runtime experiments.
 
-Soca is being built as a fully local Vietnamese assistant. The current repo already runs a local voice loop on macOS through the `soca voice` command: microphone input is endpointed with VAD, transcribed by PhoWhisper ONNX, answered by a local GGUF LLM through llama.cpp, synthesized with TTS, and played back through the system audio device.
+SoCa is being built as a fully local Vietnamese assistant. The current repo already runs a local voice loop on macOS through the `soca voice` command: microphone input is endpointed with VAD, transcribed by PhoWhisper ONNX, answered by a local GGUF LLM through llama.cpp, synthesized with TTS, and played back through the system audio device.
 
 The project is intentionally research-heavy: every model choice is backed by small local bake-offs before it becomes the default path.
 
@@ -59,7 +59,7 @@ User turn / ASR transcript
 
 ### 1. Create the Python environment
 
-Soca uses Python 3.11 and `uv`.
+SoCa uses Python 3.11 and `uv`.
 
 ```bash
 uv sync --extra dev --extra eval --extra tts
@@ -390,4 +390,4 @@ Near-term work:
 
 ## License
 
-Soca project code is MIT licensed. Third-party models, datasets, and vendored source packages keep their own licenses and model-card restrictions.
+SoCa project code is MIT licensed. Third-party models, datasets, and vendored source packages keep their own licenses and model-card restrictions.

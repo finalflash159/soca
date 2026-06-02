@@ -64,7 +64,7 @@ def test_excludes_dot_directories_from_read_and_search(tmp_path: Path):
 
 def test_search_vietnamese_terms_returns_snippet(tmp_path: Path):
     (tmp_path / "phase3.md").write_text(
-        "# Phase 3D\nThiết kế Obsidian knowledge cho Soca.",
+        "# Phase 3D\nThiết kế Obsidian knowledge cho SoCa.",
         encoding="utf-8",
     )
 

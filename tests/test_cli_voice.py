@@ -63,7 +63,7 @@ def test_voice_command_shows_help() -> None:
     result = CliRunner().invoke(main, ["voice", "--help"])
 
     assert result.exit_code == 0
-    assert "Run the interactive Soca microphone voice loop" in result.output
+    assert "Run the interactive SoCa microphone voice loop" in result.output
     assert "--profile" in result.output
     assert "--tts-model" in result.output
     assert "--press-enter-to-record" in result.output

@@ -87,7 +87,7 @@ def run_voice_loop(
         for event in bundle.pipeline.turn_streaming(audio, audio_sink=player):
             if event.type == "llm_token":
                 if not response_open:
-                    console.print("[blue]Sơn Ca:[/blue] ", end="")
+                    console.print("[blue]SoCa:[/blue] ", end="")
                     response_open = True
                 console.print(event.text, end="", markup=False, highlight=False, soft_wrap=True)
                 continue

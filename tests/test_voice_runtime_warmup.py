@@ -105,4 +105,4 @@ def test_warm_up_voice_runtime_triggers_asr_llm_and_tts_first_call_paths() -> No
             "inject_persona": True,
         }
     ]
-    assert tts.calls == ["Xin chào, tôi là Sơn Ca."]
+    assert tts.calls == ["Xin chào, tôi là SoCa."]

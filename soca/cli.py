@@ -9,14 +9,17 @@ from rich.console import Console
 from rich.table import Table
 
 from soca.app import run_voice_loop
-from soca.asr.registry import ASR_MODEL_REGISTRY, DEFAULT_ASR_MODEL_KEY, get_asr_model_config
+from soca.app.profiles import render_profiles, render_status
+from soca.app.text_chat import run_text_chat
+from soca.app.text_runtime import TextRuntimeConfig, run_text_ask
+from soca.asr.registry import ASR_MODEL_REGISTRY, DEFAULT_ASR_MODEL_KEY
 from soca.core import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
     VOICE_RUNTIME_PROFILES,
     resolve_voice_runtime_config,
 )
-from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY, get_model_config
-from soca.tts import TTS_MODEL_REGISTRY
+from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
+from soca.tts.registry import TTS_MODEL_REGISTRY
 
 console = Console()
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -37,32 +40,193 @@ def run_script(script: str, *args: str) -> None:
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.version_option(package_name="soca")
 def main() -> None:
-    """Soca local Vietnamese voice assistant toolkit."""
+    """SoCa local Vietnamese voice assistant toolkit."""
 
 
 @main.command()
-def status() -> None:
-    """Show local artifact status."""
-    default_asr = get_asr_model_config(DEFAULT_ASR_MODEL_KEY)
-    default_llm = get_model_config(DEFAULT_LLM_MODEL_KEY)
-    paths = {
-        f"Default ASR ONNX ({DEFAULT_ASR_MODEL_KEY})": default_asr.local_dir,
-        f"Default LLM GGUF ({DEFAULT_LLM_MODEL_KEY})": default_llm.local_path,
-        "Noise manifest": REPO_ROOT / "data" / "noise_for_boh" / "manifest.jsonl",
-        "FLEURS manifest": REPO_ROOT / "data" / "fleurs_vi" / "manifest.jsonl",
-        "Runtime BoH": REPO_ROOT / "data" / "asr" / "vi_boh_v1.json",
-        "Threshold calibration": REPO_ROOT / "data" / "asr" / "threshold_calibration.json",
-    }
+@click.option(
+    "--vault",
+    type=click.Path(path_type=Path),
+    default=Path.home() / "KnowledgeVault",
+    show_default=True,
+    help="Knowledge vault root to check.",
+)
+def status(vault: Path) -> None:
+    """Show quick SoCa CLI/runtime readiness without loading models."""
+    render_status(console, vault=vault)
 
-    table = Table(title="Soca Local Status")
-    table.add_column("Artifact", style="cyan")
-    table.add_column("Exists", justify="center")
-    table.add_column("Path")
 
-    for name, path in paths.items():
-        table.add_row(name, "yes" if path.exists() else "no", str(path))
+@main.command("profiles")
+@click.option(
+    "--show-paths",
+    is_flag=True,
+    help="Also show registry artifact paths for each profile.",
+)
+def profiles_command(show_paths: bool) -> None:
+    """Show configured voice runtime profiles without loading models."""
+    render_profiles(console, show_paths=show_paths)
 
-    console.print(table)
+
+@main.command("ask")
+@click.argument("text", nargs=-1, required=True)
+@click.option(
+    "--llm-model",
+    default=DEFAULT_LLM_MODEL_KEY,
+    type=click.Choice(sorted(LLM_MODEL_REGISTRY)),
+    show_default=True,
+    help="Local LLM registry key for free-chat / knowledge-LLM routes.",
+)
+@click.option(
+    "--vault",
+    type=click.Path(path_type=Path),
+    default=Path.home() / "KnowledgeVault",
+    show_default=True,
+    help="Knowledge vault root containing wiki/ and memory/profile.md.",
+)
+@click.option("--no-memory", is_flag=True, help="Disable profile/session memory.")
+@click.option("--no-llm", is_flag=True, help="Run tool/guardrail-only without loading LLM.")
+@click.option("--max-tokens", type=int, default=160, show_default=True)
+@click.option("--temperature", type=float, default=0.2, show_default=True)
+@click.option("--top-p", type=float, default=0.95, show_default=True)
+@click.option("--knowledge-limit", type=int, default=3, show_default=True)
+@click.option("--memory-chars", type=int, default=2200, show_default=True)
+@click.option("--profile-chars", type=int, default=900, show_default=True)
+@click.option("--session-chars", type=int, default=1300, show_default=True)
+@click.option("--session-turns", type=int, default=6, show_default=True)
+@click.option("--turn-chars", type=int, default=500, show_default=True)
+@click.option("--trace/--no-trace", default=False, show_default=True)
+def ask(
+    text: tuple[str, ...],
+    llm_model: str,
+    vault: Path,
+    no_memory: bool,
+    no_llm: bool,
+    max_tokens: int,
+    temperature: float,
+    top_p: float,
+    knowledge_limit: int,
+    memory_chars: int,
+    profile_chars: int,
+    session_chars: int,
+    session_turns: int,
+    turn_chars: int,
+    trace: bool,
+) -> None:
+    """Run one text-only SoCa turn without ASR/TTS."""
+    config = build_text_runtime_config(
+        llm_model=llm_model,
+        vault=vault,
+        no_memory=no_memory,
+        no_llm=no_llm,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        knowledge_limit=knowledge_limit,
+        memory_chars=memory_chars,
+        profile_chars=profile_chars,
+        session_chars=session_chars,
+        session_turns=session_turns,
+        turn_chars=turn_chars,
+    )
+    run_text_ask(" ".join(text), config, console=console, show_trace=trace)
+
+
+@main.command("chat")
+@click.option(
+    "--llm-model",
+    default=DEFAULT_LLM_MODEL_KEY,
+    type=click.Choice(sorted(LLM_MODEL_REGISTRY)),
+    show_default=True,
+    help="Local LLM registry key for free-chat / knowledge-LLM routes.",
+)
+@click.option(
+    "--vault",
+    type=click.Path(path_type=Path),
+    default=Path.home() / "KnowledgeVault",
+    show_default=True,
+    help="Knowledge vault root containing wiki/ and memory/profile.md.",
+)
+@click.option("--no-memory", is_flag=True, help="Disable profile/session memory.")
+@click.option("--no-llm", is_flag=True, help="Run tool/guardrail-only without loading LLM.")
+@click.option("--max-tokens", type=int, default=160, show_default=True)
+@click.option("--temperature", type=float, default=0.2, show_default=True)
+@click.option("--top-p", type=float, default=0.95, show_default=True)
+@click.option("--knowledge-limit", type=int, default=3, show_default=True)
+@click.option("--memory-chars", type=int, default=2200, show_default=True)
+@click.option("--profile-chars", type=int, default=900, show_default=True)
+@click.option("--session-chars", type=int, default=1300, show_default=True)
+@click.option("--session-turns", type=int, default=6, show_default=True)
+@click.option("--turn-chars", type=int, default=500, show_default=True)
+@click.option("--trace/--no-trace", default=False, show_default=True)
+@click.pass_context
+def chat(
+    ctx: click.Context,
+    llm_model: str,
+    vault: Path,
+    no_memory: bool,
+    no_llm: bool,
+    max_tokens: int,
+    temperature: float,
+    top_p: float,
+    knowledge_limit: int,
+    memory_chars: int,
+    profile_chars: int,
+    session_chars: int,
+    session_turns: int,
+    turn_chars: int,
+    trace: bool,
+) -> None:
+    """Run an interactive text chat session without ASR/TTS."""
+    config = build_text_runtime_config(
+        llm_model=llm_model,
+        vault=vault,
+        no_memory=no_memory,
+        no_llm=no_llm,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        knowledge_limit=knowledge_limit,
+        memory_chars=memory_chars,
+        profile_chars=profile_chars,
+        session_chars=session_chars,
+        session_turns=session_turns,
+        turn_chars=turn_chars,
+    )
+    ctx.exit(run_text_chat(config, console=console, show_trace=trace))
+
+
+def build_text_runtime_config(
+    *,
+    llm_model: str,
+    vault: Path,
+    no_memory: bool,
+    no_llm: bool,
+    max_tokens: int,
+    temperature: float,
+    top_p: float,
+    knowledge_limit: int,
+    memory_chars: int,
+    profile_chars: int,
+    session_chars: int,
+    session_turns: int,
+    turn_chars: int,
+) -> TextRuntimeConfig:
+    return TextRuntimeConfig(
+        llm_model=llm_model,
+        vault=vault,
+        no_memory=no_memory,
+        no_llm=no_llm,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        knowledge_limit=knowledge_limit,
+        memory_chars=memory_chars,
+        profile_chars=profile_chars,
+        session_chars=session_chars,
+        session_turns=session_turns,
+        turn_chars=turn_chars,
+    )
+
 
 
 @main.command()
@@ -149,7 +313,7 @@ def voice(
     press_enter_to_record: bool,
     no_warmup: bool,
 ) -> None:
-    """Run the interactive Soca microphone voice loop."""
+    """Run the interactive SoCa microphone voice loop."""
     try:
         config = resolve_voice_runtime_config(
             profile_key=profile,
@@ -198,7 +362,7 @@ def asr_smoke(model: str) -> None:
 @main.command("asr-models")
 def asr_models() -> None:
     """List registered PhoWhisper ONNX candidates."""
-    table = Table(title="Soca ASR Registry")
+    table = Table(title="SoCa ASR Registry")
     table.add_column("Key", style="cyan")
     table.add_column("Role")
     table.add_column("Params", justify="right")
@@ -232,7 +396,7 @@ def llm_smoke(model: str) -> None:
 @main.command("llm-models")
 def llm_models() -> None:
     """List registered local LLM candidates."""
-    table = Table(title="Soca LLM Registry")
+    table = Table(title="SoCa LLM Registry")
     table.add_column("Key", style="cyan")
     table.add_column("Role")
     table.add_column("Prompt")
