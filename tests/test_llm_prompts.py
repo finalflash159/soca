@@ -1,12 +1,11 @@
 import pytest
 
-from soca.llm.prompts import (
-    StreamingOutputCleaner,
+from soca.llm.message_format import (
     build_chat_messages,
     build_completion_prompt,
-    clean_model_output,
     uses_completion_prompt,
 )
+from soca.llm.output_cleaning import StreamingOutputCleaner, clean_model_output
 from soca.llm.registry import get_model_config
 
 

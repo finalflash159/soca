@@ -15,13 +15,12 @@ from typing import Any
 from llama_cpp import Llama
 
 from .base import LLMResult
-from .prompts import (
-    StreamingOutputCleaner,
+from .message_format import (
     build_chat_messages,
     build_completion_prompt,
-    clean_model_output,
     uses_completion_prompt,
 )
+from .output_cleaning import StreamingOutputCleaner, clean_model_output
 from .registry import DEFAULT_LLM_MODEL_KEY, get_model_config
 
 
@@ -172,6 +171,12 @@ class LocalLlamaCppLLM:
             total_latency_ms=total_latency_ms,
             tokens_per_second=tps,
         )
+
+    def count_tokens(self, text: str) -> int:
+        """Token count for usage telemetry (used by the streaming route)."""
+        if not text:
+            return 0
+        return len(self.llm.tokenize(text.encode("utf-8"), add_bos=False))
 
     def generate_stream(
         self,

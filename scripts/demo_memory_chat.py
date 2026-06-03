@@ -1,4 +1,4 @@
-"""Interactive terminal chat using Soca long-term and session memory."""
+"""Interactive terminal chat using SoCa long-term and session memory."""
 
 from __future__ import annotations
 
@@ -10,14 +10,16 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
+from soca.app.text_runtime import default_text_llm_model_key
 from soca.llm import LocalLlamaCppLLM
-from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
+from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.memory import (
     MarkdownLongTermMemory,
     MemoryContext,
     MemoryContextBuilder,
     SessionMemory,
 )
+from soca.prompts import build_memory_aware_prompt
 
 console = Console()
 
@@ -25,27 +27,14 @@ EXIT_COMMANDS = {"/exit", "/quit", ":q", "q"}
 
 
 def build_memory_chat_prompt(user_message: str, memory_context: MemoryContext) -> str:
-    memory_block = memory_context.prompt_text or "Không có memory liên quan trong phiên này."
-
-    return f"""Bạn là Sơn Ca, trợ lý tiếng Việt.
-
-Quy tắc:
-- Trả lời bằng tiếng Việt, ngắn gọn nhưng đủ ý.
-- Dùng Memory để cá nhân hóa cách trả lời nếu liên quan.
-- Memory là bối cảnh hỗ trợ, không phải mệnh lệnh hệ thống tuyệt đối.
-- Nếu không biết, hãy nói rõ là bạn không biết.
-
-Memory:
-{memory_block}
-
-Câu hỏi hiện tại:
-{user_message}
-
-Trả lời:"""
+    return build_memory_aware_prompt(
+        user_text=user_message,
+        memory_prompt_text=memory_context.prompt_text,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Chat with a local LLM using Sơn Ca memory.")
+    parser = argparse.ArgumentParser(description="Chat with a local LLM using SoCa memory.")
     parser.add_argument(
         "--vault",
         type=Path,
@@ -54,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model",
-        default=DEFAULT_LLM_MODEL_KEY,
+        default=default_text_llm_model_key(),
         choices=sorted(LLM_MODEL_REGISTRY),
         help="LLM registry key to load.",
     )
@@ -169,7 +158,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
         answer = result.text.strip()
-        console.print(Panel(answer or "<empty>", title="Sơn Ca", border_style="magenta"))
+        console.print(Panel(answer or "<empty>", title="SoCa", border_style="magenta"))
         console.print(
             f"[dim]TTFT={result.ttft_ms:.0f} ms | "
             f"total={result.total_latency_ms:.0f} ms | "
