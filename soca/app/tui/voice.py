@@ -1,0 +1,561 @@
+from __future__ import annotations
+
+import inspect
+import random
+import time
+import traceback
+from collections import deque
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from queue import Queue
+from threading import Event
+from typing import Any
+
+import numpy as np
+
+from soca.core import (
+    AudioSink,
+    EndpointConfig,
+    LLMUsage,
+    ResolvedVoiceRuntimeConfig,
+    SoundDevicePlayer,
+    StreamingEvent,
+    TurnUsage,
+    VoiceRuntimeBundle,
+    build_voice_runtime,
+    record_until_silence,
+    warm_up_voice_runtime,
+)
+from soca.core.repair import (
+    RepairAction,
+    RepairChoice,
+    RepairKind,
+    RepairTimings,
+    default_repair_catalog,
+    plan_no_reply,
+)
+from soca.core.text_chunking import normalize_text_for_tts
+from soca.memory import SessionMemory
+
+
+@dataclass(frozen=True)
+class VoiceMonitorEvent:
+    type: str
+    text: str = ""
+    latency_ms: float | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    usage: TurnUsage | None = None
+
+
+VoiceRuntimeBuilder = Callable[[ResolvedVoiceRuntimeConfig], VoiceRuntimeBundle]
+VoiceRecorder = Callable[..., np.ndarray]
+VoiceEventQueue = Queue[VoiceMonitorEvent | None]
+
+
+class VoiceMonitorController:
+    """Thread-side adapter from VoicePipeline streaming events to TUI events."""
+
+    def __init__(
+        self,
+        config: ResolvedVoiceRuntimeConfig,
+        *,
+        runtime_builder: VoiceRuntimeBuilder = build_voice_runtime,
+        recorder: VoiceRecorder = record_until_silence,
+        player: AudioSink | None = None,
+        warmup: bool = True,
+        session_memory: SessionMemory | None = None,
+        repair_timings: RepairTimings | None = None,
+    ) -> None:
+        self.config = config
+        self.runtime_builder = runtime_builder
+        self.recorder = recorder
+        self.player = player or SoundDevicePlayer()
+        self.warmup = warmup
+        self.session_memory = session_memory
+        self.repair_timings = repair_timings or RepairTimings()
+        self.repair_catalog = default_repair_catalog()
+        self.bundle: VoiceRuntimeBundle | None = None
+        self._warmed_up = False
+        self._idle_started_at: float | None = None
+        self._expects_response = False
+        self._no_reply_attempts_fired = 0
+        self._no_reply_rng = random.Random()
+        self._recent_no_reply_prompt_ids: deque[str] = deque(maxlen=8)
+
+    def run_turn(self, queue: VoiceEventQueue) -> None:
+        """Run one microphone turn and push normalized events to ``queue``."""
+        stop_event = Event()
+        self.run_loop(queue, stop_event=stop_event, max_turns=1)
+
+    def run_loop(
+        self,
+        queue: VoiceEventQueue,
+        *,
+        stop_event: Event,
+        max_turns: int | None = None,
+    ) -> None:
+        """Run the continuous voice loop and stream events to ``queue``.
+
+        This method is synchronous by design: it runs in one worker thread.
+        Textual's main thread consumes the queue and owns all widget writes.
+        """
+        turns = 0
+        try:
+            bundle = self._ensure_bundle(queue)
+            queue.put(
+                VoiceMonitorEvent(
+                    "loop_started",
+                    "Voice loop started",
+                    metadata={"profile": self.config.profile_key},
+                )
+            )
+            self._ensure_idle_clock(expects_response=False)
+
+            while not stop_event.is_set():
+                turns += 1
+                queue.put(
+                    VoiceMonitorEvent(
+                        "turn_start",
+                        "Voice turn started",
+                        metadata={"turn_index": turns},
+                    )
+                )
+                self._run_one_turn(bundle, queue, stop_event=stop_event)
+                if stop_event.is_set():
+                    break
+                queue.put(
+                    VoiceMonitorEvent(
+                        "turn_end",
+                        "Voice turn ended",
+                        metadata={"turn_index": turns},
+                    )
+                )
+                if max_turns is not None and turns >= max_turns:
+                    break
+
+            queue.put(
+                VoiceMonitorEvent(
+                    "loop_stopped",
+                    "Voice loop stopped",
+                    metadata={"turns": turns, "requested": stop_event.is_set()},
+                )
+            )
+        except Exception as exc:  # pragma: no cover - terminal/runtime boundary
+            queue.put(
+                VoiceMonitorEvent(
+                    "error",
+                    _voice_runtime_error_message(exc, config=self.config),
+                    metadata={"traceback": traceback.format_exc()},
+                )
+            )
+        finally:
+            queue.put(None)
+
+    def stop(self) -> None:
+        self.player.stop()
+
+    def _ensure_bundle(self, queue: VoiceEventQueue) -> VoiceRuntimeBundle:
+        if self.bundle is not None:
+            return self.bundle
+
+        queue.put(
+            VoiceMonitorEvent(
+                "loading",
+                "Loading voice runtime",
+                metadata={
+                    "profile": self.config.profile_key,
+                    "asr_model": self.config.asr_model,
+                    "llm_model": self.config.llm_model,
+                    "tts_model": self.config.tts_model,
+                    "voice": self.config.tts_voice,
+                },
+            )
+        )
+        t0 = time.perf_counter()
+        self.bundle = self._build_runtime_bundle()
+        queue.put(
+            VoiceMonitorEvent(
+                "ready",
+                "Voice runtime ready",
+                latency_ms=(time.perf_counter() - t0) * 1000,
+                metadata={
+                    "memory_status": self.bundle.memory_status,
+                    "knowledge_status": self.bundle.knowledge_status,
+                    "asr_guard_status": self.bundle.asr_guard_status,
+                },
+            )
+        )
+
+        if self.warmup and not self._warmed_up:
+            for result in warm_up_voice_runtime(self.bundle):
+                queue.put(
+                    VoiceMonitorEvent(
+                        "warmup",
+                        result.component,
+                        latency_ms=result.latency_ms,
+                        metadata={"ok": result.ok, "detail": result.detail},
+                    )
+                )
+            self._warmed_up = True
+
+        return self.bundle
+
+    def _build_runtime_bundle(self) -> VoiceRuntimeBundle:
+        if self.session_memory is None:
+            return self.runtime_builder(self.config)
+
+        try:
+            signature = inspect.signature(self.runtime_builder)
+        except (TypeError, ValueError):
+            signature = None
+
+        supports_session_memory = (
+            signature is not None
+            and (
+                "session_memory" in signature.parameters
+                or any(
+                    param.kind is inspect.Parameter.VAR_KEYWORD
+                    for param in signature.parameters.values()
+                )
+            )
+        )
+        if supports_session_memory:
+            return self.runtime_builder(self.config, session_memory=self.session_memory)
+        return self.runtime_builder(self.config)
+
+    def _run_one_turn(
+        self,
+        bundle: VoiceRuntimeBundle,
+        queue: VoiceEventQueue,
+        *,
+        stop_event: Event | None = None,
+    ) -> None:
+        endpoint_config = EndpointConfig(
+            endpoint_silence_ms=self.config.endpoint_silence_ms,
+            max_record_ms=self.config.max_record_ms,
+        )
+        queue.put(VoiceMonitorEvent("recording", "Listening"))
+        t0 = time.perf_counter()
+        audio = self.recorder(bundle.detector, config=endpoint_config, stop_event=stop_event)
+        latency_ms = (time.perf_counter() - t0) * 1000
+        if stop_event is not None and stop_event.is_set():
+            return
+        queue.put(
+            VoiceMonitorEvent(
+                "recorded",
+                "Recorded",
+                latency_ms=latency_ms,
+                metadata={
+                    "samples": int(len(audio)),
+                    "duration_s": len(audio) / 16000 if len(audio) else 0.0,
+                },
+            )
+        )
+        if not self._audio_has_speech(bundle, audio):
+            self._handle_passive_silence(bundle, queue, stop_event=stop_event)
+            return
+
+        self._mark_user_spoke()
+        self._stream_pipeline_events(bundle, audio, queue)
+
+    def _stream_pipeline_events(
+        self,
+        bundle: VoiceRuntimeBundle,
+        audio: np.ndarray,
+        queue: VoiceEventQueue,
+    ) -> None:
+        runtime_meta: dict[str, Any] = {}
+        first_tts_meta: dict[str, Any] | None = None
+        tts_chunks = 0
+
+        for event in bundle.pipeline.turn_streaming(audio, audio_sink=self.player):
+            metadata = dict(event.metadata or {})
+            usage: TurnUsage | None = None
+
+            if event.type == "runtime":
+                runtime_meta = metadata
+            elif event.type == "tts":
+                tts_chunks += 1
+                first_tts_meta = first_tts_meta or metadata
+            elif event.type == "done":
+                usage = _build_voice_usage(
+                    event=event,
+                    runtime_meta=runtime_meta,
+                    first_tts_meta=first_tts_meta,
+                    tts_chunks=tts_chunks,
+                )
+                self._mark_idle_from_done_event(event)
+
+            queue.put(_to_monitor_event(event, usage=usage))
+
+    def _audio_has_speech(self, bundle: VoiceRuntimeBundle, audio: np.ndarray) -> bool:
+        if len(audio) == 0:
+            return False
+
+        speech_timestamps = getattr(bundle.detector, "speech_timestamps", None)
+        if speech_timestamps is None:
+            # Unit tests often use a plain object detector. Keep legacy behavior
+            # there: non-empty fake audio is treated as speech.
+            return True
+
+        try:
+            return bool(speech_timestamps(audio))
+        except Exception:
+            # A VAD failure should not silently drop user input. Let the normal
+            # ASR/repair path decide instead.
+            return True
+
+    def _ensure_idle_clock(self, *, expects_response: bool) -> None:
+        if self._idle_started_at is None:
+            self._expects_response = expects_response
+            self._idle_started_at = time.perf_counter()
+
+    def _mark_user_spoke(self) -> None:
+        self._idle_started_at = None
+        self._expects_response = False
+        self._no_reply_attempts_fired = 0
+
+    def _mark_idle_from_done_event(self, event: StreamingEvent) -> None:
+        metadata = dict(event.metadata or {})
+        rejected = bool(metadata.get("rejected"))
+        handover_target = metadata.get("handover_target")
+        repair_action = str(metadata.get("repair_action") or "")
+        response_text = (event.text or "").strip()
+
+        if rejected:
+            expects_response = (
+                handover_target != "chat"
+                and repair_action
+                in {
+                    RepairAction.REPROMPT.value,
+                    RepairAction.CONTEXTUAL_REPROMPT.value,
+                    RepairAction.CLARIFY.value,
+                    RepairAction.NO_REPLY_FOLLOWUP.value,
+                    RepairAction.NO_REPLY_GUIDANCE.value,
+                }
+            )
+        else:
+            expects_response = response_text.endswith(("?", "？"))
+
+        self._idle_started_at = time.perf_counter()
+        self._expects_response = expects_response
+        self._no_reply_attempts_fired = 0
+
+    def _handle_passive_silence(
+        self,
+        bundle: VoiceRuntimeBundle,
+        queue: VoiceEventQueue,
+        *,
+        stop_event: Event | None,
+    ) -> None:
+        if self._idle_started_at is None:
+            self._idle_started_at = time.perf_counter()
+
+        silence_ms = (time.perf_counter() - self._idle_started_at) * 1000
+        slot = plan_no_reply(
+            silence_ms,
+            expects_response=self._expects_response,
+            attempts_fired=self._no_reply_attempts_fired,
+            timings=self.repair_timings,
+        )
+        if slot is None:
+            queue.put(
+                VoiceMonitorEvent(
+                    "idle_silence",
+                    "No speech detected",
+                    metadata={
+                        "silence_ms": silence_ms,
+                        "expects_response": self._expects_response,
+                    },
+                )
+            )
+            return
+
+        if slot == "sleep" and not self._expects_response:
+            queue.put(
+                VoiceMonitorEvent(
+                    "idle_sleep",
+                    "Passive silence sleep",
+                    metadata={"silence_ms": silence_ms},
+                )
+            )
+            if stop_event is not None:
+                stop_event.set()
+            return
+
+        choice = self.repair_catalog.select(
+            RepairKind.SESSION_INACTIVE,
+            slot,
+            rng=self._no_reply_rng,
+            recent_ids=tuple(self._recent_no_reply_prompt_ids),
+        )
+        self._recent_no_reply_prompt_ids.append(choice.prompt_id)
+        self._no_reply_attempts_fired = _no_reply_attempt_count(slot)
+        self._speak_no_reply_choice(
+            bundle,
+            queue,
+            choice,
+            silence_ms=silence_ms,
+            stop_event=stop_event,
+        )
+
+    def _speak_no_reply_choice(
+        self,
+        bundle: VoiceRuntimeBundle,
+        queue: VoiceEventQueue,
+        choice: RepairChoice,
+        *,
+        silence_ms: float,
+        stop_event: Event | None,
+    ) -> None:
+        turn_start = time.perf_counter()
+        handover_target = "chat" if choice.action == RepairAction.SLEEP_VOICE else None
+        metadata = {
+            "repair_kind": choice.kind.value,
+            "repair_action": choice.action.value,
+            "repair_attempt": self._no_reply_attempts_fired,
+            "handover_target": handover_target,
+            "technical_reason": "passive_silence",
+            "silence_ms": silence_ms,
+            "expects_response": self._expects_response,
+        }
+        queue.put(VoiceMonitorEvent("repair", choice.text, metadata=metadata))
+
+        speech_text = normalize_text_for_tts(choice.text) or choice.text.strip()
+        t0 = time.perf_counter()
+        tts_result = bundle.tts.synthesize(speech_text)
+        audio_ready = time.perf_counter()
+        tts_metadata = {
+            "chunk_index": 0,
+            "ttfa_ms": (audio_ready - turn_start) * 1000,
+            "tts_latency_ms": tts_result.latency_ms,
+            "repair_kind": choice.kind.value,
+            "repair_action": choice.action.value,
+        }
+        queue.put(
+            VoiceMonitorEvent(
+                "tts",
+                speech_text,
+                latency_ms=(time.perf_counter() - t0) * 1000,
+                metadata=tts_metadata,
+            )
+        )
+
+        playback = self.player.play(tts_result.audio, tts_result.sample_rate, blocking=True)
+        queue.put(
+            VoiceMonitorEvent(
+                "audio",
+                speech_text,
+                latency_ms=_maybe_float(getattr(playback, "latency_ms", None)),
+                metadata={
+                    **tts_metadata,
+                    "playback_latency_ms": _maybe_float(getattr(playback, "latency_ms", None)),
+                },
+            )
+        )
+        queue.put(
+            VoiceMonitorEvent(
+                "done",
+                choice.text,
+                latency_ms=(time.perf_counter() - turn_start) * 1000,
+                metadata={
+                    "rejected": True,
+                    "rejection_reason": "passive_silence",
+                    **metadata,
+                },
+            )
+        )
+        if choice.action == RepairAction.SLEEP_VOICE and stop_event is not None:
+            stop_event.set()
+
+
+def _to_monitor_event(event: StreamingEvent, *, usage: TurnUsage | None) -> VoiceMonitorEvent:
+    return VoiceMonitorEvent(
+        type=event.type,
+        text=event.text,
+        latency_ms=event.latency_ms,
+        metadata=dict(event.metadata or {}),
+        usage=usage,
+    )
+
+
+def _build_voice_usage(
+    *,
+    event: StreamingEvent,
+    runtime_meta: dict[str, Any],
+    first_tts_meta: dict[str, Any] | None,
+    tts_chunks: int,
+) -> TurnUsage:
+    done_meta = dict(event.metadata or {})
+    first_tts = dict(first_tts_meta or {})
+    route = str(done_meta.get("runtime_route") or runtime_meta.get("route") or "unknown")
+    blocked = bool(done_meta.get("runtime_blocked") or runtime_meta.get("blocked") or False)
+    llm = _coerce_llm_usage(runtime_meta.get("llm_usage"))
+
+    return TurnUsage.from_voice(
+        route=route,
+        blocked=blocked,
+        llm=llm,
+        stage_latencies_ms=done_meta.get("stage_latencies_ms"),
+        total_turn_latency_ms=event.latency_ms,
+        first_tts_latency_ms=_maybe_float(first_tts.get("tts_latency_ms")),
+        ttfa_ms=_maybe_float(first_tts.get("ttfa_ms")),
+        tts_chunks=tts_chunks,
+    )
+
+
+def _coerce_llm_usage(value: Any) -> LLMUsage | None:
+    if value is None:
+        return None
+    if isinstance(value, LLMUsage):
+        return value
+    if isinstance(value, dict):
+        return LLMUsage(
+            prompt_tokens=int(value.get("prompt_tokens") or 0),
+            completion_tokens=int(value.get("completion_tokens") or 0),
+            ttft_ms=_maybe_float(value.get("ttft_ms")),
+            total_latency_ms=_maybe_float(value.get("total_latency_ms")),
+            tokens_per_second=_maybe_float(value.get("tokens_per_second")),
+        )
+    return None
+
+
+def _maybe_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _no_reply_attempt_count(slot: str) -> int:
+    if slot == "sleep":
+        return 3
+    if slot == "no_reply_2":
+        return 2
+    if slot == "no_reply_1":
+        return 1
+    return 0
+
+
+def _voice_runtime_error_message(exc: Exception, *, config: ResolvedVoiceRuntimeConfig) -> str:
+    text = str(exc)
+    if config.tts_model == "omnivoice":
+        return (
+            f"{text}\n"
+            f"Profile `{config.profile_key}` dùng OmniVoice, đây là backend optional và khá nặng. "
+            "Chạy lại bằng "
+            f"`uv run --extra ui --extra tts-omnivoice soca ui voice {config.profile_key}`, "
+            "hoặc dùng profile ổn định hơn: `uv run --extra ui soca ui voice baseline`."
+        )
+    return text
+
+
+__all__ = [
+    "VoiceEventQueue",
+    "VoiceMonitorController",
+    "VoiceMonitorEvent",
+    "VoiceRecorder",
+    "VoiceRuntimeBuilder",
+]
