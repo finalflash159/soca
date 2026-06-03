@@ -1,0 +1,1082 @@
+{
+  "metadata": {
+    "model_key": "phowhisper_small",
+    "model_repo": "huuquyet/PhoWhisper-small",
+    "model_dir": "/Users/vominhthinh/Workspace/shrike-7/models/phowhisper-small-onnx",
+    "artifact_name": "phowhisper_small_vi_boh_v1.json",
+    "runtime_identity": {
+      "backend": "onnxruntime",
+      "asr_class": "soca.asr.whisper_onnx.VietnameseASR",
+      "model_key": "phowhisper_small",
+      "hf_repo": "huuquyet/PhoWhisper-small",
+      "params_m": 244,
+      "model_dir": "/Users/vominhthinh/Workspace/shrike-7/models/phowhisper-small-onnx",
+      "onnx_dir": "/Users/vominhthinh/Workspace/shrike-7/models/phowhisper-small-onnx/onnx",
+      "encoder_filename": "encoder_model.onnx",
+      "decoder_filename": "decoder_model.onnx",
+      "decoder_variant": "decoder_model_no_kv_cache",
+      "decode_strategy": "greedy",
+      "uses_kv_cache": false,
+      "uses_beam_search": false,
+      "max_new_tokens": 128,
+      "providers": [
+        "CoreMLExecutionProvider",
+        "CPUExecutionProvider"
+      ],
+      "sampling_rate": 16000,
+      "suppression_tokens_enabled": true
+    },
+    "execution_mode": "local",
+    "num_noise_samples": 800,
+    "num_non_empty_outputs": 800,
+    "num_errors": 0,
+    "hallucination_rate": 1.0,
+    "selection_rule": "count >= 2 and len >= 5 chars before manual review",
+    "normalization": "NFC + lowercase + whitespace collapse + boundary punctuation strip",
+    "created_by": "local.build_boh",
+    "created_at_utc": "2026-06-03T16:04:06.933530+00:00",
+    "raw_output_jsonl": "/Users/vominhthinh/Workspace/shrike-7/notebooks/outputs/d2_5_build_vietnamese_boh_local_20260603_145809/logs/boh_runs/phowhisper_small/phowhisper_noise_outputs.jsonl",
+    "providers": [
+      "CoreMLExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "elapsed_s": 2830.5380737080704
+  },
+  "boh": [
+    {
+      "phrase": "tuy nhiên không phải ai cũng có thể thực hiện điều này",
+      "count": 146,
+      "length": 54,
+      "keep": true,
+      "examples": [
+        "tuy nhiên không phải ai cũng có thể thực hiện điều này."
+      ]
+    },
+    {
+      "phrase": "đó là một cái nhìn rất mạnh lên từng phút",
+      "count": 9,
+      "length": 41,
+      "keep": true,
+      "examples": [
+        "đó là một cái nhìn rất mạnh lên từng phút."
+      ]
+    },
+    {
+      "phrase": "đó là tin nhắn của anh chị nhiều khi tưởng chừng đó",
+      "count": 8,
+      "length": 51,
+      "keep": true,
+      "examples": [
+        "đó là tin nhắn của anh chị nhiều khi tưởng chừng đó."
+      ]
+    },
+    {
+      "phrase": "một trong những thay đổi lĩnh vực sân khấu của trẻ là giải đấu chung",
+      "count": 6,
+      "length": 68,
+      "keep": true,
+      "examples": [
+        "một trong những thay đổi lĩnh vực sân khấu của trẻ là giải đấu chung."
+      ]
+    },
+    {
+      "phrase": "chúng",
+      "count": 5,
+      "length": 5,
+      "keep": true,
+      "examples": [
+        "chúng."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải ai cũng có thể tham gia các cuộc thi đấu thứ hai",
+      "count": 5,
+      "length": 69,
+      "keep": true,
+      "examples": [
+        "tuy nhiên không phải ai cũng có thể tham gia các cuộc thi đấu thứ hai."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến nhiều người mơ ước đối với nghề đam mê",
+      "count": 5,
+      "length": 56,
+      "keep": true,
+      "examples": [
+        "điều này đã khiến nhiều người mơ ước đối với nghề đam mê."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải lúc nào bạn cũng có thể thay tóa những vết nứt",
+      "count": 5,
+      "length": 67,
+      "keep": true,
+      "examples": [
+        "tuy nhiên không phải lúc nào bạn cũng có thể thay tóa những vết nứt."
+      ]
+    },
+    {
+      "phrase": "đó là một cái nhìn rất mạnh lên từng hồi sinh",
+      "count": 4,
+      "length": 45,
+      "keep": true,
+      "examples": [
+        "đó là một cái nhìn rất mạnh lên từng hồi sinh."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến nhiều người bình luận vì thế đế chất lượng thấp",
+      "count": 3,
+      "length": 65,
+      "keep": true,
+      "examples": [
+        "điều này đã khiến nhiều người bình luận vì thế đế chất lượng thấp."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến cho tình trạng trên không khí trong tình trạng trên",
+      "count": 3,
+      "length": 69,
+      "keep": true,
+      "examples": [
+        "điều này đã khiến cho tình trạng trên không khí trong tình trạng trên."
+      ]
+    },
+    {
+      "phrase": "nhiều doanh nghiệp đã không thể tập trung vào phần thưởng phần nào từ đối tượng",
+      "count": 3,
+      "length": 79,
+      "keep": true,
+      "examples": [
+        "nhiều doanh nghiệp đã không thể tập trung vào phần thưởng phần nào từ đối tượng."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải ai cũng có thể tham gia các cuộc hội thoại",
+      "count": 3,
+      "length": 63,
+      "keep": true,
+      "examples": [
+        "tuy nhiên không phải ai cũng có thể tham gia các cuộc hội thoại."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải ai cũng có thể thực hiện điều này trong cuộc sống",
+      "count": 3,
+      "length": 70,
+      "keep": true,
+      "examples": [
+        "tuy nhiên không phải ai cũng có thể thực hiện điều này trong cuộc sống."
+      ]
+    },
+    {
+      "phrase": "đó là tin nhắn tới các em học tập trung thứ hai",
+      "count": 3,
+      "length": 47,
+      "keep": true,
+      "examples": [
+        "đó là tin nhắn tới các em học tập trung thứ hai."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến nhiều người bình luận vì thế đế chìm trong đoạn trích",
+      "count": 2,
+      "length": 71,
+      "keep": true,
+      "examples": [
+        "điều này đã khiến nhiều người bình luận vì thế đế chìm trong đoạn trích."
+      ]
+    },
+    {
+      "phrase": "điều này cho thấy tính năng lực lượng của hệ thống lũ đất của trẻ ở trung quốc",
+      "count": 2,
+      "length": 78,
+      "keep": true,
+      "examples": [
+        "điều này cho thấy tính năng lực lượng của hệ thống lũ đất của trẻ ở trung quốc."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến cho bạn hãy mệt mỏi và tận dụng các thông tin ít nhất",
+      "count": 2,
+      "length": 71,
+      "keep": true,
+      "examples": [
+        "điều này đã khiến cho bạn hãy mệt mỏi và tận dụng các thông tin ít nhất."
+      ]
+    },
+    {
+      "phrase": "đây là một trong những hoạt động thay đổi quan trọng nhất",
+      "count": 2,
+      "length": 57,
+      "keep": true,
+      "examples": [
+        "đây là một trong những hoạt động thay đổi quan trọng nhất."
+      ]
+    },
+    {
+      "phrase": "ha ha ha ha",
+      "count": 2,
+      "length": 11,
+      "keep": true,
+      "examples": [
+        "ha ha ha ha."
+      ]
+    },
+    {
+      "phrase": "nhiều doanh nghiệp đã thiệt mạng vì không thoát nước",
+      "count": 2,
+      "length": 52,
+      "keep": true,
+      "examples": [
+        "nhiều doanh nghiệp đã thiệt mạng vì không thoát nước."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến nhiều người mơ ước và đau lòng tạo ra sự thay đổi",
+      "count": 2,
+      "length": 67,
+      "keep": true,
+      "examples": [
+        "điều này đã khiến nhiều người mơ ước và đau lòng tạo ra sự thay đổi."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải ai cũng có thể thực hiện điều này trong cuộc sống của mình",
+      "count": 2,
+      "length": 79,
+      "keep": true,
+      "examples": [
+        "tuy nhiên không phải ai cũng có thể thực hiện điều này trong cuộc sống của mình."
+      ]
+    },
+    {
+      "phrase": "đây là một trong những chủ động tuyệt vời tốt nhất tại việt nam",
+      "count": 2,
+      "length": 63,
+      "keep": true,
+      "examples": [
+        "đây là một trong những chủ động tuyệt vời tốt nhất tại việt nam."
+      ]
+    },
+    {
+      "phrase": "nhiều doanh nghiệp năng động khiến nhiều doanh nghiệp năng động",
+      "count": 2,
+      "length": 63,
+      "keep": true,
+      "examples": [
+        "nhiều doanh nghiệp năng động khiến nhiều doanh nghiệp năng động."
+      ]
+    },
+    {
+      "phrase": "điều này cho thấy tốc độ tăng trưởng nhanh chóng tới dự thi",
+      "count": 2,
+      "length": 59,
+      "keep": true,
+      "examples": [
+        "điều này cho thấy tốc độ tăng trưởng nhanh chóng tới dự thi."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến cho tình trạng trẻ có thể tâm trạng suy nghĩ hơn",
+      "count": 2,
+      "length": 66,
+      "keep": true,
+      "examples": [
+        "điều này đã khiến cho tình trạng trẻ có thể tâm trạng suy nghĩ hơn."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến cho tình trạng trên không khí trong thời gian tới",
+      "count": 2,
+      "length": 67,
+      "keep": true,
+      "examples": [
+        "điều này đã khiến cho tình trạng trên không khí trong thời gian tới."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải ai cũng có thể thực hiện điều này vì họ không tâm sự về những gì họ đã từng làm",
+      "count": 2,
+      "length": 100,
+      "keep": true,
+      "examples": [
+        "tuy nhiên không phải ai cũng có thể thực hiện điều này vì họ không tâm sự về những gì họ đã từng làm."
+      ]
+    },
+    {
+      "phrase": "nhiều người còn đặt câu hỏi và tham gia hoa kỳ thi đấu thế giới sau khi tham gia",
+      "count": 2,
+      "length": 80,
+      "keep": true,
+      "examples": [
+        "nhiều người còn đặt câu hỏi và tham gia hoa kỳ thi đấu thế giới sau khi tham gia."
+      ]
+    },
+    {
+      "phrase": "nhiều doanh nghiệp đã không thể tập trung vào phần thưởng phần nào tuy nhiên",
+      "count": 2,
+      "length": 76,
+      "keep": true,
+      "examples": [
+        "nhiều doanh nghiệp đã không thể tập trung vào phần thưởng phần nào tuy nhiên."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải ai cũng có thể ngắm lại câu hỏi mà tôi không thể ngắm lại câu hỏi này",
+      "count": 2,
+      "length": 90,
+      "keep": true,
+      "examples": [
+        "tuy nhiên không phải ai cũng có thể ngắm lại câu hỏi mà tôi không thể ngắm lại câu hỏi này."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến nhiều người mơ ước đối với mình",
+      "count": 2,
+      "length": 49,
+      "keep": true,
+      "examples": [
+        "điều này đã khiến nhiều người mơ ước đối với mình."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến cho tình trạng của ta thiếu sót hơn nhiều",
+      "count": 2,
+      "length": 59,
+      "keep": true,
+      "examples": [
+        "điều này đã khiến cho tình trạng của ta thiếu sót hơn nhiều."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải lúc nào bạn cũng có thể thay thế",
+      "count": 2,
+      "length": 53,
+      "keep": true,
+      "examples": [
+        "tuy nhiên không phải lúc nào bạn cũng có thể thay thế."
+      ]
+    },
+    {
+      "phrase": "nhiều doanh nghiệp đã không thể tập trung vào việc này sau khi trưởng đoàn kết cúp",
+      "count": 2,
+      "length": 82,
+      "keep": true,
+      "examples": [
+        "nhiều doanh nghiệp đã không thể tập trung vào việc này sau khi trưởng đoàn kết cúp."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải lúc nào bạn cũng có thể tận hưởng một lần về một tâm hồn",
+      "count": 2,
+      "length": 77,
+      "keep": true,
+      "examples": [
+        "tuy nhiên không phải lúc nào bạn cũng có thể tận hưởng một lần về một tâm hồn."
+      ]
+    }
+  ],
+  "all_unique_outputs_with_count": [
+    {
+      "phrase": "tuy nhiên không phải ai cũng có thể thực hiện điều này",
+      "count": 146,
+      "examples": [
+        "tuy nhiên không phải ai cũng có thể thực hiện điều này."
+      ]
+    },
+    {
+      "phrase": "n",
+      "count": 16,
+      "examples": [
+        "n."
+      ]
+    },
+    {
+      "phrase": "đó là một cái nhìn rất mạnh lên từng phút",
+      "count": 9,
+      "examples": [
+        "đó là một cái nhìn rất mạnh lên từng phút."
+      ]
+    },
+    {
+      "phrase": "đó là tin nhắn của anh chị nhiều khi tưởng chừng đó",
+      "count": 8,
+      "examples": [
+        "đó là tin nhắn của anh chị nhiều khi tưởng chừng đó."
+      ]
+    },
+    {
+      "phrase": "một trong những thay đổi lĩnh vực sân khấu của trẻ là giải đấu chung",
+      "count": 6,
+      "examples": [
+        "một trong những thay đổi lĩnh vực sân khấu của trẻ là giải đấu chung."
+      ]
+    },
+    {
+      "phrase": "chúng",
+      "count": 5,
+      "examples": [
+        "chúng."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải ai cũng có thể tham gia các cuộc thi đấu thứ hai",
+      "count": 5,
+      "examples": [
+        "tuy nhiên không phải ai cũng có thể tham gia các cuộc thi đấu thứ hai."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến nhiều người mơ ước đối với nghề đam mê",
+      "count": 5,
+      "examples": [
+        "điều này đã khiến nhiều người mơ ước đối với nghề đam mê."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải lúc nào bạn cũng có thể thay tóa những vết nứt",
+      "count": 5,
+      "examples": [
+        "tuy nhiên không phải lúc nào bạn cũng có thể thay tóa những vết nứt."
+      ]
+    },
+    {
+      "phrase": "đó là một cái nhìn rất mạnh lên từng hồi sinh",
+      "count": 4,
+      "examples": [
+        "đó là một cái nhìn rất mạnh lên từng hồi sinh."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến nhiều người bình luận vì thế đế chất lượng thấp",
+      "count": 3,
+      "examples": [
+        "điều này đã khiến nhiều người bình luận vì thế đế chất lượng thấp."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến cho tình trạng trên không khí trong tình trạng trên",
+      "count": 3,
+      "examples": [
+        "điều này đã khiến cho tình trạng trên không khí trong tình trạng trên."
+      ]
+    },
+    {
+      "phrase": "nhiều doanh nghiệp đã không thể tập trung vào phần thưởng phần nào từ đối tượng",
+      "count": 3,
+      "examples": [
+        "nhiều doanh nghiệp đã không thể tập trung vào phần thưởng phần nào từ đối tượng."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải ai cũng có thể tham gia các cuộc hội thoại",
+      "count": 3,
+      "examples": [
+        "tuy nhiên không phải ai cũng có thể tham gia các cuộc hội thoại."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải ai cũng có thể thực hiện điều này trong cuộc sống",
+      "count": 3,
+      "examples": [
+        "tuy nhiên không phải ai cũng có thể thực hiện điều này trong cuộc sống."
+      ]
+    },
+    {
+      "phrase": "đó là tin nhắn tới các em học tập trung thứ hai",
+      "count": 3,
+      "examples": [
+        "đó là tin nhắn tới các em học tập trung thứ hai."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến nhiều người bình luận vì thế đế chìm trong đoạn trích",
+      "count": 2,
+      "examples": [
+        "điều này đã khiến nhiều người bình luận vì thế đế chìm trong đoạn trích."
+      ]
+    },
+    {
+      "phrase": "điều này cho thấy tính năng lực lượng của hệ thống lũ đất của trẻ ở trung quốc",
+      "count": 2,
+      "examples": [
+        "điều này cho thấy tính năng lực lượng của hệ thống lũ đất của trẻ ở trung quốc."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến cho bạn hãy mệt mỏi và tận dụng các thông tin ít nhất",
+      "count": 2,
+      "examples": [
+        "điều này đã khiến cho bạn hãy mệt mỏi và tận dụng các thông tin ít nhất."
+      ]
+    },
+    {
+      "phrase": "a",
+      "count": 2,
+      "examples": [
+        "a."
+      ]
+    },
+    {
+      "phrase": "đây là một trong những hoạt động thay đổi quan trọng nhất",
+      "count": 2,
+      "examples": [
+        "đây là một trong những hoạt động thay đổi quan trọng nhất."
+      ]
+    },
+    {
+      "phrase": "ha ha ha ha",
+      "count": 2,
+      "examples": [
+        "ha ha ha ha."
+      ]
+    },
+    {
+      "phrase": "nhiều doanh nghiệp đã thiệt mạng vì không thoát nước",
+      "count": 2,
+      "examples": [
+        "nhiều doanh nghiệp đã thiệt mạng vì không thoát nước."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến nhiều người mơ ước và đau lòng tạo ra sự thay đổi",
+      "count": 2,
+      "examples": [
+        "điều này đã khiến nhiều người mơ ước và đau lòng tạo ra sự thay đổi."
+      ]
+    },
+    {
+      "phrase": "thì",
+      "count": 2,
+      "examples": [
+        "thì."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải ai cũng có thể thực hiện điều này trong cuộc sống của mình",
+      "count": 2,
+      "examples": [
+        "tuy nhiên không phải ai cũng có thể thực hiện điều này trong cuộc sống của mình."
+      ]
+    },
+    {
+      "phrase": "đây là một trong những chủ động tuyệt vời tốt nhất tại việt nam",
+      "count": 2,
+      "examples": [
+        "đây là một trong những chủ động tuyệt vời tốt nhất tại việt nam."
+      ]
+    },
+    {
+      "phrase": "nhiều doanh nghiệp năng động khiến nhiều doanh nghiệp năng động",
+      "count": 2,
+      "examples": [
+        "nhiều doanh nghiệp năng động khiến nhiều doanh nghiệp năng động."
+      ]
+    },
+    {
+      "phrase": "điều này cho thấy tốc độ tăng trưởng nhanh chóng tới dự thi",
+      "count": 2,
+      "examples": [
+        "điều này cho thấy tốc độ tăng trưởng nhanh chóng tới dự thi."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến cho tình trạng trẻ có thể tâm trạng suy nghĩ hơn",
+      "count": 2,
+      "examples": [
+        "điều này đã khiến cho tình trạng trẻ có thể tâm trạng suy nghĩ hơn."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến cho tình trạng trên không khí trong thời gian tới",
+      "count": 2,
+      "examples": [
+        "điều này đã khiến cho tình trạng trên không khí trong thời gian tới."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải ai cũng có thể thực hiện điều này vì họ không tâm sự về những gì họ đã từng làm",
+      "count": 2,
+      "examples": [
+        "tuy nhiên không phải ai cũng có thể thực hiện điều này vì họ không tâm sự về những gì họ đã từng làm."
+      ]
+    },
+    {
+      "phrase": "nhiều người còn đặt câu hỏi và tham gia hoa kỳ thi đấu thế giới sau khi tham gia",
+      "count": 2,
+      "examples": [
+        "nhiều người còn đặt câu hỏi và tham gia hoa kỳ thi đấu thế giới sau khi tham gia."
+      ]
+    },
+    {
+      "phrase": "nhiều doanh nghiệp đã không thể tập trung vào phần thưởng phần nào tuy nhiên",
+      "count": 2,
+      "examples": [
+        "nhiều doanh nghiệp đã không thể tập trung vào phần thưởng phần nào tuy nhiên."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải ai cũng có thể ngắm lại câu hỏi mà tôi không thể ngắm lại câu hỏi này",
+      "count": 2,
+      "examples": [
+        "tuy nhiên không phải ai cũng có thể ngắm lại câu hỏi mà tôi không thể ngắm lại câu hỏi này."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến nhiều người mơ ước đối với mình",
+      "count": 2,
+      "examples": [
+        "điều này đã khiến nhiều người mơ ước đối với mình."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến cho tình trạng của ta thiếu sót hơn nhiều",
+      "count": 2,
+      "examples": [
+        "điều này đã khiến cho tình trạng của ta thiếu sót hơn nhiều."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải lúc nào bạn cũng có thể thay thế",
+      "count": 2,
+      "examples": [
+        "tuy nhiên không phải lúc nào bạn cũng có thể thay thế."
+      ]
+    },
+    {
+      "phrase": "nhiều doanh nghiệp đã không thể tập trung vào việc này sau khi trưởng đoàn kết cúp",
+      "count": 2,
+      "examples": [
+        "nhiều doanh nghiệp đã không thể tập trung vào việc này sau khi trưởng đoàn kết cúp."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải lúc nào bạn cũng có thể tận hưởng một lần về một tâm hồn",
+      "count": 2,
+      "examples": [
+        "tuy nhiên không phải lúc nào bạn cũng có thể tận hưởng một lần về một tâm hồn."
+      ]
+    },
+    {
+      "phrase": "một ngày qua tôi căm thù thiền người đàn ông và đàn ông thích làm việc nhìn mẹ gái nhìn",
+      "count": 1,
+      "examples": [
+        "một ngày qua tôi căm thù thiền người đàn ông và đàn ông thích làm việc nhìn mẹ gái nhìn."
+      ]
+    },
+    {
+      "phrase": "nhiều người tham gia đáp trả đũng các loại trang web chất lượng tăng trưởng",
+      "count": 1,
+      "examples": [
+        "nhiều người tham gia đáp trả đũng các loại trang web chất lượng tăng trưởng."
+      ]
+    },
+    {
+      "phrase": "dự án đã được triển khai từ đầu năm cuối tuần qua và từ đó mới được truy cập",
+      "count": 1,
+      "examples": [
+        "dự án đã được triển khai từ đầu năm cuối tuần qua và từ đó mới được truy cập."
+      ]
+    },
+    {
+      "phrase": "đôi khi tôi thấy một người đàn ông vươn lên tù yên để mời bà",
+      "count": 1,
+      "examples": [
+        "đôi khi tôi thấy một người đàn ông vươn lên tù yên để mời bà."
+      ]
+    },
+    {
+      "phrase": "đây là một trong những biểu hiện của thực tế tại trung quốc",
+      "count": 1,
+      "examples": [
+        "đây là một trong những biểu hiện của thực tế tại trung quốc."
+      ]
+    },
+    {
+      "phrase": "nhiều người còn đặt câu hỏi và thần tượng để xin lỗi và hưởng thụ",
+      "count": 1,
+      "examples": [
+        "nhiều người còn đặt câu hỏi và thần tượng để xin lỗi và hưởng thụ."
+      ]
+    },
+    {
+      "phrase": "những bức ảnh chụp ảnh tình cảm với những người đàn bà xã đã đoàn kết trống chiến tranh",
+      "count": 1,
+      "examples": [
+        "những bức ảnh chụp ảnh tình cảm với những người đàn bà xã đã đoàn kết trống chiến tranh."
+      ]
+    },
+    {
+      "phrase": "bây giờ tôi đã làm đơn vị chủ động của mình",
+      "count": 1,
+      "examples": [
+        "bây giờ tôi đã làm đơn vị chủ động của mình."
+      ]
+    },
+    {
+      "phrase": "đó là một trong những hoạt động thiên nhiên của anh",
+      "count": 1,
+      "examples": [
+        "đó là một trong những hoạt động thiên nhiên của anh."
+      ]
+    },
+    {
+      "phrase": "nói về số số lái xe buýt ra các tài liệu nhận xét tới",
+      "count": 1,
+      "examples": [
+        "nói về số số lái xe buýt ra các tài liệu nhận xét tới."
+      ]
+    },
+    {
+      "phrase": "nho",
+      "count": 1,
+      "examples": [
+        "nho."
+      ]
+    },
+    {
+      "phrase": "điều này đã đồng nghĩa với những cầu thủ từ trường đầu tiên trong cuộc sống",
+      "count": 1,
+      "examples": [
+        "điều này đã đồng nghĩa với những cầu thủ từ trường đầu tiên trong cuộc sống."
+      ]
+    },
+    {
+      "phrase": "đến lúc đầu năm một khá mạnh các em thì đã thiệt mạng",
+      "count": 1,
+      "examples": [
+        "đến lúc đầu năm một khá mạnh các em thì đã thiệt mạng."
+      ]
+    },
+    {
+      "phrase": "nhiều người bình tĩnh thì thông tin về tính cách thông tin về tính cách",
+      "count": 1,
+      "examples": [
+        "nhiều người bình tĩnh thì thông tin về tính cách thông tin về tính cách."
+      ]
+    },
+    {
+      "phrase": "nhiều doanh nghiệp đã tập trung vào sân đấu thủ đà nẵng",
+      "count": 1,
+      "examples": [
+        "nhiều doanh nghiệp đã tập trung vào sân đấu thủ đà nẵng."
+      ]
+    },
+    {
+      "phrase": "để cố thủ anh không thương mình",
+      "count": 1,
+      "examples": [
+        "để cố thủ anh không thương mình."
+      ]
+    },
+    {
+      "phrase": "đừng ngại nói chuyện tôi ngại đi nhanh chóng",
+      "count": 1,
+      "examples": [
+        "đừng ngại nói chuyện tôi ngại đi nhanh chóng."
+      ]
+    },
+    {
+      "phrase": "đó cũng là lý do vì sao nếu bạn thực hiện nhiều cách đam mê",
+      "count": 1,
+      "examples": [
+        "đó cũng là lý do vì sao nếu bạn thực hiện nhiều cách đam mê."
+      ]
+    },
+    {
+      "phrase": "nhiều người bảo vệ tên xếp hàng xếp hàng chờ xem nhẹ",
+      "count": 1,
+      "examples": [
+        "nhiều người bảo vệ tên xếp hàng xếp hàng chờ xem nhẹ."
+      ]
+    },
+    {
+      "phrase": "nhiều người bảo vệ tội nghiệp về tội nghiệp quốc tế thời gian qua",
+      "count": 1,
+      "examples": [
+        "nhiều người bảo vệ tội nghiệp về tội nghiệp quốc tế thời gian qua."
+      ]
+    },
+    {
+      "phrase": "ééééééé",
+      "count": 1,
+      "examples": [
+        "ééééééé."
+      ]
+    },
+    {
+      "phrase": "đó là lý do vì sao nếu bạn truyền thông qua đời thì ít nhất",
+      "count": 1,
+      "examples": [
+        "đó là lý do vì sao nếu bạn truyền thông qua đời thì ít nhất."
+      ]
+    },
+    {
+      "phrase": "mình muốn đoán về sự sâu sắc của anh một cách sâu sắc",
+      "count": 1,
+      "examples": [
+        "mình muốn đoán về sự sâu sắc của anh một cách sâu sắc."
+      ]
+    },
+    {
+      "phrase": "đây là một trong những hoạt động cổ tích cổ tích cổng đại học",
+      "count": 1,
+      "examples": [
+        "đây là một trong những hoạt động cổ tích cổ tích cổng đại học."
+      ]
+    },
+    {
+      "phrase": "đôi mắt thì mỉm vươn lên ngay cả khi ngồi xa lạc",
+      "count": 1,
+      "examples": [
+        "đôi mắt thì mỉm vươn lên ngay cả khi ngồi xa lạc."
+      ]
+    },
+    {
+      "phrase": "đến khi anh đi về đời thì anh lại muốn thấy mình",
+      "count": 1,
+      "examples": [
+        "đến khi anh đi về đời thì anh lại muốn thấy mình."
+      ]
+    },
+    {
+      "phrase": "tuy nhiên không phải lúc nào bạn cũng đừng quá trình khám phá hoặc thiết kế nhau",
+      "count": 1,
+      "examples": [
+        "tuy nhiên không phải lúc nào bạn cũng đừng quá trình khám phá hoặc thiết kế nhau."
+      ]
+    },
+    {
+      "phrase": "từ đó tôi có thể kiếm theo hướng ngay cả ngày",
+      "count": 1,
+      "examples": [
+        "từ đó tôi có thể kiếm theo hướng ngay cả ngày."
+      ]
+    },
+    {
+      "phrase": "đó là lúc đầu năm cuối cùng các em trẻ tham gia chờ đợi tài trợ chở nghề",
+      "count": 1,
+      "examples": [
+        "đó là lúc đầu năm cuối cùng các em trẻ tham gia chờ đợi tài trợ chở nghề."
+      ]
+    },
+    {
+      "phrase": "từ đầu đến cuối cấp trí thì thị trường cũng phải xử lý về tính cách",
+      "count": 1,
+      "examples": [
+        "từ đầu đến cuối cấp trí thì thị trường cũng phải xử lý về tính cách."
+      ]
+    },
+    {
+      "phrase": "nếu muốn ngăn chặn sự thiệt thì tôi cần tìm thiệt",
+      "count": 1,
+      "examples": [
+        "nếu muốn ngăn chặn sự thiệt thì tôi cần tìm thiệt."
+      ]
+    },
+    {
+      "phrase": "nghèo ngô",
+      "count": 1,
+      "examples": [
+        "nghèo ngô."
+      ]
+    },
+    {
+      "phrase": "ngay vào thể dục thật ngắn ngủi",
+      "count": 1,
+      "examples": [
+        "ngay vào thể dục thật ngắn ngủi."
+      ]
+    },
+    {
+      "phrase": "té",
+      "count": 1,
+      "examples": [
+        "té."
+      ]
+    },
+    {
+      "phrase": "từ đầu đến cuối những tỉa pháp có thể thông qua các dịch vụ tổng thống",
+      "count": 1,
+      "examples": [
+        "từ đầu đến cuối những tỉa pháp có thể thông qua các dịch vụ tổng thống."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến nhiều người tỏ ra hoàn toàn xa xỉ thì khó khăn",
+      "count": 1,
+      "examples": [
+        "điều này đã khiến nhiều người tỏ ra hoàn toàn xa xỉ thì khó khăn."
+      ]
+    },
+    {
+      "phrase": "đó là lúc mọi cảm giác này đều được tính đến tinh thần kết thúc",
+      "count": 1,
+      "examples": [
+        "đó là lúc mọi cảm giác này đều được tính đến tinh thần kết thúc."
+      ]
+    },
+    {
+      "phrase": "đây là một trong những truyền thống nhất việt nam đối với nhiều người",
+      "count": 1,
+      "examples": [
+        "đây là một trong những truyền thống nhất việt nam đối với nhiều người."
+      ]
+    },
+    {
+      "phrase": "đây là một trong những thay thế chất lượng tăng trưởng rất nhanh",
+      "count": 1,
+      "examples": [
+        "đây là một trong những thay thế chất lượng tăng trưởng rất nhanh."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến cho bạn hãy mong đợi những thông tin lạnh lùng tới",
+      "count": 1,
+      "examples": [
+        "điều này đã khiến cho bạn hãy mong đợi những thông tin lạnh lùng tới."
+      ]
+    },
+    {
+      "phrase": "nhiều doanh nghiệp đã chạy thẳng đồng tháp hàng chờ đợi đáp",
+      "count": 1,
+      "examples": [
+        "nhiều doanh nghiệp đã chạy thẳng đồng tháp hàng chờ đợi đáp."
+      ]
+    },
+    {
+      "phrase": "đó là lý do vì sao nếu bạn thực hiện những điều này đáng lẽ",
+      "count": 1,
+      "examples": [
+        "đó là lý do vì sao nếu bạn thực hiện những điều này đáng lẽ."
+      ]
+    },
+    {
+      "phrase": "nhiều người bảo vệ tội nghiệp trong buồng thả lỏng để thần tượng",
+      "count": 1,
+      "examples": [
+        "nhiều người bảo vệ tội nghiệp trong buồng thả lỏng để thần tượng."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến cho nhà máy bay rất buồn và không thấy thua trấn của taxi",
+      "count": 1,
+      "examples": [
+        "điều này đã khiến cho nhà máy bay rất buồn và không thấy thua trấn của taxi."
+      ]
+    },
+    {
+      "phrase": "đây là một trong những truyền thống quan trọng nhất thế giới",
+      "count": 1,
+      "examples": [
+        "đây là một trong những truyền thống quan trọng nhất thế giới."
+      ]
+    },
+    {
+      "phrase": "điều này thu thập n tác động từ các tàu ngầm cho đến khi tàu đang thiệt mạng",
+      "count": 1,
+      "examples": [
+        "điều này thu thập n tác động từ các tàu ngầm cho đến khi tàu đang thiệt mạng."
+      ]
+    },
+    {
+      "phrase": "điều này thường xuyên tránh giá tính của các xe buýt nằm trong sách đạo",
+      "count": 1,
+      "examples": [
+        "điều này thường xuyên tránh giá tính của các xe buýt nằm trong sách đạo."
+      ]
+    },
+    {
+      "phrase": "á ờ ờ ờ ờ",
+      "count": 1,
+      "examples": [
+        "á ờ ờ ờ ờ."
+      ]
+    },
+    {
+      "phrase": "nhiều lần nhờ ông bố chồng tập trung tập cận tỷ số vào đồng tâm",
+      "count": 1,
+      "examples": [
+        "nhiều lần nhờ ông bố chồng tập trung tập cận tỷ số vào đồng tâm."
+      ]
+    },
+    {
+      "phrase": "tình tiết lạ trong một đoạn thực hiện thì không phải lạ tình",
+      "count": 1,
+      "examples": [
+        "tình tiết lạ trong một đoạn thực hiện thì không phải lạ tình."
+      ]
+    },
+    {
+      "phrase": "điều này đã khiến nhiều người mơ hồn và thoát nước đau đớn",
+      "count": 1,
+      "examples": [
+        "điều này đã khiến nhiều người mơ hồn và thoát nước đau đớn."
+      ]
+    },
+    {
+      "phrase": "đây là một trong những điểm thi mới cho thấy những truyền thuyền thực nhất tại bắc kinh",
+      "count": 1,
+      "examples": [
+        "đây là một trong những điểm thi mới cho thấy những truyền thuyền thực nhất tại bắc kinh."
+      ]
+    },
+    {
+      "phrase": "nếu muốn mua thêm thì nên mua trên cũng thông minh",
+      "count": 1,
+      "examples": [
+        "nếu muốn mua thêm thì nên mua trên cũng thông minh."
+      ]
+    },
+    {
+      "phrase": "một ngày trong thời điểm khủng hoảng châu tây lào ở phía nam tại đông nam á",
+      "count": 1,
+      "examples": [
+        "một ngày trong thời điểm khủng hoảng châu tây lào ở phía nam tại đông nam á."
+      ]
+    },
+    {
+      "phrase": "nhiều tỉnh quảng ninh thành bò tò mò tìm hiểu rằng thị trường không thể tạo ra nguyên nhân",
+      "count": 1,
+      "examples": [
+        "nhiều tỉnh quảng ninh thành bò tò mò tìm hiểu rằng thị trường không thể tạo ra nguyên nhân."
+      ]
+    },
+    {
+      "phrase": "đó là lúc có dạng đàm phán có thể xảy ra sự tính toán và tính toán của xe",
+      "count": 1,
+      "examples": [
+        "đó là lúc có dạng đàm phán có thể xảy ra sự tính toán và tính toán của xe."
+      ]
+    },
+    {
+      "phrase": "đó là một trong những hoạt động quan trọng nhất",
+      "count": 1,
+      "examples": [
+        "đó là một trong những hoạt động quan trọng nhất."
+      ]
+    },
+    {
+      "phrase": "dòng tình hình trong tình hình",
+      "count": 1,
+      "examples": [
+        "dòng tình hình trong tình hình."
+      ]
+    },
+    {
+      "phrase": "nhóc nhóc",
+      "count": 1,
+      "examples": [
+        "nhóc nhóc."
+      ]
+    },
+    {
+      "phrase": "đến khi anh ấy có thể thấy mình là một người lính",
+      "count": 1,
+      "examples": [
+        "đến khi anh ấy có thể thấy mình là một người lính."
+      ]
+    }
+  ]
+}

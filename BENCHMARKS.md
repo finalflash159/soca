@@ -1,6 +1,6 @@
 # SoCa — Benchmarks
 
-> Last updated: 2026-06-01. All measurements are from real local runs;
+> Last updated: 2026-06-03. All measurements are from real local runs;
 > raw output JSON lives under `eval/results/` (gitignored).
 
 ## Common hardware
@@ -102,9 +102,11 @@ changing the default ASR model.
 - `phowhisper_medium` loads and runs, but is already slower than real-time with
   the current decoder path. Treat it as a quality-ceiling probe until KV-cache,
   merged decoder, quantized decoder, or a different runtime is implemented.
-- Do not rebuild BoH/thresholds for larger ASR models until one is selected for
-  the production path; the existing robustness artifacts remain tied to
-  `phowhisper_tiny`.
+- Confidence thresholds for `phowhisper_base` and `phowhisper_small` have now
+  been recalibrated for the current voice-loop candidates.
+- `phowhisper_base` and `phowhisper_small` now both have model-specific BoH
+  artifacts, so the current voice-loop ASR candidates no longer depend on the
+  tiny BoH profile.
 
 **Caveats**
 
@@ -113,6 +115,163 @@ changing the default ASR model.
   quality; they only show runtime feasibility and approximate latency.
 - Larger PhoWhisper models may change hallucination behavior, so RobustASR
   thresholds and BoH must be recalibrated before switching production ASR.
+
+---
+
+## D1.2 — ASR Confidence Guard Recalibration (PhoWhisper base/small)
+
+**Purpose:** remove the old `confidence=model_mismatch:profile=phowhisper_tiny`
+diagnostic in runtime profiles that now use `phowhisper_base` and
+`phowhisper_small`.
+
+**Setup**
+
+| Field            | Value                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Runtime          | `local.calibrate_asr_confidence` + `soca.asr.VietnameseASR`            |
+| Speech data      | 200 FLEURS Vietnamese samples (`google/fleurs`, `vi_vn`, `test`)      |
+| Noise data       | first 50 rows from `data/noise_for_boh/manifest.jsonl`                |
+| Providers        | `CoreMLExecutionProvider`, `CPUExecutionProvider` fallback            |
+| Decode           | Greedy, no KV cache, `max_new_tokens=128`                             |
+| Command          | `uv run python -m local.calibrate_asr_confidence --model phowhisper_base --model phowhisper_small --n-speech 200 --n-noise 50 --providers auto` |
+| Run date         | 2026-06-03                                                            |
+| Raw outputs      | `eval/results/asr_confidence_calibration_phowhisper_{base,small}.json` (gitignored) |
+| Runtime artifact | `data/asr/threshold_calibration.json` (gitignored local artifact)     |
+
+**Results**
+
+| Model              | Speech ASR rows | Noise ASR rows | min avg_logprob | max compression | Rule                                      |
+| ------------------ | --------------: | -------------: | --------------: | --------------: | ----------------------------------------- |
+| `phowhisper_base`  |             200 |              1 |          -0.598 |             2.4 | midpoint between noise max and speech p01 |
+| `phowhisper_small` |             200 |              1 |          -0.260 |             2.4 | midpoint between noise max and speech p01 |
+
+**Runtime decision**
+
+- `RobustASR` now loads confidence thresholds from
+  `data/asr/threshold_calibration.json` by exact ASR `model_key`.
+- If a matching calibration is missing, the confidence guard is skipped with
+  `confidence=skipped:missing_for_model:<model>`. This is intentional and safer
+  than applying a tiny calibration to base/small.
+- Expected guard status after this run:
+  - `phowhisper_base`: `confidence=enabled:phowhisper_base`
+  - `phowhisper_small`: `confidence=enabled:phowhisper_small`
+- BoH is separate from confidence calibration. After D1.3 and D1.4, expected
+  runtime guard status is:
+  - `phowhisper_base`: `BoH=loaded:phowhisper_base`
+  - `phowhisper_small`: `BoH=loaded:phowhisper_small`
+
+---
+
+## D1.3 — ASR BoH Build (PhoWhisper base)
+
+**Purpose:** build a model-specific Bag-of-Hallucinations artifact for
+`phowhisper_base`. The tiny BoH cannot be safely reused because hallucination
+phrases are model-specific.
+
+**Setup**
+
+| Field            | Value                                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Runtime          | `local.build_boh` + `soca.asr.VietnameseASR`                           |
+| Model            | `huuquyet/PhoWhisper-base` (74M params)                                |
+| Noise data       | 800 rows from `data/noise_for_boh/manifest.jsonl`                      |
+| Providers        | `CoreMLExecutionProvider`, `CPUExecutionProvider` fallback             |
+| Decode           | Greedy, no KV cache, `max_new_tokens=128`                              |
+| Selection rule   | `count >= 2` and normalized phrase length `>= 5` chars                 |
+| Run date         | 2026-06-03                                                            |
+| Runtime artifact | `data/asr/boh/phowhisper_base_vi_boh_v1.json` (gitignored local artifact) |
+
+**Results**
+
+| Metric            | Value                 |
+| ----------------- | --------------------- |
+| Noise samples     | 800                   |
+| Non-empty outputs | 800/800 (100.00%)     |
+| BoH candidates    | 56                    |
+| Errors            | 0                     |
+| Elapsed           | 1124 s (18 m 44 s)    |
+
+**Top BoH candidates**
+
+| Rank | Count | Phrase                                                                        |
+| ---: | ----: | ----------------------------------------------------------------------------- |
+|    1 |   100 | tuy nhiên khi thiên tai mục không thể thiên tai nạn được                      |
+|    2 |    32 | đây là một trong những thứ mà trẻ em không thể thiếu                          |
+|    3 |    22 | đây là một trong những thứ mà trẻ em không thể thiếu được                     |
+|    4 |    13 | đây là một trong những thông tin trong việc thiết bị chung                    |
+|    5 |    12 | đây là một trong những thứ trưởng quan trọng nhất trong trận đấu              |
+|    6 |    11 | tuy nhiên không phải là điều mà trước mắt                                     |
+|    7 |     9 | điều này đã tạo nên sự nghiệp rất quan trọng                                  |
+|    8 |     9 | các thiết bị chất lượng từ thiện tại nhà thi đấu tranh tính trên thế giới     |
+|    9 |     9 | đây là một trong những thứ trưởng quan trọng                                  |
+|   10 |     8 | các thiết bị chất lượng tăng trưởng thành tăng trưởng thành tăng trưởng thành |
+
+**Runtime decision**
+
+- `phowhisper_base` now has both calibration layers available:
+  - `confidence=enabled:phowhisper_base`
+  - `BoH=loaded:phowhisper_base`
+- The 100% non-empty rate on non-speech confirms that `phowhisper_base` still
+  hallucinates aggressively without RobustASR guards.
+- `phowhisper_small` has its own BoH artifact in D1.4. Do not reuse the base
+  artifact for small, even if some repeated phrases look similar.
+
+---
+
+## D1.4 — ASR BoH Build (PhoWhisper small)
+
+**Purpose:** build a model-specific Bag-of-Hallucinations artifact for
+`phowhisper_small`, completing the RobustASR calibration pair for the current
+base/quality ASR candidates.
+
+**Setup**
+
+| Field            | Value                                                                  |
+| ---------------- | ---------------------------------------------------------------------- |
+| Runtime          | `local.build_boh` + `soca.asr.VietnameseASR`                            |
+| Model            | `huuquyet/PhoWhisper-small` (244M params)                               |
+| Noise data       | 800 rows from `data/noise_for_boh/manifest.jsonl`                       |
+| Providers        | `CoreMLExecutionProvider`, `CPUExecutionProvider` fallback              |
+| Decode           | Greedy, no KV cache, `max_new_tokens=128`                               |
+| Selection rule   | `count >= 2` and normalized phrase length `>= 5` chars                  |
+| Run date         | 2026-06-03                                                             |
+| Runtime artifact | `data/asr/boh/phowhisper_small_vi_boh_v1.json` (gitignored local artifact) |
+
+**Results**
+
+| Metric            | Value                 |
+| ----------------- | --------------------- |
+| Noise samples     | 800                   |
+| Non-empty outputs | 800/800 (100.00%)     |
+| BoH candidates    | 37                    |
+| Errors            | 0                     |
+| Elapsed           | 2831 s (47 m 10 s)    |
+
+**Top BoH candidates**
+
+| Rank | Count | Phrase                                                               |
+| ---: | ----: | -------------------------------------------------------------------- |
+|    1 |   146 | tuy nhiên không phải ai cũng có thể thực hiện điều này               |
+|    2 |     9 | đó là một cái nhìn rất mạnh lên từng phút                            |
+|    3 |     8 | đó là tin nhắn của anh chị nhiều khi tưởng chừng đó                  |
+|    4 |     6 | một trong những thay đổi lĩnh vực sân khấu của trẻ là giải đấu chung |
+|    5 |     5 | chúng                                                                |
+|    6 |     5 | tuy nhiên không phải ai cũng có thể tham gia các cuộc thi đấu thứ hai |
+|    7 |     5 | điều này đã khiến nhiều người mơ ước đối với nghề đam mê             |
+|    8 |     5 | tuy nhiên không phải lúc nào bạn cũng có thể thay tóa những vết nứt  |
+|    9 |     4 | đó là một cái nhìn rất mạnh lên từng hồi sinh                        |
+|   10 |     3 | điều này đã khiến nhiều người bình luận vì thế đế chất lượng thấp    |
+
+**Runtime decision**
+
+- `phowhisper_small` now has both calibration layers available:
+  - `confidence=enabled:phowhisper_small`
+  - `BoH=loaded:phowhisper_small`
+- The 100% non-empty rate on non-speech confirms that the larger small model
+  also hallucinates aggressively on silence/noise without RobustASR guards.
+- Raw non-speech outputs may include one-character artifacts such as `n` or `a`.
+  Those are excluded from the BoH artifact by the phrase-length selection rule;
+  short garbage is handled by the existing text heuristics instead.
 
 ---
 

@@ -6,10 +6,13 @@ pipeline behavior and rejection ordering with small mocks.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import numpy as np
 
 from soca.asr.boh import BoHMatch
-from soca.asr.robust_asr import RobustASR
+from soca.asr.robust_asr import RobustASR, load_confidence_guard_calibration
 from soca.asr.vad import VADResult
 from soca.asr.whisper_onnx import ASRResult
 
@@ -211,3 +214,74 @@ def test_matching_confidence_profile_keeps_guard_enabled_for_custom_model():
     assert result.text == ""
     assert result.rejection_reason == "low_confidence:-0.90"
     assert result.confidence_guard_status == "enabled:phowhisper_base"
+
+
+def test_loads_model_specific_confidence_calibration(tmp_path: Path):
+    path = tmp_path / "threshold_calibration.json"
+    path.write_text(
+        json.dumps(
+            {
+                "asr_confidence_by_model": {
+                    "phowhisper_base": {
+                        "model_key": "phowhisper_base",
+                        "recommended_thresholds": {
+                            "min_avg_logprob": -0.5,
+                            "max_compression_ratio": 2.7,
+                        },
+                        "created_at_utc": "2026-06-03T00:00:00+00:00",
+                    }
+                },
+                "asr_confidence": {
+                    "model_key": "phowhisper_tiny",
+                    "recommended_thresholds": {
+                        "min_avg_logprob": -0.725,
+                        "max_compression_ratio": 2.4,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    calibration = load_confidence_guard_calibration("phowhisper_base", path)
+
+    assert calibration is not None
+    assert calibration.model_key == "phowhisper_base"
+    assert calibration.min_avg_logprob == -0.5
+    assert calibration.max_compression_ratio == 2.7
+
+
+def test_missing_model_specific_confidence_calibration_returns_none(tmp_path: Path):
+    path = tmp_path / "threshold_calibration.json"
+    path.write_text(
+        json.dumps(
+            {
+                "asr_confidence": {
+                    "model_key": "phowhisper_tiny",
+                    "recommended_thresholds": {
+                        "min_avg_logprob": -0.725,
+                        "max_compression_ratio": 2.4,
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_confidence_guard_calibration("phowhisper_small", path) is None
+
+
+def test_explicit_missing_confidence_calibration_disables_guard():
+    pipeline = RobustASR(
+        asr=MockASR("xin chào thế giới", avg_logprob=-0.90, model_key="phowhisper_base"),
+        vad=MockVAD(),
+        boh=MockBoH("irrelevant"),
+        min_avg_logprob=-0.25,
+        confidence_guard_skip_reason="skipped:missing_for_model:phowhisper_base",
+    )
+
+    result = pipeline.transcribe(DUMMY_AUDIO)
+
+    assert result.text == "xin chào thế giới"
+    assert result.rejection_reason == ""
+    assert result.confidence_guard_status == "skipped:missing_for_model:phowhisper_base"

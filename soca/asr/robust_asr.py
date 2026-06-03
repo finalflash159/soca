@@ -12,9 +12,11 @@ the reason for graceful "could you repeat?" UX.
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -28,6 +30,99 @@ from .hallucination_heuristics import (
 from .registry import DEFAULT_ASR_MODEL_KEY
 from .vad import SpeechDetector, VADResult
 from .whisper_onnx import ASRResult, VietnameseASR
+
+ASR_DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "asr"
+CONFIDENCE_CALIBRATION_PATH = ASR_DATA_DIR / "threshold_calibration.json"
+DEFAULT_MIN_AVG_LOGPROB = -0.725
+DEFAULT_MAX_COMPRESSION_RATIO = 2.4
+
+
+@dataclass(frozen=True)
+class ConfidenceGuardCalibration:
+    """Model-specific confidence guard thresholds loaded from calibration data."""
+
+    model_key: str
+    min_avg_logprob: float
+    max_compression_ratio: float
+    source_path: Path
+    created_at_utc: str = ""
+
+
+def _payload_model_key(payload: dict[str, Any]) -> str | None:
+    value = payload.get("model_key")
+    if value:
+        return str(value)
+
+    # Backward compatibility for older single-model payloads that only stored
+    # runtime metadata. This keeps the loader conservative: it only infers a
+    # model when the known model key appears in the model_dir path.
+    model_dir = (
+        payload.get("runtime_identity", {})
+        .get("asr", {})
+        .get("model_dir", "")
+    )
+    model_dir = str(model_dir)
+    for model_key in (
+        "phowhisper_tiny",
+        "phowhisper_base",
+        "phowhisper_small",
+        "phowhisper_medium",
+    ):
+        if model_key.replace("_", "-") in model_dir or model_key in model_dir:
+            return model_key
+    return None
+
+
+def load_confidence_guard_calibration(
+    model_key: str,
+    path: Path = CONFIDENCE_CALIBRATION_PATH,
+) -> ConfidenceGuardCalibration | None:
+    """Load calibrated confidence thresholds for one ASR model.
+
+    The canonical format is:
+
+        {
+          "asr_confidence_by_model": {
+            "phowhisper_base": {
+              "model_key": "phowhisper_base",
+              "recommended_thresholds": {...}
+            }
+          }
+        }
+
+    The older `asr_confidence` singleton is only accepted when its runtime
+    identity matches the requested model.
+    """
+    if not path.exists():
+        return None
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    by_model = data.get("asr_confidence_by_model", {})
+    candidates: list[dict[str, Any]] = []
+    if isinstance(by_model, dict) and isinstance(by_model.get(model_key), dict):
+        candidates.append(by_model[model_key])
+
+    singleton = data.get("asr_confidence")
+    if isinstance(singleton, dict):
+        candidates.append(singleton)
+
+    for payload in candidates:
+        if _payload_model_key(payload) != model_key:
+            continue
+
+        thresholds = payload.get("recommended_thresholds", {})
+        try:
+            return ConfidenceGuardCalibration(
+                model_key=model_key,
+                min_avg_logprob=float(thresholds["min_avg_logprob"]),
+                max_compression_ratio=float(thresholds["max_compression_ratio"]),
+                source_path=path,
+                created_at_utc=str(payload.get("created_at_utc", "")),
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    return None
 
 
 @dataclass(frozen=True)
@@ -85,9 +180,10 @@ class RobustASR:
         # Pass confidence_profile_model_key="<model_key>" after recalibrating
         # thresholds for another ASR model. Pass None only for explicit custom
         # thresholds whose model identity is tracked outside this class.
-        min_avg_logprob: float = -0.725,
-        max_compression_ratio: float = 2.4,
+        min_avg_logprob: float = DEFAULT_MIN_AVG_LOGPROB,
+        max_compression_ratio: float = DEFAULT_MAX_COMPRESSION_RATIO,
         confidence_profile_model_key: str | None = DEFAULT_ASR_MODEL_KEY,
+        confidence_guard_skip_reason: str | None = None,
     ):
         self.asr = asr if asr is not None else VietnameseASR(num_threads=4)
         self.vad = vad if vad is not None else SpeechDetector()
@@ -96,10 +192,14 @@ class RobustASR:
         self.min_avg_logprob = min_avg_logprob
         self.max_compression_ratio = max_compression_ratio
         self.confidence_profile_model_key = confidence_profile_model_key
-        (
-            self.use_confidence_guard,
-            self.confidence_guard_status,
-        ) = self._resolve_confidence_guard_status(confidence_profile_model_key)
+        if confidence_guard_skip_reason:
+            self.use_confidence_guard = False
+            self.confidence_guard_status = confidence_guard_skip_reason
+        else:
+            (
+                self.use_confidence_guard,
+                self.confidence_guard_status,
+            ) = self._resolve_confidence_guard_status(confidence_profile_model_key)
         self.boh, self.boh_status = self._resolve_boh(boh)
 
     def _resolve_confidence_guard_status(

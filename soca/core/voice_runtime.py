@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from soca.asr import ASR_MODEL_REGISTRY, SpeechDetector
-from soca.asr.robust_asr import RobustASR
+from soca.asr.robust_asr import RobustASR, load_confidence_guard_calibration
 from soca.asr.whisper_onnx import VietnameseASR
 from soca.core.pipeline import VoicePipeline
 from soca.core.profiles import get_voice_runtime_profile
@@ -152,7 +152,21 @@ def build_voice_runtime(
     session_memory: SessionMemory | None = None,
 ) -> VoiceRuntimeBundle:
     detector = SpeechDetector()
-    asr = RobustASR(asr=VietnameseASR(model_key=config.asr_model), vad=detector)
+    confidence_calibration = load_confidence_guard_calibration(config.asr_model)
+    if confidence_calibration is None:
+        asr = RobustASR(
+            asr=VietnameseASR(model_key=config.asr_model),
+            vad=detector,
+            confidence_guard_skip_reason=f"skipped:missing_for_model:{config.asr_model}",
+        )
+    else:
+        asr = RobustASR(
+            asr=VietnameseASR(model_key=config.asr_model),
+            vad=detector,
+            min_avg_logprob=confidence_calibration.min_avg_logprob,
+            max_compression_ratio=confidence_calibration.max_compression_ratio,
+            confidence_profile_model_key=confidence_calibration.model_key,
+        )
     llm = LocalLlamaCppLLM(
         model_key=config.llm_model,
         n_threads=config.llm_threads,

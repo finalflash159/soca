@@ -19,11 +19,11 @@ ONNX files, decoder variant, greedy decode, max_new_tokens, providers, and
 VAD parameters. Changing any of those can shift the metric distribution.
 
 Outputs:
-    - eval/results/asr_confidence_calibration.json
-      Full per-sample audit log + recommended thresholds.
+    - eval/results/asr_confidence_calibration_{model_key}.json
+      Full per-sample audit log + recommended thresholds for each model.
 
     - data/asr/threshold_calibration.json
-      Merged calibration payload under the `asr_confidence` key.
+      Merged calibration payload under `asr_confidence_by_model`.
 
 Usage:
     # one-time prerequisites
@@ -31,10 +31,10 @@ Usage:
     uv run python -m local.collect_noise
 
     # smoke run
-    uv run python -m local.calibrate_asr_confidence --n-speech 5 --n-noise 5 --providers cpu
+    uv run python -m local.calibrate_asr_confidence --model phowhisper_base --n-speech 5 --n-noise 5 --providers cpu
 
     # main local run on Mac
-    uv run python -m local.calibrate_asr_confidence --n-speech 200 --n-noise 50
+    uv run python -m local.calibrate_asr_confidence --model phowhisper_base --model phowhisper_small --n-speech 200 --n-noise 50
 """
 
 from __future__ import annotations
@@ -57,6 +57,7 @@ from rich.table import Table
 from local import config as cfg
 from soca.asr import SpeechDetector, VietnameseASR
 from soca.asr.hallucination_heuristics import compression_ratio
+from soca.asr.registry import DEFAULT_ASR_MODEL_KEY
 
 console = Console()
 
@@ -365,7 +366,12 @@ def print_metric_table(stats: list[dict[str, Any]]) -> None:
     console.print(table)
 
 
-def merge_threshold_file(asr_confidence_payload: dict[str, Any]) -> None:
+def merge_threshold_file(
+    model_key: str,
+    asr_confidence_payload: dict[str, Any],
+    *,
+    update_legacy_singleton: bool = False,
+) -> None:
     """Merge ASR-confidence calibration into the shared threshold JSON."""
     cfg.ASR_DATA_DIR.mkdir(parents=True, exist_ok=True)
     if cfg.THRESHOLD_CALIBRATION_PATH.exists():
@@ -373,61 +379,48 @@ def merge_threshold_file(asr_confidence_payload: dict[str, Any]) -> None:
     else:
         payload = {}
 
-    payload["asr_confidence"] = asr_confidence_payload
+    by_model = payload.setdefault("asr_confidence_by_model", {})
+    if not isinstance(by_model, dict):
+        by_model = {}
+        payload["asr_confidence_by_model"] = by_model
+    by_model[model_key] = asr_confidence_payload
+
+    # Keep the old singleton key only as a compatibility alias. The runtime
+    # loader accepts it only when its model identity matches the requested model.
+    if update_legacy_singleton:
+        payload["asr_confidence"] = asr_confidence_payload
+
     cfg.THRESHOLD_CALIBRATION_PATH.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
 
-@click.command()
-@click.option("--n-speech", default=200, type=int, help="Number of FLEURS speech samples.")
-@click.option("--n-noise", default=50, type=int, help="Number of non-speech samples.")
-@click.option(
-    "--providers",
-    default="auto",
-    type=click.Choice(["auto", "cpu"]),
-    help="auto = CoreML + CPU fallback on Mac; cpu = force CPU.",
-)
-@click.option(
-    "--max-new-tokens",
-    default=cfg.MAX_NEW_TOKENS,
-    type=int,
-    help="PhoWhisper greedy decode cap. Must match runtime/eval settings.",
-)
-@click.option(
-    "--fallback-min-avg-logprob",
-    default=-0.25,
-    type=float,
-    help="Fallback when speech calibration cannot run.",
-)
-@click.option(
-    "--fallback-max-compression-ratio",
-    default=2.4,
-    type=float,
-    help="Fallback Whisper-style compression ratio threshold.",
-)
-def main(
+def calibrate_model(
+    *,
+    model_key: str,
     n_speech: int,
     n_noise: int,
-    providers: str,
+    provider_list: list[str],
     max_new_tokens: int,
     fallback_min_avg_logprob: float,
     fallback_max_compression_ratio: float,
-) -> None:
-    provider_list = resolve_providers(providers)
-    console.print(f"ONNX providers: {provider_list}")
-
+) -> dict[str, Any]:
     speech_items = load_speech_items(n_speech)
     noise_items = load_noise_items(n_noise)
     items = speech_items + noise_items
+    console.rule(f"Calibrating ASR confidence: {model_key}")
     console.print(
         f"Loaded [bold]{len(speech_items)}[/bold] speech + "
         f"[bold]{len(noise_items)}[/bold] noise samples"
     )
 
-    console.print("[bold]Loading ASR + VAD...[/bold]")
-    asr = VietnameseASR(num_threads=cfg.NUM_THREADS, providers=provider_list)
+    console.print(f"[bold]Loading ASR + VAD...[/bold] model={model_key}")
+    asr = VietnameseASR(
+        model_key=model_key,
+        num_threads=cfg.NUM_THREADS,
+        providers=provider_list,
+    )
     vad = SpeechDetector()
     runtime_identity = {
         "asr": asr.runtime_metadata(max_new_tokens=max_new_tokens),
@@ -493,6 +486,7 @@ def main(
 
     created_at = datetime.now(UTC).isoformat()
     calibration_payload = {
+        "model_key": model_key,
         "dataset": {
             "speech": f"{cfg.FLEURS_REPO}:{cfg.FLEURS_LANG}:{cfg.FLEURS_SPLIT}",
             "noise": "data/noise_for_boh manifest",
@@ -518,16 +512,82 @@ def main(
     }
 
     cfg.EVAL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = cfg.EVAL_RESULTS_DIR / "asr_confidence_calibration.json"
+    out_path = cfg.EVAL_RESULTS_DIR / f"asr_confidence_calibration_{model_key}.json"
     out_payload = {
         "metadata": calibration_payload,
         "rows": rows,
     }
     out_path.write_text(json.dumps(out_payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    merge_threshold_file(calibration_payload)
+    merge_threshold_file(
+        model_key,
+        calibration_payload,
+        update_legacy_singleton=(model_key == DEFAULT_ASR_MODEL_KEY),
+    )
 
     console.print(f"\n[green]✓ Saved raw calibration log -> {out_path}[/green]")
     console.print(f"[green]✓ Updated shared threshold file -> {cfg.THRESHOLD_CALIBRATION_PATH}[/green]")
+    return calibration_payload
+
+
+@click.command()
+@click.option(
+    "--model",
+    "model_keys",
+    multiple=True,
+    default=(DEFAULT_ASR_MODEL_KEY,),
+    type=click.Choice(list(cfg.MODEL_REGISTRY.keys())),
+    help="ASR model(s) to calibrate. Repeat flag for multi-model run.",
+)
+@click.option("--n-speech", default=200, type=int, help="Number of FLEURS speech samples.")
+@click.option("--n-noise", default=50, type=int, help="Number of non-speech samples.")
+@click.option(
+    "--providers",
+    default="auto",
+    type=click.Choice(["auto", "cpu"]),
+    help="auto = CoreML + CPU fallback on Mac; cpu = force CPU.",
+)
+@click.option(
+    "--max-new-tokens",
+    default=cfg.MAX_NEW_TOKENS,
+    type=int,
+    help="PhoWhisper greedy decode cap. Must match runtime/eval settings.",
+)
+@click.option(
+    "--fallback-min-avg-logprob",
+    default=-0.25,
+    type=float,
+    help="Fallback when speech calibration cannot run.",
+)
+@click.option(
+    "--fallback-max-compression-ratio",
+    default=2.4,
+    type=float,
+    help="Fallback Whisper-style compression ratio threshold.",
+)
+def main(
+    model_keys: tuple[str, ...],
+    n_speech: int,
+    n_noise: int,
+    providers: str,
+    max_new_tokens: int,
+    fallback_min_avg_logprob: float,
+    fallback_max_compression_ratio: float,
+) -> None:
+    provider_list = resolve_providers(providers)
+    console.print(f"ONNX providers: {provider_list}")
+
+    seen: set[str] = set()
+    selected_model_keys = [key for key in model_keys if not (key in seen or seen.add(key))]
+    for model_key in selected_model_keys:
+        calibrate_model(
+            model_key=model_key,
+            n_speech=n_speech,
+            n_noise=n_noise,
+            provider_list=provider_list,
+            max_new_tokens=max_new_tokens,
+            fallback_min_avg_logprob=fallback_min_avg_logprob,
+            fallback_max_compression_ratio=fallback_max_compression_ratio,
+        )
 
 
 if __name__ == "__main__":

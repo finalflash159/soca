@@ -24,7 +24,14 @@ benchmarks/raw/
 *.csv
 
 # Data artifacts
-data/
+data/*
+!data/asr/
+data/asr/*
+!data/asr/threshold_calibration.json
+!data/asr/boh/
+data/asr/boh/*
+!data/asr/boh/phowhisper_base_vi_boh_v1.json
+!data/asr/boh/phowhisper_small_vi_boh_v1.json
 
 # Notebook artifacts
 .ipynb_checkpoints/
