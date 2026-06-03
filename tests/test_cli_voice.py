@@ -11,14 +11,18 @@ def test_voice_command_delegates_to_app_voice_loop(monkeypatch) -> None:
     def fake_run_voice_loop(
         config,
         *,
+        no_speak_repairs: bool = False,
         no_speak_rejections: bool = False,
         press_enter_to_record: bool = False,
         warmup: bool = True,
+        show_usage: bool = False,
     ) -> int:
         captured["config"] = config
+        captured["no_speak_repairs"] = no_speak_repairs
         captured["no_speak_rejections"] = no_speak_rejections
         captured["press_enter_to_record"] = press_enter_to_record
         captured["warmup"] = warmup
+        captured["show_usage"] = show_usage
         return 0
 
     monkeypatch.setattr("soca.cli.run_voice_loop", fake_run_voice_loop)
@@ -37,7 +41,7 @@ def test_voice_command_delegates_to_app_voice_loop(monkeypatch) -> None:
             "SF",
             "--max-tokens",
             "96",
-            "--no-speak-rejections",
+            "--no-speak-repairs",
             "--press-enter-to-record",
             "--no-warmup",
             "--no-memory",
@@ -45,7 +49,7 @@ def test_voice_command_delegates_to_app_voice_loop(monkeypatch) -> None:
     )
 
     assert result.exit_code == 0, result.output
-    assert captured["no_speak_rejections"] is True
+    assert captured["no_speak_repairs"] is True
     assert captured["press_enter_to_record"] is True
     assert captured["warmup"] is False
 
@@ -59,12 +63,39 @@ def test_voice_command_delegates_to_app_voice_loop(monkeypatch) -> None:
     assert config.no_memory is True
 
 
+def test_voice_command_accepts_quick_profile_argument(monkeypatch) -> None:
+    captured = {}
+
+    def fake_run_voice_loop(
+        config,
+        *,
+        no_speak_repairs: bool = False,
+        no_speak_rejections: bool = False,
+        press_enter_to_record: bool = False,
+        warmup: bool = True,
+        show_usage: bool = False,
+    ) -> int:
+        captured["config"] = config
+        captured["warmup"] = warmup
+        return 0
+
+    monkeypatch.setattr("soca.cli.run_voice_loop", fake_run_voice_loop)
+
+    result = CliRunner().invoke(main, ["voice", "quality", "--no-warmup"])
+
+    assert result.exit_code == 0, result.output
+    assert captured["config"].profile_key == "quality"
+    assert captured["warmup"] is False
+
+
 def test_voice_command_shows_help() -> None:
     result = CliRunner().invoke(main, ["voice", "--help"])
 
     assert result.exit_code == 0
     assert "Run the interactive SoCa microphone voice loop" in result.output
-    assert "--profile" in result.output
-    assert "--tts-model" in result.output
+    assert "Quick form: soca voice [profile]" in result.output
+    assert "soca voice quality" in result.output
+    assert "--profile" not in result.output
+    assert "--tts-model" not in result.output
     assert "--press-enter-to-record" in result.output
     assert "--no-warmup" in result.output

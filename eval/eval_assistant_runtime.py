@@ -1,4 +1,4 @@
-"""Deterministic eval harness for the Soca AssistantRuntime.
+"""Deterministic eval harness for the SoCa AssistantRuntime.
 
 This evaluator intentionally scores runtime traces, not surface text only. It
 checks route, tool calls, guardrail reasons, LLM usage, knowledge citations, and
@@ -61,7 +61,7 @@ class RuntimeEvalCase:
     expected_knowledge_hit_paths: tuple[str, ...] = ()
     expect_no_knowledge_hits: bool = False
     expected_response_contains: tuple[str, ...] = ()
-    fake_llm_response: str = "Mình là Sơn Ca, trợ lý tiếng Việt."
+    fake_llm_response: str = "Mình là SoCa, trợ lý tiếng Việt."
 
 
 @dataclass(frozen=True)
@@ -232,7 +232,7 @@ def load_cases(path: Path, limit: int | None = None) -> list[RuntimeEvalCase]:
                     fake_llm_response=str(
                         payload.get(
                             "fake_llm_response",
-                            "Mình là Sơn Ca, trợ lý tiếng Việt.",
+                            "Mình là SoCa, trợ lý tiếng Việt.",
                         )
                     ),
                 )
@@ -448,7 +448,7 @@ def sample_to_dict(sample: RuntimeEvalSample) -> dict[str, Any]:
 def write_markdown_report(path: Path, report: dict[str, Any]) -> None:
     summary = report["summary"]
     lines = [
-        "# Soca AssistantRuntime Eval",
+        "# SoCa AssistantRuntime Eval",
         "",
         "## Summary",
         "",
@@ -492,7 +492,7 @@ def write_markdown_report(path: Path, report: dict[str, Any]) -> None:
 
 def print_summary_table(report: dict[str, Any]) -> None:
     summary = report["summary"]
-    table = Table(title="Soca AssistantRuntime Eval")
+    table = Table(title="SoCa AssistantRuntime Eval")
     table.add_column("Cases", justify="right")
     table.add_column("Pass", justify="right")
     table.add_column("Route", justify="right")
@@ -534,7 +534,7 @@ def run_eval(cases: Sequence[RuntimeEvalCase]) -> dict[str, Any]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evaluate Soca AssistantRuntime behavior.")
+    parser = argparse.ArgumentParser(description="Evaluate SoCa AssistantRuntime behavior.")
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPT_PATH)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)

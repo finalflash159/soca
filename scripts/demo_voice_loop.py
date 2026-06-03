@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from soca.tts import TTS_MODEL_REGISTRY
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the local Soca voice loop.")
+    parser = argparse.ArgumentParser(description="Run the local SoCa voice loop.")
     parser.add_argument(
         "--profile",
         default=DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
@@ -121,6 +122,11 @@ def resolve_runtime_args(args: argparse.Namespace) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = resolve_runtime_args(build_parser().parse_args(argv))
+    print(
+        "Note: scripts/demo_voice_loop.py is kept for compatibility. "
+        "Prefer: uv run soca voice",
+        file=sys.stderr,
+    )
     return run_voice_loop(
         build_runtime_config(args),
         no_speak_rejections=args.no_speak_rejections,

@@ -1,6 +1,6 @@
-# Soca Colab Notebooks
+# SoCa Colab Notebooks
 
-This folder contains notebooks for Soca research, data collection, training, calibration, and export work.
+This folder contains notebooks for SoCa research, data collection, training, calibration, and export work.
 
 The D2.5 ASR robustness notebooks can run in two modes:
 

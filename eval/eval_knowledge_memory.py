@@ -1,4 +1,4 @@
-"""Evaluate Soca knowledge and memory context assembly.
+"""Evaluate SoCa knowledge and memory context assembly.
 
 This suite is model-free. It checks retrieval hits, citation formatting,
 path-safety policy, untrusted note warnings, and memory budget behavior before
@@ -371,7 +371,7 @@ def sample_to_dict(sample: KnowledgeMemorySample) -> dict[str, Any]:
 def write_markdown_report(path: Path, report: dict[str, Any]) -> None:
     summary = report["summary"]
     lines = [
-        "# Soca Knowledge/Memory Eval",
+        "# SoCa Knowledge/Memory Eval",
         "",
         "## Summary",
         "",
@@ -412,7 +412,7 @@ def write_markdown_report(path: Path, report: dict[str, Any]) -> None:
 
 def print_summary_table(report: dict[str, Any]) -> None:
     summary = report["summary"]
-    table = Table(title="Soca Knowledge/Memory Eval")
+    table = Table(title="SoCa Knowledge/Memory Eval")
     table.add_column("Cases", justify="right")
     table.add_column("Pass", justify="right")
     table.add_column("Retrieval", justify="right")
@@ -452,7 +452,7 @@ def run_eval(cases: Sequence[KnowledgeMemoryCase]) -> dict[str, Any]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evaluate Soca knowledge and memory contexts.")
+    parser = argparse.ArgumentParser(description="Evaluate SoCa knowledge and memory contexts.")
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPT_PATH)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)

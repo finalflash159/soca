@@ -146,7 +146,7 @@ uv run --extra tts-vieneu soca voice --profile balanced_vieneu
 # Disable memory
 uv run soca voice --no-memory
 
-# Use PhoGPT baseline
+# Explicitly override to the historical PhoGPT bake-off baseline
 uv run soca voice --llm-model phogpt_4b_q4_k_m
 
 # Use the current quality-testing ASR default explicitly
@@ -292,7 +292,7 @@ Detailed benchmark notes are in [BENCHMARKS.md](BENCHMARKS.md). The short versio
 - PhoWhisper-tiny ONNX baseline on FLEURS Vietnamese: 23.60% WER, 12.44% CER, about 20x real-time on the D1 setup.
 - ASR model-size bake-off showed `phowhisper_base` as the best next real-time candidate among tiny/base/small for the current greedy decoder path.
 - PhoGPT-4B Q4_K_M baseline through llama.cpp/Metal: about 61 ms TTFT and 62.8 tok/s in the D2 run.
-- LLM bake-off currently keeps PhoGPT as the historical baseline, Arcee-VyLinh as the leading free-chat candidate, and Qwen3-0.6B as a low-RAM fallback.
+- LLM bake-off keeps PhoGPT as the historical benchmark baseline, while product runtime profiles use Arcee-VyLinh for the current baseline/quality path and Qwen3-0.6B as a low-RAM fallback.
 - TTS bake-off keeps Valtec as the stable baseline, Piper as the fastest edge fallback, VieNeu Turbo as the practical challenger, and OmniVoice as the saved-voice quality path.
 - RobustASR for `phowhisper_tiny` reduced tested non-speech hallucinations to explicit rejects in the D2.5 pilot benchmark while keeping speech false positives at zero in that pilot slice.
 

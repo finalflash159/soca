@@ -15,6 +15,10 @@ def test_default_voice_runtime_profile_exists():
     assert DEFAULT_VOICE_RUNTIME_PROFILE_KEY in VOICE_RUNTIME_PROFILES
 
 
+def test_default_voice_runtime_profile_is_lightweight_baseline():
+    assert DEFAULT_VOICE_RUNTIME_PROFILE_KEY == "baseline"
+
+
 def test_profile_keys_match_profile_key_field():
     for key, profile in VOICE_RUNTIME_PROFILES.items():
         assert profile.key == key

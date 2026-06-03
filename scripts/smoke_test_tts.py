@@ -29,7 +29,7 @@ VOICE_TEST_SUITES = {
         "Lịch check-in là 7 giờ 30 tối, ngày 29 tháng 5 năm 2026.",
     ],
     "full": [
-        "Xin chào, tôi là Sơn Ca.",
+        "Xin chào, tôi là SoCa.",
         "Bạn muốn mình hỗ trợ gì hôm nay?",
         "Mình sẽ tạo checklist hôm nay cho bạn.",
         "Nếu thấy đau nhói hoặc chóng mặt, hãy dừng buổi tập và nghỉ vài phút.",
@@ -102,7 +102,7 @@ def build_voice_jobs(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run a quick Soca TTS smoke test.")
+    parser = argparse.ArgumentParser(description="Run a quick SoCa TTS smoke test.")
     parser.add_argument(
         "--model",
         default=DEFAULT_TTS_MODEL_KEY,

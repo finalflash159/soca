@@ -5,6 +5,7 @@ from enum import Enum
 from typing import Any, Literal
 
 from soca.core.guardrails import GuardrailEvent
+from soca.core.usage import LLMUsage
 from soca.knowledge import KnowledgeCitation
 from soca.tools import ToolCall, ToolResult
 
@@ -49,6 +50,9 @@ class RuntimeResult:
     trace: RuntimeTrace | None = None
     frame: TurnFrame | None = None
     llm_result: Any | None = None
+    # Normalized LLM telemetry for both streaming and non-streaming routes
+    # (``llm_result`` stays the raw object; ``usage`` is the unified view).
+    usage: LLMUsage | None = None
 
 
 RuntimeStreamEventType = Literal["token", "sentence", "result"]

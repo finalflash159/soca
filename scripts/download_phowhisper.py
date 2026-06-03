@@ -60,7 +60,7 @@ def download_model(config: ASRModelConfig, models_dir: Path | None = None) -> Pa
 
 
 def print_model_table(configs: Sequence[ASRModelConfig], models_dir: Path | None = None) -> None:
-    table = Table(title="Soca PhoWhisper ONNX Models")
+    table = Table(title="SoCa PhoWhisper ONNX Models")
     table.add_column("Key", style="cyan")
     table.add_column("Role")
     table.add_column("Params", justify="right")

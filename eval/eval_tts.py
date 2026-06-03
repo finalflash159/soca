@@ -527,7 +527,7 @@ def run_model_eval(
 
 
 def render_summary(results: Sequence[dict[str, Any]]) -> None:
-    table = Table(title="Soca TTS Bakeoff", show_lines=True)
+    table = Table(title="SoCa TTS Bakeoff", show_lines=True)
     table.add_column("Profile", style="magenta")
     table.add_column("Model", style="cyan")
     table.add_column("Tier", justify="center")
@@ -622,7 +622,7 @@ def write_outputs(
     )
 
     lines = [
-        "# Soca TTS Bakeoff",
+        "# SoCa TTS Bakeoff",
         "",
         f"- Created at: `{run_paths.run_dir.name}`",
         f"- Audio dir: `{audio_dir}`" if audio_dir is not None else "- Audio dir: disabled",
@@ -753,7 +753,7 @@ def run_isolated_target(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run Soca TTS bakeoff.")
+    parser = argparse.ArgumentParser(description="Run SoCa TTS bakeoff.")
     parser.add_argument("--model", action="append", default=[], help="TTS model key. Can be comma-separated.")
     parser.add_argument("--profile", action="append", default=[], choices=sorted(VOICE_RUNTIME_PROFILES))
     parser.add_argument("--all", dest="all_models", action="store_true", help="Run every TTS registry candidate.")

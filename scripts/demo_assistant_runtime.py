@@ -1,4 +1,4 @@
-"""Interactive text demo for the Soca AssistantRuntime."""
+"""Interactive text demo for the SoCa AssistantRuntime."""
 
 from __future__ import annotations
 
@@ -10,10 +10,11 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
+from soca.app.text_runtime import default_text_llm_model_key
 from soca.core import AssistantRuntime, RuntimeOptions
 from soca.knowledge import KnowledgeContextBuilder, MarkdownVaultKnowledgeSource
 from soca.llm import LocalLlamaCppLLM
-from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
+from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.memory import MarkdownLongTermMemory, MemoryContextBuilder, SessionMemory
 from soca.tools import (
     KnowledgeReadTool,
@@ -27,7 +28,7 @@ EXIT_COMMANDS = {"/exit", "/quit", ":q", "q"}
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the text-only Soca AssistantRuntime.")
+    parser = argparse.ArgumentParser(description="Run the text-only SoCa AssistantRuntime.")
     parser.add_argument(
         "--vault",
         type=Path,
@@ -36,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model",
-        default=DEFAULT_LLM_MODEL_KEY,
+        default=default_text_llm_model_key(),
         choices=sorted(LLM_MODEL_REGISTRY),
         help="LLM registry key to load.",
     )

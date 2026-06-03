@@ -20,7 +20,7 @@ console = Console(width=180)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "eval" / "results" / "omnivoice_auditions"
 DEFAULT_REFERENCE_TEXT = (
-    "Xin chào, tôi là Sơn Ca. "
+    "Xin chào, tôi là SoCa. "
     "Hôm nay mình sẽ giúp bạn theo dõi lịch tập, bữa ăn và các mục tiêu sức khỏe. "
     "Khi cần, mình sẽ nhắc bạn uống nước, ghi lại cân nặng và điều chỉnh kế hoạch nhẹ nhàng."
 )

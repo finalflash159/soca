@@ -1,4 +1,4 @@
-"""Benchmark Soca end-to-end voice-loop latency from audio input to first audio."""
+"""Benchmark SoCa end-to-end voice-loop latency from audio input to first audio."""
 
 from __future__ import annotations
 
@@ -254,6 +254,7 @@ def evaluate_sample(bundle: Any, sample: VoiceLoopSample) -> dict[str, Any]:
         "runtime_route": "",
         "runtime_blocked": False,
         "rejected": False,
+        "repair_kind": "",
         "tts_chunks": 0,
         "ttfa_ms": None,
         "total_latency_ms": None,
@@ -288,6 +289,7 @@ def evaluate_sample(bundle: Any, sample: VoiceLoopSample) -> dict[str, Any]:
                 metadata = event.metadata or {}
                 row["response_text"] = row["response_text"] or event.text
                 row["rejected"] = bool(metadata.get("rejected", False))
+                row["repair_kind"] = metadata.get("repair_kind", row["repair_kind"])
                 row["runtime_blocked"] = bool(metadata.get("runtime_blocked", row["runtime_blocked"]))
                 row["runtime_route"] = metadata.get("runtime_route", row["runtime_route"])
                 row["stage_latencies_ms"] = metadata.get("stage_latencies_ms", {})
@@ -388,6 +390,13 @@ def run_profile_eval(
         route = str(row.get("runtime_route") or "none")
         route_counts[route] = route_counts.get(route, 0) + 1
 
+    repair_kind_counts: dict[str, int] = {}
+    for row in ok_rows:
+        kind = str(row.get("repair_kind") or "")
+        if kind:
+            repair_kind_counts[kind] = repair_kind_counts.get(kind, 0) + 1
+    repair_count = sum(repair_kind_counts.values())
+
     result = {
         "profile": profile_key,
         "config": runtime_config_to_dict(config),
@@ -411,6 +420,8 @@ def run_profile_eval(
         if ok_rows
         else 0.0,
         "route_counts": dict(sorted(route_counts.items())),
+        "repair_count": repair_count,
+        "repair_kind_counts": dict(sorted(repair_kind_counts.items())),
         "total_latency_ms": summarize(total_latencies),
         "ttfa_ms": summarize(ttfa_values),
         "asr_latency_ms": summarize(asr_values),
@@ -433,7 +444,7 @@ def format_percent(value: float | None) -> str:
 
 
 def render_summary(results: Sequence[dict[str, Any]]) -> None:
-    table = Table(title="Soca E2E Voice Loop Benchmark", show_lines=True)
+    table = Table(title="SoCa E2E Voice Loop Benchmark", show_lines=True)
     table.add_column("Profile", style="cyan")
     table.add_column("ASR")
     table.add_column("LLM")
@@ -525,7 +536,7 @@ def write_outputs(
     run_paths.json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
     lines = [
-        "# Soca E2E Voice Loop Benchmark",
+        "# SoCa E2E Voice Loop Benchmark",
         "",
         f"- Created at: `{run_paths.run_dir.name}`",
         f"- Sample count: `{len(samples)}`",
@@ -614,7 +625,7 @@ def parse_profiles(values: Sequence[str], all_profiles: bool) -> list[str]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run Soca E2E voice-loop benchmark.")
+    parser = argparse.ArgumentParser(description="Run SoCa E2E voice-loop benchmark.")
     parser.add_argument("--profile", action="append", default=[], help="Runtime profile. Can be comma-separated.")
     parser.add_argument("--all-profiles", action="store_true", help="Run every runtime profile.")
     parser.add_argument("--audio-dir", type=Path, default=DEFAULT_AUDIO_DIR)

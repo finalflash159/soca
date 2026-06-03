@@ -1,11 +1,11 @@
-# Soca D2.5 — ASR Hallucination Robustness Notes
+# SoCa D2.5 — ASR Hallucination Robustness Notes
 
 > Last updated: 2026-05-21.
 > Runtime measured locally on a MacBook M4 Pro with PhoWhisper-tiny ONNX.
 
 ## 1. Problem
 
-Soca is an offline-first Vietnamese voice assistant. In this architecture, ASR is
+SoCa is an offline-first Vietnamese voice assistant. In this architecture, ASR is
 the entry point:
 
 ```text
@@ -44,11 +44,11 @@ Vietnamese YouTube-style call-to-action phrase into unrelated content:
 The key lesson is that hallucinations are language-specific. A Vietnamese assistant
 cannot rely on an English hallucination phrase list.
 
-## 3. Soca Adaptation
+## 3. SoCa Adaptation
 
-Soca adapts the paper's approach to a different runtime:
+SoCa adapts the paper's approach to a different runtime:
 
-| Component | Paper                        | Soca                           |
+| Component | Paper                        | SoCa                           |
 | --------- | ---------------------------- | ------------------------------ |
 | Model     | Whisper-large-v3             | PhoWhisper-tiny ONNX           |
 | Language  | English-centered benchmark   | Vietnamese                     |
@@ -116,7 +116,7 @@ speech_pad_ms = 200
 ```
 
 Silero's default silence handling is too aggressive for Whisper-class models, while
-faster-whisper's long-form defaults add too much latency for voice commands. Soca
+faster-whisper's long-form defaults add too much latency for voice commands. SoCa
 uses a middle ground for short assistant utterances.
 
 ## 5. Threshold Calibration
@@ -170,7 +170,7 @@ if avg_logprob < -0.725:
 
 ## 6. Finding: `no_speech_prob` Was Not Useful
 
-Canonical Whisper uses `no_speech_prob` as an important no-speech signal. Soca
+Canonical Whisper uses `no_speech_prob` as an important no-speech signal. SoCa
 tested this signal, but it did not separate speech from noise on PhoWhisper-tiny.
 
 Observed behavior:

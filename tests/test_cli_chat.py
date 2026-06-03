@@ -92,7 +92,24 @@ def test_chat_reuses_one_runtime_across_multiple_turns(monkeypatch, tmp_path: Pa
     assert "Phản hồi số 1." in result.output
     assert "Phản hồi số 2." in result.output
     assert len(FakeChatLLM.instances) == 1
+    assert FakeChatLLM.instances[0].model_key == "arcee_vylinh_3b_q4_k_m"
     assert len(FakeChatLLM.instances[0].calls) == 2
+
+
+def test_chat_profile_override_controls_default_llm(monkeypatch, tmp_path: Path) -> None:
+    write_vault(tmp_path)
+    FakeChatLLM.instances.clear()
+    monkeypatch.setattr("soca.app.text_runtime.LocalLlamaCppLLM", FakeChatLLM)
+
+    result = CliRunner().invoke(
+        main,
+        ["chat", "--profile", "edge", "--vault", str(tmp_path), "--no-memory"],
+        input="xin chào\n/exit\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert len(FakeChatLLM.instances) == 1
+    assert FakeChatLLM.instances[0].model_key == "qwen3_0_6b_q8_0"
 
 
 def test_chat_memory_commands_show_and_clear_session(monkeypatch, tmp_path: Path) -> None:
@@ -159,3 +176,20 @@ def test_chat_help_and_trace_toggle(tmp_path: Path) -> None:
     assert "Trace: on" in result.output
     assert "Route: blocked" in result.output
     assert "unsupported_scheduling_action" in result.output
+
+
+def test_chat_usage_flag_and_session_command(monkeypatch, tmp_path: Path) -> None:
+    write_vault(tmp_path)
+    FakeChatLLM.instances.clear()
+    monkeypatch.setattr("soca.app.text_runtime.LocalLlamaCppLLM", FakeChatLLM)
+
+    result = CliRunner().invoke(
+        main,
+        ["chat", "--vault", str(tmp_path), "--no-memory", "--usage"],
+        input="xin chào\n/usage\n/exit\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "route=free_chat" in result.output  # per-turn usage line from --usage
+    assert "Session Usage" in result.output  # /usage table
+    assert "completion tokens" in result.output

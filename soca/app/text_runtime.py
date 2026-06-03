@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
@@ -8,18 +8,26 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from soca.app.usage_view import print_turn_usage
 from soca.core import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
+from soca.core.profiles import DEFAULT_VOICE_RUNTIME_PROFILE_KEY, get_voice_runtime_profile
 from soca.core.turn import RuntimeResult
+from soca.core.usage import TurnUsage
 from soca.knowledge import KnowledgeContextBuilder, MarkdownVaultKnowledgeSource
 from soca.llm import LLMEngine, LocalLlamaCppLLM
-from soca.llm.registry import DEFAULT_LLM_MODEL_KEY
 from soca.memory import MarkdownLongTermMemory, MemoryContextBuilder, SessionMemory
 from soca.tools import KnowledgeReadTool, KnowledgeSearchTool, LocalTimeTool, ToolRuntime
 
 
+def default_text_llm_model_key() -> str:
+    """Return the product default LLM from the default runtime profile."""
+    return get_voice_runtime_profile(DEFAULT_VOICE_RUNTIME_PROFILE_KEY).llm_model
+
+
 @dataclass(frozen=True)
 class TextRuntimeConfig:
-    llm_model: str = DEFAULT_LLM_MODEL_KEY
+    profile_key: str = DEFAULT_VOICE_RUNTIME_PROFILE_KEY
+    llm_model: str = field(default_factory=default_text_llm_model_key)
     vault: Path = Path.home() / "KnowledgeVault"
     no_memory: bool = False
     no_llm: bool = False
@@ -34,6 +42,52 @@ class TextRuntimeConfig:
     turn_chars: int = 500
     llm_threads: int = 8
     llm_gpu_layers: int = -1
+
+
+def resolve_text_runtime_config(
+    *,
+    profile_key: str = DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
+    llm_model: str | None = None,
+    vault: str | Path | None = None,
+    no_memory: bool = False,
+    no_llm: bool = False,
+    max_tokens: int = 160,
+    temperature: float = 0.2,
+    top_p: float = 0.95,
+    knowledge_limit: int = 3,
+    memory_chars: int = 2200,
+    profile_chars: int = 900,
+    session_chars: int = 1300,
+    session_turns: int = 6,
+    turn_chars: int = 500,
+    llm_threads: int = 8,
+    llm_gpu_layers: int = -1,
+) -> TextRuntimeConfig:
+    """Resolve text-only runtime config from the same profile source as voice.
+
+    Product commands (`soca ask/chat/ui`) should use runtime profiles as the
+    source of truth. The low-level LLM registry can still keep historical
+    benchmark defaults such as PhoGPT without leaking into app defaults.
+    """
+    profile = get_voice_runtime_profile(profile_key)
+    return TextRuntimeConfig(
+        profile_key=profile_key,
+        llm_model=llm_model or profile.llm_model,
+        vault=Path(vault or Path.home() / "KnowledgeVault").expanduser().resolve(),
+        no_memory=no_memory,
+        no_llm=no_llm,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        knowledge_limit=knowledge_limit,
+        memory_chars=memory_chars,
+        profile_chars=profile_chars,
+        session_chars=session_chars,
+        session_turns=session_turns,
+        turn_chars=turn_chars,
+        llm_threads=llm_threads,
+        llm_gpu_layers=llm_gpu_layers,
+    )
 
 
 @dataclass(frozen=True)
@@ -60,6 +114,7 @@ def build_text_runtime(
     config: TextRuntimeConfig,
     *,
     llm_factory: LLMFactory | None = None,
+    session_memory: SessionMemory | None = None,
 ) -> TextRuntimeBundle:
     """Build text-only AssistantRuntime without ASR or TTS.
 
@@ -163,6 +218,7 @@ def run_text_ask(
     *,
     console: Console,
     show_trace: bool = False,
+    show_usage: bool = False,
     runtime_builder=build_text_runtime,
 ) -> RuntimeResult:
     bundle = runtime_builder(config)
@@ -175,6 +231,8 @@ def run_text_ask(
     user_text, metadata = normalize_text_turn(text)
     result = bundle.runtime.run_text_turn(user_text, source="cli", metadata=metadata)
     render_text_result(console, result, show_trace=show_trace)
+    if show_usage:
+        print_turn_usage(console, TurnUsage.from_runtime_result(result))
     return result
 
 

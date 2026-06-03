@@ -22,13 +22,13 @@
 {"id":"currency_002","category":"currency","tags":["currency","budget"],"text":"Ngân sách tuần này còn khoảng ba trăm nghìn đồng cho thực phẩm tươi."}
 {"id":"measurement_001","category":"measurement","tags":["measurement","nutrition"],"text":"Bạn có thể dùng hai trăm gam ức gà, một bát cơm nhỏ và một đĩa rau luộc."}
 {"id":"measurement_002","category":"measurement","tags":["measurement","fitness"],"text":"Hãy nghỉ sáu mươi đến chín mươi giây giữa các hiệp nếu nhịp tim còn quá cao."}
-{"id":"name_place_001","category":"name_place","tags":["name","place"],"text":"Sơn Ca ghi chú rằng Minh Thịnh đang sống ở Thành phố Hồ Chí Minh."}
+{"id":"name_place_001","category":"name_place","tags":["name","place"],"text":"SoCa ghi chú rằng Minh Thịnh đang sống ở Thành phố Hồ Chí Minh."}
 {"id":"name_place_002","category":"name_place","tags":["name","place"],"text":"Ngày mai nếu đi qua quận Bình Thạnh, bạn có thể ghé siêu thị trước buổi tập."}
 {"id":"abbreviation_001","category":"abbreviation","tags":["abbrev","fitness"],"text":"Chỉ số BMI không phản ánh đầy đủ tỷ lệ cơ, mỡ và mức độ vận động của bạn."}
-{"id":"abbreviation_002","category":"abbreviation","tags":["abbrev","tech"],"text":"Sơn Ca có thể dùng ASR, LLM, TTS và VAD trong cùng một vòng hội thoại."}
+{"id":"abbreviation_002","category":"abbreviation","tags":["abbrev","tech"],"text":"SoCa có thể dùng ASR, LLM, TTS và VAD trong cùng một vòng hội thoại."}
 {"id":"punctuation_001","category":"punctuation","tags":["punctuation","intonation"],"text":"Khoan đã, hôm nay bạn muốn tập nhẹ, tập vừa, hay nghỉ hoàn toàn?"}
 {"id":"punctuation_002","category":"punctuation","tags":["punctuation","quote"],"text":"Bạn ghi chú: hôm nay mệt nhưng vẫn muốn hoàn thành một việc nhỏ."}
-{"id":"codeswitch_001","category":"codeswitch","tags":["codeswitch","tech"],"text":"Sơn Ca có thể dùng local knowledge, tool runtime và guardrails."}
+{"id":"codeswitch_001","category":"codeswitch","tags":["codeswitch","tech"],"text":"SoCa có thể dùng local knowledge, tool runtime và guardrails."}
 {"id":"codeswitch_002","category":"codeswitch","tags":["codeswitch","network"],"text":"Nếu Wi-Fi yếu, mình vẫn có thể chạy chế độ offline."}
 {"id":"codeswitch_003","category":"codeswitch","tags":["codeswitch","fitness"],"text":"Hôm nay mình sẽ check workout plan, protein intake và recovery của bạn."}
 {"id":"formal_001","category":"formal","tags":["formal","instruction"],"text":"Vui lòng xác nhận lại mục tiêu chính của hôm nay trước khi bắt đầu lịch làm việc."}

@@ -11,7 +11,7 @@ from rich.table import Table
 from soca.app import run_voice_loop
 from soca.app.profiles import render_profiles, render_status
 from soca.app.text_chat import run_text_chat
-from soca.app.text_runtime import TextRuntimeConfig, run_text_ask
+from soca.app.text_runtime import TextRuntimeConfig, resolve_text_runtime_config, run_text_ask
 from soca.asr.registry import ASR_MODEL_REGISTRY, DEFAULT_ASR_MODEL_KEY
 from soca.core import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
@@ -70,11 +70,17 @@ def profiles_command(show_paths: bool) -> None:
 @main.command("ask")
 @click.argument("text", nargs=-1, required=True)
 @click.option(
-    "--llm-model",
-    default=DEFAULT_LLM_MODEL_KEY,
-    type=click.Choice(sorted(LLM_MODEL_REGISTRY)),
+    "--profile",
+    default=DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
+    type=click.Choice(sorted(VOICE_RUNTIME_PROFILES)),
     show_default=True,
-    help="Local LLM registry key for free-chat / knowledge-LLM routes.",
+    help="Runtime profile whose LLM defaults are used.",
+)
+@click.option(
+    "--llm-model",
+    default=None,
+    type=click.Choice(sorted(LLM_MODEL_REGISTRY)),
+    help="Override the selected profile LLM for free-chat / knowledge-LLM routes.",
 )
 @click.option(
     "--vault",
@@ -95,9 +101,11 @@ def profiles_command(show_paths: bool) -> None:
 @click.option("--session-turns", type=int, default=6, show_default=True)
 @click.option("--turn-chars", type=int, default=500, show_default=True)
 @click.option("--trace/--no-trace", default=False, show_default=True)
+@click.option("--usage", is_flag=True, help="Show LLM token/latency usage after the turn.")
 def ask(
     text: tuple[str, ...],
-    llm_model: str,
+    profile: str,
+    llm_model: str | None,
     vault: Path,
     no_memory: bool,
     no_llm: bool,
@@ -111,9 +119,11 @@ def ask(
     session_turns: int,
     turn_chars: int,
     trace: bool,
+    usage: bool,
 ) -> None:
     """Run one text-only SoCa turn without ASR/TTS."""
     config = build_text_runtime_config(
+        profile=profile,
         llm_model=llm_model,
         vault=vault,
         no_memory=no_memory,
@@ -128,16 +138,22 @@ def ask(
         session_turns=session_turns,
         turn_chars=turn_chars,
     )
-    run_text_ask(" ".join(text), config, console=console, show_trace=trace)
+    run_text_ask(" ".join(text), config, console=console, show_trace=trace, show_usage=usage)
 
 
 @main.command("chat")
 @click.option(
-    "--llm-model",
-    default=DEFAULT_LLM_MODEL_KEY,
-    type=click.Choice(sorted(LLM_MODEL_REGISTRY)),
+    "--profile",
+    default=DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
+    type=click.Choice(sorted(VOICE_RUNTIME_PROFILES)),
     show_default=True,
-    help="Local LLM registry key for free-chat / knowledge-LLM routes.",
+    help="Runtime profile whose LLM defaults are used.",
+)
+@click.option(
+    "--llm-model",
+    default=None,
+    type=click.Choice(sorted(LLM_MODEL_REGISTRY)),
+    help="Override the selected profile LLM for free-chat / knowledge-LLM routes.",
 )
 @click.option(
     "--vault",
@@ -158,10 +174,12 @@ def ask(
 @click.option("--session-turns", type=int, default=6, show_default=True)
 @click.option("--turn-chars", type=int, default=500, show_default=True)
 @click.option("--trace/--no-trace", default=False, show_default=True)
+@click.option("--usage", is_flag=True, help="Show per-turn usage line; /usage shows session totals.")
 @click.pass_context
 def chat(
     ctx: click.Context,
-    llm_model: str,
+    profile: str,
+    llm_model: str | None,
     vault: Path,
     no_memory: bool,
     no_llm: bool,
@@ -175,9 +193,11 @@ def chat(
     session_turns: int,
     turn_chars: int,
     trace: bool,
+    usage: bool,
 ) -> None:
     """Run an interactive text chat session without ASR/TTS."""
     config = build_text_runtime_config(
+        profile=profile,
         llm_model=llm_model,
         vault=vault,
         no_memory=no_memory,
@@ -192,12 +212,163 @@ def chat(
         session_turns=session_turns,
         turn_chars=turn_chars,
     )
-    ctx.exit(run_text_chat(config, console=console, show_trace=trace))
+    ctx.exit(run_text_chat(config, console=console, show_trace=trace, show_usage=usage))
+
+
+@main.command(
+    "ui",
+    epilog=(
+        "\b\nQuick examples:\n"
+        "  uv run --extra ui soca ui status --no-model\n"
+        "  uv run --extra ui soca ui chat\n"
+        "  uv run --extra ui soca ui voice quality"
+    ),
+)
+@click.argument(
+    "quick_mode",
+    required=False,
+    type=click.Choice(["status", "chat", "voice"]),
+)
+@click.argument(
+    "quick_profile",
+    required=False,
+    type=click.Choice(sorted(VOICE_RUNTIME_PROFILES)),
+)
+@click.option(
+    "--mode",
+    "mode_option",
+    default=None,
+    type=click.Choice(["status", "chat", "voice"]),
+    hidden=True,
+    help="Compatibility option. Prefer positional MODE: soca ui chat.",
+)
+@click.option(
+    "--profile",
+    "profile_option",
+    default=None,
+    type=click.Choice(sorted(VOICE_RUNTIME_PROFILES)),
+    hidden=True,
+    help="Compatibility option. Prefer positional PROFILE: soca ui voice quality.",
+)
+@click.option(
+    "--llm-model",
+    default=None,
+    type=click.Choice(sorted(LLM_MODEL_REGISTRY)),
+    hidden=True,
+    help="Override the selected profile LLM for chat mode.",
+)
+@click.option(
+    "--vault",
+    type=click.Path(path_type=Path),
+    default=Path.home() / "KnowledgeVault",
+    show_default=True,
+    help="Knowledge vault root containing wiki/ and memory/profile.md.",
+)
+@click.option("--no-memory", is_flag=True, help="Disable profile/session memory.")
+@click.option("--no-llm", is_flag=True, help="Run chat mode tool/guardrail-only without loading LLM.")
+@click.option(
+    "--no-model",
+    is_flag=True,
+    help="Do not load model runtimes. Useful for status mode and UI smoke tests.",
+)
+@click.option("--max-tokens", type=int, default=160, hidden=True)
+@click.option("--temperature", type=float, default=0.2, hidden=True)
+@click.option("--top-p", type=float, default=0.95, hidden=True)
+@click.option("--knowledge-limit", type=int, default=3, hidden=True)
+@click.option("--memory-chars", type=int, default=2200, hidden=True)
+@click.option("--profile-chars", type=int, default=900, hidden=True)
+@click.option("--session-chars", type=int, default=1300, hidden=True)
+@click.option("--session-turns", type=int, default=6, hidden=True)
+@click.option("--turn-chars", type=int, default=500, hidden=True)
+@click.pass_context
+def ui(
+    ctx: click.Context,
+    quick_mode: str | None,
+    quick_profile: str | None,
+    mode_option: str | None,
+    profile_option: str | None,
+    llm_model: str | None,
+    vault: Path,
+    no_memory: bool,
+    no_llm: bool,
+    no_model: bool,
+    max_tokens: int,
+    temperature: float,
+    top_p: float,
+    knowledge_limit: int,
+    memory_chars: int,
+    profile_chars: int,
+    session_chars: int,
+    session_turns: int,
+    turn_chars: int,
+) -> None:
+    """Open the optional Textual cockpit.
+
+    Quick form: soca ui [status|chat|voice] [profile]
+    """
+    mode = quick_mode or mode_option or "status"
+    profile = quick_profile or profile_option or DEFAULT_VOICE_RUNTIME_PROFILE_KEY
+
+    try:
+        from soca.app.tui import run_tui
+    except ModuleNotFoundError as exc:
+        missing_name = getattr(exc, "name", "")
+        if missing_name and not missing_name.startswith("textual"):
+            raise
+        raise click.ClickException(
+            "Textual UI dependencies are missing. Install/run with: "
+            "uv sync --extra ui  hoặc  uv run --extra ui soca ui --mode status --no-model"
+        ) from exc
+
+    try:
+        voice_config = resolve_voice_runtime_config(
+            profile_key=profile,
+            llm_model=llm_model,
+            vault=vault,
+            no_memory=no_memory,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            memory_chars=memory_chars,
+            profile_chars=profile_chars,
+            session_chars=session_chars,
+            session_turns=session_turns,
+            turn_chars=turn_chars,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    config = build_text_runtime_config(
+        profile=profile,
+        llm_model=voice_config.llm_model,
+        vault=vault,
+        no_memory=no_memory,
+        no_llm=no_llm or no_model,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        knowledge_limit=knowledge_limit,
+        memory_chars=memory_chars,
+        profile_chars=profile_chars,
+        session_chars=session_chars,
+        session_turns=session_turns,
+        turn_chars=turn_chars,
+    )
+    ctx.exit(
+        run_tui(
+            mode=mode,
+            profile=profile,
+            text_runtime=config,
+            voice_runtime=voice_config,
+            no_model=no_model,
+        )
+    )
 
 
 def build_text_runtime_config(
     *,
-    llm_model: str,
+    profile: str = DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
+    llm_model: str | None,
     vault: Path,
     no_memory: bool,
     no_llm: bool,
@@ -211,53 +382,73 @@ def build_text_runtime_config(
     session_turns: int,
     turn_chars: int,
 ) -> TextRuntimeConfig:
-    return TextRuntimeConfig(
-        llm_model=llm_model,
-        vault=vault,
-        no_memory=no_memory,
-        no_llm=no_llm,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        top_p=top_p,
-        knowledge_limit=knowledge_limit,
-        memory_chars=memory_chars,
-        profile_chars=profile_chars,
-        session_chars=session_chars,
-        session_turns=session_turns,
-        turn_chars=turn_chars,
+    try:
+        return resolve_text_runtime_config(
+            profile_key=profile,
+            llm_model=llm_model,
+            vault=vault,
+            no_memory=no_memory,
+            no_llm=no_llm,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            knowledge_limit=knowledge_limit,
+            memory_chars=memory_chars,
+            profile_chars=profile_chars,
+            session_chars=session_chars,
+            session_turns=session_turns,
+            turn_chars=turn_chars,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+
+@main.command(
+    epilog=(
+        "\b\nQuick examples:\n"
+        "  uv run soca voice baseline\n"
+        "  uv run --extra tts-omnivoice soca voice quality\n"
+        "  uv run --extra tts-piper soca voice edge"
     )
-
-
-
-@main.command()
+)
+@click.argument(
+    "quick_profile",
+    required=False,
+    type=click.Choice(sorted(VOICE_RUNTIME_PROFILES)),
+)
 @click.option(
     "--profile",
-    default=DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
+    "profile_option",
+    default=None,
     type=click.Choice(sorted(VOICE_RUNTIME_PROFILES)),
-    show_default=True,
+    hidden=True,
     help="Voice runtime profile to use before explicit model overrides.",
 )
 @click.option(
     "--asr-model",
     default=None,
     type=click.Choice(sorted(ASR_MODEL_REGISTRY)),
+    hidden=True,
     help="Override the ASR registry key from the selected profile.",
 )
 @click.option(
     "--llm-model",
     default=None,
     type=click.Choice(sorted(LLM_MODEL_REGISTRY)),
+    hidden=True,
     help="Override the LLM registry key from the selected profile.",
 )
 @click.option(
     "--tts-model",
     default=None,
     type=click.Choice(sorted(TTS_MODEL_REGISTRY)),
+    hidden=True,
     help="Override the TTS registry key from the selected profile.",
 )
-@click.option("--voice", default=None, help="Override the TTS voice/speaker id.")
-@click.option("--endpoint-silence-ms", type=int, default=None)
-@click.option("--max-record-ms", type=int, default=None)
+@click.option("--voice", default=None, hidden=True, help="Override the TTS voice/speaker id.")
+@click.option("--endpoint-silence-ms", type=int, default=None, hidden=True)
+@click.option("--max-record-ms", type=int, default=None, hidden=True)
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
@@ -266,18 +457,24 @@ def build_text_runtime_config(
     help="Knowledge vault root containing wiki/ and memory/profile.md.",
 )
 @click.option("--no-memory", is_flag=True, help="Disable profile/session memory.")
-@click.option("--memory-chars", type=int, default=2200, show_default=True)
-@click.option("--profile-chars", type=int, default=900, show_default=True)
-@click.option("--session-chars", type=int, default=1300, show_default=True)
-@click.option("--session-turns", type=int, default=6, show_default=True)
-@click.option("--turn-chars", type=int, default=500, show_default=True)
-@click.option("--max-tokens", type=int, default=None)
-@click.option("--temperature", type=float, default=None)
-@click.option("--top-p", type=float, default=None)
+@click.option("--memory-chars", type=int, default=2200, hidden=True)
+@click.option("--profile-chars", type=int, default=900, hidden=True)
+@click.option("--session-chars", type=int, default=1300, hidden=True)
+@click.option("--session-turns", type=int, default=6, hidden=True)
+@click.option("--turn-chars", type=int, default=500, hidden=True)
+@click.option("--max-tokens", type=int, default=None, hidden=True)
+@click.option("--temperature", type=float, default=None, hidden=True)
+@click.option("--top-p", type=float, default=None, hidden=True)
+@click.option(
+    "--no-speak-repairs",
+    is_flag=True,
+    help="Do not speak the conversation-repair follow-up when ASR rejects a turn.",
+)
 @click.option(
     "--no-speak-rejections",
     is_flag=True,
-    help="Do not speak the fallback response when ASR rejects a turn.",
+    hidden=True,
+    help="Deprecated alias of --no-speak-repairs.",
 )
 @click.option(
     "--press-enter-to-record",
@@ -289,10 +486,12 @@ def build_text_runtime_config(
     is_flag=True,
     help="Skip ASR/LLM/TTS first-call warmup before listening.",
 )
+@click.option("--usage", is_flag=True, help="Show ASR/LLM/TTS latency + token usage after each turn.")
 @click.pass_context
 def voice(
     ctx: click.Context,
-    profile: str,
+    quick_profile: str | None,
+    profile_option: str | None,
     asr_model: str | None,
     llm_model: str | None,
     tts_model: str | None,
@@ -309,11 +508,18 @@ def voice(
     max_tokens: int | None,
     temperature: float | None,
     top_p: float | None,
+    no_speak_repairs: bool,
     no_speak_rejections: bool,
     press_enter_to_record: bool,
     no_warmup: bool,
+    usage: bool,
 ) -> None:
-    """Run the interactive SoCa microphone voice loop."""
+    """Run the interactive SoCa microphone voice loop.
+
+    Quick form: soca voice [profile]
+    """
+    profile = quick_profile or profile_option or DEFAULT_VOICE_RUNTIME_PROFILE_KEY
+
     try:
         config = resolve_voice_runtime_config(
             profile_key=profile,
@@ -340,9 +546,11 @@ def voice(
     ctx.exit(
         run_voice_loop(
             config,
+            no_speak_repairs=no_speak_repairs,
             no_speak_rejections=no_speak_rejections,
             press_enter_to_record=press_enter_to_record,
             warmup=not no_warmup,
+            show_usage=usage,
         )
     )
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from threading import Event
 
 import numpy as np
 import sounddevice as sd
@@ -37,6 +38,7 @@ def block_samples(config: EndpointConfig) -> int:
 def record_until_silence(
     detector,
     config: EndpointConfig | None = None,
+    stop_event: Event | None = None,
 ) -> np.ndarray:
     config = config or EndpointConfig()
     n_block_samples = block_samples(config)
@@ -48,6 +50,10 @@ def record_until_silence(
 
     with sd.InputStream(samplerate=config.sample_rate, channels=1, dtype="float32") as stream:
         while total_samples < max_samples:
+            # Abort promptly when the loop is being stopped (mode switch / /stop)
+            # instead of finishing a full record window.
+            if stop_event is not None and stop_event.is_set():
+                break
             block, overflowed = stream.read(n_block_samples)
             if overflowed:
                 # Keep recording; occasional should not kill the demo

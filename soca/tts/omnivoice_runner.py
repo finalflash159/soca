@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import time
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,46 @@ from .registry import TTSModelConfig
 
 VOICE_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,63}$")
 AUTO_VOICE = "auto"
+
+
+@contextmanager
+def _progress_bars_disabled():
+    """Disable HF/Transformers tqdm while loading OmniVoice.
+
+    In a Textual app, Transformers' load progress can instantiate tqdm's
+    multiprocessing RLock. On macOS that may force Python's resource tracker to
+    spawn with Textual-owned file descriptors and fail with
+    ``ValueError: bad value(s) in fds_to_keep``. Runtime model loaders should be
+    quiet anyway; status belongs to SoCa's own UI events.
+    """
+    transformers_logging = None
+    transformers_was_enabled = None
+    hub_utils = None
+    hub_was_disabled = None
+
+    try:
+        from transformers.utils import logging as transformers_logging
+
+        transformers_was_enabled = transformers_logging.is_progress_bar_enabled()
+        transformers_logging.disable_progress_bar()
+    except Exception:
+        transformers_logging = None
+
+    try:
+        import huggingface_hub.utils as hub_utils
+
+        hub_was_disabled = hub_utils.are_progress_bars_disabled()
+        hub_utils.disable_progress_bars()
+    except Exception:
+        hub_utils = None
+
+    try:
+        yield
+    finally:
+        if transformers_logging is not None and transformers_was_enabled:
+            transformers_logging.enable_progress_bar()
+        if hub_utils is not None and hub_was_disabled is False:
+            hub_utils.enable_progress_bars()
 
 
 class OmniVoiceTTS:
@@ -65,11 +106,12 @@ class OmniVoiceTTS:
 
         device, dtype = self._device_and_dtype()
         try:
-            self._model = OmniVoice.from_pretrained(
-                self.config.hf_repo,
-                device_map=device,
-                dtype=dtype,
-            )
+            with _progress_bars_disabled():
+                self._model = OmniVoice.from_pretrained(
+                    self.config.hf_repo,
+                    device_map=device,
+                    dtype=dtype,
+                )
         except Exception as exc:
             raise TTSRuntimeUnavailableError(
                 f"OmniVoice runtime could not load {self.config.key}: {exc}"

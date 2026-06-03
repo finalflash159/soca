@@ -1,0 +1,112 @@
+/* SoCa TUI — calm dark theme (coach, not hacker dashboard).
+   Few accents, dark neutral background, muted borders. */
+
+Screen {
+    background: #0d1117;
+    color: #c9d1d9;
+}
+
+.screen--selection {
+    color: #f0f6fc;
+    background: #1f6feb 70%;
+    text-style: bold;
+}
+
+/* Header: dark bar with muted text, NOT a filled accent line. */
+#statusline {
+    height: 1;
+    background: #161b22;
+    color: #8b949e;
+    padding: 0 1;
+    border-bottom: solid #21262d;
+}
+
+#main {
+    height: 1fr;
+}
+
+/* Persistent mode sidebar — fixed spatial anchor. */
+#sidebar {
+    width: 16;
+    background: #0d1117;
+    border-right: solid #21262d;
+    padding: 1 1;
+}
+
+#content {
+    width: 1fr;
+}
+
+#stage_rail {
+    height: 1;
+    padding: 0 1;
+    background: #0d1117;
+    color: #6e7681;
+}
+
+#body {
+    height: 1fr;
+}
+
+/* Transcript: clean prefixed lines, no border, thin blended scrollbar. */
+#timeline {
+    width: 2fr;
+    height: 1fr;
+    background: #0d1117;
+    background-tint: 0%;
+    padding: 0 1;
+    scrollbar-size-vertical: 1;
+    scrollbar-background: #0d1117;
+    scrollbar-color: #21262d;
+    scrollbar-color-hover: #30363d;
+    scrollbar-color-active: #30363d;
+}
+
+/* RichLog defaults to a 5% foreground tint on focus; kill it so clicking the
+   transcript to scroll doesn't lighten the whole panel background. */
+#timeline:focus {
+    background: #0d1117;
+    background-tint: 0%;
+}
+
+#inspector {
+    width: 1fr;
+    min-width: 30;
+    background: #0d1117;
+    border-left: solid #21262d;
+    padding: 0 1;
+}
+
+/* Voice mode keeps the chat timeline|inspector body; it only adds this thin
+   live status strip on top (state machine + music notes). Shown only in voice. */
+#voice_status {
+    height: 2;
+    padding: 0 1;
+    background: #161b22;
+    border-bottom: solid #21262d;
+}
+
+#slash_commands {
+    height: auto;
+    max-height: 12;
+    background: #161b22;
+}
+
+/* Composer: subtle rounded border, not a loud accent frame.
+   background-tint: 0% kills Textual Input's default focus tint so the
+   background stays stable when the box gains/loses focus. */
+#composer {
+    height: 3;
+    background: #161b22;
+    background-tint: 0%;
+    color: #c9d1d9;
+    border: round #30363d;
+}
+
+/* Keep the composer visually identical when focused — only the cursor moves.
+   No border/background shift on focus (was the distracting "background change"). */
+#composer:focus {
+    background: #161b22;
+    background-tint: 0%;
+    border: round #30363d;
+}

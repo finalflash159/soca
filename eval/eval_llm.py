@@ -385,7 +385,7 @@ def run_model_eval(
 
 
 def print_summary_table(reports: Sequence[dict[str, Any]]) -> None:
-    table = Table(title="Soca LLM Bakeoff")
+    table = Table(title="SoCa LLM Bakeoff")
     table.add_column("Model", style="cyan")
     table.add_column("Role")
     table.add_column("TTFT p50", justify="right")
@@ -425,7 +425,7 @@ def print_summary_table(reports: Sequence[dict[str, Any]]) -> None:
 
 def write_markdown_report(path: Path, reports: Sequence[dict[str, Any]]) -> None:
     lines = [
-        "# Soca LLM Bakeoff",
+        "# SoCa LLM Bakeoff",
         "",
         "| Model | Role | TTFT p50 ms | TTFT p95 ms | tok/s mean | Total p95 ms | Too long | VI signal | CJK leak | EN leak | Uncertain | Cmd refuse | Cmd ack | RT safe | RT hallu | Privacy safe | Privacy hallu | Peak MB |",
         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
@@ -454,7 +454,7 @@ def write_markdown_report(path: Path, reports: Sequence[dict[str, Any]]) -> None
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Benchmark registered Soca LLM candidates.")
+    parser = argparse.ArgumentParser(description="Benchmark registered SoCa LLM candidates.")
     parser.add_argument(
         "--model",
         action="append",

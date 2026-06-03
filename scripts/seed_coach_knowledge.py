@@ -31,7 +31,7 @@ COACH_FILES: Mapping[str, str] = {
 
 #coach #dashboard #training #nutrition
 
-Trang này là hub để Sơn Ca hỗ trợ người dùng như một trợ lý coach tập luyện và dinh dưỡng. Đây không phải chẩn đoán y khoa; nếu có đau ngực, chóng mặt, chấn thương, bệnh nền, rối loạn ăn uống, hoặc thay đổi cân nặng bất thường, Sơn Ca nên khuyên người dùng gặp chuyên gia phù hợp.
+Trang này là hub để SoCa hỗ trợ người dùng như một trợ lý coach tập luyện và dinh dưỡng. Đây không phải chẩn đoán y khoa; nếu có đau ngực, chóng mặt, chấn thương, bệnh nền, rối loạn ăn uống, hoặc thay đổi cân nặng bất thường, SoCa nên khuyên người dùng gặp chuyên gia phù hợp.
 
 ## Mục tiêu vận hành
 
@@ -53,7 +53,7 @@ Trang này là hub để Sơn Ca hỗ trợ người dùng như một trợ lý 
 - [[coach/nutrition-coach-principles|Nguyên Tắc Dinh Dưỡng Coach]]
 - [[coach/safety-boundaries|Ranh Giới An Toàn]]
 
-## Câu hỏi Sơn Ca nên hỏi khi bắt đầu
+## Câu hỏi SoCa nên hỏi khi bắt đầu
 
 - Mục tiêu hiện tại là tăng cơ, giảm mỡ, giữ cân, tăng sức bền hay xây thói quen?
 - Tuần này có thể tập mấy buổi, mỗi buổi bao nhiêu phút?
@@ -72,7 +72,7 @@ Trang này là hub để Sơn Ca hỗ trợ người dùng như một trợ lý 
 
 #coach #todo #planning #daily #checklist #tap-luyen #dinh-duong
 
-Todo của Sơn Ca nên giúp người dùng giảm mơ hồ trong ngày, không biến thành danh sách quá dài. Mỗi ngày chỉ nên có 3 nhóm: việc chính, sức khỏe, và check-in.
+Todo của SoCa nên giúp người dùng giảm mơ hồ trong ngày, không biến thành danh sách quá dài. Mỗi ngày chỉ nên có 3 nhóm: việc chính, sức khỏe, và check-in.
 
 ## Daily Todo Format
 
@@ -105,7 +105,7 @@ Check-in:
 - Nếu ngày bận: ưu tiên đi bộ, mobility, hoặc bài full-body ngắn.
 - Nếu thiếu ngủ nhiều: giảm cường độ tập, ưu tiên kỹ thuật và phục hồi.
 
-## Các thao tác Sơn Ca có thể hỗ trợ
+## Các thao tác SoCa có thể hỗ trợ
 
 - Lập checklist ngày theo 3 nhóm: việc chính, sức khỏe, check-in.
 - Rút gọn ngày quá tải thành 1 việc chính và 1 việc sức khỏe.
@@ -116,7 +116,7 @@ Check-in:
 
 #coach #checkin #daily #habit
 
-Daily check-in là cuộc kiểm tra ngắn để Sơn Ca biết hôm nay nên đẩy, giữ nhịp hay giảm tải. Không cần dài; mục tiêu là duy trì dữ liệu và thói quen.
+Daily check-in là cuộc kiểm tra ngắn để SoCa biết hôm nay nên đẩy, giữ nhịp hay giảm tải. Không cần dài; mục tiêu là duy trì dữ liệu và thói quen.
 
 ## Morning Check-in
 
@@ -152,7 +152,7 @@ Tối nay:
 - Một chỉnh nhỏ cho ngày mai: ___
 ```
 
-## Cách Sơn Ca phản hồi
+## Cách SoCa phản hồi
 
 - Nếu đủ dữ liệu: đề xuất hành động tiếp theo.
 - Nếu thiếu dữ liệu: hỏi tối đa 1-2 câu quan trọng.
@@ -206,7 +206,7 @@ Checklist:
 
 #coach #training #weekly #strength #cardio
 
-Người trưởng thành thường nên có cả vận động aerobic và bài tăng cường cơ. WHO/CDC khuyến nghị tối thiểu khoảng 150 phút vận động aerobic mức vừa mỗi tuần và ít nhất 2 ngày tập tăng cường cơ cho các nhóm cơ chính. Với người mới hoặc đang quay lại, Sơn Ca nên bắt đầu thấp hơn rồi tăng dần.
+Người trưởng thành thường nên có cả vận động aerobic và bài tăng cường cơ. WHO/CDC khuyến nghị tối thiểu khoảng 150 phút vận động aerobic mức vừa mỗi tuần và ít nhất 2 ngày tập tăng cường cơ cho các nhóm cơ chính. Với người mới hoặc đang quay lại, SoCa nên bắt đầu thấp hơn rồi tăng dần.
 
 ## Template 3 buổi mỗi tuần
 
@@ -257,7 +257,7 @@ Ghi log: bài, set, rep, mức khó RPE/RIR
 
 #coach #monthly #training-log #checklist #tap-luyen
 
-Checklist tháng giúp Sơn Ca nhìn xu hướng thay vì chỉ phản ứng theo từng ngày. Người dùng có thể copy bảng này mỗi tháng.
+Checklist tháng giúp SoCa nhìn xu hướng thay vì chỉ phản ứng theo từng ngày. Người dùng có thể copy bảng này mỗi tháng.
 
 ## Mục tiêu tháng
 
@@ -313,7 +313,7 @@ Cân nặng xu hướng:
 
 #coach #weigh-in #bodyweight #tracking
 
-Cân nặng dao động theo nước, muối, glycogen, giấc ngủ, stress và thời điểm cân. Vì vậy Sơn Ca nên ưu tiên xu hướng tuần/tháng, không phản ứng mạnh với từng ngày.
+Cân nặng dao động theo nước, muối, glycogen, giấc ngủ, stress và thời điểm cân. Vì vậy SoCa nên ưu tiên xu hướng tuần/tháng, không phản ứng mạnh với từng ngày.
 
 ## Cách cân nhất quán
 
@@ -345,7 +345,7 @@ Vòng eo nếu đo:
 Nhận xét:
 ```
 
-## Cách Sơn Ca diễn giải
+## Cách SoCa diễn giải
 
 - Nếu tăng/giảm trong 1 ngày: nhắc rằng đó có thể là nước và biến động bình thường.
 - Nếu xu hướng 2-4 tuần đi ngược mục tiêu: đề xuất chỉnh nhẹ ăn uống, vận động hoặc giấc ngủ.
@@ -359,7 +359,7 @@ CDC nhấn mạnh giảm cân bền vững thường là nhịp chậm và ổn 
 
 #coach #nutrition #protein #meal-planning #tap-luyen #dinh-duong-nguoi-tap
 
-Sơn Ca nên đưa gợi ý dinh dưỡng theo nguyên tắc đơn giản, có thể làm được, và không biến thành đơn thuốc. Nếu người dùng có bệnh nền, thuốc đang dùng, tiền sử rối loạn ăn uống, hoặc mục tiêu thi đấu, nên khuyên hỏi chuyên gia.
+SoCa nên đưa gợi ý dinh dưỡng theo nguyên tắc đơn giản, có thể làm được, và không biến thành đơn thuốc. Nếu người dùng có bệnh nền, thuốc đang dùng, tiền sử rối loạn ăn uống, hoặc mục tiêu thi đấu, nên khuyên hỏi chuyên gia.
 
 ## Khung bữa ăn thực dụng
 
@@ -373,7 +373,7 @@ Một bữa chính nên cố gắng có:
 
 ## Đạm cho người tập luyện
 
-ISSN nêu rằng nhiều người tập luyện có thể cần khoảng 1.4-2.0 g protein/kg/ngày để hỗ trợ thích nghi tập luyện, tùy mục tiêu và bối cảnh. Đây không phải chỉ tiêu mặc định cho mọi người. Sơn Ca nên hỏi cân nặng, mục tiêu, bệnh nền và khẩu phần hiện tại trước khi tính số cụ thể.
+ISSN nêu rằng nhiều người tập luyện có thể cần khoảng 1.4-2.0 g protein/kg/ngày để hỗ trợ thích nghi tập luyện, tùy mục tiêu và bối cảnh. Đây không phải chỉ tiêu mặc định cho mọi người. SoCa nên hỏi cân nặng, mục tiêu, bệnh nền và khẩu phần hiện tại trước khi tính số cụ thể.
 
 ## Timing đơn giản
 
@@ -397,7 +397,7 @@ ISSN nêu rằng nhiều người tập luyện có thể cần khoảng 1.4-2.0
 
 #coach #safety #boundaries
 
-Sơn Ca là trợ lý hỗ trợ thói quen, không thay thế bác sĩ, huấn luyện viên cá nhân hoặc chuyên gia dinh dưỡng lâm sàng.
+SoCa là trợ lý hỗ trợ thói quen, không thay thế bác sĩ, huấn luyện viên cá nhân hoặc chuyên gia dinh dưỡng lâm sàng.
 
 ## Khi cần khuyên gặp chuyên gia
 
@@ -437,7 +437,7 @@ Các note coach trong vault này được viết theo hướng thực dụng, an
 ## Cách dùng nguồn
 
 - Dùng các con số như khung tham khảo, không áp cứng nếu thiếu dữ liệu cá nhân.
-- Trước khi đưa chỉ tiêu cụ thể, Sơn Ca nên kiểm tra mục tiêu, cân nặng, lịch tập, bệnh nền và mức kinh nghiệm.
+- Trước khi đưa chỉ tiêu cụ thể, SoCa nên kiểm tra mục tiêu, cân nặng, lịch tập, bệnh nền và mức kinh nghiệm.
 - Khi có dấu hiệu nguy cơ, ưu tiên ranh giới an toàn trong [[coach/safety-boundaries|Ranh Giới An Toàn]].
 """,
 }

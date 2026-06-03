@@ -10,6 +10,8 @@ from soca.llm import LLMResult
 
 
 class FakeLLM:
+    instances: list[FakeLLM] = []
+
     def __init__(
         self,
         *,
@@ -20,6 +22,7 @@ class FakeLLM:
         self.model_key = model_key
         self.n_threads = n_threads
         self.n_gpu_layers = n_gpu_layers
+        self.instances.append(self)
 
     def generate(
         self,
@@ -146,6 +149,7 @@ def test_ask_explicit_wiki_search_uses_vault(tmp_path: Path) -> None:
 
 def test_ask_free_chat_uses_fake_llm(monkeypatch, tmp_path: Path) -> None:
     write_vault(tmp_path)
+    FakeLLM.instances.clear()
     monkeypatch.setattr("soca.app.text_runtime.LocalLlamaCppLLM", FakeLLM)
 
     result = CliRunner().invoke(
@@ -164,3 +168,42 @@ def test_ask_free_chat_uses_fake_llm(monkeypatch, tmp_path: Path) -> None:
     assert "Route: free_chat" in result.output
     assert "Xin chào, tôi là SoCa." in result.output
     assert "used_llm" in result.output
+    assert FakeLLM.instances[0].model_key == "arcee_vylinh_3b_q4_k_m"
+
+
+def test_ask_profile_override_controls_default_llm(monkeypatch, tmp_path: Path) -> None:
+    write_vault(tmp_path)
+    FakeLLM.instances.clear()
+    monkeypatch.setattr("soca.app.text_runtime.LocalLlamaCppLLM", FakeLLM)
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "ask",
+            "xin chào",
+            "--profile",
+            "edge",
+            "--vault",
+            str(tmp_path),
+            "--no-memory",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert FakeLLM.instances[0].model_key == "qwen3_0_6b_q8_0"
+
+
+def test_ask_usage_flag_shows_token_metrics(monkeypatch, tmp_path: Path) -> None:
+    write_vault(tmp_path)
+    monkeypatch.setattr("soca.app.text_runtime.LocalLlamaCppLLM", FakeLLM)
+
+    result = CliRunner().invoke(
+        main,
+        ["ask", "xin chào", "--vault", str(tmp_path), "--no-memory", "--usage"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "usage" in result.output
+    assert "route=free_chat" in result.output
+    assert "tok/s" in result.output
+    assert "out 8" in result.output

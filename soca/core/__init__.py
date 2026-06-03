@@ -31,6 +31,7 @@ from .turn import (
     RuntimeTrace,
     TurnFrame,
 )
+from .usage import LLMUsage, SessionUsage, TurnUsage
 from .voice_runtime import (
     ResolvedVoiceRuntimeConfig,
     VoiceRuntimeBundle,
@@ -53,6 +54,9 @@ __all__ = [
     "NullAudioPlayer",
     "PlaybackResult",
     "RuntimeOptions",
+    "LLMUsage",
+    "SessionUsage",
+    "TurnUsage",
     "RuntimeResult",
     "RuntimeRoute",
     "RuntimeStreamEvent",

@@ -1,4 +1,4 @@
-# Soca — Benchmarks
+# SoCa — Benchmarks
 
 > Last updated: 2026-06-01. All measurements are from real local runs;
 > raw output JSON lives under `eval/results/` (gitignored).
@@ -132,7 +132,7 @@ changing the default ASR model.
 | Seed              | 42                                                                       |
 | Decode            | Streaming sampling, `temperature=0.7`, `top_p=0.95`, `max_tokens=128`    |
 | Prompt template   | `### Câu hỏi: {persona}\n\nCâu hỏi của tôi: {user}\n### Trả lời:`        |
-| Persona injection | "Bạn là Soca, trợ lý ảo tiếng Việt..." (first turn only)                 |
+| Persona injection | "Bạn là SoCa, trợ lý ảo tiếng Việt..." (first turn only)                 |
 | Eval prompts      | 15 hand-crafted Vietnamese prompts (factual / reasoning / commands)      |
 | Run date          | 2026-05-19                                                               |
 | Device label      | "Mac 4 (Metal)" in JSON — actually MacBook M4 Pro                        |
@@ -166,7 +166,7 @@ changing the default ASR model.
 
 ## D2.1 — LLM Bake-Off (Generic llama.cpp Registry)
 
-**Purpose:** compare the practical local LLM candidates for the Soca voice
+**Purpose:** compare the practical local LLM candidates for the SoCa voice
 assistant before changing the runtime default.
 
 **Setup**
@@ -193,7 +193,7 @@ assistant before changing the runtime default.
 
 **Decision**
 
-- Keep PhoGPT as the historical baseline/default for now.
+- Keep PhoGPT as the historical LLM bake-off baseline only. Product app defaults come from runtime profiles; current baseline/quality profiles use Arcee-VyLinh.
 - Treat Arcee-VyLinh as the leading free-chat candidate after intent routing.
 - Treat Qwen3-0.6B as the low-RAM fallback/smoke model.
 - Do not prioritize VinaLLaMA-2.7B for the default path: clean Vietnamese output,
@@ -212,7 +212,7 @@ assistant before changing the runtime default.
 
 ## D3 — TTS Bake-Off (Vietnamese local runtimes)
 
-**Purpose:** compare the practical Vietnamese TTS runtimes for the Sơn Ca voice
+**Purpose:** compare the practical Vietnamese TTS runtimes for the SoCa voice
 loop before changing the default TTS engine.
 
 **Setup**
@@ -236,7 +236,7 @@ mixes production-usable local runners and heavier quality baselines:
 
 | Model key              | Upstream/source                                                                                         | Why included                                                                                     |
 | ---------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| `valtec_multispeaker`  | `https://github.com/tronghieuit/valtec-tts`                                                             | Current Soca baseline; local Vietnamese multi-speaker runtime.                                   |
+| `valtec_multispeaker`  | `https://github.com/tronghieuit/valtec-tts`                                                             | Current SoCa baseline; local Vietnamese multi-speaker runtime.                                   |
 | `mms_tts_vie`          | `https://huggingface.co/facebook/mms-tts-vie`                                                           | Small VITS-style Vietnamese baseline through Transformers.                                       |
 | `piper_vi_vivos_x_low` | `https://huggingface.co/speaches-ai/piper-vi_VN-vivos-x_low`, artifact path from `rhasspy/piper-voices` | ONNX/Piper edge fallback candidate.                                                              |
 | `vieneu_v2_turbo`      | `https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2-Turbo`                                                 | Main runtime challenger: Vietnamese-focused, CPU/GGUF-oriented path through the VieNeu SDK.      |
@@ -251,14 +251,14 @@ mixes production-usable local runners and heavier quality baselines:
 **Prompt corpus design**
 
 The benchmark uses a hand-authored text corpus, not a speech dataset. The goal
-is to stress the text-to-audio layer that Sơn Ca will actually speak:
+is to stress the text-to-audio layer that SoCa will actually speak:
 
 - Short assistant turns: latency and clipping on very short outputs.
 - Coach/nutrition/fitness/safety/tracking: project-specific assistant domain.
 - Numbers, dates, currency, measurement: common Vietnamese TTS failure modes.
 - Names/places and abbreviations: local assistant identity + technical terms.
 - Punctuation and quote-like text: prosody and pause handling.
-- Code-switching: English terms that appear in real Soca responses.
+- Code-switching: English terms that appear in real SoCa responses.
 - ASR-noisy text: no punctuation/casing, similar to raw ASR output.
 - Long prompts: latency/RTF stability on longer assistant responses.
 
@@ -322,13 +322,13 @@ uv run --extra tts --extra tts-piper --extra tts-omnivoice --extra tts-vieneu \
 
 **Skipped candidates**
 
-| Model           | Reason                                                           | Next action                                                                   |
-| --------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `kani_370m_vie` | `kani-tts-2` conflicts with Soca's main Hugging Face stack.      | Test in a separate `uv` environment.                                          |
-| `viet_tts_onnx` | Local VietTTS server was not running at `http://127.0.0.1:8298`. | Start the server and rerun this model only.                                   |
-| `vixtts`        | External command runner was not configured.                      | Set `SHRIKE7_TTS_VIXTTS_COMMAND`.                                             |
-| `f5_vi_hynt`    | Missing reference audio/text env vars.                           | Set `SHRIKE7_TTS_F5_HYNT_REF_AUDIO` and `SHRIKE7_TTS_F5_HYNT_REF_TEXT`.       |
-| `f5_vi_zalopay` | Missing reference audio/text env vars.                           | Set `SHRIKE7_TTS_F5_ZALOPAY_REF_AUDIO` and `SHRIKE7_TTS_F5_ZALOPAY_REF_TEXT`. |
+| Model           | Reason                                                           | Next action                                                             |
+| --------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `kani_370m_vie` | `kani-tts-2` conflicts with SoCa's main Hugging Face stack.      | Test in a separate `uv` environment.                                    |
+| `viet_tts_onnx` | Local VietTTS server was not running at `http://127.0.0.1:8298`. | Start the server and rerun this model only.                             |
+| `vixtts`        | External command runner was not configured.                      | Set `SOCA_TTS_VIXTTS_COMMAND`.                                          |
+| `f5_vi_hynt`    | Missing reference audio/text env vars.                           | Set `SOCA_TTS_F5_HYNT_REF_AUDIO` and `SOCA_TTS_F5_HYNT_REF_TEXT`.       |
+| `f5_vi_zalopay` | Missing reference audio/text env vars.                           | Set `SOCA_TTS_F5_ZALOPAY_REF_AUDIO` and `SOCA_TTS_F5_ZALOPAY_REF_TEXT`. |
 
 **Decision**
 
@@ -371,7 +371,7 @@ uv run --extra tts --extra tts-piper --extra tts-omnivoice --extra tts-vieneu \
 
 ## D3.1 — E2E Voice Loop Benchmark (audio fixture → ASR → runtime → TTS)
 
-**Purpose:** measure the full Sơn Ca voice loop from audio input to first
+**Purpose:** measure the full SoCa voice loop from audio input to first
 available output audio, using fixed WAV fixtures rather than live microphone
 input. This complements the TTS-only bake-off above.
 
@@ -488,7 +488,7 @@ failures are useful product findings rather than benchmark noise:
 | unsupported scheduling | `đặt hẹn giờ 5 phút`                     | `đặt hẹn giờ năm phút.`                   |
 
 The route counts for each profile were `tool_direct: 1`, `blocked: 1`, and
-`llm_fallback: 4`. That confirms the full audio path can reach a tool route and
+`free_chat: 4`. That confirms the full audio path can reach a tool route and
 can also block unsupported scheduling requests before LLM execution. This
 fixture set still does not validate knowledge routing end-to-end because the
 knowledge prompt is too brittle around the spoken word `wiki`. The old

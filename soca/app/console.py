@@ -56,14 +56,24 @@ def print_warmup_result(console: Console, result: VoiceRuntimeWarmupResult) -> N
     )
 
 
+def print_followup(console: Console, text: str) -> None:
+    """Render a conversation-repair follow-up (not an error)."""
+    console.print(f"[yellow]Follow-up:[/yellow] {text}")
+
+
 def print_rejection_fallback(console: Console, text: str) -> None:
-    console.print(f"[yellow]Fallback:[/yellow] {text}")
+    """Deprecated alias for :func:`print_followup` (kept for back-compat)."""
+    print_followup(console, text)
 
 
 def print_streaming_event(console: Console, event: StreamingEvent) -> None:
     """Render a VoicePipeline streaming event without performing side effects."""
     if event.type == "asr":
         console.print(Panel(event.text or "<empty>", title="ASR"))
+    elif event.type == "repair":
+        kind = _metadata_value(event.metadata, "repair_kind", "")
+        suffix = f" [dim]({kind})[/dim]" if kind else ""
+        console.print(f"[yellow]Follow-up:[/yellow] {event.text}{suffix}")
     elif event.type == "runtime":
         route = _metadata_value(event.metadata, "route", "")
         title = f"Runtime: {route}" if route else "Runtime"

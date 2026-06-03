@@ -14,9 +14,10 @@ import soundfile as sf
 from rich.console import Console
 from rich.panel import Panel
 
+from soca.app.text_runtime import default_text_llm_model_key
 from soca.asr import VietnameseASR
 from soca.llm import LocalLlamaCppLLM
-from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
+from soca.llm.registry import LLM_MODEL_REGISTRY
 
 console = Console()
 SAMPLE_RATE = 16000
@@ -27,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Record speech and run ASR -> LLM text demo.")
     parser.add_argument(
         "--llm-model",
-        default=DEFAULT_LLM_MODEL_KEY,
+        default=default_text_llm_model_key(),
         choices=sorted(LLM_MODEL_REGISTRY),
         help="LLM registry key to load.",
     )
@@ -85,7 +86,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"[yellow]{llm_result.text}[/yellow]\n\n"
                 f"[dim]LLM TTFT: {llm_result.ttft_ms:.0f} ms | "
                 f"Total: {t_llm:.0f} ms | {llm_result.tokens_per_second:.1f} tok/s[/dim]",
-                title="Sơn Ca trả lời",
+                title="SoCa trả lời",
                 border_style="yellow",
             )
         )

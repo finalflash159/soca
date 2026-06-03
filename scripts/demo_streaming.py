@@ -6,8 +6,9 @@ from collections.abc import Sequence
 
 from rich.console import Console
 
+from soca.app.text_runtime import default_text_llm_model_key
 from soca.llm import LocalLlamaCppLLM
-from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
+from soca.llm.registry import LLM_MODEL_REGISTRY
 
 console = Console()
 PROMPT = "Giải thích ngắn gọn về trí tuệ nhân tạo cho tôi học sinh cấp 2."
@@ -17,7 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Demo token streaming from a local LLM.")
     parser.add_argument(
         "--llm-model",
-        default=DEFAULT_LLM_MODEL_KEY,
+        default=default_text_llm_model_key(),
         choices=sorted(LLM_MODEL_REGISTRY),
         help="LLM registry key to load.",
     )
@@ -31,7 +32,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     console.print(f"[green]✓ Model ready:[/green] {args.llm_model}\n")
 
     console.print(f"[bold cyan]Câu hỏi: [/bold cyan] {args.prompt}\n")
-    console.print("[bold yellow]Sơn Ca: [/bold yellow] ", end="")
+    console.print("[bold yellow]SoCa: [/bold yellow] ", end="")
 
     t0 = time.perf_counter()
     first_token_time = None

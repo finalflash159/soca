@@ -162,7 +162,7 @@ def run_model_eval(
 
 
 def print_summary(reports: Sequence[dict]) -> None:
-    table = Table(title="Soca PhoWhisper ASR Bakeoff")
+    table = Table(title="SoCa PhoWhisper ASR Bakeoff")
     table.add_column("Model", style="cyan")
     table.add_column("Params", justify="right")
     table.add_column("WER", justify="right")

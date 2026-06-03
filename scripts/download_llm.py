@@ -70,7 +70,7 @@ def download_model(config: LLMModelConfig) -> Path:
 
 
 def print_model_table(configs: Sequence[LLMModelConfig]) -> None:
-    table = Table(title="Soca LLM Models")
+    table = Table(title="SoCa LLM Models")
     table.add_column("Key", style="cyan")
     table.add_column("Role")
     table.add_column("Repo")
@@ -90,7 +90,7 @@ def print_model_table(configs: Sequence[LLMModelConfig]) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Download Soca LLM GGUF artifacts.")
+    parser = argparse.ArgumentParser(description="Download SoCa LLM GGUF artifacts.")
     parser.add_argument(
         "--model",
         action="append",

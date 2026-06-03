@@ -7,7 +7,7 @@ import numpy as np
 from rich.console import Console
 
 from soca.app.voice_loop import run_voice_loop
-from soca.core import ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
+from soca.core import LLMUsage, ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
 from soca.tts import TTSResult
 
 
@@ -131,6 +131,63 @@ def test_run_voice_loop_renders_streaming_events_without_real_models() -> None:
     assert input_prompts == []
 
 
+def test_run_voice_loop_usage_flag_renders_voice_metrics() -> None:
+    config = make_config()
+    pipeline = FakePipeline(
+        [
+            StreamingEvent(type="asr", text="xin chào"),
+            StreamingEvent(
+                type="runtime",
+                text="Nên ăn nhẹ.",
+                metadata={
+                    "route": "free_chat",
+                    "llm_usage": LLMUsage(
+                        prompt_tokens=120,
+                        completion_tokens=40,
+                        ttft_ms=78.0,
+                        tokens_per_second=62.0,
+                    ),
+                },
+            ),
+            StreamingEvent(
+                type="tts",
+                text="Nên ăn nhẹ.",
+                metadata={"chunk_index": 0, "ttfa_ms": 410.0, "tts_latency_ms": 444.0},
+            ),
+            StreamingEvent(type="audio", text="Nên ăn nhẹ."),
+            StreamingEvent(
+                type="done",
+                latency_ms=1400.0,
+                metadata={
+                    "rejected": False,
+                    "runtime_route": "free_chat",
+                    "runtime_blocked": False,
+                    "stage_latencies_ms": {"asr": 480.0, "llm": 530.0},
+                },
+            ),
+        ]
+    )
+    console = Console(record=True, width=120)
+
+    run_voice_loop(
+        config,
+        show_usage=True,
+        console=console,
+        input_fn=lambda _: "",
+        runtime_builder=lambda _: make_bundle(config, pipeline, FakeTTS()),
+        recorder=lambda *_args, **_kwargs: np.zeros(1600, dtype=np.float32),
+        player=FakeAudioSink(),
+        max_turns=1,
+        warmup=False,
+    )
+
+    out = console.export_text()
+    assert "route=free_chat" in out
+    assert "ASR 480ms" in out
+    assert "TTFA 410ms" in out
+    assert "total 1400ms" in out
+
+
 def test_run_voice_loop_streams_llm_tokens_live_and_skips_runtime_panel() -> None:
     config = make_config()
     pipeline = FakePipeline(
@@ -211,6 +268,34 @@ def test_run_voice_loop_speaks_rejection_fallback_by_default() -> None:
     assert tts.calls == [fallback]
     assert len(player.play_calls) == 1
     assert player.play_calls[0][1] == 24000
+
+
+def test_run_voice_loop_does_not_double_speak_pipeline_rejection_audio() -> None:
+    config = make_config()
+    fallback = "Mình chưa nghe rõ, bạn nói lại nhé."
+    pipeline = FakePipeline(
+        [
+            StreamingEvent(type="tts", text=fallback, metadata={"chunk_index": 0}),
+            StreamingEvent(type="audio", text=fallback),
+            StreamingEvent(type="done", text=fallback, metadata={"rejected": True}),
+        ]
+    )
+    tts = FakeTTS()
+    player = FakeAudioSink()
+
+    run_voice_loop(
+        config,
+        console=Console(record=True),
+        input_fn=lambda _: "",
+        runtime_builder=lambda _: make_bundle(config, pipeline, tts),
+        recorder=lambda *_args, **_kwargs: np.zeros(1600, dtype=np.float32),
+        player=player,
+        max_turns=1,
+        warmup=False,
+    )
+
+    assert tts.calls == []
+    assert player.play_calls == []
 
 
 def test_run_voice_loop_can_suppress_rejection_fallback_speech() -> None:

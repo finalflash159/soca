@@ -9,13 +9,14 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 
+from soca.app.text_runtime import default_text_llm_model_key
 from soca.knowledge import (
     KnowledgeContext,
     KnowledgeContextBuilder,
     MarkdownVaultKnowledgeSource,
 )
 from soca.llm import LocalLlamaCppLLM
-from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
+from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.memory import MarkdownLongTermMemory, MemoryContext, MemoryContextBuilder
 
 console = Console()
@@ -33,7 +34,7 @@ Memory:
 {memory_context.prompt_text}
 """
 
-    return f"""Bạn là Sơn Ca, trợ lý tiếng Việt trả lời dựa trên ghi chú địa phương.
+    return f"""Bạn là SoCa, trợ lý tiếng Việt trả lời dựa trên ghi chú địa phương.
 
 Quy tắc:
 - Ưu tiên dùng thông tin trong phần ghi chú nếu liên quan.
@@ -63,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model",
-        default=DEFAULT_LLM_MODEL_KEY,
+        default=default_text_llm_model_key(),
         choices=sorted(LLM_MODEL_REGISTRY),
         help="LLM registry key to load.",
     )

@@ -135,7 +135,7 @@ TTS_MODEL_REGISTRY: dict[str, TTSModelConfig] = {
         source_url="https://github.com/dangvansam/viet-tts",
         notes="OpenAI-compatible local server runner; start VietTTS server before benchmarking.",
         hf_repo="dangvansam/viet-tts",
-        server_url_env_var="SHRIKE7_VIET_TTS_BASE_URL",
+        server_url_env_var="SOCA_VIET_TTS_BASE_URL",
     ),
     "vixtts": TTSModelConfig(
         key="vixtts",
@@ -150,8 +150,8 @@ TTS_MODEL_REGISTRY: dict[str, TTSModelConfig] = {
             "incompatibility, so SoCa calls a configured external command."
         ),
         hf_repo="capleaf/viXTTS",
-        command_env_var="SHRIKE7_TTS_VIXTTS_COMMAND",
-        voices_env_var="SHRIKE7_TTS_VIXTTS_VOICES",
+        command_env_var="SOCA_TTS_VIXTTS_COMMAND",
+        voices_env_var="SOCA_TTS_VIXTTS_VOICES",
     ),
     "f5_vi_hynt": TTSModelConfig(
         key="f5_vi_hynt",
@@ -166,8 +166,8 @@ TTS_MODEL_REGISTRY: dict[str, TTSModelConfig] = {
         hf_model_file="model_last.pt",
         hf_config_file="config.json",
         sdk_model="F5TTS_Base",
-        reference_audio_env_var="SHRIKE7_TTS_F5_HYNT_REF_AUDIO",
-        reference_text_env_var="SHRIKE7_TTS_F5_HYNT_REF_TEXT",
+        reference_audio_env_var="SOCA_TTS_F5_HYNT_REF_AUDIO",
+        reference_text_env_var="SOCA_TTS_F5_HYNT_REF_TEXT",
     ),
     "f5_vi_zalopay": TTSModelConfig(
         key="f5_vi_zalopay",
@@ -182,8 +182,8 @@ TTS_MODEL_REGISTRY: dict[str, TTSModelConfig] = {
         hf_model_file="model_1290000.pt",
         hf_config_file="vocab.txt",
         sdk_model="F5TTS_Base",
-        reference_audio_env_var="SHRIKE7_TTS_F5_ZALOPAY_REF_AUDIO",
-        reference_text_env_var="SHRIKE7_TTS_F5_ZALOPAY_REF_TEXT",
+        reference_audio_env_var="SOCA_TTS_F5_ZALOPAY_REF_AUDIO",
+        reference_text_env_var="SOCA_TTS_F5_ZALOPAY_REF_TEXT",
     ),
     "omnivoice": TTSModelConfig(
         key="omnivoice",
@@ -198,7 +198,7 @@ TTS_MODEL_REGISTRY: dict[str, TTSModelConfig] = {
             "Registry default uses auto voice-design mode; saved voices are selected explicitly."
         ),
         hf_repo="k2-fsa/OmniVoice",
-        voices_env_var="SHRIKE7_TTS_OMNIVOICE_VOICES",
+        voices_env_var="SOCA_TTS_OMNIVOICE_VOICES",
         voice_designs={
             "female_young": "female, young adult, moderate pitch",
             "female_high": "female, young adult, high pitch",

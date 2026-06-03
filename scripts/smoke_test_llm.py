@@ -23,7 +23,7 @@ TEST_PROMPTS = [
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run a quick Soca LLM smoke test.")
+    parser = argparse.ArgumentParser(description="Run a quick SoCa LLM smoke test.")
     parser.add_argument(
         "--model",
         default=DEFAULT_LLM_MODEL_KEY,

@@ -30,3 +30,22 @@ def test_pop_ready_sentence_waits_when_no_sentence_boundary():
 
     assert sentence is None
     assert rest == "Đây là một câu chưa có dấu kết"
+
+
+def test_pop_ready_sentence_does_not_emit_bare_numbered_list_marker():
+    buffer = "Tình hình:\n1. "
+
+    sentence, rest = pop_ready_sentence(buffer, min_chars=5)
+
+    assert sentence is None
+    assert rest == buffer
+
+
+def test_pop_ready_sentence_keeps_numbered_marker_with_item_text():
+    sentence, rest = pop_ready_sentence(
+        "Tình hình:\n1. Ăn đủ đạm. 2. Ngủ sớm.",
+        min_chars=5,
+    )
+
+    assert sentence == "Tình hình:\n1. Ăn đủ đạm."
+    assert rest == "2. Ngủ sớm."
