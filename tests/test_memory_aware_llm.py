@@ -73,7 +73,7 @@ def test_build_memory_prompt_includes_memory_and_user_message() -> None:
 
     prompt = build_memory_prompt("Bạn nhớ gì về tôi?", context)
 
-    assert "Bạn là SoCa" in prompt
+    assert "Bạn là Sơn Ca" in prompt
     assert "Long-term memory:" in prompt
     assert "thích tiếng Việt" in prompt
     assert "Bạn nhớ gì về tôi?" in prompt

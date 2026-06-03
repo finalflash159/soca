@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from soca.prompts import SOCA_LLM_SYSTEM_PROMPT
+from soca.prompts import SOCA_LLM_SYSTEM_PROMPT, split_embedded_system_prompt
 
 from .registry import LLMModelConfig
 
@@ -43,14 +43,20 @@ def build_chat_messages(
     if config.prompt_style == "phogpt_completion":
         raise ValueError("Completion-style models use completion prompts, not chat messages.")
 
-    user_msg = user_msg.strip()
-    if config.append_no_think and QWEN_NO_THINK_MARKER not in user_msg:
-        user_msg = f"{user_msg}\n{QWEN_NO_THINK_MARKER}"
-
     messages: list[ChatMessage] = []
     if inject_persona:
         messages.append({"role": "system", "content": SOCA_LLM_SYSTEM_PROMPT})
-    messages.append({"role": "user", "content": user_msg})
+        user_content = user_msg.strip()
+    else:
+        system_prompt, user_content = split_embedded_system_prompt(user_msg)
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+    user_content = user_content.strip()
+    if config.append_no_think and QWEN_NO_THINK_MARKER not in user_content:
+        user_content = f"{user_content}\n{QWEN_NO_THINK_MARKER}"
+
+    messages.append({"role": "user", "content": user_content})
     return messages
 
 
