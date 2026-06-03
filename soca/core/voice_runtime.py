@@ -59,6 +59,7 @@ class VoiceRuntimeBundle:
     pipeline: VoicePipeline
     memory_status: str
     knowledge_status: str
+    session_memory: SessionMemory | None = None
 
     @property
     def asr_guard_status(self) -> str:
@@ -144,7 +145,11 @@ def resolve_voice_runtime_config(
     )
 
 
-def build_voice_runtime(config: ResolvedVoiceRuntimeConfig) -> VoiceRuntimeBundle:
+def build_voice_runtime(
+    config: ResolvedVoiceRuntimeConfig,
+    *,
+    session_memory: SessionMemory | None = None,
+) -> VoiceRuntimeBundle:
     detector = SpeechDetector()
     asr = RobustASR(asr=VietnameseASR(model_key=config.asr_model), vad=detector)
     llm = LocalLlamaCppLLM(
@@ -174,10 +179,14 @@ def build_voice_runtime(config: ResolvedVoiceRuntimeConfig) -> VoiceRuntimeBundl
             config.vault,
             max_chars=config.profile_chars,
         )
-        session_memory = SessionMemory(
-            max_turns=config.session_turns,
-            max_chars=config.session_chars,
-            max_turn_chars=config.turn_chars,
+        session_memory = (
+            session_memory
+            if session_memory is not None
+            else SessionMemory(
+                max_turns=config.session_turns,
+                max_chars=config.session_chars,
+                max_turn_chars=config.turn_chars,
+            )
         )
         memory_builder = MemoryContextBuilder(
             long_term=long_term_memory,
@@ -204,7 +213,13 @@ def build_voice_runtime(config: ResolvedVoiceRuntimeConfig) -> VoiceRuntimeBundl
     )
 
     tts = create_tts_engine(config.tts_model, voice=config.tts_voice)
-    pipeline = VoicePipeline(asr=asr, llm=llm, tts=tts, assistant_runtime=assistant_runtime)
+    pipeline = VoicePipeline(
+        asr=asr,
+        llm=llm,
+        tts=tts,
+        assistant_runtime=assistant_runtime,
+        repair_catalog=default_repair_catalog(),
+    )
     return VoiceRuntimeBundle(
         config=config,
         detector=detector,
@@ -215,6 +230,7 @@ def build_voice_runtime(config: ResolvedVoiceRuntimeConfig) -> VoiceRuntimeBundl
         pipeline=pipeline,
         memory_status=memory_status,
         knowledge_status=knowledge_status,
+        session_memory=session_memory if not config.no_memory else None,
     )
 
 

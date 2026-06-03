@@ -7,6 +7,7 @@ from soca.app.text_runtime import (
     build_text_runtime,
     normalize_text_turn,
 )
+from soca.memory import SessionMemory
 
 
 def _config(vault: Path, **overrides) -> TextRuntimeConfig:
@@ -16,6 +17,13 @@ def _config(vault: Path, **overrides) -> TextRuntimeConfig:
     }
     base.update(overrides)
     return TextRuntimeConfig(**base)
+
+
+def test_text_runtime_default_llm_follows_default_runtime_profile() -> None:
+    config = TextRuntimeConfig()
+
+    assert config.profile_key == "baseline"
+    assert config.llm_model == "arcee_vylinh_3b_q4_k_m"
 
 
 def test_session_memory_enabled_without_vault(tmp_path: Path) -> None:
@@ -44,6 +52,18 @@ def test_session_memory_records_turn_without_vault(tmp_path: Path) -> None:
 
     assert bundle.session_memory is not None
     assert [turn.role for turn in bundle.session_memory.turns] == ["user", "assistant"]
+
+
+def test_text_runtime_uses_injected_session_memory(tmp_path: Path) -> None:
+    shared = SessionMemory()
+    bundle = build_text_runtime(
+        _config(tmp_path / "absent", no_memory=False),
+        session_memory=shared,
+    )
+
+    assert bundle.session_memory is shared
+    bundle.runtime.run_text_turn("mấy giờ rồi?", source="test")
+    assert len(shared.turns) == 2
 
 
 def test_normalize_text_turn_extracts_knowledge_prefix() -> None:

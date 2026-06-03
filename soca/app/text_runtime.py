@@ -148,7 +148,7 @@ def build_text_runtime(
             ]
         )
 
-    session_memory = None
+    runtime_session_memory = None
     memory_builder = None
     if config.no_memory:
         memory_status = "disabled"
@@ -156,10 +156,14 @@ def build_text_runtime(
         # Session memory is RAM-only and must work even without a vault so
         # `soca chat` keeps multi-turn context. Long-term profile memory is the
         # only part that needs the vault on disk.
-        session_memory = SessionMemory(
-            max_turns=config.session_turns,
-            max_chars=config.session_chars,
-            max_turn_chars=config.turn_chars,
+        runtime_session_memory = (
+            session_memory
+            if session_memory is not None
+            else SessionMemory(
+                max_turns=config.session_turns,
+                max_chars=config.session_chars,
+                max_turn_chars=config.turn_chars,
+            )
         )
         long_term = (
             MarkdownLongTermMemory(vault, max_chars=config.profile_chars)
@@ -168,7 +172,7 @@ def build_text_runtime(
         )
         memory_builder = MemoryContextBuilder(
             long_term=long_term,
-            session=session_memory,
+            session=runtime_session_memory,
             max_chars=config.memory_chars,
         )
         if vault.is_dir():
@@ -205,7 +209,7 @@ def build_text_runtime(
     )
     return TextRuntimeBundle(
         runtime=runtime,
-        session_memory=session_memory,
+        session_memory=runtime_session_memory,
         llm_status=llm_status,
         knowledge_status=knowledge_status,
         memory_status=memory_status,
