@@ -224,6 +224,26 @@ def test_streaming_runtime_path_emits_runtime_event_and_tts_without_llm_stream()
     assert events[-1].metadata["runtime_route"] == RuntimeRoute.TOOL_DIRECT.value
 
 
+def test_streaming_runtime_path_strips_markdown_before_tts() -> None:
+    asr = FakeASR("wiki chất đạm")
+    llm = SpyLLM()
+    tts = SpyTTS()
+    runtime = SpyRuntime("**Chất đạm:** hỗ trợ **cơ bắp**.")
+    pipeline = VoicePipeline(asr=asr, llm=llm, tts=tts, assistant_runtime=runtime)
+
+    events = list(
+        pipeline.turn_streaming(
+            np.zeros(16000, dtype=np.float32),
+            audio_sink=NullAudioPlayer(),
+            min_sentence_chars=8,
+        )
+    )
+
+    assert any(event.type == "sentence" and "**Chất đạm:**" in event.text for event in events)
+    assert any(event.type == "tts" and event.text == "Chất đạm: hỗ trợ cơ bắp." for event in events)
+    assert tts.calls == ["Chất đạm: hỗ trợ cơ bắp."]
+
+
 def test_streaming_runtime_path_synthesizes_next_chunk_while_audio_is_playing() -> None:
     asr = FakeASR("xin chào")
     llm = SpyLLM()

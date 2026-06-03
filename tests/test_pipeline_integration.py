@@ -92,6 +92,18 @@ def test_voice_pipeline_happy_path_calls_llm_and_tts() -> None:
     assert result.total_latency_ms >= sum(result.stage_latencies_ms.values())
 
 
+def test_voice_pipeline_strips_markdown_before_tts_but_keeps_response_text() -> None:
+    asr = FakeASR("tình hình")
+    llm = SpyLLM(response="**Tình hình:** nên ăn **đủ đạm**.")
+    tts = SpyTTS()
+    pipeline = VoicePipeline(asr=asr, llm=llm, tts=tts)
+
+    result = pipeline.turn(np.zeros(16000, dtype=np.float32))
+
+    assert result.response_text == "**Tình hình:** nên ăn **đủ đạm**."
+    assert tts.calls == ["Tình hình: nên ăn đủ đạm."]
+
+
 def test_voice_pipeline_reject_path_skips_llm_and_tts() -> None:
     asr = FakeASR("", rejection_reason="no_speech")
     llm = SpyLLM()
@@ -157,7 +169,29 @@ def test_voice_pipeline_streaming_yields_asr_tokens_sentences_audio_and_done():
     assert tts.calls == ["Xin chào bạn.", "Mình là SoCa."]
 
 
-def test_voice_pipeline_streaming_reject_path_skips_llm_and_tts():
+def test_voice_pipeline_streaming_strips_markdown_before_tts():
+    asr = FakeASR("tình hình")
+    llm = SpyLLM(response="unused")
+    llm.generate_stream = lambda text, max_tokens=128, temperature=0.0: iter(
+        ["**Tình hình:** nên ăn **đủ đạm**."]
+    )
+    tts = SpyTTS()
+    pipeline = VoicePipeline(asr=asr, llm=llm, tts=tts)
+
+    events = list(
+        pipeline.turn_streaming(
+            np.zeros(16000, dtype=np.float32),
+            audio_sink=NullAudioPlayer(),
+            min_sentence_chars=8,
+        )
+    )
+
+    assert any(event.type == "sentence" and "**Tình hình:**" in event.text for event in events)
+    assert any(event.type == "tts" and event.text == "Tình hình: nên ăn đủ đạm." for event in events)
+    assert tts.calls == ["Tình hình: nên ăn đủ đạm."]
+
+
+def test_voice_pipeline_streaming_reject_path_speaks_fallback_by_default():
     asr = FakeASR("", rejection_reason="no_speech")
     llm = SpyLLM()
     tts = SpyTTS()
@@ -170,7 +204,37 @@ def test_voice_pipeline_streaming_reject_path_skips_llm_and_tts():
         )
     )
 
-    assert [event.type for event in events] == ["asr", "done"]
+    assert [event.type for event in events] == [
+        "asr",
+        "repair",
+        "sentence",
+        "tts",
+        "audio",
+        "done",
+    ]
+    repair = next(event for event in events if event.type == "repair")
+    assert repair.metadata["repair_kind"] == "no_input"
+    assert events[-1].metadata["rejected"] is True
+    assert events[-1].metadata["repair_kind"] == "no_input"
+    assert llm.calls == []
+    assert tts.calls == [pipeline.reject_response]
+
+
+def test_voice_pipeline_streaming_reject_path_can_skip_fallback_speech():
+    asr = FakeASR("", rejection_reason="no_speech")
+    llm = SpyLLM()
+    tts = SpyTTS()
+    pipeline = VoicePipeline(asr=asr, llm=llm, tts=tts)
+
+    events = list(
+        pipeline.turn_streaming(
+            np.zeros(16000, dtype=np.float32),
+            audio_sink=NullAudioPlayer(),
+            speak_rejections=False,
+        )
+    )
+
+    assert [event.type for event in events] == ["asr", "repair", "done"]
     assert events[-1].metadata["rejected"] is True
     assert llm.calls == []
     assert tts.calls == []

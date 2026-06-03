@@ -1,0 +1,133 @@
+# SoCa conversation-repair catalog (tiếng Việt).
+#
+# Mỗi [kind.slot] = một tình huống repair, có `action` và danh sách `variants`.
+# Bộ chọn random no-repeat sẽ rút một biến thể, tránh lặp câu vừa dùng.
+#
+# Quy ước giọng văn (rút ra từ cách giới trẻ VN nói chuyện, pha vùng miền):
+#   - SoCa tự xưng "Sơn Ca" / "mình", gọi người dùng "bạn" — thân thiện, không thảo mai.
+#   - Trộn tiểu từ vùng miền cho tự nhiên: "nha/nhé/nhen/á/nè/hông/ta/xíu".
+#   - attempt_1 (gọi với vào im lặng) được phép vui, dùng trend chào hỏi nước ngoài
+#     (moshi moshi - Nhật, annyeong/yeoboseyo - Hàn, alô) như kiểu "alo có ai không".
+#   - càng lặp lỗi (attempt_2, handover) càng bớt đùa, tập trung giúp thật.
+#   - guardrail/safety: ít biến thể, rõ ràng, KHÔNG đùa.
+#   - Text này được TTS đọc: không emoji, không markdown, không ký tự lạ.
+
+# --- no_input: nghe hụt, im ru (gọi với vào im lặng) ----------------------------
+
+[no_input.attempt_1]
+action = "reprompt"
+variants = [
+  "Alo alo, có ai ngoài đó hông ta?",
+  "Moshi moshi? Sơn Ca chưa nghe thấy gì hết á.",
+  "Ơ, im ru luôn. Bạn nói lại giúp Sơn Ca một câu nha.",
+  "Annyeong? Hình như mình hụt mất câu vừa rồi rồi.",
+  "Alô alô, mình nghe chưa ra. Bạn nói lại lần nữa nhé.",
+  "Ủa, có ai đang nói hông ta? Mình chưa bắt được tiếng.",
+  "Hế lô, Sơn Ca đây. Mình chưa nghe rõ, bạn nhắc lại nha.",
+  "Yeoboseyo? Mình chờ nãy giờ mà chưa nghe thấy gì á.",
+]
+
+[no_input.attempt_2]
+action = "contextual_reprompt"
+variants = [
+  "Mình vẫn chưa nghe rõ. Bạn nói chậm và gần mic hơn chút nha.",
+  "Có thể mic hơi xa đó. Bạn thử nói lại ngắn gọn giúp mình nhé.",
+  "Chỗ mình nghe hơi rè. Bạn nói lại to hơn một chút được không?",
+  "Hình như tiếng vào chưa rõ. Bạn ghé gần mic nói lại giúp mình nha.",
+]
+
+[no_input.handover]
+action = "handover_to_chat"
+variants = [
+  "Voice đang hơi trục trặc. Mình mở chat để bạn gõ cho chắc nha.",
+  "Nghe hoài chưa được, mình chuyển qua chat để trao đổi bằng chữ nhé.",
+]
+
+# --- uncertain_input: nghe được nhưng không chắc (nghi nghe nhầm) ----------------
+
+[uncertain_input.attempt_1]
+action = "clarify"
+variants = [
+  "Mình nghe loáng thoáng thôi à. Bạn nói lại chậm chậm giúp mình nha.",
+  "Nghe chưa chắc lắm. Bạn lặp lại giúp mình một lần nữa nhé.",
+  "Hình như mình nghe chưa chuẩn. Bạn nói lại rõ hơn xíu nha.",
+]
+
+[uncertain_input.attempt_2]
+action = "contextual_reprompt"
+variants = [
+  "Vẫn chưa chắc lắm. Chỗ bạn hơi ồn hay sao á, thử nói lại gần mic nha.",
+  "Mình sợ nghe nhầm. Bạn nói lại thật rõ giúp mình một câu nhé.",
+]
+
+# --- no_match: nghe rõ nhưng chưa hiểu muốn gì -----------------------------------
+
+[no_match.attempt_1]
+action = "clarify"
+variants = [
+  "Mình chưa rõ ý bạn lắm. Bạn muốn mình giúp gì nè?",
+  "Nói rõ hơn xíu được hông? Mình chưa nắm được bạn cần gì.",
+  "Ý bạn là sao ta? Bạn nói cụ thể hơn để mình giúp đúng nha.",
+]
+
+# --- out_of_scope: ngoài khả năng -----------------------------------------------
+
+[out_of_scope.attempt_1]
+action = "redirect"
+variants = [
+  "Cái này mình chưa làm được rồi. Mình giúp được mấy việc như trả lời, tra ghi chú của bạn nè.",
+  "Việc đó hơi quá sức Sơn Ca. Nhưng mình hỗ trợ bạn hỏi đáp với tra cứu được nha.",
+]
+
+# --- guardrail_blocked: chặn an toàn (ít biến thể, KHÔNG đùa) --------------------
+
+[guardrail_blocked.default]
+action = "redirect"
+variants = [
+  "Phần này mình không hỗ trợ được. Nếu muốn, mình chỉ bạn hướng an toàn hơn nha.",
+  "Mình xin phép không giúp phần đó. Mình hỗ trợ bạn việc khác được không?",
+]
+
+# --- tool_failed / knowledge_miss / tts_failed ----------------------------------
+
+[tool_failed.default]
+action = "reprompt"
+variants = [
+  "Công cụ vừa rồi chạy chưa được. Bạn thử lại giúp mình nha.",
+  "Chỗ đó mình làm chưa xong được. Bạn thử lại lần nữa nhé.",
+]
+
+[knowledge_miss.default]
+action = "clarify"
+variants = [
+  "Mình chưa thấy cái này trong ghi chú của bạn. Bạn cho thêm từ khóa được không?",
+  "Trong vault chưa có gì khớp. Bạn thử nói từ khóa khác xem nha.",
+]
+
+[tts_failed.default]
+action = "show_text"
+variants = [
+  "Mình trả lời được nhưng phần đọc đang lỗi. Bạn xem phần chữ giúp mình nha.",
+]
+
+# --- session_inactive: im lặng kéo dài khi SoCa đang chờ ------------------------
+
+[session_inactive.no_reply_1]
+action = "no_reply_followup"
+variants = [
+  "Sơn Ca vẫn ở đây nha, bạn cứ thong thả.",
+  "Mình đợi nè, khi nào sẵn sàng bạn nói tiếp nha.",
+]
+
+[session_inactive.no_reply_2]
+action = "no_reply_guidance"
+variants = [
+  "Mình để voice ở chế độ chờ nha. Bạn nói tiếp hoặc gõ trong chat đều được.",
+  "Nếu voice không tiện lúc này, bạn cứ gõ trong chat cũng được nhé.",
+]
+
+[session_inactive.sleep]
+action = "sleep_voice"
+variants = [
+  "Mình tạm dừng voice để khỏi nghe nhầm. Khi cần bạn mở lại nha.",
+]

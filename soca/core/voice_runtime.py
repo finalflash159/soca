@@ -11,6 +11,7 @@ from soca.asr.robust_asr import RobustASR
 from soca.asr.whisper_onnx import VietnameseASR
 from soca.core.pipeline import VoicePipeline
 from soca.core.profiles import get_voice_runtime_profile
+from soca.core.repair import default_repair_catalog
 from soca.core.runtime import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
 from soca.knowledge import KnowledgeContextBuilder, MarkdownVaultKnowledgeSource
 from soca.llm import LocalLlamaCppLLM

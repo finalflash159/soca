@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import queue
+import random
 import threading
 import time
 from collections.abc import Iterator
@@ -11,8 +12,16 @@ import numpy as np
 
 from soca.core.audio_out import AudioSink, NullAudioPlayer
 from soca.core.metrics import MetricsLogger
+from soca.core.repair import (
+    RepairAction,
+    RepairCatalog,
+    RepairChoice,
+    RepairKind,
+    RepairState,
+    plan_repair,
+)
 from soca.core.streaming import StreamingEvent, pop_ready_sentence
-from soca.core.text_chunking import chunk_text_for_tts
+from soca.core.text_chunking import chunk_text_for_tts, normalize_text_for_tts
 from soca.tts import TTSResult
 
 
@@ -28,6 +37,12 @@ class PipelineResult:
     asr_result: Any | None = None
     llm_result: Any | None = None
     runtime_result: Any | None = None
+    # Repair layer (plan §9): user-facing follow-up for a rejected turn. Kept
+    # alongside the legacy rejected/rejection_reason fields for back-compat.
+    repair_kind: str = ""
+    repair_action: str = ""
+    repair_attempt: int = 0
+    handover_target: str | None = None
 
 
 class VoicePipeline:
@@ -39,13 +54,50 @@ class VoicePipeline:
         assistant_runtime: Any | None = None,
         metrics: MetricsLogger | None = None,
         reject_response: str = "[laughter] Moshi moshi? Có ai đó hăm?",
+        repair_catalog: RepairCatalog | None = None,
     ) -> None:
         self.asr = asr
         self.llm = llm
         self.tts = tts
         self.assistant_runtime = assistant_runtime
         self.metrics = metrics or MetricsLogger()
+        # Deterministic single-string fallback (used when no catalog is wired,
+        # e.g. unit tests). Production injects ``repair_catalog`` for variety.
         self.reject_response = reject_response
+        self.repair_catalog = repair_catalog
+        self._repair_state = RepairState()
+        self._repair_rng = random.Random()
+
+    def _plan_repair(self, rejection_reason: str) -> RepairChoice:
+        """Plan the user-facing follow-up for an empty/rejected ASR turn.
+
+        Picks a fresh natural variant from the catalog (with escalation +
+        no-repeat) when available; otherwise wraps the fixed ``reject_response``
+        for backward compatibility.
+        """
+        if self.repair_catalog is None:
+            return RepairChoice(
+                text=self.reject_response,
+                prompt_id="legacy.reject_response",
+                kind=RepairKind.NO_INPUT,
+                action=RepairAction.REPROMPT,
+            )
+        return plan_repair(
+            self.repair_catalog,
+            rejection_reason=rejection_reason,
+            state=self._repair_state,
+            rng=self._repair_rng,
+        )
+
+    @staticmethod
+    def _repair_metadata(choice: RepairChoice, *, attempt: int) -> dict[str, Any]:
+        handover = "chat" if choice.action == RepairAction.HANDOVER_TO_CHAT else None
+        return {
+            "repair_kind": choice.kind.value,
+            "repair_action": choice.action.value,
+            "repair_attempt": attempt,
+            "handover_target": handover,
+        }
 
     def turn(self, audio: np.ndarray) -> PipelineResult:
         self.metrics.reset()
@@ -58,17 +110,23 @@ class VoicePipeline:
         rejection_reason = getattr(asr_result, "rejection_reason", "")
 
         if not transcript:
+            repair = self._plan_repair(rejection_reason)
             return PipelineResult(
                 transcript="",
-                response_text=self.reject_response,
+                response_text=repair.text,
                 rejected=True,
                 rejection_reason=rejection_reason or "empty_transcript",
                 tts=None,
                 stage_latencies_ms=self.metrics.snapshot(),
                 total_latency_ms=(time.perf_counter() - t0) * 1000,
                 asr_result=asr_result,
+                repair_kind=repair.kind.value,
+                repair_action=repair.action.value,
+                repair_attempt=self._repair_state.no_input_attempts,
+                handover_target="chat" if repair.action == RepairAction.HANDOVER_TO_CHAT else None,
             )
 
+        self._repair_state.reset()  # successful turn clears the repair ladder
         llm_result = None
         runtime_result = None
         if self.assistant_runtime is not None:
@@ -89,7 +147,7 @@ class VoicePipeline:
             response_text = getattr(llm_result, "text", "").strip()
 
         with self.metrics.stage("tts"):
-            tts_result = self.tts.synthesize(response_text)
+            tts_result = self.tts.synthesize(_speech_text(response_text))
 
         return PipelineResult(
             transcript=transcript,
@@ -110,6 +168,7 @@ class VoicePipeline:
         audio_sink: AudioSink | None = None,
         min_sentence_chars: int = 24,
         first_sentence_min_chars: int = 8,
+        speak_rejections: bool = True,
     ) -> Iterator[StreamingEvent]:
         self.metrics.reset()
         t0 = time.perf_counter()
@@ -128,17 +187,41 @@ class VoicePipeline:
         )
 
         if not transcript:
+            repair = self._plan_repair(rejection_reason)
+            repair_meta = self._repair_metadata(
+                repair, attempt=self._repair_state.no_input_attempts
+            )
+            # Repair event lands before sentence/tts so UI can label the turn as a
+            # follow-up (not an error) and act on handover (plan §9).
+            yield StreamingEvent(
+                type="repair",
+                text=repair.text,
+                metadata={**repair_meta, "technical_reason": rejection_reason or "empty_transcript"},
+            )
+            if speak_rejections:
+                chunks = chunk_text_for_tts(repair.text, min_chars=min_sentence_chars)
+                for sentence in chunks:
+                    yield StreamingEvent(type="sentence", text=sentence)
+                yield from self._stream_tts_playback(
+                    chunks,
+                    sink=sink,
+                    turn_start_time=t0,
+                )
+
             yield StreamingEvent(
                 type="done",
-                text=self.reject_response,
+                text=repair.text,
                 latency_ms=(time.perf_counter() - t0) * 1000,
                 metadata={
                     "rejected": True,
                     "rejection_reason": rejection_reason or "empty_transcript",
+                    "stage_latencies_ms": self.metrics.snapshot(),
+                    **repair_meta,
                 },
             )
             return
 
+        self._repair_state.reset()  # successful turn clears the repair ladder
         if self.assistant_runtime is not None:
             if hasattr(self.assistant_runtime, "stream_text_turn"):
                 yield from self._turn_streaming_runtime_stream(
@@ -185,8 +268,9 @@ class VoicePipeline:
                         event_queue.put(None)
                         return
 
+                    speech_text = _speech_text(sentence)
                     with self.metrics.stage(f"tts_{index}"):
-                        tts_result = self.tts.synthesize(sentence)
+                        tts_result = self.tts.synthesize(speech_text)
 
                     if first_audio_time is None:
                         first_audio_time = time.perf_counter()
@@ -198,7 +282,7 @@ class VoicePipeline:
                     event_queue.put(
                         StreamingEvent(
                             type="tts",
-                            text=sentence,
+                            text=speech_text,
                             audio=tts_result.audio,
                             sample_rate=tts_result.sample_rate,
                             tts=tts_result,
@@ -214,7 +298,7 @@ class VoicePipeline:
                     event_queue.put(
                         StreamingEvent(
                             type="audio",
-                            text=sentence,
+                            text=speech_text,
                             audio=tts_result.audio,
                             sample_rate=tts_result.sample_rate,
                             tts=tts_result,
@@ -298,6 +382,9 @@ class VoicePipeline:
                 "citations": [
                     {"path": item.path, "title": item.title} for item in citations
                 ],
+                # LLM telemetry for `soca voice --usage`. Object is fine in metadata;
+                # eval/console read named keys, not the whole dict.
+                "llm_usage": getattr(runtime_result, "usage", None),
             },
         )
 
@@ -379,8 +466,9 @@ class VoicePipeline:
                     if sentence is None:
                         return
 
+                    speech_text = _speech_text(sentence)
                     with self.metrics.stage(f"tts_{index}"):
-                        tts_result = self.tts.synthesize(sentence)
+                        tts_result = self.tts.synthesize(speech_text)
 
                     if first_audio_time is None:
                         first_audio_time = time.perf_counter()
@@ -394,7 +482,7 @@ class VoicePipeline:
 
                     event = StreamingEvent(
                         type="tts",
-                        text=sentence,
+                        text=speech_text,
                         audio=tts_result.audio,
                         sample_rate=tts_result.sample_rate,
                         tts=tts_result,
@@ -521,8 +609,9 @@ class VoicePipeline:
 
             try:
                 for index, sentence in enumerate(sentences):
+                    speech_text = _speech_text(sentence)
                     with self.metrics.stage(f"tts_{index}"):
-                        tts_result = self.tts.synthesize(sentence)
+                        tts_result = self.tts.synthesize(speech_text)
 
                     audio_ready_time = time.perf_counter()
                     if first_audio_time is None:
@@ -537,7 +626,7 @@ class VoicePipeline:
 
                     event = StreamingEvent(
                         type="tts",
-                        text=sentence,
+                        text=speech_text,
                         audio=tts_result.audio,
                         sample_rate=tts_result.sample_rate,
                         tts=tts_result,
@@ -601,3 +690,7 @@ class VoicePipeline:
 
         tts_thread.join()
         playback_thread.join()
+
+
+def _speech_text(text: str) -> str:
+    return normalize_text_for_tts(text) or text.strip()
