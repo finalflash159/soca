@@ -22,12 +22,13 @@ from soca.app.tui import theme
 from soca.app.tui.branding import DISPLAY_NAME
 
 # Logical pipeline states surfaced to the user.
-VOICE_STATES = ("idle", "listening", "processing", "speaking", "error")
+VOICE_STATES = ("loading", "idle", "listening", "processing", "speaking", "error")
 
-_AMBER = "#d29922"  # processing accent (local to voice; not in shared palette)
+_AMBER = "#d29922"  # processing/loading accent (local to voice; not in shared palette)
 
 # state -> (glyph, label, style)
 _STATE_BADGE: dict[str, tuple[str, str, str]] = {
+    "loading": ("◐", "LOADING", _AMBER),
     "idle": ("○", "idle", theme.MUTED),
     "listening": ("●", "LISTENING", theme.ACCENT),
     "processing": ("●", "PROCESSING", _AMBER),
@@ -37,6 +38,8 @@ _STATE_BADGE: dict[str, tuple[str, str, str]] = {
 
 # Cycled while speaking so the notes look alive.
 _MUSIC_FRAMES = ("♪      ", "♪ ♫    ", "♪ ♫ ♪  ", "  ♫ ♪  ")
+# Cycled while loading so the spinner looks alive.
+_SPINNER = ("◐", "◓", "◑", "◒")
 
 
 @dataclass(frozen=True)
@@ -71,8 +74,10 @@ def _bird(state: str) -> str:
     return "(o>" if state == "speaking" else "(.>"
 
 
-def _badge(state: str) -> Text:
+def _badge(state: str, frame: int = 0) -> Text:
     glyph, label, style = _STATE_BADGE.get(state, _STATE_BADGE["idle"])
+    if state == "loading":
+        glyph = _SPINNER[frame % len(_SPINNER)]
     return Text(f"{glyph} {label}", style=theme.st(f"bold {style}"))
 
 
@@ -91,7 +96,7 @@ def _render_status(
     line1 = Text()
     line1.append(f"{_bird(view.state)}  ", style=theme.st(f"bold {theme.GREEN}"))
     line1.append(f"{DISPLAY_NAME}   ", style=theme.st(theme.TITLE))
-    line1.append_text(_badge(view.state))
+    line1.append_text(_badge(view.state, music_frame))
     music = _music(view.state, music_frame)
     if music:
         line1.append(f"   {music}", style=theme.st(theme.GREEN))

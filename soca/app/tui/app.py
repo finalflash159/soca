@@ -203,8 +203,8 @@ class SoCaTuiApp(App[None]):
         )
 
     def _tick_voice_music(self) -> None:
-        """Animate the music notes while SoCa is speaking (no-op otherwise)."""
-        if self.state.mode == "voice" and self._voice_turn.state == "speaking":
+        """Animate the music notes (speaking) / spinner (loading); no-op otherwise."""
+        if self.state.mode == "voice" and self._voice_turn.state in ("speaking", "loading"):
             self._music_frame += 1
             self._render_voice_view()
 
@@ -459,9 +459,9 @@ class SoCaTuiApp(App[None]):
         self._voice_transcript = ""
         self._voice_response = ""
         self._voice_runtime_meta = {}
-        self._voice_turn = VoiceTurnView(state="listening", note="Đang khởi động voice loop…")
+        self._voice_turn = VoiceTurnView(state="loading", note="khởi động voice loop…")
         self._render_voice_view()
-        self._refresh_status("voice")
+        self._refresh_status("loading")
 
         event_queue: Queue[VoiceMonitorEvent | None] = Queue()
         worker = Thread(
@@ -536,8 +536,6 @@ class SoCaTuiApp(App[None]):
         "turn_start": "_voice_on_turn_start",
         "recording": "_voice_on_recording",
         "recorded": "_voice_on_recorded",
-        "idle_silence": "_voice_on_idle_silence",
-        "idle_sleep": "_voice_on_idle_sleep",
         "asr": "_voice_on_asr",
         "repair": "_voice_on_repair",
         "llm_token": "_voice_on_llm_token",
@@ -563,22 +561,44 @@ class SoCaTuiApp(App[None]):
     # timeline so voice history reads like chat and survives a mode switch.
 
     def _voice_on_loading(self, event: VoiceMonitorEvent) -> None:
-        self.inspector.show_idle(f"Đang load ASR/LLM/TTS.\n{_voice_stack_text(event.metadata)}")
-        self._set_voice_turn(state="idle", note="đang tải…")
+        meta = event.metadata
+        # Startup is slow (models load for seconds): show what's loading + progress.
+        self.timeline.add_notice(
+            "Loading",
+            f"Đang tải runtime · ASR={meta.get('asr_model', '?')}"
+            f" · LLM={meta.get('llm_model', '?')}"
+            f" · TTS={meta.get('tts_model', '?')}/{meta.get('voice') or 'default'}",
+        )
+        self.inspector.show_idle(f"Đang load ASR/LLM/TTS.\n{_voice_stack_text(meta)}")
+        self._set_voice_turn(state="loading", note="tải ASR/LLM/TTS…")
+        self._refresh_status("loading")
 
     def _voice_on_ready(self, event: VoiceMonitorEvent) -> None:
+        latency = event.latency_ms
+        took = f" ({latency:.0f}ms)" if latency is not None else ""
+        self.timeline.add_notice(
+            "Ready",
+            f"Runtime sẵn sàng{took} · "
+            f"Memory={event.metadata.get('memory_status', '?')} · "
+            f"Knowledge={event.metadata.get('knowledge_status', '?')}",
+        )
         self.inspector.show_idle(
             "Voice runtime sẵn sàng.\n"
             f"Memory={event.metadata.get('memory_status', 'unknown')}\n"
-            f"Knowledge={event.metadata.get('knowledge_status', 'unknown')}"
+            f"Knowledge={event.metadata.get('knowledge_status', 'unknown')}\n"
+            f"ASR guards={event.metadata.get('asr_guard_status', 'unknown')}"
         )
-        self._set_voice_turn(note="")
+        self._set_voice_turn(state="loading", note="khởi động…")
 
     def _voice_on_warmup(self, event: VoiceMonitorEvent) -> None:
-        status = "ok" if event.metadata.get("ok") else "error"
-        self._set_voice_turn(note=f"warmup {event.text}: {status}")
+        status = "ok" if event.metadata.get("ok") else "lỗi"
+        latency = event.latency_ms
+        took = f" {latency:.0f}ms" if latency is not None else ""
+        self.timeline.add_notice("Warmup", f"{event.text}: {status}{took}")
+        self._set_voice_turn(state="loading", note=f"warmup {event.text}…")
 
     def _voice_on_loop_started(self, event: VoiceMonitorEvent) -> None:
+        self.timeline.add_notice("Voice", "Sẵn sàng nghe. Bạn nói đi nha.")
         self._set_voice_turn(state="listening", note="")
         self._refresh_status("listening")
 
@@ -600,15 +620,6 @@ class SoCaTuiApp(App[None]):
     def _voice_on_recorded(self, event: VoiceMonitorEvent) -> None:
         self._set_voice_turn(state="processing", note="")
         self._refresh_status("processing")
-
-    def _voice_on_idle_silence(self, event: VoiceMonitorEvent) -> None:
-        self._set_voice_turn(state="idle", note="im lặng, tiếp tục nghe…")
-        self._refresh_status("listening")
-
-    def _voice_on_idle_sleep(self, event: VoiceMonitorEvent) -> None:
-        self._set_voice_turn(state="idle", note="ngủ sau một lúc im lặng")
-        self.inspector.show_idle("Voice tạm dừng vì không có hội thoại mới.")
-        self._refresh_status("idle")
 
     def _voice_on_asr(self, event: VoiceMonitorEvent) -> None:
         self._voice_transcript = event.text

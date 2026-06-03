@@ -32,7 +32,6 @@ from soca.core.repair import (
     RepairKind,
     RepairTimings,
     default_repair_catalog,
-    plan_no_reply,
 )
 from soca.core.text_chunking import normalize_text_for_tts
 from soca.memory import SessionMemory
@@ -50,6 +49,10 @@ class VoiceMonitorEvent:
 VoiceRuntimeBuilder = Callable[[ResolvedVoiceRuntimeConfig], VoiceRuntimeBundle]
 VoiceRecorder = Callable[..., np.ndarray]
 VoiceEventQueue = Queue[VoiceMonitorEvent | None]
+
+# How often SoCa playfully calls out while nobody is speaking (ms of silence
+# between greetings). Spaced so it feels like a gentle "alo?", not a nag.
+_SILENCE_CALLOUT_INTERVAL_MS = 20_000
 
 
 class VoiceMonitorController:
@@ -77,10 +80,12 @@ class VoiceMonitorController:
         self.bundle: VoiceRuntimeBundle | None = None
         self._warmed_up = False
         self._idle_started_at: float | None = None
-        self._expects_response = False
-        self._no_reply_attempts_fired = 0
         self._no_reply_rng = random.Random()
         self._recent_no_reply_prompt_ids: deque[str] = deque(maxlen=8)
+        # Passive silence: SoCa periodically calls out the playful "alo, có ai
+        # không? / moshi moshi?" greetings (no_input.attempt_1), cycling without
+        # repeats. It only winds down (sleep + handover) after a long quiet.
+        self._silence_callouts_done = 0
 
     def run_turn(self, queue: VoiceEventQueue) -> None:
         """Run one microphone turn and push normalized events to ``queue``."""
@@ -109,7 +114,7 @@ class VoiceMonitorController:
                     metadata={"profile": self.config.profile_key},
                 )
             )
-            self._ensure_idle_clock(expects_response=False)
+            self._ensure_idle_clock()
 
             while not stop_event.is_set():
                 turns += 1
@@ -305,41 +310,18 @@ class VoiceMonitorController:
             # ASR/repair path decide instead.
             return True
 
-    def _ensure_idle_clock(self, *, expects_response: bool) -> None:
+    def _ensure_idle_clock(self) -> None:
         if self._idle_started_at is None:
-            self._expects_response = expects_response
             self._idle_started_at = time.perf_counter()
 
     def _mark_user_spoke(self) -> None:
+        # A real turn clears the silence clock and the call-out counter.
         self._idle_started_at = None
-        self._expects_response = False
-        self._no_reply_attempts_fired = 0
+        self._silence_callouts_done = 0
 
     def _mark_idle_from_done_event(self, event: StreamingEvent) -> None:
-        metadata = dict(event.metadata or {})
-        rejected = bool(metadata.get("rejected"))
-        handover_target = metadata.get("handover_target")
-        repair_action = str(metadata.get("repair_action") or "")
-        response_text = (event.text or "").strip()
-
-        if rejected:
-            expects_response = (
-                handover_target != "chat"
-                and repair_action
-                in {
-                    RepairAction.REPROMPT.value,
-                    RepairAction.CONTEXTUAL_REPROMPT.value,
-                    RepairAction.CLARIFY.value,
-                    RepairAction.NO_REPLY_FOLLOWUP.value,
-                    RepairAction.NO_REPLY_GUIDANCE.value,
-                }
-            )
-        else:
-            expects_response = response_text.endswith(("?", "？"))
-
+        # SoCa finished talking — start counting silence from now.
         self._idle_started_at = time.perf_counter()
-        self._expects_response = expects_response
-        self._no_reply_attempts_fired = 0
 
     def _handle_passive_silence(
         self,
@@ -350,53 +332,38 @@ class VoiceMonitorController:
     ) -> None:
         if self._idle_started_at is None:
             self._idle_started_at = time.perf_counter()
-
         silence_ms = (time.perf_counter() - self._idle_started_at) * 1000
-        slot = plan_no_reply(
-            silence_ms,
-            expects_response=self._expects_response,
-            attempts_fired=self._no_reply_attempts_fired,
-            timings=self.repair_timings,
-        )
-        if slot is None:
-            queue.put(
-                VoiceMonitorEvent(
-                    "idle_silence",
-                    "No speech detected",
-                    metadata={
-                        "silence_ms": silence_ms,
-                        "expects_response": self._expects_response,
-                    },
-                )
+
+        # After a long quiet stretch, gently wind down: sleep + hand over to chat.
+        if silence_ms >= self.repair_timings.sleep_voice_at_ms:
+            choice = self.repair_catalog.select(
+                RepairKind.SESSION_INACTIVE,
+                "sleep",
+                rng=self._no_reply_rng,
+                recent_ids=tuple(self._recent_no_reply_prompt_ids),
+            )
+            self._recent_no_reply_prompt_ids.append(choice.prompt_id)
+            self._speak_no_reply_choice(
+                bundle, queue, choice, silence_ms=silence_ms, stop_event=stop_event
             )
             return
 
-        if slot == "sleep" and not self._expects_response:
-            queue.put(
-                VoiceMonitorEvent(
-                    "idle_sleep",
-                    "Passive silence sleep",
-                    metadata={"silence_ms": silence_ms},
-                )
-            )
-            if stop_event is not None:
-                stop_event.set()
+        # Not time for the next call-out yet → keep listening quietly.
+        if silence_ms < self._silence_callouts_done * _SILENCE_CALLOUT_INTERVAL_MS:
             return
 
+        # Playful presence check: cycle the no_input.attempt_1 greetings
+        # ("alo, có ai không? / moshi moshi? / annyeong?") without repeats.
         choice = self.repair_catalog.select(
-            RepairKind.SESSION_INACTIVE,
-            slot,
+            RepairKind.NO_INPUT,
+            "attempt_1",
             rng=self._no_reply_rng,
             recent_ids=tuple(self._recent_no_reply_prompt_ids),
         )
         self._recent_no_reply_prompt_ids.append(choice.prompt_id)
-        self._no_reply_attempts_fired = _no_reply_attempt_count(slot)
+        self._silence_callouts_done += 1
         self._speak_no_reply_choice(
-            bundle,
-            queue,
-            choice,
-            silence_ms=silence_ms,
-            stop_event=stop_event,
+            bundle, queue, choice, silence_ms=silence_ms, stop_event=stop_event
         )
 
     def _speak_no_reply_choice(
@@ -409,15 +376,15 @@ class VoiceMonitorController:
         stop_event: Event | None,
     ) -> None:
         turn_start = time.perf_counter()
-        handover_target = "chat" if choice.action == RepairAction.SLEEP_VOICE else None
+        leaves_voice = choice.action in (RepairAction.SLEEP_VOICE, RepairAction.HANDOVER_TO_CHAT)
+        handover_target = "chat" if leaves_voice else None
         metadata = {
             "repair_kind": choice.kind.value,
             "repair_action": choice.action.value,
-            "repair_attempt": self._no_reply_attempts_fired,
+            "repair_attempt": self._silence_callouts_done,
             "handover_target": handover_target,
             "technical_reason": "passive_silence",
             "silence_ms": silence_ms,
-            "expects_response": self._expects_response,
         }
         queue.put(VoiceMonitorEvent("repair", choice.text, metadata=metadata))
 
@@ -465,7 +432,7 @@ class VoiceMonitorController:
                 },
             )
         )
-        if choice.action == RepairAction.SLEEP_VOICE and stop_event is not None:
+        if leaves_voice and stop_event is not None:
             stop_event.set()
 
 
@@ -527,16 +494,6 @@ def _maybe_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
-
-
-def _no_reply_attempt_count(slot: str) -> int:
-    if slot == "sleep":
-        return 3
-    if slot == "no_reply_2":
-        return 2
-    if slot == "no_reply_1":
-        return 1
-    return 0
 
 
 def _voice_runtime_error_message(exc: Exception, *, config: ResolvedVoiceRuntimeConfig) -> str:

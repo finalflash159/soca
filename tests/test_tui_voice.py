@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Queue
@@ -17,7 +16,6 @@ from textual.widgets import Input
 from soca.app.tui import SoCaTuiApp, TuiConfig
 from soca.app.tui.voice import VoiceMonitorController
 from soca.core import LLMUsage, ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
-from soca.core.repair import RepairTimings
 from soca.memory import SessionMemory
 from soca.tts import TTSResult
 
@@ -213,7 +211,7 @@ def test_voice_tui_listen_streams_pipeline_events_and_tracks_usage() -> None:
     asyncio.run(run())
 
 
-def test_voice_monitor_passive_silence_skips_pipeline_before_no_reply_threshold() -> None:
+def test_voice_monitor_passive_silence_skips_asr_pipeline() -> None:
     config = make_config()
     pipeline = FakePipeline([StreamingEvent(type="asr", text="should not run")])
     bundle = make_bundle(
@@ -238,13 +236,12 @@ def test_voice_monitor_passive_silence_skips_pipeline_before_no_reply_threshold(
     events = _drain_voice_events(queue)
     event_types = [event.type for event in events]
 
+    # No speech -> the ASR/LLM pipeline is skipped entirely (efficiency)...
     assert pipeline.audio_inputs == []
     assert "asr" not in event_types
-    assert "repair" not in event_types
-    assert "idle_silence" in event_types
 
 
-def test_voice_monitor_no_reply_followup_speaks_inside_worker() -> None:
+def test_voice_monitor_passive_silence_speaks_playful_call_out() -> None:
     config = make_config()
     pipeline = FakePipeline([StreamingEvent(type="asr", text="should not run")])
     fake_tts = FakeTTS()
@@ -266,28 +263,21 @@ def test_voice_monitor_no_reply_followup_speaks_inside_worker() -> None:
         recorder=lambda *_args, **_kwargs: np.zeros(1600, dtype=np.float32),
         player=fake_player,  # type: ignore[arg-type]
         warmup=False,
-        repair_timings=RepairTimings(
-            no_reply_1_at_ms=1,
-            no_reply_2_at_ms=120_000,
-            sleep_voice_at_ms=300_000,
-            passive_sleep_at_ms=300_000,
-        ),
     )
-    controller._expects_response = True
-    controller._idle_started_at = time.perf_counter() - 1.0
 
     controller.run_loop(queue, stop_event=Event(), max_turns=1)
     events = _drain_voice_events(queue)
     event_types = [event.type for event in events]
     repair = next(event for event in events if event.type == "repair")
 
+    # ...but SoCa still calls out the playful no_input follow-up, spoken in-worker.
     assert pipeline.audio_inputs == []
     assert fake_tts.calls == [repair.text]
     assert fake_player.play_calls == 1
     assert event_types.count("tts") == 1
     assert event_types.count("audio") == 1
-    assert repair.metadata["repair_kind"] == "session_inactive"
-    assert repair.metadata["repair_action"] == "no_reply_followup"
+    assert repair.metadata["repair_kind"] == "no_input"
+    assert repair.metadata["repair_action"] == "reprompt"
 
 
 def test_repair_event_shows_followup_and_handover_switches_to_chat() -> None:
