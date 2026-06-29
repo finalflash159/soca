@@ -71,6 +71,53 @@ class FailingTTS:
         raise RuntimeError("tts failed")
 
 
+@dataclass(frozen=True)
+class FakeRuntimeResult:
+    response_text: str
+    route: object = None
+    blocked: bool = False
+    trace: object = None
+    citations: tuple = ()
+    usage: object = None
+
+
+@dataclass(frozen=True)
+class FakeRuntimeStreamEvent:
+    type: str
+    text: str = ""
+    result: object = None
+
+
+class FakeStreamingRuntime:
+    """Minimal AssistantRuntime stand-in exposing stream_text_turn.
+
+    Streams each sentence as a token+sentence event, then a final result event,
+    matching what VoicePipeline._turn_streaming_runtime_stream consumes.
+    """
+
+    def __init__(self, sentences: list[str]) -> None:
+        self.sentences = list(sentences)
+        self.calls: list[str] = []
+
+    def stream_text_turn(
+        self,
+        text: str,
+        *,
+        source: str = "text",
+        metadata: dict | None = None,
+        min_sentence_chars: int = 24,
+        first_sentence_min_chars: int | None = None,
+    ):
+        self.calls.append(text)
+        for sentence in self.sentences:
+            yield FakeRuntimeStreamEvent(type="token", text=sentence)
+            yield FakeRuntimeStreamEvent(type="sentence", text=sentence)
+        yield FakeRuntimeStreamEvent(
+            type="result",
+            result=FakeRuntimeResult(response_text=" ".join(self.sentences)),
+        )
+
+
 def test_voice_pipeline_happy_path_calls_llm_and_tts() -> None:
     asr = FakeASR("xin chao")
     llm = SpyLLM(response="chao ban")
@@ -144,9 +191,9 @@ def test_voice_pipeline_resets_metrics_between_turns() -> None:
 
 def test_voice_pipeline_streaming_yields_asr_tokens_sentences_audio_and_done():
     asr = FakeASR("xin chao")
-    llm = SpyLLM(response="unused")
+    runtime = FakeStreamingRuntime(["Xin chào bạn.", "Mình là SoCa."])
     tts = SpyTTS()
-    pipeline = VoicePipeline(asr=asr, llm=llm, tts=tts)
+    pipeline = VoicePipeline(asr=asr, llm=SpyLLM(), tts=tts, assistant_runtime=runtime)
 
     events = list(
         pipeline.turn_streaming(
@@ -165,18 +212,15 @@ def test_voice_pipeline_streaming_yields_asr_tokens_sentences_audio_and_done():
     assert "audio" in event_types
     assert event_types[-1] == "done"
     assert asr.calls == 1
-    assert llm.calls == ["xin chao"]
+    assert runtime.calls == ["xin chao"]
     assert tts.calls == ["Xin chào bạn.", "Mình là SoCa."]
 
 
 def test_voice_pipeline_streaming_strips_markdown_before_tts():
     asr = FakeASR("tình hình")
-    llm = SpyLLM(response="unused")
-    llm.generate_stream = lambda text, max_tokens=128, temperature=0.0: iter(
-        ["**Tình hình:** nên ăn **đủ đạm**."]
-    )
+    runtime = FakeStreamingRuntime(["**Tình hình:** nên ăn **đủ đạm**."])
     tts = SpyTTS()
-    pipeline = VoicePipeline(asr=asr, llm=llm, tts=tts)
+    pipeline = VoicePipeline(asr=asr, llm=SpyLLM(), tts=tts, assistant_runtime=runtime)
 
     events = list(
         pipeline.turn_streaming(
@@ -242,9 +286,9 @@ def test_voice_pipeline_streaming_reject_path_can_skip_fallback_speech():
 
 def test_voice_pipeline_streaming_yields_error_when_tts_fails():
     asr = FakeASR("xin chao")
-    llm = SpyLLM(response="unused")
+    runtime = FakeStreamingRuntime(["Xin chào bạn."])
     tts = FailingTTS()
-    pipeline = VoicePipeline(asr=asr, llm=llm, tts=tts)
+    pipeline = VoicePipeline(asr=asr, llm=SpyLLM(), tts=tts, assistant_runtime=runtime)
 
     events = list(
         pipeline.turn_streaming(

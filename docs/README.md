@@ -11,17 +11,17 @@ folder tree or TUI layout is easier to read that way.
 
 ## Documentation Map
 
-| #   | File                                                          | Content                                                       |
-| --- | ------------------------------------------------------------- | ------------------------------------------------------------- |
-| —   | [README.md](./README.md)                                      | Table of contents and quick system overview (this file)       |
-| 01  | [overview.md](./01-overview.md)                               | Vision, goals, and high-level container architecture          |
-| 02  | [architecture.md](./02-architecture.md)                       | Package layers, dependency graph, and core data models        |
-| 03  | [voice-pipeline.md](./03-voice-pipeline.md)                   | End-to-end voice loop, streaming, and threading model         |
-| 04  | [asr-robustness.md](./04-asr-robustness.md)                   | RobustASR, the 5-stage anti-hallucination pipeline            |
-| 05  | [assistant-runtime.md](./05-assistant-runtime.md)             | Turn routing, guardrails, knowledge/memory, LLM, telemetry    |
-| 06  | [conversation-repair.md](./06-conversation-repair.md)         | Repair layer: catalog, no-reply ladder, follow-up, handover   |
-| 07  | [tui.md](./07-tui.md)                                         | TUI architecture, modes, threading, and event flow            |
-| 08  | [registries-profiles-cli.md](./08-registries-profiles-cli.md) | ASR/LLM/TTS registries, runtime profiles, CLI, optional deps  |
+| #   | File                                                          | Content                                                      |
+| --- | ------------------------------------------------------------- | ------------------------------------------------------------ |
+| —   | [README.md](./README.md)                                      | Table of contents and quick system overview (this file)      |
+| 01  | [overview.md](./01-overview.md)                               | Vision, goals, and high-level container architecture         |
+| 02  | [architecture.md](./02-architecture.md)                       | Package layers, dependency graph, and core data models       |
+| 03  | [voice-pipeline.md](./03-voice-pipeline.md)                   | End-to-end voice loop, streaming, and threading model        |
+| 04  | [asr-robustness.md](./04-asr-robustness.md)                   | RobustASR, the 5-stage anti-hallucination pipeline           |
+| 05  | [assistant-runtime.md](./05-assistant-runtime.md)             | Turn routing, guardrails, knowledge/memory, LLM, telemetry   |
+| 06  | [conversation-repair.md](./06-conversation-repair.md)         | Repair layer: catalog, no-reply ladder, follow-up, handover  |
+| 07  | [tui.md](./07-tui.md)                                         | TUI architecture, modes, threading, and event flow           |
+| 08  | [registries-profiles-cli.md](./08-registries-profiles-cli.md) | ASR/LLM/TTS registries, runtime profiles, CLI, optional deps |
 
 ## SoCa in One Diagram
 

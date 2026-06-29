@@ -19,10 +19,7 @@
       "uses_kv_cache": false,
       "uses_beam_search": false,
       "max_new_tokens": 128,
-      "providers": [
-        "CoreMLExecutionProvider",
-        "CPUExecutionProvider"
-      ],
+      "providers": ["CoreMLExecutionProvider", "CPUExecutionProvider"],
       "sampling_rate": 16000,
       "suppression_tokens_enabled": true
     },
@@ -36,10 +33,7 @@
     "created_by": "local.build_boh",
     "created_at_utc": "2026-06-03T15:16:54.104415+00:00",
     "raw_output_jsonl": "/Users/vominhthinh/Workspace/shrike-7/notebooks/outputs/d2_5_build_vietnamese_boh_local_20260603_145809/logs/boh_runs/phowhisper_base/phowhisper_noise_outputs.jsonl",
-    "providers": [
-      "CoreMLExecutionProvider",
-      "CPUExecutionProvider"
-    ],
+    "providers": ["CoreMLExecutionProvider", "CPUExecutionProvider"],
     "elapsed_s": 1124.2099941249471
   },
   "boh": [
@@ -48,27 +42,21 @@
       "count": 100,
       "length": 56,
       "keep": true,
-      "examples": [
-        "tuy nhiên khi thiên tai mục không thể thiên tai nạn được."
-      ]
+      "examples": ["tuy nhiên khi thiên tai mục không thể thiên tai nạn được."]
     },
     {
       "phrase": "đây là một trong những thứ mà trẻ em không thể thiếu",
       "count": 32,
       "length": 52,
       "keep": true,
-      "examples": [
-        "đây là một trong những thứ mà trẻ em không thể thiếu."
-      ]
+      "examples": ["đây là một trong những thứ mà trẻ em không thể thiếu."]
     },
     {
       "phrase": "đây là một trong những thứ mà trẻ em không thể thiếu được",
       "count": 22,
       "length": 57,
       "keep": true,
-      "examples": [
-        "đây là một trong những thứ mà trẻ em không thể thiếu được."
-      ]
+      "examples": ["đây là một trong những thứ mà trẻ em không thể thiếu được."]
     },
     {
       "phrase": "đây là một trong những thông tin trong việc thiết bị chung",
@@ -93,18 +81,14 @@
       "count": 11,
       "length": 41,
       "keep": true,
-      "examples": [
-        "tuy nhiên không phải là điều mà trước mắt."
-      ]
+      "examples": ["tuy nhiên không phải là điều mà trước mắt."]
     },
     {
       "phrase": "điều này đã tạo nên sự nghiệp rất quan trọng",
       "count": 9,
       "length": 44,
       "keep": true,
-      "examples": [
-        "điều này đã tạo nên sự nghiệp rất quan trọng."
-      ]
+      "examples": ["điều này đã tạo nên sự nghiệp rất quan trọng."]
     },
     {
       "phrase": "các thiết bị chất lượng từ thiện tại nhà thi đấu tranh tính trên thế giới",
@@ -120,9 +104,7 @@
       "count": 9,
       "length": 44,
       "keep": true,
-      "examples": [
-        "đây là một trong những thứ trưởng quan trọng."
-      ]
+      "examples": ["đây là một trong những thứ trưởng quan trọng."]
     },
     {
       "phrase": "các thiết bị chất lượng tăng trưởng thành tăng trưởng thành tăng trưởng thành",
@@ -138,36 +120,28 @@
       "count": 6,
       "length": 48,
       "keep": true,
-      "examples": [
-        "điều này đã tạo nên sự nghiệp rất lớn cho các em."
-      ]
+      "examples": ["điều này đã tạo nên sự nghiệp rất lớn cho các em."]
     },
     {
       "phrase": "đây là một trong những thứ trưởng thành từ trước đến nay",
       "count": 6,
       "length": 56,
       "keep": true,
-      "examples": [
-        "đây là một trong những thứ trưởng thành từ trước đến nay."
-      ]
+      "examples": ["đây là một trong những thứ trưởng thành từ trước đến nay."]
     },
     {
       "phrase": "đây là một trong những thứ mà trẻ em trở nên thay đổi",
       "count": 6,
       "length": 53,
       "keep": true,
-      "examples": [
-        "đây là một trong những thứ mà trẻ em trở nên thay đổi."
-      ]
+      "examples": ["đây là một trong những thứ mà trẻ em trở nên thay đổi."]
     },
     {
       "phrase": "đây là một trong những thứ trưởng thành",
       "count": 6,
       "length": 39,
       "keep": true,
-      "examples": [
-        "đây là một trong những thứ trưởng thành."
-      ]
+      "examples": ["đây là một trong những thứ trưởng thành."]
     },
     {
       "phrase": "các thiết bị chân thành tích cực thì không phải là một trong những thiết bị tốt",
@@ -192,9 +166,7 @@
       "count": 5,
       "length": 50,
       "keep": true,
-      "examples": [
-        "điều này đã tạo nên sự tàn trọng của thời gian tới."
-      ]
+      "examples": ["điều này đã tạo nên sự tàn trọng của thời gian tới."]
     },
     {
       "phrase": "đây là một trong những thứ mà trẻ em trở lại thành một trang phim",
@@ -210,36 +182,28 @@
       "count": 4,
       "length": 47,
       "keep": true,
-      "examples": [
-        "đây là một trong những thứ mà trẻ em không biết."
-      ]
+      "examples": ["đây là một trong những thứ mà trẻ em không biết."]
     },
     {
       "phrase": "điều này đã tạo nên sự nghiệp rất quan trọng của trẻ em",
       "count": 3,
       "length": 55,
       "keep": true,
-      "examples": [
-        "điều này đã tạo nên sự nghiệp rất quan trọng của trẻ em."
-      ]
+      "examples": ["điều này đã tạo nên sự nghiệp rất quan trọng của trẻ em."]
     },
     {
       "phrase": "các thí nghiệm đều có thể thiếu trong những ngày tết",
       "count": 3,
       "length": 52,
       "keep": true,
-      "examples": [
-        "các thí nghiệm đều có thể thiếu trong những ngày tết."
-      ]
+      "examples": ["các thí nghiệm đều có thể thiếu trong những ngày tết."]
     },
     {
       "phrase": "các em có thể thay đổi thay thế giới trong một ngày trước",
       "count": 3,
       "length": 57,
       "keep": true,
-      "examples": [
-        "các em có thể thay đổi thay thế giới trong một ngày trước."
-      ]
+      "examples": ["các em có thể thay đổi thay thế giới trong một ngày trước."]
     },
     {
       "phrase": "nhiều người thân mến thành công theo chiến chống mỹ cứu nước",
@@ -255,18 +219,14 @@
       "count": 3,
       "length": 47,
       "keep": true,
-      "examples": [
-        "điều này đã tạo nên sự thích thú của người thân."
-      ]
+      "examples": ["điều này đã tạo nên sự thích thú của người thân."]
     },
     {
       "phrase": "các thí nghiệm sẽ phải thiết bị tác động trên thế giới",
       "count": 3,
       "length": 54,
       "keep": true,
-      "examples": [
-        "các thí nghiệm sẽ phải thiết bị tác động trên thế giới."
-      ]
+      "examples": ["các thí nghiệm sẽ phải thiết bị tác động trên thế giới."]
     },
     {
       "phrase": "các em có thể tìm được một bài học trong thời gian tới thời gian tới đây",
@@ -282,18 +242,14 @@
       "count": 2,
       "length": 54,
       "keep": true,
-      "examples": [
-        "đây là một trong những thứ mà tôi không thể thiếu được."
-      ]
+      "examples": ["đây là một trong những thứ mà tôi không thể thiếu được."]
     },
     {
       "phrase": "đây là một trong những thứ mà tôi thấy rất thích thú",
       "count": 2,
       "length": 52,
       "keep": true,
-      "examples": [
-        "đây là một trong những thứ mà tôi thấy rất thích thú."
-      ]
+      "examples": ["đây là một trong những thứ mà tôi thấy rất thích thú."]
     },
     {
       "phrase": "các em có thể tìm được một bài học trong một thời gian tới",
@@ -309,36 +265,28 @@
       "count": 2,
       "length": 35,
       "keep": true,
-      "examples": [
-        "các em có thể thay đổi thay thế nào."
-      ]
+      "examples": ["các em có thể thay đổi thay thế nào."]
     },
     {
       "phrase": "đây là một trong những thứ mà bạn thân thiết",
       "count": 2,
       "length": 44,
       "keep": true,
-      "examples": [
-        "đây là một trong những thứ mà bạn thân thiết."
-      ]
+      "examples": ["đây là một trong những thứ mà bạn thân thiết."]
     },
     {
       "phrase": "các thành phố tham gia cuộc chiến chống mỹ cứu nước",
       "count": 2,
       "length": 51,
       "keep": true,
-      "examples": [
-        "các thành phố tham gia cuộc chiến chống mỹ cứu nước."
-      ]
+      "examples": ["các thành phố tham gia cuộc chiến chống mỹ cứu nước."]
     },
     {
       "phrase": "điều này thường xuyên thường xuyên thường xuyên thường",
       "count": 2,
       "length": 54,
       "keep": true,
-      "examples": [
-        "điều này thường xuyên thường xuyên thường xuyên thường."
-      ]
+      "examples": ["điều này thường xuyên thường xuyên thường xuyên thường."]
     },
     {
       "phrase": "đây là một trong những thông tin trong việc trả lời thuyền trẻ trung học",
@@ -372,9 +320,7 @@
       "count": 2,
       "length": 46,
       "keep": true,
-      "examples": [
-        "điều này đã tạo nên sự thích nghiệm của trẻ em."
-      ]
+      "examples": ["điều này đã tạo nên sự thích nghiệm của trẻ em."]
     },
     {
       "phrase": "các em có thể tìm được một bài học trong một thời gian qua",
@@ -426,54 +372,42 @@
       "count": 2,
       "length": 49,
       "keep": true,
-      "examples": [
-        "nhiều người được xem là một trong những thông tin."
-      ]
+      "examples": ["nhiều người được xem là một trong những thông tin."]
     },
     {
       "phrase": "nhiều người thân mến thành công trên thế giới",
       "count": 2,
       "length": 45,
       "keep": true,
-      "examples": [
-        "nhiều người thân mến thành công trên thế giới."
-      ]
+      "examples": ["nhiều người thân mến thành công trên thế giới."]
     },
     {
       "phrase": "đó là một trong những thứ mà thiết bị chung",
       "count": 2,
       "length": 43,
       "keep": true,
-      "examples": [
-        "đó là một trong những thứ mà thiết bị chung."
-      ]
+      "examples": ["đó là một trong những thứ mà thiết bị chung."]
     },
     {
       "phrase": "các em có thể tìm được một bài học trong một số năm",
       "count": 2,
       "length": 51,
       "keep": true,
-      "examples": [
-        "các em có thể tìm được một bài học trong một số năm."
-      ]
+      "examples": ["các em có thể tìm được một bài học trong một số năm."]
     },
     {
       "phrase": "các em có thể thao tác lập luận cho các em",
       "count": 2,
       "length": 42,
       "keep": true,
-      "examples": [
-        "các em có thể thao tác lập luận cho các em."
-      ]
+      "examples": ["các em có thể thao tác lập luận cho các em."]
     },
     {
       "phrase": "điều này đã tạo nên sự tàn trọng của trẻ em",
       "count": 2,
       "length": 43,
       "keep": true,
-      "examples": [
-        "điều này đã tạo nên sự tàn trọng của trẻ em."
-      ]
+      "examples": ["điều này đã tạo nên sự tàn trọng của trẻ em."]
     },
     {
       "phrase": "các thí nghiệm thi thay thế giới trong trang web của kênh kênh kênh kênh kênh kênh kênh kênh",
@@ -498,9 +432,7 @@
       "count": 2,
       "length": 37,
       "keep": true,
-      "examples": [
-        "điều này đã tạo nên sự nghiệp rất lớn."
-      ]
+      "examples": ["điều này đã tạo nên sự nghiệp rất lớn."]
     },
     {
       "phrase": "đây là một trong những thứ mà trẻ em tự tử trong một thời gian qua trong một thời gian",
@@ -525,9 +457,7 @@
       "count": 2,
       "length": 53,
       "keep": true,
-      "examples": [
-        "đó là lý do khiến nhiều người thân thiết bị tôn trọng."
-      ]
+      "examples": ["đó là lý do khiến nhiều người thân thiết bị tôn trọng."]
     },
     {
       "phrase": "đây là một trong những thứ mà trẻ trung thực hiện trong trang web của trang web",
@@ -552,23 +482,17 @@
     {
       "phrase": "tuy nhiên khi thiên tai mục không thể thiên tai nạn được",
       "count": 100,
-      "examples": [
-        "tuy nhiên khi thiên tai mục không thể thiên tai nạn được."
-      ]
+      "examples": ["tuy nhiên khi thiên tai mục không thể thiên tai nạn được."]
     },
     {
       "phrase": "đây là một trong những thứ mà trẻ em không thể thiếu",
       "count": 32,
-      "examples": [
-        "đây là một trong những thứ mà trẻ em không thể thiếu."
-      ]
+      "examples": ["đây là một trong những thứ mà trẻ em không thể thiếu."]
     },
     {
       "phrase": "đây là một trong những thứ mà trẻ em không thể thiếu được",
       "count": 22,
-      "examples": [
-        "đây là một trong những thứ mà trẻ em không thể thiếu được."
-      ]
+      "examples": ["đây là một trong những thứ mà trẻ em không thể thiếu được."]
     },
     {
       "phrase": "đây là một trong những thông tin trong việc thiết bị chung",
@@ -587,16 +511,12 @@
     {
       "phrase": "tuy nhiên không phải là điều mà trước mắt",
       "count": 11,
-      "examples": [
-        "tuy nhiên không phải là điều mà trước mắt."
-      ]
+      "examples": ["tuy nhiên không phải là điều mà trước mắt."]
     },
     {
       "phrase": "điều này đã tạo nên sự nghiệp rất quan trọng",
       "count": 9,
-      "examples": [
-        "điều này đã tạo nên sự nghiệp rất quan trọng."
-      ]
+      "examples": ["điều này đã tạo nên sự nghiệp rất quan trọng."]
     },
     {
       "phrase": "các thiết bị chất lượng từ thiện tại nhà thi đấu tranh tính trên thế giới",
@@ -608,9 +528,7 @@
     {
       "phrase": "đây là một trong những thứ trưởng quan trọng",
       "count": 9,
-      "examples": [
-        "đây là một trong những thứ trưởng quan trọng."
-      ]
+      "examples": ["đây là một trong những thứ trưởng quan trọng."]
     },
     {
       "phrase": "các thiết bị chất lượng tăng trưởng thành tăng trưởng thành tăng trưởng thành",
@@ -622,37 +540,27 @@
     {
       "phrase": "n",
       "count": 6,
-      "examples": [
-        "n."
-      ]
+      "examples": ["n."]
     },
     {
       "phrase": "điều này đã tạo nên sự nghiệp rất lớn cho các em",
       "count": 6,
-      "examples": [
-        "điều này đã tạo nên sự nghiệp rất lớn cho các em."
-      ]
+      "examples": ["điều này đã tạo nên sự nghiệp rất lớn cho các em."]
     },
     {
       "phrase": "đây là một trong những thứ trưởng thành từ trước đến nay",
       "count": 6,
-      "examples": [
-        "đây là một trong những thứ trưởng thành từ trước đến nay."
-      ]
+      "examples": ["đây là một trong những thứ trưởng thành từ trước đến nay."]
     },
     {
       "phrase": "đây là một trong những thứ mà trẻ em trở nên thay đổi",
       "count": 6,
-      "examples": [
-        "đây là một trong những thứ mà trẻ em trở nên thay đổi."
-      ]
+      "examples": ["đây là một trong những thứ mà trẻ em trở nên thay đổi."]
     },
     {
       "phrase": "đây là một trong những thứ trưởng thành",
       "count": 6,
-      "examples": [
-        "đây là một trong những thứ trưởng thành."
-      ]
+      "examples": ["đây là một trong những thứ trưởng thành."]
     },
     {
       "phrase": "các thiết bị chân thành tích cực thì không phải là một trong những thiết bị tốt",
@@ -671,9 +579,7 @@
     {
       "phrase": "điều này đã tạo nên sự tàn trọng của thời gian tới",
       "count": 5,
-      "examples": [
-        "điều này đã tạo nên sự tàn trọng của thời gian tới."
-      ]
+      "examples": ["điều này đã tạo nên sự tàn trọng của thời gian tới."]
     },
     {
       "phrase": "đây là một trong những thứ mà trẻ em trở lại thành một trang phim",
@@ -685,30 +591,22 @@
     {
       "phrase": "đây là một trong những thứ mà trẻ em không biết",
       "count": 4,
-      "examples": [
-        "đây là một trong những thứ mà trẻ em không biết."
-      ]
+      "examples": ["đây là một trong những thứ mà trẻ em không biết."]
     },
     {
       "phrase": "điều này đã tạo nên sự nghiệp rất quan trọng của trẻ em",
       "count": 3,
-      "examples": [
-        "điều này đã tạo nên sự nghiệp rất quan trọng của trẻ em."
-      ]
+      "examples": ["điều này đã tạo nên sự nghiệp rất quan trọng của trẻ em."]
     },
     {
       "phrase": "các thí nghiệm đều có thể thiếu trong những ngày tết",
       "count": 3,
-      "examples": [
-        "các thí nghiệm đều có thể thiếu trong những ngày tết."
-      ]
+      "examples": ["các thí nghiệm đều có thể thiếu trong những ngày tết."]
     },
     {
       "phrase": "các em có thể thay đổi thay thế giới trong một ngày trước",
       "count": 3,
-      "examples": [
-        "các em có thể thay đổi thay thế giới trong một ngày trước."
-      ]
+      "examples": ["các em có thể thay đổi thay thế giới trong một ngày trước."]
     },
     {
       "phrase": "nhiều người thân mến thành công theo chiến chống mỹ cứu nước",
@@ -720,16 +618,12 @@
     {
       "phrase": "điều này đã tạo nên sự thích thú của người thân",
       "count": 3,
-      "examples": [
-        "điều này đã tạo nên sự thích thú của người thân."
-      ]
+      "examples": ["điều này đã tạo nên sự thích thú của người thân."]
     },
     {
       "phrase": "các thí nghiệm sẽ phải thiết bị tác động trên thế giới",
       "count": 3,
-      "examples": [
-        "các thí nghiệm sẽ phải thiết bị tác động trên thế giới."
-      ]
+      "examples": ["các thí nghiệm sẽ phải thiết bị tác động trên thế giới."]
     },
     {
       "phrase": "các em có thể tìm được một bài học trong thời gian tới thời gian tới đây",
@@ -741,16 +635,12 @@
     {
       "phrase": "đây là một trong những thứ mà tôi không thể thiếu được",
       "count": 2,
-      "examples": [
-        "đây là một trong những thứ mà tôi không thể thiếu được."
-      ]
+      "examples": ["đây là một trong những thứ mà tôi không thể thiếu được."]
     },
     {
       "phrase": "đây là một trong những thứ mà tôi thấy rất thích thú",
       "count": 2,
-      "examples": [
-        "đây là một trong những thứ mà tôi thấy rất thích thú."
-      ]
+      "examples": ["đây là một trong những thứ mà tôi thấy rất thích thú."]
     },
     {
       "phrase": "các em có thể tìm được một bài học trong một thời gian tới",
@@ -762,30 +652,22 @@
     {
       "phrase": "các em có thể thay đổi thay thế nào",
       "count": 2,
-      "examples": [
-        "các em có thể thay đổi thay thế nào."
-      ]
+      "examples": ["các em có thể thay đổi thay thế nào."]
     },
     {
       "phrase": "đây là một trong những thứ mà bạn thân thiết",
       "count": 2,
-      "examples": [
-        "đây là một trong những thứ mà bạn thân thiết."
-      ]
+      "examples": ["đây là một trong những thứ mà bạn thân thiết."]
     },
     {
       "phrase": "các thành phố tham gia cuộc chiến chống mỹ cứu nước",
       "count": 2,
-      "examples": [
-        "các thành phố tham gia cuộc chiến chống mỹ cứu nước."
-      ]
+      "examples": ["các thành phố tham gia cuộc chiến chống mỹ cứu nước."]
     },
     {
       "phrase": "điều này thường xuyên thường xuyên thường xuyên thường",
       "count": 2,
-      "examples": [
-        "điều này thường xuyên thường xuyên thường xuyên thường."
-      ]
+      "examples": ["điều này thường xuyên thường xuyên thường xuyên thường."]
     },
     {
       "phrase": "đây là một trong những thông tin trong việc trả lời thuyền trẻ trung học",
@@ -811,9 +693,7 @@
     {
       "phrase": "điều này đã tạo nên sự thích nghiệm của trẻ em",
       "count": 2,
-      "examples": [
-        "điều này đã tạo nên sự thích nghiệm của trẻ em."
-      ]
+      "examples": ["điều này đã tạo nên sự thích nghiệm của trẻ em."]
     },
     {
       "phrase": "các em có thể tìm được một bài học trong một thời gian qua",
@@ -839,9 +719,7 @@
     {
       "phrase": "điều",
       "count": 2,
-      "examples": [
-        "điều."
-      ]
+      "examples": ["điều."]
     },
     {
       "phrase": "đây là một trong những thông tin trong việc trả lời thì không thể thiếu được",
@@ -860,44 +738,32 @@
     {
       "phrase": "nhiều người được xem là một trong những thông tin",
       "count": 2,
-      "examples": [
-        "nhiều người được xem là một trong những thông tin."
-      ]
+      "examples": ["nhiều người được xem là một trong những thông tin."]
     },
     {
       "phrase": "nhiều người thân mến thành công trên thế giới",
       "count": 2,
-      "examples": [
-        "nhiều người thân mến thành công trên thế giới."
-      ]
+      "examples": ["nhiều người thân mến thành công trên thế giới."]
     },
     {
       "phrase": "đó là một trong những thứ mà thiết bị chung",
       "count": 2,
-      "examples": [
-        "đó là một trong những thứ mà thiết bị chung."
-      ]
+      "examples": ["đó là một trong những thứ mà thiết bị chung."]
     },
     {
       "phrase": "các em có thể tìm được một bài học trong một số năm",
       "count": 2,
-      "examples": [
-        "các em có thể tìm được một bài học trong một số năm."
-      ]
+      "examples": ["các em có thể tìm được một bài học trong một số năm."]
     },
     {
       "phrase": "các em có thể thao tác lập luận cho các em",
       "count": 2,
-      "examples": [
-        "các em có thể thao tác lập luận cho các em."
-      ]
+      "examples": ["các em có thể thao tác lập luận cho các em."]
     },
     {
       "phrase": "điều này đã tạo nên sự tàn trọng của trẻ em",
       "count": 2,
-      "examples": [
-        "điều này đã tạo nên sự tàn trọng của trẻ em."
-      ]
+      "examples": ["điều này đã tạo nên sự tàn trọng của trẻ em."]
     },
     {
       "phrase": "các thí nghiệm thi thay thế giới trong trang web của kênh kênh kênh kênh kênh kênh kênh kênh",
@@ -916,9 +782,7 @@
     {
       "phrase": "điều này đã tạo nên sự nghiệp rất lớn",
       "count": 2,
-      "examples": [
-        "điều này đã tạo nên sự nghiệp rất lớn."
-      ]
+      "examples": ["điều này đã tạo nên sự nghiệp rất lớn."]
     },
     {
       "phrase": "đây là một trong những thứ mà trẻ em tự tử trong một thời gian qua trong một thời gian",
@@ -937,9 +801,7 @@
     {
       "phrase": "đó là lý do khiến nhiều người thân thiết bị tôn trọng",
       "count": 2,
-      "examples": [
-        "đó là lý do khiến nhiều người thân thiết bị tôn trọng."
-      ]
+      "examples": ["đó là lý do khiến nhiều người thân thiết bị tôn trọng."]
     },
     {
       "phrase": "đây là một trong những thứ mà trẻ trung thực hiện trong trang web của trang web",
@@ -958,9 +820,7 @@
     {
       "phrase": "lạc",
       "count": 1,
-      "examples": [
-        "lạc."
-      ]
+      "examples": ["lạc."]
     },
     {
       "phrase": "các thành phố tham gia buổi sáng tại việt nam đang trong số thứ ba",
@@ -993,9 +853,7 @@
     {
       "phrase": "nếu không biết thì thì thấy thế thì không thấy",
       "count": 1,
-      "examples": [
-        "nếu không biết thì thì thấy thế thì không thấy."
-      ]
+      "examples": ["nếu không biết thì thì thấy thế thì không thấy."]
     },
     {
       "phrase": "tuy nhiên không có ý nghĩa thay vì thay đổi cách mỹ cứu nước",
@@ -1007,9 +865,7 @@
     {
       "phrase": "được",
       "count": 1,
-      "examples": [
-        "được."
-      ]
+      "examples": ["được."]
     },
     {
       "phrase": "đây là một số thời gian tăng trưởng thành trong một thời gian qua",
@@ -1035,9 +891,7 @@
     {
       "phrase": "đó là một trong những thông tin trong lĩnh vực của mình",
       "count": 1,
-      "examples": [
-        "đó là một trong những thông tin trong lĩnh vực của mình."
-      ]
+      "examples": ["đó là một trong những thông tin trong lĩnh vực của mình."]
     },
     {
       "phrase": "những người thân mến thành công trên thế giới trên mạng xã hội",
@@ -1049,9 +903,7 @@
     {
       "phrase": "các thiết bị chất thải trong tàu tháng tấn thành công",
       "count": 1,
-      "examples": [
-        "các thiết bị chất thải trong tàu tháng tấn thành công."
-      ]
+      "examples": ["các thiết bị chất thải trong tàu tháng tấn thành công."]
     },
     {
       "phrase": "đây là một trong những thứ mà người ta không biết mình trong cuộc sống",
@@ -1098,9 +950,7 @@
     {
       "phrase": "các thí sinh thiên nhiên trên thiên nhiên bị truyền thống",
       "count": 1,
-      "examples": [
-        "các thí sinh thiên nhiên trên thiên nhiên bị truyền thống."
-      ]
+      "examples": ["các thí sinh thiên nhiên trên thiên nhiên bị truyền thống."]
     },
     {
       "phrase": "các bạn sẽ thấy rằng thị trường này có thể tham gia tốt nghiệp",
@@ -1112,30 +962,22 @@
     {
       "phrase": "điều này đã tạo nên sự thay đổi của trẻ em",
       "count": 1,
-      "examples": [
-        "điều này đã tạo nên sự thay đổi của trẻ em."
-      ]
+      "examples": ["điều này đã tạo nên sự thay đổi của trẻ em."]
     },
     {
       "phrase": "nhiu",
       "count": 1,
-      "examples": [
-        "nhiu."
-      ]
+      "examples": ["nhiu."]
     },
     {
       "phrase": "đây là một số thời gian rất khỏe",
       "count": 1,
-      "examples": [
-        "đây là một số thời gian rất khỏe."
-      ]
+      "examples": ["đây là một số thời gian rất khỏe."]
     },
     {
       "phrase": "ba",
       "count": 1,
-      "examples": [
-        "ba."
-      ]
+      "examples": ["ba."]
     },
     {
       "phrase": "các nhà khoa học đã tìm ra một số thông tin trong việc trồng bão",
@@ -1189,9 +1031,7 @@
     {
       "phrase": "người thân thiên tử tây bắc tại trường sở hữu hạn",
       "count": 1,
-      "examples": [
-        "người thân thiên tử tây bắc tại trường sở hữu hạn."
-      ]
+      "examples": ["người thân thiên tử tây bắc tại trường sở hữu hạn."]
     },
     {
       "phrase": "các thí sinh thiên nhiên thì thích thú khi có thể thi đấu tốt",
@@ -1238,9 +1078,7 @@
     {
       "phrase": "các thí nghiệm đều có thể thiếu trong trận chiến thắng",
       "count": 1,
-      "examples": [
-        "các thí nghiệm đều có thể thiếu trong trận chiến thắng."
-      ]
+      "examples": ["các thí nghiệm đều có thể thiếu trong trận chiến thắng."]
     },
     {
       "phrase": "tuy nhiên không phải là điều gì mà tôi muốn tôi trở về với tôi",

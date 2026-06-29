@@ -23,17 +23,17 @@ flowchart LR
 
 ## Categories (`RepairKind`)
 
-| Kind                | Trigger                                             | UX Intent                                      |
-| ------------------- | --------------------------------------------------- | ---------------------------------------------- |
-| `no_input`          | `no_speech`, empty transcript                       | Call out into silence, sometimes playfully     |
-| `uncertain_input`   | `low_confidence`, `high_compression`, BoH/heuristic | Heard something but not confidently            |
-| `no_match`          | Runtime cannot route the request                    | Ask the user to clarify the goal               |
-| `out_of_scope`      | Request is outside the assistant's ability          | State the limit and suggest what can be done   |
-| `guardrail_blocked` | Guardrail blocks                                    | Safety boundary, low-variance, no joking       |
-| `tool_failed`       | Tool error                                          | Report failure and offer a next step           |
-| `knowledge_miss`    | Vault has no relevant result                        | Ask for more specific keywords                 |
-| `tts_failed`        | TTS error                                           | Show text instead                              |
-| `session_inactive`  | Long silence                                        | No-reply / sleep / handover                    |
+| Kind                | Trigger                                             | UX Intent                                    |
+| ------------------- | --------------------------------------------------- | -------------------------------------------- |
+| `no_input`          | `no_speech`, empty transcript                       | Call out into silence, sometimes playfully   |
+| `uncertain_input`   | `low_confidence`, `high_compression`, BoH/heuristic | Heard something but not confidently          |
+| `no_match`          | Runtime cannot route the request                    | Ask the user to clarify the goal             |
+| `out_of_scope`      | Request is outside the assistant's ability          | State the limit and suggest what can be done |
+| `guardrail_blocked` | Guardrail blocks                                    | Safety boundary, low-variance, no joking     |
+| `tool_failed`       | Tool error                                          | Report failure and offer a next step         |
+| `knowledge_miss`    | Vault has no relevant result                        | Ask for more specific keywords               |
+| `tts_failed`        | TTS error                                           | Show text instead                            |
+| `session_inactive`  | Long silence                                        | No-reply / sleep / handover                  |
 
 ## Catalog (`repair_prompts.vi.toml`)
 
@@ -132,8 +132,8 @@ sequenceDiagram
 
 ## Responsibility Summary
 
-| Situation                         | Detected In                         | Spoken Line Source              | Mechanism                          |
-| --------------------------------- | ----------------------------------- | ------------------------------- | ---------------------------------- |
+| Situation                             | Detected In                                  | Spoken Line Source             | Mechanism                           |
+| ------------------------------------- | -------------------------------------------- | ------------------------------ | ----------------------------------- |
 | User spoke but ASR did not understand | `VoicePipeline` (empty/untrusted transcript) | `no_input` / `uncertain_input` | `plan_repair` escalation → handover |
-| Complete silence                  | TUI worker (VAD)                    | playful `no_input.attempt_1`    | periodic call-out → sleep           |
-| Guardrail blocked                 | `AssistantRuntime`                  | `guardrail_blocked`             | clear boundary, no jokes            |
+| Complete silence                      | TUI worker (VAD)                             | playful `no_input.attempt_1`   | periodic call-out → sleep           |
+| Guardrail blocked                     | `AssistantRuntime`                           | `guardrail_blocked`            | clear boundary, no jokes            |

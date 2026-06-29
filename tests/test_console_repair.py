@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rich.console import Console
 
-from soca.app.console import print_followup, print_rejection_fallback, print_streaming_event
+from soca.app.console import print_followup, print_streaming_event
 from soca.core.streaming import StreamingEvent
 
 
@@ -16,11 +16,6 @@ def test_print_followup_uses_followup_label_not_fallback() -> None:
     text = _render(lambda c: print_followup(c, "Mình chưa nghe rõ, bạn nói lại nha."))
     assert "Follow-up:" in text
     assert "Fallback" not in text
-
-
-def test_print_rejection_fallback_is_followup_alias() -> None:
-    text = _render(lambda c: print_rejection_fallback(c, "x"))
-    assert "Follow-up:" in text
 
 
 def test_print_streaming_event_renders_repair_as_followup() -> None:

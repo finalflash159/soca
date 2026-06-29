@@ -72,10 +72,7 @@
         "uses_kv_cache": false,
         "uses_beam_search": false,
         "max_new_tokens": 128,
-        "providers": [
-          "CoreMLExecutionProvider",
-          "CPUExecutionProvider"
-        ],
+        "providers": ["CoreMLExecutionProvider", "CPUExecutionProvider"],
         "sampling_rate": 16000,
         "suppression_tokens_enabled": true
       },
@@ -189,10 +186,7 @@
           "uses_kv_cache": false,
           "uses_beam_search": false,
           "max_new_tokens": 128,
-          "providers": [
-            "CoreMLExecutionProvider",
-            "CPUExecutionProvider"
-          ],
+          "providers": ["CoreMLExecutionProvider", "CPUExecutionProvider"],
           "sampling_rate": 16000,
           "suppression_tokens_enabled": true
         },
@@ -305,10 +299,7 @@
           "uses_kv_cache": false,
           "uses_beam_search": false,
           "max_new_tokens": 128,
-          "providers": [
-            "CoreMLExecutionProvider",
-            "CPUExecutionProvider"
-          ],
+          "providers": ["CoreMLExecutionProvider", "CPUExecutionProvider"],
           "sampling_rate": 16000,
           "suppression_tokens_enabled": true
         },
@@ -330,8 +321,8 @@
           "p05": -0.14556770302513813,
           "p50": -0.021390112434945457,
           "p95": -0.00035708654685323837,
-          "p99": -8.834762708635197e-05,
-          "max": -5.274805529364224e-05
+          "p99": -8.834762708635197e-5,
+          "max": -5.274805529364224e-5
         },
         {
           "metric": "avg_logprob",

@@ -126,17 +126,17 @@ diagnostic in runtime profiles that now use `phowhisper_base` and
 
 **Setup**
 
-| Field            | Value                                                                 |
-| ---------------- | --------------------------------------------------------------------- |
-| Runtime          | `local.calibrate_asr_confidence` + `soca.asr.VietnameseASR`            |
-| Speech data      | 200 FLEURS Vietnamese samples (`google/fleurs`, `vi_vn`, `test`)      |
-| Noise data       | first 50 rows from `data/noise_for_boh/manifest.jsonl`                |
-| Providers        | `CoreMLExecutionProvider`, `CPUExecutionProvider` fallback            |
-| Decode           | Greedy, no KV cache, `max_new_tokens=128`                             |
+| Field            | Value                                                                                                                                           |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime          | `local.calibrate_asr_confidence` + `soca.asr.VietnameseASR`                                                                                     |
+| Speech data      | 200 FLEURS Vietnamese samples (`google/fleurs`, `vi_vn`, `test`)                                                                                |
+| Noise data       | first 50 rows from `data/noise_for_boh/manifest.jsonl`                                                                                          |
+| Providers        | `CoreMLExecutionProvider`, `CPUExecutionProvider` fallback                                                                                      |
+| Decode           | Greedy, no KV cache, `max_new_tokens=128`                                                                                                       |
 | Command          | `uv run python -m local.calibrate_asr_confidence --model phowhisper_base --model phowhisper_small --n-speech 200 --n-noise 50 --providers auto` |
-| Run date         | 2026-06-03                                                            |
-| Raw outputs      | `eval/results/asr_confidence_calibration_phowhisper_{base,small}.json` (gitignored) |
-| Runtime artifact | `data/asr/threshold_calibration.json` (gitignored local artifact)     |
+| Run date         | 2026-06-03                                                                                                                                      |
+| Raw outputs      | `eval/results/asr_confidence_calibration_phowhisper_{base,small}.json` (gitignored)                                                             |
+| Runtime artifact | `data/asr/threshold_calibration.json` (gitignored local artifact)                                                                               |
 
 **Results**
 
@@ -170,26 +170,26 @@ phrases are model-specific.
 
 **Setup**
 
-| Field            | Value                                                                 |
-| ---------------- | --------------------------------------------------------------------- |
-| Runtime          | `local.build_boh` + `soca.asr.VietnameseASR`                           |
-| Model            | `huuquyet/PhoWhisper-base` (74M params)                                |
-| Noise data       | 800 rows from `data/noise_for_boh/manifest.jsonl`                      |
-| Providers        | `CoreMLExecutionProvider`, `CPUExecutionProvider` fallback             |
-| Decode           | Greedy, no KV cache, `max_new_tokens=128`                              |
-| Selection rule   | `count >= 2` and normalized phrase length `>= 5` chars                 |
-| Run date         | 2026-06-03                                                            |
+| Field            | Value                                                                     |
+| ---------------- | ------------------------------------------------------------------------- |
+| Runtime          | `local.build_boh` + `soca.asr.VietnameseASR`                              |
+| Model            | `huuquyet/PhoWhisper-base` (74M params)                                   |
+| Noise data       | 800 rows from `data/noise_for_boh/manifest.jsonl`                         |
+| Providers        | `CoreMLExecutionProvider`, `CPUExecutionProvider` fallback                |
+| Decode           | Greedy, no KV cache, `max_new_tokens=128`                                 |
+| Selection rule   | `count >= 2` and normalized phrase length `>= 5` chars                    |
+| Run date         | 2026-06-03                                                                |
 | Runtime artifact | `data/asr/boh/phowhisper_base_vi_boh_v1.json` (gitignored local artifact) |
 
 **Results**
 
-| Metric            | Value                 |
-| ----------------- | --------------------- |
-| Noise samples     | 800                   |
-| Non-empty outputs | 800/800 (100.00%)     |
-| BoH candidates    | 56                    |
-| Errors            | 0                     |
-| Elapsed           | 1124 s (18 m 44 s)    |
+| Metric            | Value              |
+| ----------------- | ------------------ |
+| Noise samples     | 800                |
+| Non-empty outputs | 800/800 (100.00%)  |
+| BoH candidates    | 56                 |
+| Errors            | 0                  |
+| Elapsed           | 1124 s (18 m 44 s) |
 
 **Top BoH candidates**
 
@@ -226,41 +226,41 @@ base/quality ASR candidates.
 
 **Setup**
 
-| Field            | Value                                                                  |
-| ---------------- | ---------------------------------------------------------------------- |
-| Runtime          | `local.build_boh` + `soca.asr.VietnameseASR`                            |
-| Model            | `huuquyet/PhoWhisper-small` (244M params)                               |
-| Noise data       | 800 rows from `data/noise_for_boh/manifest.jsonl`                       |
-| Providers        | `CoreMLExecutionProvider`, `CPUExecutionProvider` fallback              |
-| Decode           | Greedy, no KV cache, `max_new_tokens=128`                               |
-| Selection rule   | `count >= 2` and normalized phrase length `>= 5` chars                  |
-| Run date         | 2026-06-03                                                             |
+| Field            | Value                                                                      |
+| ---------------- | -------------------------------------------------------------------------- |
+| Runtime          | `local.build_boh` + `soca.asr.VietnameseASR`                               |
+| Model            | `huuquyet/PhoWhisper-small` (244M params)                                  |
+| Noise data       | 800 rows from `data/noise_for_boh/manifest.jsonl`                          |
+| Providers        | `CoreMLExecutionProvider`, `CPUExecutionProvider` fallback                 |
+| Decode           | Greedy, no KV cache, `max_new_tokens=128`                                  |
+| Selection rule   | `count >= 2` and normalized phrase length `>= 5` chars                     |
+| Run date         | 2026-06-03                                                                 |
 | Runtime artifact | `data/asr/boh/phowhisper_small_vi_boh_v1.json` (gitignored local artifact) |
 
 **Results**
 
-| Metric            | Value                 |
-| ----------------- | --------------------- |
-| Noise samples     | 800                   |
-| Non-empty outputs | 800/800 (100.00%)     |
-| BoH candidates    | 37                    |
-| Errors            | 0                     |
-| Elapsed           | 2831 s (47 m 10 s)    |
+| Metric            | Value              |
+| ----------------- | ------------------ |
+| Noise samples     | 800                |
+| Non-empty outputs | 800/800 (100.00%)  |
+| BoH candidates    | 37                 |
+| Errors            | 0                  |
+| Elapsed           | 2831 s (47 m 10 s) |
 
 **Top BoH candidates**
 
-| Rank | Count | Phrase                                                               |
-| ---: | ----: | -------------------------------------------------------------------- |
-|    1 |   146 | tuy nhiên không phải ai cũng có thể thực hiện điều này               |
-|    2 |     9 | đó là một cái nhìn rất mạnh lên từng phút                            |
-|    3 |     8 | đó là tin nhắn của anh chị nhiều khi tưởng chừng đó                  |
-|    4 |     6 | một trong những thay đổi lĩnh vực sân khấu của trẻ là giải đấu chung |
-|    5 |     5 | chúng                                                                |
+| Rank | Count | Phrase                                                                |
+| ---: | ----: | --------------------------------------------------------------------- |
+|    1 |   146 | tuy nhiên không phải ai cũng có thể thực hiện điều này                |
+|    2 |     9 | đó là một cái nhìn rất mạnh lên từng phút                             |
+|    3 |     8 | đó là tin nhắn của anh chị nhiều khi tưởng chừng đó                   |
+|    4 |     6 | một trong những thay đổi lĩnh vực sân khấu của trẻ là giải đấu chung  |
+|    5 |     5 | chúng                                                                 |
 |    6 |     5 | tuy nhiên không phải ai cũng có thể tham gia các cuộc thi đấu thứ hai |
-|    7 |     5 | điều này đã khiến nhiều người mơ ước đối với nghề đam mê             |
-|    8 |     5 | tuy nhiên không phải lúc nào bạn cũng có thể thay tóa những vết nứt  |
-|    9 |     4 | đó là một cái nhìn rất mạnh lên từng hồi sinh                        |
-|   10 |     3 | điều này đã khiến nhiều người bình luận vì thế đế chất lượng thấp    |
+|    7 |     5 | điều này đã khiến nhiều người mơ ước đối với nghề đam mê              |
+|    8 |     5 | tuy nhiên không phải lúc nào bạn cũng có thể thay tóa những vết nứt   |
+|    9 |     4 | đó là một cái nhìn rất mạnh lên từng hồi sinh                         |
+|   10 |     3 | điều này đã khiến nhiều người bình luận vì thế đế chất lượng thấp     |
 
 **Runtime decision**
 

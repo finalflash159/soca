@@ -12,10 +12,10 @@ bake-offs before they become a default path. See `BENCHMARKS.md` and `eval/`.
 
 ## Goals
 
-| Goal                                                   | Design Consequence                                                                 |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| Run offline on a personal machine, currently macOS ARM | Local backends: ONNX Runtime for ASR, llama.cpp for LLM, Torch/ONNX for TTS        |
-| Treat Vietnamese as first-class                       | RobustASR for PhoWhisper, BoH artifacts, Vietnamese TTS voices, Vietnamese repair |
+| Goal                                                   | Design Consequence                                                                |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| Run offline on a personal machine, currently macOS ARM | Local backends: ONNX Runtime for ASR, llama.cpp for LLM, Torch/ONNX for TTS       |
+| Treat Vietnamese as first-class                        | RobustASR for PhoWhisper, BoH artifacts, Vietnamese TTS voices, Vietnamese repair |
 | Low latency and a more natural conversational feel     | Token→sentence→TTS streaming, per-sentence guardrails, natural repair follow-ups  |
 | Easy model swapping and comparison                     | Registries, runtime profiles, and evaluation harnesses                            |
 | Two experiences: scriptable and visual                 | `soca voice/ask/chat` for CLI and `soca ui` for the Textual TUI                   |

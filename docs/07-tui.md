@@ -59,11 +59,11 @@ stateDiagram-v2
     end note
 ```
 
-| Mode     | What It Does                         | Builds Runtime?           |
-| -------- | ------------------------------------ | ------------------------- |
-| `status` | Read-only profile readiness view     | No model load             |
-| `chat`   | Sends text into `AssistantRuntime`   | Lazy build on first turn  |
-| `voice`  | Starts the mic→ASR→runtime→TTS loop  | Build in worker thread    |
+| Mode     | What It Does                        | Builds Runtime?          |
+| -------- | ----------------------------------- | ------------------------ |
+| `status` | Read-only profile readiness view    | No model load            |
+| `chat`   | Sends text into `AssistantRuntime`  | Lazy build on first turn |
+| `voice`  | Starts the mic→ASR→runtime→TTS loop | Build in worker thread   |
 
 ## Thread Model: Keeping the UI Responsive
 
@@ -109,18 +109,18 @@ loading.
 
 ## Voice Event → Render Target
 
-| VoiceMonitorEvent             | Render Target                                                  |
-| ----------------------------- | -------------------------------------------------------------- |
-| `loading` / `ready` / `warmup` | Timeline for load progress + `loading` status                  |
-| `loop_started` / `recording`  | Status bar `listening`                                         |
-| `recorded`                    | Status bar `processing`                                        |
-| `asr`                         | Timeline `You ▸ <transcript>` + inspector                      |
-| `repair`                      | Timeline `Follow-up: ...` and handover metadata if present     |
-| `llm_token`                   | Inspector live draft/preview                                   |
-| `runtime`                     | Stored route/meta for the turn                                 |
-| `tts`                         | Status bar `speaking` with animated notes                      |
-| `done`                        | Timeline `(o> SoCa ▸ <reply>` + inspector summary + usage      |
-| `error`                       | Timeline error + inspector                                     |
+| VoiceMonitorEvent              | Render Target                                              |
+| ------------------------------ | ---------------------------------------------------------- |
+| `loading` / `ready` / `warmup` | Timeline for load progress + `loading` status              |
+| `loop_started` / `recording`   | Status bar `listening`                                     |
+| `recorded`                     | Status bar `processing`                                    |
+| `asr`                          | Timeline `You ▸ <transcript>` + inspector                  |
+| `repair`                       | Timeline `Follow-up: ...` and handover metadata if present |
+| `llm_token`                    | Inspector live draft/preview                               |
+| `runtime`                      | Stored route/meta for the turn                             |
+| `tts`                          | Status bar `speaking` with animated notes                  |
+| `done`                         | Timeline `(o> SoCa ▸ <reply>` + inspector summary + usage  |
+| `error`                        | Timeline error + inspector                                 |
 
 Principle: **conversation goes to timeline; technical details go to inspector;
 live state goes to status bar**. Operational logs should not flood the timeline.

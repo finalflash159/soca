@@ -28,14 +28,14 @@ flowchart TD
 
 ## Role of Each Stage
 
-| Stage                     | What It Does                                          | Why It Exists                                                                                       |
-| ------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| **1 · VAD**               | Detects real speech and trims silence                 | Whisper can hallucinate on silence; trimming also saves compute                                      |
-| **2 · ASR**               | Runs PhoWhisper on **speech-only** audio              | More accurate and faster than decoding silence-heavy audio                                           |
-| **2b · Confidence guard** | Blocks low `avg_logprob` and high `compression_ratio` | These are classic hallucination/loop signals; checks run on raw output for faithful diagnosis        |
-| **3 · De-loop**           | Removes consecutive repeated spans                    | `"tôi tôi tôi tôi..."` becomes `"tôi"`                                                               |
-| **4 · BoH**               | Removes model-specific hallucination phrases          | Each PhoWhisper variant can have its own bag of hallucinations artifact                              |
-| **5 · Heuristics**        | Final safety net: chars/sec ratio, abnormal length... | Catches cases that pass the previous stages                                                          |
+| Stage                     | What It Does                                          | Why It Exists                                                                                 |
+| ------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **1 · VAD**               | Detects real speech and trims silence                 | Whisper can hallucinate on silence; trimming also saves compute                               |
+| **2 · ASR**               | Runs PhoWhisper on **speech-only** audio              | More accurate and faster than decoding silence-heavy audio                                    |
+| **2b · Confidence guard** | Blocks low `avg_logprob` and high `compression_ratio` | These are classic hallucination/loop signals; checks run on raw output for faithful diagnosis |
+| **3 · De-loop**           | Removes consecutive repeated spans                    | `"tôi tôi tôi tôi..."` becomes `"tôi"`                                                        |
+| **4 · BoH**               | Removes model-specific hallucination phrases          | Each PhoWhisper variant can have its own bag of hallucinations artifact                       |
+| **5 · Heuristics**        | Final safety net: chars/sec ratio, abnormal length... | Catches cases that pass the previous stages                                                   |
 
 ## Result & Trace (`RobustASRResult`)
 
@@ -87,7 +87,7 @@ classDiagram
 | Layer        | Concern                                                        |
 | ------------ | -------------------------------------------------------------- |
 | `RobustASR`  | _Why_ the transcript cannot be trusted, technically            |
-| Repair layer | _What to say_ to the user, in a natural UX tone                 |
+| Repair layer | _What to say_ to the user, in a natural UX tone                |
 | UI/Inspector | Show **both**: developer-facing reason and user-facing message |
 
 This separation means dialogue copy can change without touching ASR, and a new

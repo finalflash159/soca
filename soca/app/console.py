@@ -61,11 +61,6 @@ def print_followup(console: Console, text: str) -> None:
     console.print(f"[yellow]Follow-up:[/yellow] {text}")
 
 
-def print_rejection_fallback(console: Console, text: str) -> None:
-    """Deprecated alias for :func:`print_followup` (kept for back-compat)."""
-    print_followup(console, text)
-
-
 def print_streaming_event(console: Console, event: StreamingEvent) -> None:
     """Render a VoicePipeline streaming event without performing side effects."""
     if event.type == "asr":

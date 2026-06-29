@@ -28,13 +28,13 @@ flowchart TD
 
 ## Routes (`RuntimeRoute`)
 
-| Route              | When It Happens                                                | Calls LLM? |
-| ------------------ | -------------------------------------------------------------- | ---------- |
-| `BLOCKED`          | A guardrail blocks at any stage                                | No         |
+| Route              | When It Happens                                                 | Calls LLM? |
+| ------------------ | --------------------------------------------------------------- | ---------- |
+| `BLOCKED`          | A guardrail blocks at any stage                                 | No         |
 | `TOOL_DIRECT`      | A deterministic tool can answer directly, e.g. `local_time.now` | No         |
-| `KNOWLEDGE_DIRECT` | A knowledge file is read directly                              | No         |
-| `KNOWLEDGE_LLM`    | LLM answers with knowledge context and citations               | Yes        |
-| `FREE_CHAT`        | Normal chat answer without knowledge                           | Yes        |
+| `KNOWLEDGE_DIRECT` | A knowledge file is read directly                               | No         |
+| `KNOWLEDGE_LLM`    | LLM answers with knowledge context and citations                | Yes        |
+| `FREE_CHAT`        | Normal chat answer without knowledge                            | Yes        |
 
 > `LLM_FALLBACK` is the old alias of `FREE_CHAT`, kept for compatibility with
 > tests and reports.
@@ -60,14 +60,14 @@ flowchart LR
     Stages -.-> A["GuardrailAction:<br/>ALLOW · WARN · BLOCK"]
 ```
 
-| Function                    | Stage       | Checks                                                                 |
-| --------------------------- | ----------- | ---------------------------------------------------------------------- |
-| `check_input_text`          | INPUT       | Whether the user input violates policy                                 |
-| `check_knowledge_read_path` | RETRIEVAL   | Whether a knowledge path is safe and cannot path-traverse              |
-| `check_untrusted_text`      | RETRIEVAL   | Whether retrieved untrusted content contains dangerous instructions     |
-| `check_tool_call`           | TOOL_INPUT  | Whether tool parameters and permissions are valid                      |
-| `check_tool_result`         | TOOL_OUTPUT | Whether tool output leaks private or unsafe content                    |
-| `check_final_output`        | OUTPUT      | Whether the final answer makes unsupported claims, e.g. realtime data  |
+| Function                    | Stage       | Checks                                                                |
+| --------------------------- | ----------- | --------------------------------------------------------------------- |
+| `check_input_text`          | INPUT       | Whether the user input violates policy                                |
+| `check_knowledge_read_path` | RETRIEVAL   | Whether a knowledge path is safe and cannot path-traverse             |
+| `check_untrusted_text`      | RETRIEVAL   | Whether retrieved untrusted content contains dangerous instructions   |
+| `check_tool_call`           | TOOL_INPUT  | Whether tool parameters and permissions are valid                     |
+| `check_tool_result`         | TOOL_OUTPUT | Whether tool output leaks private or unsafe content                   |
+| `check_final_output`        | OUTPUT      | Whether the final answer makes unsupported claims, e.g. realtime data |
 
 `GuardrailEvent` is frozen and records `stage`, `action`, `reason`, and
 `message`. All events are stored in `RuntimeTrace.guardrail_events` for the

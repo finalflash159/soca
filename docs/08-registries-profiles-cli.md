@@ -39,12 +39,12 @@ only**; real models load when a runtime is built.
 `max_tokens` and `temperature`. **Default = `baseline`**
 (`DEFAULT_VOICE_RUNTIME_PROFILE_KEY`).
 
-| Profile           | ASR              | LLM             | TTS / voice                | Direction                         |
-| ----------------- | ---------------- | --------------- | -------------------------- | --------------------------------- |
-| `baseline`        | phowhisper_base  | arcee_vylinh_3b | valtec_multispeaker / NF   | **Fast default**, low RTF         |
-| `quality`         | phowhisper_small | arcee_vylinh_3b | omnivoice / emgai_dangiu   | Better voice quality, slower CPU  |
-| `edge`            | phowhisper_base  | qwen3_0_6b      | piper_vi_vivos_x_low       | Lower RAM fallback                |
-| `balanced_vieneu` | phowhisper_base  | arcee_vylinh_3b | vieneu_v2_turbo / XuanVinh | Balanced quality/latency target   |
+| Profile           | ASR              | LLM             | TTS / voice                | Direction                        |
+| ----------------- | ---------------- | --------------- | -------------------------- | -------------------------------- |
+| `baseline`        | phowhisper_base  | arcee_vylinh_3b | valtec_multispeaker / NF   | **Fast default**, low RTF        |
+| `quality`         | phowhisper_small | arcee_vylinh_3b | omnivoice / emgai_dangiu   | Better voice quality, slower CPU |
+| `edge`            | phowhisper_base  | qwen3_0_6b      | piper_vi_vivos_x_low       | Lower RAM fallback               |
+| `balanced_vieneu` | phowhisper_base  | arcee_vylinh_3b | vieneu_v2_turbo / XuanVinh | Balanced quality/latency target  |
 
 `validate_voice_runtime_profiles()` checks that every profile points to existing
 registry keys. Tests call this so bad keys fail early.
@@ -70,29 +70,29 @@ flowchart TD
     RUN --> BENCH[benchmark-asr · calibrate-asr]
 ```
 
-| Command                                   | Description                                                                                   |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Command                                   | Description                                                                                    |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------- |
 | `soca voice [profile]`                    | Microphone voice loop. Supports `--no-speak-repairs`, `--press-enter-to-record`, and `--usage` |
 | `soca ask <text>`                         | One text turn, with optional trace/usage output                                                |
 | `soca chat`                               | Multi-turn text session with session memory                                                    |
 | `soca ui [status\|chat\|voice] [profile]` | Textual TUI, requires the `ui` extra                                                           |
 | `soca profiles`                           | List profiles without loading models                                                           |
 | `soca asr-models` / `llm-models`          | List models and local file status                                                              |
-| `soca asr-smoke` / `llm-smoke`            | Smoke-test one model                                                                            |
-| `soca benchmark-asr` / `calibrate-asr`    | Benchmark/calibrate ASR thresholds, Table-VII style                                             |
+| `soca asr-smoke` / `llm-smoke`            | Smoke-test one model                                                                           |
+| `soca benchmark-asr` / `calibrate-asr`    | Benchmark/calibrate ASR thresholds, Table-VII style                                            |
 
 ## Optional Dependencies (`pyproject.toml`)
 
 Install only what you need so the environment stays manageable:
 
-| Extra                                                   | Purpose                                                          |
-| ------------------------------------------------------- | ---------------------------------------------------------------- |
-| `dev`                                                   | pytest, ruff, jupyter                                            |
-| `eval`                                                  | jiwer (WER), datasets, matplotlib                                |
-| `llm`                                                   | llama-cpp-python, Metal build when needed                        |
+| Extra                                                   | Purpose                                                           |
+| ------------------------------------------------------- | ----------------------------------------------------------------- |
+| `dev`                                                   | pytest, ruff, jupyter                                             |
+| `eval`                                                  | jiwer (WER), datasets, matplotlib                                 |
+| `llm`                                                   | llama-cpp-python, Metal build when needed                         |
 | `tts`                                                   | core TTS dependencies: vinorm, viphoneme, underthesea, torchaudio |
-| `tts-piper` / `tts-omnivoice` / `tts-vieneu` / `tts-f5` | optional heavier TTS engines                                     |
-| `ui`                                                    | Textual, required for `soca ui`                                  |
+| `tts-piper` / `tts-omnivoice` / `tts-vieneu` / `tts-f5` | optional heavier TTS engines                                      |
+| `ui`                                                    | Textual, required for `soca ui`                                   |
 
 Examples:
 

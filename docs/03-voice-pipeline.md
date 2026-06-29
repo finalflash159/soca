@@ -24,10 +24,10 @@ flowchart LR
 
 `VoicePipeline` (`core/pipeline.py`) exposes two entry points:
 
-| Method                                   | Use Case                         | Return Type                   |
-| ---------------------------------------- | -------------------------------- | ----------------------------- |
-| `turn(audio)`                            | Metrics, non-streaming, tests    | `PipelineResult` as one block |
-| `turn_streaming(audio, audio_sink, ...)` | Production voice loop            | generator of `StreamingEvent` |
+| Method                                   | Use Case                      | Return Type                   |
+| ---------------------------------------- | ----------------------------- | ----------------------------- |
+| `turn(audio)`                            | Metrics, non-streaming, tests | `PipelineResult` as one block |
+| `turn_streaming(audio, audio_sink, ...)` | Production voice loop         | generator of `StreamingEvent` |
 
 `turn_streaming` chooses its branch based on runtime capabilities:
 
@@ -140,12 +140,12 @@ flowchart LR
 
 ## CLI Voice Loop vs TUI Voice Mode
 
-|                   | CLI (`soca voice`)       | TUI voice mode (`soca ui voice`)                                      |
-| ----------------- | ------------------------ | --------------------------------------------------------------------- |
-| Loop              | `app/voice_loop.py` sync | `app/tui/voice.py` `VoiceMonitorController` worker thread + Queue     |
-| Display           | `console.py` prints each event | Status bar + timeline + inspector. See [07](./07-tui.md)       |
-| No-reply ladder   | Not wired yet            | Yes: passive silence call-out. See [06](./06-conversation-repair.md) |
-| Repair on reject  | `print_followup` + TTS   | `repair` event → timeline + TTS                                      |
+|                  | CLI (`soca voice`)             | TUI voice mode (`soca ui voice`)                                     |
+| ---------------- | ------------------------------ | -------------------------------------------------------------------- |
+| Loop             | `app/voice_loop.py` sync       | `app/tui/voice.py` `VoiceMonitorController` worker thread + Queue    |
+| Display          | `console.py` prints each event | Status bar + timeline + inspector. See [07](./07-tui.md)             |
+| No-reply ladder  | Not wired yet                  | Yes: passive silence call-out. See [06](./06-conversation-repair.md) |
+| Repair on reject | `print_followup` + TTS         | `repair` event → timeline + TTS                                      |
 
 Both paths call `bundle.pipeline.turn_streaming(...)`, so the **audio pipeline is
 the same**. Only the presentation layer and loop control differ.

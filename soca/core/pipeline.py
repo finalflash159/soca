@@ -4,7 +4,7 @@ import queue
 import random
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,7 +20,7 @@ from soca.core.repair import (
     RepairState,
     plan_repair,
 )
-from soca.core.streaming import StreamingEvent, pop_ready_sentence
+from soca.core.streaming import StreamingEvent
 from soca.core.text_chunking import chunk_text_for_tts, normalize_text_for_tts
 from soca.tts import TTSResult
 
@@ -222,150 +222,30 @@ class VoicePipeline:
             return
 
         self._repair_state.reset()  # successful turn clears the repair ladder
-        if self.assistant_runtime is not None:
-            if hasattr(self.assistant_runtime, "stream_text_turn"):
-                yield from self._turn_streaming_runtime_stream(
-                    transcript,
-                    rejection_reason,
-                    turn_start_time=t0,
-                    sink=sink,
-                    min_sentence_chars=min_sentence_chars,
-                    first_sentence_min_chars=first_sentence_min_chars,
-                )
-            else:
-                yield from self._turn_streaming_runtime_blocking(
-                    transcript,
-                    rejection_reason,
-                    turn_start_time=t0,
-                    sink=sink,
-                    min_sentence_chars=min_sentence_chars,
-                )
-            return
+        if self.assistant_runtime is None:
+            raise ValueError(
+                "turn_streaming requires an assistant_runtime. "
+                "build_voice_runtime always injects one; pass a runtime when "
+                "constructing VoicePipeline for streaming."
+            )
 
-        sentence_queue: queue.Queue[str | None] = queue.Queue()
-        event_queue: queue.Queue[StreamingEvent | None] = queue.Queue()
-
-        def drain_ready_events() -> Iterator[StreamingEvent]:
-            while True:
-                try:
-                    event = event_queue.get_nowait()
-                except queue.Empty:
-                    return
-                if event is not None:
-                    yield event
-                else:
-                    event_queue.put(None)
-                    return
-
-        def tts_worker() -> None:
-            first_audio_time: float | None = None
-            index = 0
-
-            try:
-                while True:
-                    sentence = sentence_queue.get()
-                    if sentence is None:
-                        event_queue.put(None)
-                        return
-
-                    speech_text = _speech_text(sentence)
-                    with self.metrics.stage(f"tts_{index}"):
-                        tts_result = self.tts.synthesize(speech_text)
-
-                    if first_audio_time is None:
-                        first_audio_time = time.perf_counter()
-
-                    metadata: dict[str, float | int] = {"chunk_index": index}
-                    if index == 0:
-                        metadata["ttfa_ms"] = (first_audio_time - t0) * 1000
-
-                    event_queue.put(
-                        StreamingEvent(
-                            type="tts",
-                            text=speech_text,
-                            audio=tts_result.audio,
-                            sample_rate=tts_result.sample_rate,
-                            tts=tts_result,
-                            latency_ms=tts_result.latency_ms,
-                            metadata=metadata,
-                        )
-                    )
-
-                    playback = sink.play(tts_result.audio, tts_result.sample_rate, blocking=True)
-
-                    audio_metadata = dict(metadata)
-                    audio_metadata["playback_latency_ms"] = playback.latency_ms
-                    event_queue.put(
-                        StreamingEvent(
-                            type="audio",
-                            text=speech_text,
-                            audio=tts_result.audio,
-                            sample_rate=tts_result.sample_rate,
-                            tts=tts_result,
-                            latency_ms=playback.latency_ms,
-                            metadata=audio_metadata,
-                        )
-                    )
-                    index += 1
-            except Exception as exc:
-                event_queue.put(
-                    StreamingEvent(
-                        type="error",
-                        text=str(exc),
-                        metadata={"chunk_index": index},
-                    )
-                )
-                event_queue.put(None)
-
-                return
-
-        worker = threading.Thread(target=tts_worker, name="soca-tts-worker")
-        worker.start()
-
-        buffer = ""
-        response_parts: list[str] = []
-
-        with self.metrics.stage("llm"):
-            for token in self.llm.generate_stream(transcript):
-                response_parts.append(token)
-                buffer += token
-
-                yield StreamingEvent(type="llm_token", text=token)
-                yield from drain_ready_events()
-
-                while True:
-                    sentence, buffer = pop_ready_sentence(buffer, min_chars=min_sentence_chars)
-                    if sentence is None:
-                        break
-
-                    yield StreamingEvent(type="sentence", text=sentence)
-                    sentence_queue.put(sentence)
-                    yield from drain_ready_events()
-
-        final_text = buffer.strip()
-        if final_text:
-            sentence_queue.put(final_text)
-            yield StreamingEvent(type="sentence", text=final_text)
-
-        sentence_queue.put(None)  # Signal TTS worker to exit
-
-        while True:
-            event = event_queue.get()
-            if event is None:
-                break
-            yield event
-
-        worker.join()
-
-        yield StreamingEvent(
-            type="done",
-            text="".join(response_parts).strip(),
-            latency_ms=(time.perf_counter() - t0) * 1000,
-            metadata={
-                "rejected": False,
-                "stage_latencies_ms": self.metrics.snapshot(),
-            },
-        )
+        if hasattr(self.assistant_runtime, "stream_text_turn"):
+            yield from self._turn_streaming_runtime_stream(
+                transcript,
+                rejection_reason,
+                turn_start_time=t0,
+                sink=sink,
+                min_sentence_chars=min_sentence_chars,
+                first_sentence_min_chars=first_sentence_min_chars,
+            )
+        else:
+            yield from self._turn_streaming_runtime_blocking(
+                transcript,
+                rejection_reason,
+                turn_start_time=t0,
+                sink=sink,
+                min_sentence_chars=min_sentence_chars,
+            )
 
     def _runtime_summary_event(self, runtime_result: Any) -> StreamingEvent:
         """Build the ``runtime`` summary event from a completed RuntimeResult."""
@@ -452,100 +332,8 @@ class VoicePipeline:
         sentence N. The first sentence reaches the speaker without waiting for
         the full response to be generated.
         """
-        sentence_queue: queue.Queue[str | None] = queue.Queue()
-        playback_queue: queue.Queue[StreamingEvent | object] = queue.Queue()
-        event_queue: queue.Queue[StreamingEvent | object] = queue.Queue()
-        done = object()
-
-        def tts_worker() -> None:
-            first_audio_time: float | None = None
-            index = 0
-            try:
-                while True:
-                    sentence = sentence_queue.get()
-                    if sentence is None:
-                        return
-
-                    speech_text = _speech_text(sentence)
-                    with self.metrics.stage(f"tts_{index}"):
-                        tts_result = self.tts.synthesize(speech_text)
-
-                    if first_audio_time is None:
-                        first_audio_time = time.perf_counter()
-
-                    metadata: dict[str, float | int] = {
-                        "chunk_index": index,
-                        "tts_latency_ms": tts_result.latency_ms,
-                    }
-                    if index == 0:
-                        metadata["ttfa_ms"] = (first_audio_time - turn_start_time) * 1000
-
-                    event = StreamingEvent(
-                        type="tts",
-                        text=speech_text,
-                        audio=tts_result.audio,
-                        sample_rate=tts_result.sample_rate,
-                        tts=tts_result,
-                        latency_ms=tts_result.latency_ms,
-                        metadata=metadata,
-                    )
-                    event_queue.put(event)
-                    playback_queue.put(event)
-                    index += 1
-            except Exception as exc:
-                event_queue.put(StreamingEvent(type="error", text=str(exc)))
-            finally:
-                playback_queue.put(done)
-                event_queue.put(done)
-
-        def playback_worker() -> None:
-            try:
-                while True:
-                    event = playback_queue.get()
-                    if event is done:
-                        return
-
-                    assert isinstance(event, StreamingEvent)
-                    assert event.audio is not None
-                    assert event.sample_rate is not None
-                    playback = sink.play(event.audio, event.sample_rate, blocking=True)
-                    metadata = dict(event.metadata or {})
-                    metadata["playback_latency_ms"] = playback.latency_ms
-                    event_queue.put(
-                        StreamingEvent(
-                            type="audio",
-                            text=event.text,
-                            audio=event.audio,
-                            sample_rate=event.sample_rate,
-                            tts=event.tts,
-                            latency_ms=playback.latency_ms,
-                            metadata=metadata,
-                        )
-                    )
-            except Exception as exc:
-                event_queue.put(StreamingEvent(type="error", text=str(exc)))
-            finally:
-                event_queue.put(done)
-
-        def drain_ready() -> Iterator[StreamingEvent]:
-            while True:
-                try:
-                    event = event_queue.get_nowait()
-                except queue.Empty:
-                    return
-                if event is done:
-                    event_queue.put(done)
-                    return
-                assert isinstance(event, StreamingEvent)
-                yield event
-
-        tts_thread = threading.Thread(target=tts_worker, name="soca-runtime-stream-tts")
-        playback_thread = threading.Thread(
-            target=playback_worker,
-            name="soca-runtime-stream-playback",
-        )
-        tts_thread.start()
-        playback_thread.start()
+        pump = _TTSPlaybackPump(self.tts, sink, self.metrics, turn_start_time=turn_start_time)
+        pump.start()
 
         runtime_result: Any | None = None
         for event in self.assistant_runtime.stream_text_turn(
@@ -559,27 +347,17 @@ class VoicePipeline:
                 yield StreamingEvent(type="llm_token", text=event.text)
             elif event.type == "sentence":
                 yield StreamingEvent(type="sentence", text=event.text)
-                sentence_queue.put(event.text)
+                pump.submit(event.text)
             elif event.type == "result":
                 runtime_result = event.result
-            yield from drain_ready()
+            yield from pump.drain_ready()
 
-        sentence_queue.put(None)  # Signal TTS worker that no more sentences arrive.
+        pump.close()  # No more sentences will arrive.
 
         if runtime_result is not None:
             yield self._runtime_summary_event(runtime_result)
 
-        completed_workers = 0
-        while completed_workers < 2:
-            event = event_queue.get()
-            if event is done:
-                completed_workers += 1
-                continue
-            assert isinstance(event, StreamingEvent)
-            yield event
-
-        tts_thread.join()
-        playback_thread.join()
+        yield from pump.drain_until_done()
 
         yield StreamingEvent(
             type="done",
@@ -600,96 +378,159 @@ class VoicePipeline:
         sink: AudioSink,
         turn_start_time: float,
     ) -> Iterator[StreamingEvent]:
-        event_queue: queue.Queue[StreamingEvent | object] = queue.Queue()
-        playback_queue: queue.Queue[StreamingEvent | object] = queue.Queue()
-        done = object()
+        """Synthesize + play a fixed list of sentences via the shared pump."""
+        pump = _TTSPlaybackPump(self.tts, sink, self.metrics, turn_start_time=turn_start_time)
+        pump.start()
+        pump.submit_all(sentences)
+        pump.close()
+        yield from pump.drain_until_done()
 
-        def tts_worker() -> None:
-            first_audio_time: float | None = None
 
-            try:
-                for index, sentence in enumerate(sentences):
-                    speech_text = _speech_text(sentence)
-                    with self.metrics.stage(f"tts_{index}"):
-                        tts_result = self.tts.synthesize(speech_text)
+class _TTSPlaybackPump:
+    """Two-thread TTS->playback pump shared by the streaming voice paths.
 
-                    audio_ready_time = time.perf_counter()
-                    if first_audio_time is None:
-                        first_audio_time = audio_ready_time
+    ``_tts_worker`` synthesizes each submitted sentence; ``_playback_worker``
+    plays the resulting audio. Synthesis of sentence N+1 overlaps playback of
+    sentence N, so the first sentence reaches the speaker without waiting for the
+    whole response.
 
-                    metadata: dict[str, float | int] = {
-                        "chunk_index": index,
-                        "tts_latency_ms": tts_result.latency_ms,
-                    }
-                    if index == 0:
-                        metadata["ttfa_ms"] = (first_audio_time - turn_start_time) * 1000
+    Usage: :meth:`start`, feed via :meth:`submit`/:meth:`submit_all`, signal the
+    end with :meth:`close`, then consume ordered ``tts``/``audio``/``error``
+    events with :meth:`drain_ready` (non-blocking, while still feeding) and
+    :meth:`drain_until_done` (blocking, after close; joins both threads).
+    """
 
-                    event = StreamingEvent(
-                        type="tts",
-                        text=speech_text,
-                        audio=tts_result.audio,
-                        sample_rate=tts_result.sample_rate,
-                        tts=tts_result,
-                        latency_ms=tts_result.latency_ms,
-                        metadata=metadata,
-                    )
-                    event_queue.put(event)
-                    playback_queue.put(event)
-            except Exception as exc:
-                event_queue.put(StreamingEvent(type="error", text=str(exc)))
-            finally:
-                playback_queue.put(done)
-                event_queue.put(done)
+    _DONE = object()
 
-        def playback_worker() -> None:
-            try:
-                while True:
-                    event = playback_queue.get()
-                    if event is done:
-                        return
-
-                    assert isinstance(event, StreamingEvent)
-                    assert event.audio is not None
-                    assert event.sample_rate is not None
-                    playback = sink.play(event.audio, event.sample_rate, blocking=True)
-                    metadata = dict(event.metadata or {})
-                    metadata["playback_latency_ms"] = playback.latency_ms
-                    event_queue.put(
-                        StreamingEvent(
-                            type="audio",
-                            text=event.text,
-                            audio=event.audio,
-                            sample_rate=event.sample_rate,
-                            tts=event.tts,
-                            latency_ms=playback.latency_ms,
-                            metadata=metadata,
-                        )
-                    )
-            except Exception as exc:
-                event_queue.put(StreamingEvent(type="error", text=str(exc)))
-            finally:
-                event_queue.put(done)
-
-        tts_thread = threading.Thread(target=tts_worker, name="soca-runtime-tts-worker")
-        playback_thread = threading.Thread(
-            target=playback_worker,
-            name="soca-runtime-playback-worker",
+    def __init__(
+        self,
+        tts: Any,
+        sink: AudioSink,
+        metrics: MetricsLogger,
+        *,
+        turn_start_time: float,
+    ) -> None:
+        self._tts = tts
+        self._sink = sink
+        self._metrics = metrics
+        self._turn_start_time = turn_start_time
+        self._sentence_queue: queue.Queue[str | None] = queue.Queue()
+        self._playback_queue: queue.Queue[StreamingEvent | object] = queue.Queue()
+        self._event_queue: queue.Queue[StreamingEvent | object] = queue.Queue()
+        self._tts_thread = threading.Thread(target=self._tts_worker, name="soca-tts-worker")
+        self._playback_thread = threading.Thread(
+            target=self._playback_worker, name="soca-playback-worker"
         )
-        tts_thread.start()
-        playback_thread.start()
 
-        completed_workers = 0
-        while completed_workers < 2:
-            event = event_queue.get()
-            if event is done:
-                completed_workers += 1
-                continue
+    def start(self) -> None:
+        self._tts_thread.start()
+        self._playback_thread.start()
 
+    def submit(self, sentence: str) -> None:
+        self._sentence_queue.put(sentence)
+
+    def submit_all(self, sentences: Iterable[str]) -> None:
+        for sentence in sentences:
+            self._sentence_queue.put(sentence)
+
+    def close(self) -> None:
+        self._sentence_queue.put(None)
+
+    def drain_ready(self) -> Iterator[StreamingEvent]:
+        """Yield events already available, without blocking."""
+        while True:
+            try:
+                event = self._event_queue.get_nowait()
+            except queue.Empty:
+                return
+            if event is self._DONE:
+                self._event_queue.put(self._DONE)
+                return
             assert isinstance(event, StreamingEvent)
             yield event
 
-        tts_thread.join()
-        playback_thread.join()
+    def drain_until_done(self) -> Iterator[StreamingEvent]:
+        """Yield remaining events until both workers finish, then join them."""
+        completed = 0
+        while completed < 2:
+            event = self._event_queue.get()
+            if event is self._DONE:
+                completed += 1
+                continue
+            assert isinstance(event, StreamingEvent)
+            yield event
+        self._tts_thread.join()
+        self._playback_thread.join()
+
+    def _tts_worker(self) -> None:
+        first_audio_time: float | None = None
+        index = 0
+        try:
+            while True:
+                sentence = self._sentence_queue.get()
+                if sentence is None:
+                    return
+
+                speech_text = _speech_text(sentence)
+                with self._metrics.stage(f"tts_{index}"):
+                    tts_result = self._tts.synthesize(speech_text)
+
+                if first_audio_time is None:
+                    first_audio_time = time.perf_counter()
+
+                metadata: dict[str, float | int] = {
+                    "chunk_index": index,
+                    "tts_latency_ms": tts_result.latency_ms,
+                }
+                if index == 0:
+                    metadata["ttfa_ms"] = (first_audio_time - self._turn_start_time) * 1000
+
+                event = StreamingEvent(
+                    type="tts",
+                    text=speech_text,
+                    audio=tts_result.audio,
+                    sample_rate=tts_result.sample_rate,
+                    tts=tts_result,
+                    latency_ms=tts_result.latency_ms,
+                    metadata=metadata,
+                )
+                self._event_queue.put(event)
+                self._playback_queue.put(event)
+                index += 1
+        except Exception as exc:
+            self._event_queue.put(StreamingEvent(type="error", text=str(exc)))
+        finally:
+            self._playback_queue.put(self._DONE)
+            self._event_queue.put(self._DONE)
+
+    def _playback_worker(self) -> None:
+        try:
+            while True:
+                event = self._playback_queue.get()
+                if event is self._DONE:
+                    return
+
+                assert isinstance(event, StreamingEvent)
+                assert event.audio is not None
+                assert event.sample_rate is not None
+                playback = self._sink.play(event.audio, event.sample_rate, blocking=True)
+                metadata = dict(event.metadata or {})
+                metadata["playback_latency_ms"] = playback.latency_ms
+                self._event_queue.put(
+                    StreamingEvent(
+                        type="audio",
+                        text=event.text,
+                        audio=event.audio,
+                        sample_rate=event.sample_rate,
+                        tts=event.tts,
+                        latency_ms=playback.latency_ms,
+                        metadata=metadata,
+                    )
+                )
+        except Exception as exc:
+            self._event_queue.put(StreamingEvent(type="error", text=str(exc)))
+        finally:
+            self._event_queue.put(self._DONE)
 
 
 def _speech_text(text: str) -> str:

@@ -19,11 +19,12 @@ Keep the boundary clear:
 00_colab_setup.ipynb
 01_noise_data_collection.ipynb
 02_build_vietnamese_boh.ipynb
-03_threshold_calibration.ipynb
-04_table7_replication.ipynb
-05_asr_finetune_phowhisper_lora.ipynb
-06_export_onnx_quantize.ipynb
 ```
+
+Threshold calibration and Table-7 replication now live as scripts under `local/`
+(`calibrate_asr_confidence.py`, `calibrate_thresholds.py`, `eval_table7.py`,
+`build_boh.py`). PhoWhisper LoRA fine-tuning and ONNX export/quantization are
+planned follow-ups (not yet scaffolded).
 
 ## Standard Colab Header
 

@@ -74,17 +74,17 @@ core; core does not import app. Violating this direction is technical debt.
 
 ## Core Abstractions
 
-| Abstraction                   | File                    | Role                                                                                   |
-| ----------------------------- | ----------------------- | -------------------------------------------------------------------------------------- |
-| `AssistantRuntime`            | `core/runtime.py`       | Brain of one text turn: guardrail→tool→knowledge/memory→LLM, returns `RuntimeResult`   |
-| `VoicePipeline`               | `core/pipeline.py`      | Orchestrates one voice turn: ASR→runtime→TTS; supports streaming and non-stream paths  |
-| `RobustASR`                   | `asr/robust_asr.py`     | Wraps PhoWhisper with five anti-hallucination layers                                   |
-| `RuntimeToolRouter`           | `core/runtime.py`       | Protocol for deterministic tool selection before LLM calls                             |
-| `GuardrailPolicy` + `check_*` | `core/guardrails.py`    | Input/retrieval/tool/output safety checks                                              |
-| `RepairCatalog`               | `core/repair.py`        | Produces Vietnamese follow-up text when ASR rejects                                    |
-| `VoiceRuntimeProfile`         | `core/profiles.py`      | Combines ASR+LLM+TTS into one named config                                             |
-| `VoiceRuntimeBundle`          | `core/voice_runtime.py` | Fully constructed components for one profile                                           |
-| `AudioSink`                   | `core/audio_out.py`     | Audio output port: real speaker, null sink, or WAV file                                |
+| Abstraction                   | File                    | Role                                                                                  |
+| ----------------------------- | ----------------------- | ------------------------------------------------------------------------------------- |
+| `AssistantRuntime`            | `core/runtime.py`       | Brain of one text turn: guardrail→tool→knowledge/memory→LLM, returns `RuntimeResult`  |
+| `VoicePipeline`               | `core/pipeline.py`      | Orchestrates one voice turn: ASR→runtime→TTS; supports streaming and non-stream paths |
+| `RobustASR`                   | `asr/robust_asr.py`     | Wraps PhoWhisper with five anti-hallucination layers                                  |
+| `RuntimeToolRouter`           | `core/runtime.py`       | Protocol for deterministic tool selection before LLM calls                            |
+| `GuardrailPolicy` + `check_*` | `core/guardrails.py`    | Input/retrieval/tool/output safety checks                                             |
+| `RepairCatalog`               | `core/repair.py`        | Produces Vietnamese follow-up text when ASR rejects                                   |
+| `VoiceRuntimeProfile`         | `core/profiles.py`      | Combines ASR+LLM+TTS into one named config                                            |
+| `VoiceRuntimeBundle`          | `core/voice_runtime.py` | Fully constructed components for one profile                                          |
+| `AudioSink`                   | `core/audio_out.py`     | Audio output port: real speaker, null sink, or WAV file                               |
 
 ## Core Data Models
 
