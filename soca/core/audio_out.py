@@ -82,9 +82,8 @@ class NullAudioPlayer:
 
 
 class SoundDevicePlayer:
-    def __init__(self, output_sample_rate: int | None = None, reference=None) -> None:
+    def __init__(self, output_sample_rate: int | None = None) -> None:
         self.output_sample_rate = output_sample_rate
-        self._reference = reference
 
     def _play_interruptible(self, arr, target_rate, interrupt_event) -> bool:
         frame = max(1, int(INTERRUPT_FRAME_MS * target_rate / 1000))
@@ -94,10 +93,7 @@ class SoundDevicePlayer:
                 if interrupt_event.is_set():
                     stream.abort() # remove the rest of the buffer
                     return True
-                chunk = arr[start: start + frame]
-                stream.write(chunk)
-                if self._reference is not None:
-                    self._reference.push(_resample(chunk, target_rate, 16000))
+                stream.write(arr[start: start + frame])
         return False
 
     def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True, interrupt_event: Event | None = None) -> PlaybackResult:

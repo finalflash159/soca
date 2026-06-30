@@ -18,7 +18,6 @@ from soca.core import (
     VOICE_RUNTIME_PROFILES,
     resolve_voice_runtime_config,
 )
-from soca.core.barge_in import BargeInListener
 from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
 from soca.tts.registry import TTS_MODEL_REGISTRY
 
@@ -355,9 +354,13 @@ def ui(
         session_turns=session_turns,
         turn_chars=turn_chars,
     )
-    # Barge-in needs the VAD model, so only build it for the voice cockpit with
-    # models enabled; status/chat modes stay lightweight.
-    barge_in = BargeInListener(enable_aec=True) if mode == "voice" and not no_model else None
+    # Path B barge-in (AEC + VAD) lives in the duplex sink player; only build it for
+    # the voice cockpit with models enabled (status/chat modes stay lightweight).
+    voice_player = None
+    if mode == "voice" and not no_model:
+        from soca.core.duplex_aec_sink import DuplexAecSink
+
+        voice_player = DuplexAecSink()
     ctx.exit(
         run_tui(
             mode=mode,
@@ -365,7 +368,7 @@ def ui(
             text_runtime=config,
             voice_runtime=voice_config,
             no_model=no_model,
-            voice_barge_in=barge_in,
+            voice_player=voice_player,
         )
     )
 
