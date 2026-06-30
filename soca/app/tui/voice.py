@@ -247,6 +247,10 @@ class VoiceMonitorController:
         )
         queue.put(VoiceMonitorEvent("recording", "Listening"))
         t0 = time.perf_counter()
+        if self._supports_barge_in:
+            # Close any duplex stream left open by the previous turn (incl. a
+            # passive-silence callout) so the recorder can reclaim the mic.
+            self.player.stop()
         record_kwargs: dict[str, Any] = {"config": endpoint_config, "stop_event": stop_event}
         if self._pending_prefix is not None:
             record_kwargs["prefix"] = self._pending_prefix
