@@ -357,7 +357,7 @@ def ui(
     )
     # Barge-in needs the VAD model, so only build it for the voice cockpit with
     # models enabled; status/chat modes stay lightweight.
-    barge_in = BargeInListener() if mode == "voice" and not no_model else None
+    barge_in = BargeInListener(enable_aec=True) if mode == "voice" and not no_model else None
     ctx.exit(
         run_tui(
             mode=mode,
@@ -565,7 +565,7 @@ def voice(
             press_enter_to_record=press_enter_to_record,
             warmup=not no_warmup,
             show_usage=usage,
-            barge_in=BargeInListener() if barge_in else None,
+            barge_in=BargeInListener(enable_aec=True) if barge_in else None,
         )
     )
 

@@ -56,7 +56,8 @@ def run_voice_loop(
     """
     console = console or Console()
     bundle = runtime_builder(config)
-    player = player or SoundDevicePlayer()
+    ref = barge_in.reference if barge_in is not None else None
+    player = player or SoundDevicePlayer(reference=ref)
     # `--no-speak-repairs` is the new name; `--no-speak-rejections` is a kept alias.
     suppress_repairs = no_speak_repairs or no_speak_rejections
 

@@ -29,7 +29,7 @@ def test_voice_command_delegates_to_app_voice_loop(monkeypatch) -> None:
 
     # Stub the listener so the CLI does not load the real Silero VAD model here.
     barge_in_sentinel = object()
-    monkeypatch.setattr("soca.cli.BargeInListener", lambda: barge_in_sentinel)
+    monkeypatch.setattr("soca.cli.BargeInListener", lambda **kwargs: barge_in_sentinel)
     monkeypatch.setattr("soca.cli.run_voice_loop", fake_run_voice_loop)
 
     result = CliRunner().invoke(
@@ -87,7 +87,7 @@ def test_voice_command_accepts_quick_profile_argument(monkeypatch) -> None:
         captured["warmup"] = warmup
         return 0
 
-    monkeypatch.setattr("soca.cli.BargeInListener", lambda: object())
+    monkeypatch.setattr("soca.cli.BargeInListener", lambda **kwargs: object())
     monkeypatch.setattr("soca.cli.run_voice_loop", fake_run_voice_loop)
 
     result = CliRunner().invoke(main, ["voice", "quality", "--no-warmup"])

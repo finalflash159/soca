@@ -88,6 +88,8 @@ class VoiceMonitorController:
         # Barge-in is opt-in: production (CLI voice mode) injects a listener; tests
         # omit it so they never load the VAD model or open the microphone.
         self._barge_in = barge_in
+        ref = barge_in.reference if barge_in is not None else None
+        self.player = player or SoundDevicePlayer(reference=ref)
         # Audio kept from a barge-in interrupt, prepended to the next recording.
         self._pending_prefix: np.ndarray | None = None
         # Passive silence: SoCa periodically calls out the playful "alo, có ai

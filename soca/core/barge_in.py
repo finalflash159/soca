@@ -7,7 +7,10 @@ from collections import deque
 import numpy as np
 import sounddevice as sd
 import torch
+from pywebrtc_audio import AudioProcessor
 from silero_vad import load_silero_vad
+
+from soca.core.aec_reference import AECReference
 
 # Silero VAD v5 requires exactly this many samples per call at 16 kHz.
 _SILERO_FRAME_SAMPLES = 512
@@ -56,6 +59,7 @@ class BargeInListener:
         block_ms: int = 32,
         sustained_ms: float = 600,
         vad_threshold: float = 0.7,
+        enable_aec: bool = False,
     ) -> None:
         self.model = load_silero_vad()
         self.sample_rate = sample_rate
@@ -67,6 +71,20 @@ class BargeInListener:
         # the next recording so the user's first words survive. None until an
         # interrupt fires, and reset at the start of every ``run``.
         self.captured: np.ndarray | None = None
+        self.reference = None
+        self._aec = None
+
+        if enable_aec:
+            self.reference = AECReference()
+            self._aec = AudioProcessor(
+                sample_rate= self.sample_rate,
+                num_channels=1,
+                echo_cancellation=True,
+                noise_suppression=True,
+                auto_gain_control=False,
+                # Delay loa→mic. Tune live: SOCA_AEC_DELAY_MS=150 soca voice
+                stream_delay_ms=int(os.environ.get("SOCA_AEC_DELAY_MS", 80)),
+            )
 
     def run(self, interrupt_event, stop_event) -> None:
         n = int(self.sample_rate * self.block_ms / 1000)
@@ -76,6 +94,10 @@ class BargeInListener:
         )
 
         self.captured = None  # clear any carry-over from a previous turn
+
+        if self.reference is not None:
+            self.reference.clear()
+
         self.model.reset_states()  # fresh streaming context for this turn
         run_ms = 0.0
         # Rolling buffer of recent mic audio. The listener consumes the mic that
@@ -91,6 +113,9 @@ class BargeInListener:
                     # Copy: the stream reuses its internal buffer on the next read,
                     # so a view would be overwritten before we use it.
                     mono = block.reshape(-1)[:n].astype("float32", copy=True)
+                    if self._aec is not None and self.reference is not None:
+                        far = self.reference.pull(n)
+                        mono = self._aec.process(mono, far)
                     prob = float(self.model(torch.from_numpy(mono), self.sample_rate).item())
                 except Exception:
                     # Transient read/model hiccup: skip this block and keep
