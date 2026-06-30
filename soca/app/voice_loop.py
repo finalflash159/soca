@@ -18,7 +18,6 @@ from soca.app.console import (
 )
 from soca.app.usage_view import print_turn_usage
 from soca.core import AudioSink, EndpointConfig, SoundDevicePlayer, record_until_silence
-from soca.core.barge_in import BargeInListener
 from soca.core.text_chunking import normalize_text_for_tts
 from soca.core.usage import TurnUsage
 from soca.core.voice_runtime import (
@@ -47,7 +46,6 @@ def run_voice_loop(
     recorder: Recorder = record_until_silence,
     player: AudioSink | None = None,
     max_turns: int | None = None,
-    barge_in: BargeInListener | None = None,
 ) -> int:
     """Run the interactive microphone voice loop.
 
@@ -56,8 +54,10 @@ def run_voice_loop(
     """
     console = console or Console()
     bundle = runtime_builder(config)
-    ref = barge_in.reference if barge_in is not None else None
-    player = player or SoundDevicePlayer(reference=ref)
+    player = player or SoundDevicePlayer()
+    # A DuplexAecSink player does barge-in (AEC + VAD) inline and exposes a
+    # ``captured`` carry-over buffer; a plain player does not.
+    supports_barge_in = hasattr(player, "captured")
     # `--no-speak-repairs` is the new name; `--no-speak-rejections` is a kept alias.
     suppress_repairs = no_speak_repairs or no_speak_rejections
 
@@ -107,12 +107,13 @@ def run_voice_loop(
         first_tts_meta: dict | None = None
         tts_chunks = 0
         turn_interrupted = False
+        interrupt_event = threading.Event() if supports_barge_in else None
         for event in _turn_streaming(
             bundle.pipeline,
             audio,
             player,
             speak_rejections=not suppress_repairs,
-            barge_in=barge_in,
+            interrupt_event=interrupt_event,
         ):
             if event.type == "llm_token":
                 if not response_open:
@@ -172,9 +173,10 @@ def run_voice_loop(
                 )
                 print_turn_usage(console, usage)
 
-        # Carry the interrupting words into the next recording (barge-in only).
-        if turn_interrupted and barge_in is not None:
-            pending_prefix = getattr(barge_in, "captured", None)
+        if supports_barge_in:
+            player.stop()  # close the duplex stream so the recorder reclaims the mic
+            if turn_interrupted:
+                pending_prefix = getattr(player, "captured", None)
         completed_turns += 1
 
     return 0
@@ -186,7 +188,7 @@ def _turn_streaming(
     player: AudioSink,
     *,
     speak_rejections: bool,
-    barge_in: BargeInListener | None = None,
+    interrupt_event: threading.Event | None = None,
 ):
     kwargs: dict[str, Any] = {"audio_sink": player}
     try:
@@ -205,27 +207,8 @@ def _turn_streaming(
     accepts_interrupt = signature is not None and (
         "interrupt_event" in signature.parameters or supports_extra_kwargs
     )
-    if barge_in is None or not accepts_interrupt:
-        # No barge-in (tests, or a pipeline build without interrupt support):
-        # stream straight through with no listener thread.
-        yield from pipeline.turn_streaming(audio, **kwargs)
-        return
-
-    # Listen on the mic during playback; the listener sets ``interrupt_event`` on
-    # sustained speech, which the pipeline polls to stop the current turn. The
-    # console has no separate shutdown signal, so the per-turn event also serves
-    # as the listener's stop signal.
-    interrupt_event = threading.Event()
-    listener_thread = threading.Thread(
-        target=barge_in.run,
-        args=(interrupt_event, interrupt_event),
-        name="soca-barge-in",
-        daemon=True,
-    )
-    listener_thread.start()
-    kwargs["interrupt_event"] = interrupt_event
-    try:
-        yield from pipeline.turn_streaming(audio, **kwargs)
-    finally:
-        interrupt_event.set()
-        listener_thread.join(timeout=1.0)
+    # The DuplexAecSink player sets ``interrupt_event`` from inside ``play`` when it
+    # hears sustained speech (no separate listener thread needed).
+    if interrupt_event is not None and accepts_interrupt:
+        kwargs["interrupt_event"] = interrupt_event
+    return pipeline.turn_streaming(audio, **kwargs)

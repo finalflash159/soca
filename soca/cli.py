@@ -557,6 +557,12 @@ def voice(
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
+    player = None
+    if barge_in:
+        # Path B: duplex AEC sink does playback + echo cancel + barge-in on one clock.
+        from soca.core.duplex_aec_sink import DuplexAecSink
+
+        player = DuplexAecSink()
     ctx.exit(
         run_voice_loop(
             config,
@@ -565,7 +571,7 @@ def voice(
             press_enter_to_record=press_enter_to_record,
             warmup=not no_warmup,
             show_usage=usage,
-            barge_in=BargeInListener(enable_aec=True) if barge_in else None,
+            player=player,
         )
     )
 

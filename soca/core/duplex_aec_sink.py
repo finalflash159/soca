@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 from collections import deque
 from threading import Event
@@ -17,6 +18,10 @@ _SAMPLE_RATE = 16000
 _FRAME = 512  # 32 ms @16k == Silero VAD frame
 _BLOCK_MS = 32
 _CAPTURE_WINDOW_MS = 1200
+
+# Opt-in debug: SOCA_BARGE_DEBUG=1 prints the (post-AEC) speech probability so you
+# can confirm echo is cancelled (prob stays low while SoCa speaks).
+_DEBUG = os.environ.get("SOCA_BARGE_DEBUG", "") not in ("", "0")
 
 
 class DuplexAecSink:
@@ -113,8 +118,16 @@ class DuplexAecSink:
             prob = float(self._model(torch.from_numpy(clean), self.rate).item())
             is_speech = prob >= self.vad_threshold
             self._run_ms = self._run_ms + self.block_ms if is_speech else 0.0
+            if _DEBUG and is_speech:
+                print(
+                    f"[duplex] prob={prob:4.2f} run={self._run_ms:5.0f}/{self.sustained_ms:.0f}ms",
+                    file=sys.stderr,
+                    flush=True,
+                )
             if self._run_ms >= self.sustained_ms and interrupt_event is not None:
                 self.captured = np.concatenate(list(self._window)).astype(np.float32, copy=False)
+                if _DEBUG:
+                    print(f"[duplex] -> INTERRUPT (prob={prob:.2f})", file=sys.stderr, flush=True)
                 interrupt_event.set()
                 interrupted = True
                 break
