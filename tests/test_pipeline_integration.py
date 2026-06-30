@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 
 import numpy as np
@@ -304,3 +305,62 @@ def test_voice_pipeline_streaming_yields_error_when_tts_fails():
     assert error_events[0].text == "tts failed"
     assert events[-1].type == "done"
     assert tts.calls == ["Xin chào bạn."]
+
+
+def test_voice_pipeline_streaming_interrupt_event_stops_turn():
+    """Barge-in mechanism (P0.1): a set interrupt_event ends the turn without
+    speaking, emits an ``interrupted`` event, and flags it on ``done``.
+
+    The event is pre-set so the assertions are deterministic (no thread race):
+    the streaming loop breaks on its first iteration, so no sentence is ever
+    submitted to the TTS pump. Mid-stream interruption is timing-dependent and
+    is verified manually with a microphone (guide step 7-C).
+    """
+    asr = FakeASR("xin chao")
+    runtime = FakeStreamingRuntime(["Câu một dài.", "Câu hai dài.", "Câu ba dài."])
+    tts = SpyTTS()
+    pipeline = VoicePipeline(asr=asr, llm=SpyLLM(), tts=tts, assistant_runtime=runtime)
+
+    interrupt_event = threading.Event()
+    interrupt_event.set()  # barge-in fires before the turn does any work
+
+    events = list(
+        pipeline.turn_streaming(
+            np.zeros(16000, dtype=np.float32),
+            audio_sink=NullAudioPlayer(),
+            min_sentence_chars=8,
+            interrupt_event=interrupt_event,
+        )
+    )
+
+    event_types = [event.type for event in events]
+
+    assert event_types == ["asr", "interrupted", "done"]
+    assert events[-1].metadata["interrupted"] is True
+    # Interrupt fired first -> pump synthesizes and plays nothing.
+    assert tts.calls == []
+    assert "tts" not in event_types
+    assert "audio" not in event_types
+
+
+def test_voice_pipeline_streaming_without_interrupt_speaks_all():
+    """Control for the interrupt test: with no interrupt, the turn runs fully."""
+    asr = FakeASR("xin chao")
+    runtime = FakeStreamingRuntime(["Câu một dài.", "Câu hai dài."])
+    tts = SpyTTS()
+    pipeline = VoicePipeline(asr=asr, llm=SpyLLM(), tts=tts, assistant_runtime=runtime)
+
+    events = list(
+        pipeline.turn_streaming(
+            np.zeros(16000, dtype=np.float32),
+            audio_sink=NullAudioPlayer(),
+            min_sentence_chars=8,
+            interrupt_event=threading.Event(),  # never set
+        )
+    )
+
+    event_types = [event.type for event in events]
+
+    assert "interrupted" not in event_types
+    assert events[-1].metadata["interrupted"] is False
+    assert tts.calls == ["Câu một dài.", "Câu hai dài."]

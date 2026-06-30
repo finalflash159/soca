@@ -16,6 +16,7 @@ def test_voice_command_delegates_to_app_voice_loop(monkeypatch) -> None:
         press_enter_to_record: bool = False,
         warmup: bool = True,
         show_usage: bool = False,
+        barge_in=None,
     ) -> int:
         captured["config"] = config
         captured["no_speak_repairs"] = no_speak_repairs
@@ -23,8 +24,12 @@ def test_voice_command_delegates_to_app_voice_loop(monkeypatch) -> None:
         captured["press_enter_to_record"] = press_enter_to_record
         captured["warmup"] = warmup
         captured["show_usage"] = show_usage
+        captured["barge_in"] = barge_in
         return 0
 
+    # Stub the listener so the CLI does not load the real Silero VAD model here.
+    barge_in_sentinel = object()
+    monkeypatch.setattr("soca.cli.BargeInListener", lambda: barge_in_sentinel)
     monkeypatch.setattr("soca.cli.run_voice_loop", fake_run_voice_loop)
 
     result = CliRunner().invoke(
@@ -53,6 +58,8 @@ def test_voice_command_delegates_to_app_voice_loop(monkeypatch) -> None:
     assert captured["press_enter_to_record"] is True
     assert captured["warmup"] is False
 
+    assert captured["barge_in"] is barge_in_sentinel  # console barge-in is wired
+
     config = captured["config"]
     assert config.profile_key == "quality"
     assert config.asr_model == "phowhisper_base"
@@ -74,11 +81,13 @@ def test_voice_command_accepts_quick_profile_argument(monkeypatch) -> None:
         press_enter_to_record: bool = False,
         warmup: bool = True,
         show_usage: bool = False,
+        barge_in=None,
     ) -> int:
         captured["config"] = config
         captured["warmup"] = warmup
         return 0
 
+    monkeypatch.setattr("soca.cli.BargeInListener", lambda: object())
     monkeypatch.setattr("soca.cli.run_voice_loop", fake_run_voice_loop)
 
     result = CliRunner().invoke(main, ["voice", "quality", "--no-warmup"])

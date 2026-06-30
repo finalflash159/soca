@@ -137,6 +137,34 @@ def test_record_until_silence_stops_after_speech_then_endpoint_silence(monkeypat
     assert audio[-1] == np.float32(0.4)
 
 
+def test_record_until_silence_prepends_barge_in_prefix(monkeypatch):
+    # The barge-in prefix is treated as speech already seen, so the recording
+    # closes after endpoint silence even though the new blocks are all silent.
+    config = EndpointConfig(
+        sample_rate=1000,
+        block_ms=100,
+        endpoint_silence_ms=200,
+        max_record_ms=1000,
+        min_audio_ms=100,
+    )
+    prefix = np.full(150, fill_value=0.9, dtype=np.float32)  # 150ms of captured words
+    blocks = [np.zeros((100, 1), dtype=np.float32) for _ in range(3)]
+    stream = FakeInputStream(blocks)
+    install_fake_input_stream(monkeypatch, stream)
+    # Speech ends at sample 150 (end of the prefix); nothing new is spoken.
+    detector = FakeDetector(first_detection_samples=100, speech_end_samples=150)
+
+    audio = record_until_silence(detector, config=config, prefix=prefix)
+
+    # The very first detector call already sees the prefix + the first new block.
+    assert detector.calls[0] == 250
+    # Two silent blocks are enough: 150 -> 250 (100ms silence) -> 350 (200ms => stop).
+    assert stream.read_sizes == [100, 100]
+    # Prefix survives at the front of the returned audio.
+    assert np.array_equal(audio[:150], prefix)
+    assert audio.shape == (350,)
+
+
 def test_record_until_silence_keeps_recording_until_max_when_no_speech(monkeypatch):
     config = EndpointConfig(
         sample_rate=1000,

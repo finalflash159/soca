@@ -69,12 +69,7 @@ class VoicePipeline:
         self._repair_rng = random.Random()
 
     def _plan_repair(self, rejection_reason: str) -> RepairChoice:
-        """Plan the user-facing follow-up for an empty/rejected ASR turn.
-
-        Picks a fresh natural variant from the catalog (with escalation +
-        no-repeat) when available; otherwise wraps the fixed ``reject_response``
-        for backward compatibility.
-        """
+        """Plan one repair line for an empty/rejected ASR turn."""
         if self.repair_catalog is None:
             return RepairChoice(
                 text=self.reject_response,
@@ -169,6 +164,7 @@ class VoicePipeline:
         min_sentence_chars: int = 24,
         first_sentence_min_chars: int = 8,
         speak_rejections: bool = True,
+        interrupt_event: threading.Event | None = None,
     ) -> Iterator[StreamingEvent]:
         self.metrics.reset()
         t0 = time.perf_counter()
@@ -206,6 +202,7 @@ class VoicePipeline:
                     chunks,
                     sink=sink,
                     turn_start_time=t0,
+                    interrupt_event=interrupt_event,
                 )
 
             yield StreamingEvent(
@@ -237,6 +234,7 @@ class VoicePipeline:
                 sink=sink,
                 min_sentence_chars=min_sentence_chars,
                 first_sentence_min_chars=first_sentence_min_chars,
+                interrupt_event=interrupt_event,
             )
         else:
             yield from self._turn_streaming_runtime_blocking(
@@ -245,6 +243,7 @@ class VoicePipeline:
                 turn_start_time=t0,
                 sink=sink,
                 min_sentence_chars=min_sentence_chars,
+                interrupt_event=interrupt_event,
             )
 
     def _runtime_summary_event(self, runtime_result: Any) -> StreamingEvent:
@@ -276,6 +275,7 @@ class VoicePipeline:
         turn_start_time: float,
         sink: AudioSink,
         min_sentence_chars: int,
+        interrupt_event: threading.Event | None = None,
     ) -> Iterator[StreamingEvent]:
         """Legacy path for runtimes without a streaming API.
 
@@ -300,6 +300,7 @@ class VoicePipeline:
             chunks,
             sink=sink,
             turn_start_time=turn_start_time,
+            interrupt_event=interrupt_event,
         )
 
         yield StreamingEvent(
@@ -323,48 +324,48 @@ class VoicePipeline:
         sink: AudioSink,
         min_sentence_chars: int,
         first_sentence_min_chars: int | None = None,
+        interrupt_event: threading.Event | None = None,
     ) -> Iterator[StreamingEvent]:
-        """True end-to-end streaming: LLM tokens feed TTS as sentences complete.
-
-        The runtime yields tokens and guardrail-passed sentences incrementally.
-        Each sentence is queued to a TTS worker, whose audio is queued to a
-        playback worker, so synthesis of sentence N+1 overlaps playback of
-        sentence N. The first sentence reaches the speaker without waiting for
-        the full response to be generated.
-        """
-        pump = _TTSPlaybackPump(self.tts, sink, self.metrics, turn_start_time=turn_start_time)
+        pump = _TTSPlaybackPump(self.tts, sink, self.metrics, turn_start_time=turn_start_time, interrupt_event=interrupt_event)
         pump.start()
 
         runtime_result: Any | None = None
-        for event in self.assistant_runtime.stream_text_turn(
-            transcript,
-            source="asr",
+        stream = self.assistant_runtime.stream_text_turn(
+            transcript, source="asr",
             metadata={"asr_rejection_reason": rejection_reason},
             min_sentence_chars=min_sentence_chars,
             first_sentence_min_chars=first_sentence_min_chars,
-        ):
-            if event.type == "token":
-                yield StreamingEvent(type="llm_token", text=event.text)
-            elif event.type == "sentence":
-                yield StreamingEvent(type="sentence", text=event.text)
-                pump.submit(event.text)
-            elif event.type == "result":
-                runtime_result = event.result
-            yield from pump.drain_ready()
-
-        pump.close()  # No more sentences will arrive.
-
-        if runtime_result is not None:
+        )
+        try:
+            for event in stream:
+                if interrupt_event is not None and interrupt_event.is_set():
+                    break                       # stop
+                if event.type == "token":
+                    yield StreamingEvent(type="llm_token", text=event.text)
+                elif event.type == "sentence":
+                    yield StreamingEvent(type="sentence", text=event.text)
+                    pump.submit(event.text)
+                elif event.type == "result":
+                    runtime_result = event.result
+                yield from pump.drain_ready()
+        finally:
+            close = getattr(stream, "close", None)
+            if callable(close):
+                close()
+        pump.close()
+        interrupted = interrupt_event is not None and interrupt_event.is_set()
+        if interrupted:
+            yield StreamingEvent(type="interrupted", text="")
+        elif runtime_result is not None:
             yield self._runtime_summary_event(runtime_result)
-
         yield from pump.drain_until_done()
-
         yield StreamingEvent(
             type="done",
             text=getattr(runtime_result, "response_text", "").strip(),
             latency_ms=(time.perf_counter() - turn_start_time) * 1000,
             metadata={
                 "rejected": False,
+                "interrupted": interrupted,      # cho UI/loop biết
                 "runtime_blocked": bool(getattr(runtime_result, "blocked", False)),
                 "runtime_route": getattr(getattr(runtime_result, "route", None), "value", ""),
                 "stage_latencies_ms": self.metrics.snapshot(),
@@ -377,9 +378,10 @@ class VoicePipeline:
         *,
         sink: AudioSink,
         turn_start_time: float,
+        interrupt_event: threading.Event | None = None,
     ) -> Iterator[StreamingEvent]:
         """Synthesize + play a fixed list of sentences via the shared pump."""
-        pump = _TTSPlaybackPump(self.tts, sink, self.metrics, turn_start_time=turn_start_time)
+        pump = _TTSPlaybackPump(self.tts, sink, self.metrics, turn_start_time=turn_start_time, interrupt_event=interrupt_event)
         pump.start()
         pump.submit_all(sentences)
         pump.close()
@@ -409,6 +411,7 @@ class _TTSPlaybackPump:
         metrics: MetricsLogger,
         *,
         turn_start_time: float,
+        interrupt_event: threading.Event | None = None,
     ) -> None:
         self._tts = tts
         self._sink = sink
@@ -421,6 +424,10 @@ class _TTSPlaybackPump:
         self._playback_thread = threading.Thread(
             target=self._playback_worker, name="soca-playback-worker"
         )
+        self._interrupt_event = interrupt_event
+
+    def _interrupted(self) -> bool:
+        return self._interrupt_event is not None and self._interrupt_event.is_set()
 
     def start(self) -> None:
         self._tts_thread.start()
@@ -471,6 +478,9 @@ class _TTSPlaybackPump:
                 if sentence is None:
                     return
 
+                if self._interrupted():
+                    continue  # Skip synthesis/playback if interrupted; drain the queue to exit.
+
                 speech_text = _speech_text(sentence)
                 with self._metrics.stage(f"tts_{index}"):
                     tts_result = self._tts.synthesize(speech_text)
@@ -510,10 +520,13 @@ class _TTSPlaybackPump:
                 if event is self._DONE:
                     return
 
+                if self._interrupted():
+                    continue  # Skip playback if interrupted; drain the queue to exit.
+
                 assert isinstance(event, StreamingEvent)
                 assert event.audio is not None
                 assert event.sample_rate is not None
-                playback = self._sink.play(event.audio, event.sample_rate, blocking=True)
+                playback = self._sink.play(event.audio, event.sample_rate, blocking=True, interrupt_event=self._interrupt_event)
                 metadata = dict(event.metadata or {})
                 metadata["playback_latency_ms"] = playback.latency_ms
                 self._event_queue.put(

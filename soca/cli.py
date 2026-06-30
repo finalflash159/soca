@@ -18,6 +18,7 @@ from soca.core import (
     VOICE_RUNTIME_PROFILES,
     resolve_voice_runtime_config,
 )
+from soca.core.barge_in import BargeInListener
 from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
 from soca.tts.registry import TTS_MODEL_REGISTRY
 
@@ -354,6 +355,9 @@ def ui(
         session_turns=session_turns,
         turn_chars=turn_chars,
     )
+    # Barge-in needs the VAD model, so only build it for the voice cockpit with
+    # models enabled; status/chat modes stay lightweight.
+    barge_in = BargeInListener() if mode == "voice" and not no_model else None
     ctx.exit(
         run_tui(
             mode=mode,
@@ -361,6 +365,7 @@ def ui(
             text_runtime=config,
             voice_runtime=voice_config,
             no_model=no_model,
+            voice_barge_in=barge_in,
         )
     )
 
@@ -487,6 +492,14 @@ def build_text_runtime_config(
     help="Skip ASR/LLM/TTS first-call warmup before listening.",
 )
 @click.option("--usage", is_flag=True, help="Show ASR/LLM/TTS latency + token usage after each turn.")
+@click.option(
+    "--barge-in/--no-barge-in",
+    "barge_in",
+    default=True,
+    show_default=True,
+    help="Interrupt playback when you start speaking. Use --no-barge-in on speakers "
+    "without echo cancellation, otherwise SoCa hears itself and self-interrupts.",
+)
 @click.pass_context
 def voice(
     ctx: click.Context,
@@ -513,6 +526,7 @@ def voice(
     press_enter_to_record: bool,
     no_warmup: bool,
     usage: bool,
+    barge_in: bool,
 ) -> None:
     """Run the interactive SoCa microphone voice loop.
 
@@ -551,6 +565,7 @@ def voice(
             press_enter_to_record=press_enter_to_record,
             warmup=not no_warmup,
             show_usage=usage,
+            barge_in=BargeInListener() if barge_in else None,
         )
     )
 

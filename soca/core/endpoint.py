@@ -39,6 +39,7 @@ def record_until_silence(
     detector,
     config: EndpointConfig | None = None,
     stop_event: Event | None = None,
+    prefix: np.ndarray | None = None,
 ) -> np.ndarray:
     config = config or EndpointConfig()
     n_block_samples = block_samples(config)
@@ -47,6 +48,15 @@ def record_until_silence(
     chunks: list[np.ndarray] = []
     has_seen_speech = False
     total_samples = 0
+
+    # Barge-in carry-over: seed the buffer with the audio the listener already
+    # captured (the start of the user's interrupting words). Mark speech as seen
+    # so endpointing can close promptly even if the user stops talking right away.
+    if prefix is not None and len(prefix) > 0:
+        prefix = np.asarray(prefix, dtype=np.float32).reshape(-1)
+        chunks.append(prefix)
+        has_seen_speech = True
+        total_samples = len(prefix)
 
     with sd.InputStream(samplerate=config.sample_rate, channels=1, dtype="float32") as stream:
         while total_samples < max_samples:

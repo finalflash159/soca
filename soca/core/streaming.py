@@ -19,6 +19,7 @@ StreamingEventType = Literal[
     "sentence",
     "tts",
     "audio",
+    "interrupted",
     "done",
     "error",
 ]

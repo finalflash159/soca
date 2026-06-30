@@ -10,6 +10,7 @@ from pathlib import Path
 from queue import Queue
 from threading import Event as ThreadEvent
 from threading import Thread
+from typing import TYPE_CHECKING
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -46,6 +47,10 @@ from soca.app.tui.widgets import (
 from soca.core import DEFAULT_VOICE_RUNTIME_PROFILE_KEY, AudioSink, ResolvedVoiceRuntimeConfig
 from soca.core.usage import SessionUsage, TurnUsage
 from soca.memory import SessionMemory
+
+if TYPE_CHECKING:
+    # Type-only import: keep torch/sounddevice out of TUI startup (status/chat modes).
+    from soca.core.barge_in import BargeInListener
 
 CHAT_EXIT_COMMANDS = {"/exit", "/quit", ":q"}
 TUI_HELP = slash_help_text()
@@ -93,6 +98,7 @@ class SoCaTuiApp(App[None]):
         voice_runtime_builder: VoiceRuntimeBuilder | None = None,
         voice_recorder: VoiceRecorder | None = None,
         voice_player: AudioSink | None = None,
+        voice_barge_in: BargeInListener | None = None,
     ) -> None:
         super().__init__()
         self.config = config or TuiConfig()
@@ -100,6 +106,7 @@ class SoCaTuiApp(App[None]):
         self.voice_runtime_builder = voice_runtime_builder
         self.voice_recorder = voice_recorder
         self.voice_player = voice_player
+        self.voice_barge_in = voice_barge_in
         self.shared_session_memory = self._create_shared_session_memory()
         self.state = TuiState(mode=self.config.mode, profile=self.config.profile)
         self.bundle: TextRuntimeBundle | None = None
@@ -517,6 +524,8 @@ class SoCaTuiApp(App[None]):
             kwargs["recorder"] = self.voice_recorder
         if self.voice_player is not None:
             kwargs["player"] = self.voice_player
+        if self.voice_barge_in is not None:
+            kwargs["barge_in"] = self.voice_barge_in
 
         self.voice_controller = VoiceMonitorController(
             self.config.voice_runtime,
@@ -839,6 +848,7 @@ def run_tui(
     voice_runtime_builder: VoiceRuntimeBuilder | None = None,
     voice_recorder: VoiceRecorder | None = None,
     voice_player: AudioSink | None = None,
+    voice_barge_in: BargeInListener | None = None,
 ) -> int:
     config = TuiConfig(
         mode=mode,
@@ -854,6 +864,7 @@ def run_tui(
         voice_runtime_builder=voice_runtime_builder,
         voice_recorder=voice_recorder,
         voice_player=voice_player,
+        voice_barge_in=voice_barge_in,
     ).run()
     return 0
 

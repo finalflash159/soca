@@ -4,12 +4,15 @@ import math
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Event
 from typing import Protocol
 
 import numpy as np
 import sounddevice as sd
 import soundfile as sf
 from scipy.signal import resample_poly
+
+INTERRUPT_FRAME_MS = 30
 
 
 @dataclass(frozen=True)
@@ -19,10 +22,11 @@ class PlaybackResult:
     audio_duration_ms: float
     latency_ms: float
     reason: str = ""
+    interrupted: bool = False
 
 
 class AudioSink(Protocol):
-    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True) -> PlaybackResult:
+    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True, interrupt_event: Event | None = None) -> PlaybackResult:
         ...
 
     def stop(self) -> None:
@@ -61,7 +65,7 @@ def _resample(audio: np.ndarray, source_rate: int, target_rate: int) -> np.ndarr
 
 
 class NullAudioPlayer:
-    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True) -> PlaybackResult:
+    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True, interrupt_event: Event | None = None) -> PlaybackResult:
         arr = _to_float32_mono(audio)
         duration_ms = len(arr) / sample_rate * 1000 if sample_rate > 0 else 0.0
         return PlaybackResult(
@@ -70,6 +74,7 @@ class NullAudioPlayer:
             audio_duration_ms=duration_ms,
             latency_ms=0.0,
             reason="null_audio_player",
+            interrupted=False,
         )
 
     def stop(self) -> None:
@@ -80,15 +85,32 @@ class SoundDevicePlayer:
     def __init__(self, output_sample_rate: int | None = None) -> None:
         self.output_sample_rate = output_sample_rate
 
-    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True) -> PlaybackResult:
+    def _play_interruptible(self, arr, target_rate, interrupt_event) -> bool:
+        frame = max(1, int(INTERRUPT_FRAME_MS * target_rate / 1000))
+
+        with sd.OutputStream(samplerate=target_rate, channels=1, dtype="float32") as stream:
+            for start in range(0, len(arr), frame):
+                if interrupt_event.is_set():
+                    stream.abort() # remove the rest of the buffer
+                    return True
+                stream.write(arr[start: start + frame])
+        return False
+
+    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True, interrupt_event: Event | None = None) -> PlaybackResult:
         t0 = time.perf_counter()
 
         arr = _to_float32_mono(audio)
         if arr.size == 0:
-            return PlaybackResult(False, sample_rate, 0.0, 0.0, "empty_audio")
+            return PlaybackResult(False, sample_rate, 0.0, 0.0, "empty_audio", interrupted=False)
 
         target_rate = self.output_sample_rate or sample_rate
         arr = _resample(arr, sample_rate, target_rate)
+
+        if interrupt_event is not None:
+            interrupted = self._play_interruptible(arr, target_rate, interrupt_event)
+            latency_ms = (time.perf_counter() - t0) * 1000
+            duration_ms = len(arr) / target_rate * 1000
+            return PlaybackResult(True, target_rate, duration_ms, latency_ms, interrupted=interrupted)
 
         sd.play(arr, samplerate=target_rate, blocking=blocking)
 
@@ -105,7 +127,7 @@ class WavFileSink:
     def __init__(self, output_path: str | Path) -> None:
         self.output_path = Path(output_path)
 
-    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True) -> PlaybackResult:
+    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True, interrupt_event: Event | None = None) -> PlaybackResult:
         t0 = time.perf_counter()
 
         arr = _to_float32_mono(audio)

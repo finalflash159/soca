@@ -111,7 +111,7 @@ class SpyTTS:
 
 
 class SlowAudioSink:
-    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True) -> PlaybackResult:
+    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True, interrupt_event=None) -> PlaybackResult:
         time.sleep(0.05)
         return PlaybackResult(
             played=True,
@@ -125,7 +125,7 @@ class SlowAudioSink:
 
 
 class FailingAudioSink:
-    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True) -> PlaybackResult:
+    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True, interrupt_event=None) -> PlaybackResult:
         raise RuntimeError("playback failed")
 
     def stop(self) -> None:

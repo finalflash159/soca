@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import random
+import threading
 import time
 import traceback
 from collections import deque
@@ -26,6 +27,7 @@ from soca.core import (
     record_until_silence,
     warm_up_voice_runtime,
 )
+from soca.core.barge_in import BargeInListener
 from soca.core.repair import (
     RepairAction,
     RepairChoice,
@@ -68,6 +70,7 @@ class VoiceMonitorController:
         warmup: bool = True,
         session_memory: SessionMemory | None = None,
         repair_timings: RepairTimings | None = None,
+        barge_in: BargeInListener | None = None,
     ) -> None:
         self.config = config
         self.runtime_builder = runtime_builder
@@ -82,6 +85,11 @@ class VoiceMonitorController:
         self._idle_started_at: float | None = None
         self._no_reply_rng = random.Random()
         self._recent_no_reply_prompt_ids: deque[str] = deque(maxlen=8)
+        # Barge-in is opt-in: production (CLI voice mode) injects a listener; tests
+        # omit it so they never load the VAD model or open the microphone.
+        self._barge_in = barge_in
+        # Audio kept from a barge-in interrupt, prepended to the next recording.
+        self._pending_prefix: np.ndarray | None = None
         # Passive silence: SoCa periodically calls out the playful "alo, có ai
         # không? / moshi moshi?" greetings (no_input.attempt_1), cycling without
         # repeats. It only winds down (sleep + handover) after a long quiet.
@@ -241,7 +249,11 @@ class VoiceMonitorController:
         )
         queue.put(VoiceMonitorEvent("recording", "Listening"))
         t0 = time.perf_counter()
-        audio = self.recorder(bundle.detector, config=endpoint_config, stop_event=stop_event)
+        record_kwargs: dict[str, Any] = {"config": endpoint_config, "stop_event": stop_event}
+        if self._pending_prefix is not None:
+            record_kwargs["prefix"] = self._pending_prefix
+            self._pending_prefix = None
+        audio = self.recorder(bundle.detector, **record_kwargs)
         latency_ms = (time.perf_counter() - t0) * 1000
         if stop_event is not None and stop_event.is_set():
             return
@@ -261,37 +273,66 @@ class VoiceMonitorController:
             return
 
         self._mark_user_spoke()
-        self._stream_pipeline_events(bundle, audio, queue)
+        self._stream_pipeline_events(bundle, audio, queue, stop_event=stop_event)
 
     def _stream_pipeline_events(
         self,
         bundle: VoiceRuntimeBundle,
         audio: np.ndarray,
         queue: VoiceEventQueue,
+        *,
+        stop_event: Event | None = None
     ) -> None:
         runtime_meta: dict[str, Any] = {}
         first_tts_meta: dict[str, Any] | None = None
         tts_chunks = 0
 
-        for event in bundle.pipeline.turn_streaming(audio, audio_sink=self.player):
-            metadata = dict(event.metadata or {})
-            usage: TurnUsage | None = None
+        # Spawn the mic listener only when barge-in is enabled. The listener stops
+        # on either the per-turn interrupt or the loop-wide shutdown signal.
+        interrupt_event: threading.Event | None = None
+        listener: threading.Thread | None = None
+        if self._barge_in is not None:
+            interrupt_event = threading.Event()
+            listener = threading.Thread(
+                target=self._barge_in.run,
+                args=(interrupt_event, stop_event or interrupt_event),
+                name="soca-barge-in",
+                daemon=True,
+            )
+            listener.start()
 
-            if event.type == "runtime":
-                runtime_meta = metadata
-            elif event.type == "tts":
-                tts_chunks += 1
-                first_tts_meta = first_tts_meta or metadata
-            elif event.type == "done":
-                usage = _build_voice_usage(
-                    event=event,
-                    runtime_meta=runtime_meta,
-                    first_tts_meta=first_tts_meta,
-                    tts_chunks=tts_chunks,
-                )
-                self._mark_idle_from_done_event(event)
+        stream_kwargs: dict[str, Any] = {"audio_sink": self.player}
+        if interrupt_event is not None:
+            stream_kwargs["interrupt_event"] = interrupt_event
 
-            queue.put(_to_monitor_event(event, usage=usage))
+        try:
+            for event in bundle.pipeline.turn_streaming(audio, **stream_kwargs):
+                metadata = dict(event.metadata or {})
+                usage: TurnUsage | None = None
+
+                if event.type == "runtime":
+                    runtime_meta = metadata
+                elif event.type == "tts":
+                    tts_chunks += 1
+                    first_tts_meta = first_tts_meta or metadata
+                elif event.type == "done":
+                    if metadata.get("interrupted") and self._barge_in is not None:
+                        # Keep the interrupting words for the next recording.
+                        self._pending_prefix = getattr(self._barge_in, "captured", None)
+                    usage = _build_voice_usage(
+                        event=event,
+                        runtime_meta=runtime_meta,
+                        first_tts_meta=first_tts_meta,
+                        tts_chunks=tts_chunks,
+                    )
+                    self._mark_idle_from_done_event(event)
+
+                queue.put(_to_monitor_event(event, usage=usage))
+        finally:
+            if interrupt_event is not None:
+                interrupt_event.set()  # stop the barge-in listener thread
+            if listener is not None:
+                listener.join(timeout=1.0)  # wait for it, but never block forever
 
     def _audio_has_speech(self, bundle: VoiceRuntimeBundle, audio: np.ndarray) -> bool:
         if len(audio) == 0:
