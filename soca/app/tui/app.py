@@ -515,8 +515,15 @@ class SoCaTuiApp(App[None]):
             kwargs["runtime_builder"] = self.voice_runtime_builder
         if self.voice_recorder is not None:
             kwargs["recorder"] = self.voice_recorder
-        if self.voice_player is not None:
-            kwargs["player"] = self.voice_player
+        player = self.voice_player
+        if player is None and not self.config.no_model:
+            # Path B barge-in: build the duplex AEC sink the first time voice mode is
+            # entered — regardless of launch mode. Tests inject a player, so skip there.
+            from soca.core.duplex_aec_sink import DuplexAecSink
+
+            player = DuplexAecSink()
+        if player is not None:
+            kwargs["player"] = player
 
         self.voice_controller = VoiceMonitorController(
             self.config.voice_runtime,

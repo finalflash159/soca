@@ -354,13 +354,8 @@ def ui(
         session_turns=session_turns,
         turn_chars=turn_chars,
     )
-    # Path B barge-in (AEC + VAD) lives in the duplex sink player; only build it for
-    # the voice cockpit with models enabled (status/chat modes stay lightweight).
-    voice_player = None
-    if mode == "voice" and not no_model:
-        from soca.core.duplex_aec_sink import DuplexAecSink
-
-        voice_player = DuplexAecSink()
+    # Path B barge-in (AEC + VAD) lives in the duplex sink player, which the TUI
+    # builds lazily the first time voice mode is entered (see _ensure_voice_controller).
     ctx.exit(
         run_tui(
             mode=mode,
@@ -368,7 +363,6 @@ def ui(
             text_runtime=config,
             voice_runtime=voice_config,
             no_model=no_model,
-            voice_player=voice_player,
         )
     )
 
