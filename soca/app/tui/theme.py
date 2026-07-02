@@ -1,30 +1,56 @@
-"""Shared calm-dark palette for the SoCa TUI content styling.
+"""Textual theme for the SoCa TUI, built from the shared dawn palette.
 
-Panel/CSS theming lives in styles.tcss; this module is for the inline Rich
-styles we apply to timeline/inspector/voice content. Honors NO_COLOR.
+styles.tcss consumes the theme variables ($primary, $surface, ...) plus the
+extra $soca-* variables registered here, so palette.py stays the single
+source of truth for colors across console and TUI.
 """
 
 from __future__ import annotations
 
-import os
+from textual.theme import Theme
 
-NO_COLOR = bool(os.environ.get("NO_COLOR"))
+from soca.app.style import palette
 
-# Calm dark palette (GitHub-dark inspired). Used across widgets so every panel
-# matches instead of drifting into bright cyan/blue Rich defaults.
-TEXT = "#c9d1d9"  # default body text
-MUTED = "#6e7681"  # secondary / inactive
-BORDER = "#30363d"  # muted panel/table border
-ACCENT = "#58a6ff"  # field labels, active mode (blue)
-GREEN = "#3fb950"  # SoCa / assistant / ok
-RED = "#f85149"  # error
-TITLE = "bold #c9d1d9"  # soft panel/table title
+THEME_NAME = "soca-dawn"
 
+SOCA_DAWN = Theme(
+    name=THEME_NAME,
+    primary=palette.ACCENT,
+    secondary=palette.ALT,
+    accent=palette.ACCENT,
+    background=palette.BG,
+    surface=palette.SURFACE,
+    panel=palette.SURFACE,
+    foreground=palette.TEXT,
+    success=palette.GOOD,
+    warning=palette.WARN,
+    error=palette.BAD,
+    dark=True,
+    variables={
+        "soca-border": palette.BORDER,
+        "soca-muted": palette.MUTED,
+        "soca-alt": palette.ALT,
+        # Focused-input border: accent softened so focus reads calm, not loud.
+        "soca-focus": f"{palette.ACCENT} 60%",
+        "footer-background": palette.BG,
+        "footer-key-foreground": palette.ALT,
+        "footer-description-foreground": palette.MUTED,
+    },
+)
 
-def st(style: str) -> str:
-    """Drop styling when NO_COLOR is set, otherwise pass the style through."""
-    return "" if NO_COLOR else style
-
+# Compatibility aliases for the transitional Textual widgets (voice_view.py,
+# widgets.py) that style inline Rich content from this module. They now draw
+# from the shared dawn palette; GREEN/RED keep their old names but map to the
+# semantic tokens.
+NO_COLOR = palette.NO_COLOR
+TEXT = palette.TEXT
+MUTED = palette.MUTED
+BORDER = palette.BORDER
+ACCENT = palette.ACCENT
+GREEN = palette.GOOD
+RED = palette.BAD
+TITLE = palette.TITLE
+st = palette.st
 
 __all__ = [
     "ACCENT",
@@ -33,7 +59,9 @@ __all__ = [
     "MUTED",
     "NO_COLOR",
     "RED",
+    "SOCA_DAWN",
     "TEXT",
+    "THEME_NAME",
     "TITLE",
     "st",
 ]

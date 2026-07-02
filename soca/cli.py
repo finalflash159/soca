@@ -405,6 +405,83 @@ def build_text_runtime_config(
         raise click.ClickException(str(exc)) from exc
 
 
+@main.command()
+@click.argument(
+    "quick_profile",
+    required=False,
+    type=click.Choice(sorted(VOICE_RUNTIME_PROFILES)),
+)
+@click.option(
+    "--llm-model",
+    default=None,
+    type=click.Choice(sorted(LLM_MODEL_REGISTRY)),
+    help="Override the selected profile LLM.",
+)
+@click.option(
+    "--vault",
+    type=click.Path(path_type=Path),
+    default=Path.home() / "KnowledgeVault",
+    show_default=True,
+    help="Knowledge vault root containing wiki/ and memory/profile.md.",
+)
+@click.option("--no-memory", is_flag=True, help="Disable profile/session memory.")
+@click.option(
+    "--no-model",
+    is_flag=True,
+    help="Do not load model runtimes (protocol smoke tests).",
+)
+@click.pass_context
+def engine(
+    ctx: click.Context,
+    quick_profile: str | None,
+    llm_model: str | None,
+    vault: Path,
+    no_memory: bool,
+    no_model: bool,
+) -> None:
+    """Run the headless NDJSON engine (stdio protocol for external UIs).
+
+    The Ink TUI spawns this process: commands in on stdin, events out on
+    stdout, audio stays in-process.
+    """
+    from soca.app.engine import run_engine
+
+    profile = quick_profile or DEFAULT_VOICE_RUNTIME_PROFILE_KEY
+    try:
+        voice_config = resolve_voice_runtime_config(
+            profile_key=profile,
+            llm_model=llm_model,
+            vault=vault,
+            no_memory=no_memory,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    text_config = build_text_runtime_config(
+        profile=profile,
+        llm_model=voice_config.llm_model,
+        vault=vault,
+        no_memory=no_memory,
+        no_llm=no_model,
+        max_tokens=160,
+        temperature=0.2,
+        top_p=0.95,
+        knowledge_limit=3,
+        memory_chars=2200,
+        profile_chars=900,
+        session_chars=1300,
+        session_turns=6,
+        turn_chars=500,
+    )
+    ctx.exit(
+        run_engine(
+            voice_config=voice_config,
+            text_config=text_config,
+            profile=profile,
+            no_model=no_model,
+        )
+    )
+
 
 @main.command(
     epilog=(
