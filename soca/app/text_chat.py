@@ -5,7 +5,9 @@ from collections.abc import Callable
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
+from rich.text import Text
 
+from soca.app.style.palette import ACCENT, ALT, BORDER, ICON, MUTED, TITLE, st
 from soca.app.text_runtime import (
     TextRuntimeBundle,
     TextRuntimeConfig,
@@ -48,11 +50,21 @@ def run_text_chat(
     ask = input_fn or _prompt_user
     session_usage = SessionUsage()
 
+    console.print()
+    header = Text()
+    header.append(f"{ICON.BIRD} ", style=st(f"bold {ACCENT}"))
+    header.append("SoCa", style=st(f"bold {ACCENT}"))
+    header.append(" · chat", style=st(MUTED))
+    console.print(header)
     console.print(
-        f"[green]SoCa chat runtime[/green] LLM={bundle.llm_status} "
-        f"Knowledge={bundle.knowledge_status} Memory={bundle.memory_status}"
+        Text(
+            f"    LLM {bundle.llm_status} {ICON.DOT} knowledge {bundle.knowledge_status}"
+            f" {ICON.DOT} memory {bundle.memory_status}",
+            style=st(MUTED),
+        )
     )
-    console.print("[dim]Gõ /help để xem lệnh, /exit để thoát.[/dim]")
+    console.print(Text("    gõ /help để xem lệnh, /exit để thoát", style=st(MUTED)))
+    console.print()
 
     while True:
         try:
@@ -67,7 +79,7 @@ def run_text_chat(
             console.print("[green]Bye.[/green]")
             return 0
         if user_text == "/help":
-            console.print(Panel(CHAT_HELP, title="Chat Commands", border_style="cyan"))
+            console.print(Panel(CHAT_HELP, title=Text("Lệnh chat", style=st(TITLE)), border_style=st(BORDER) or "none", padding=(0, 1)))
             continue
         if user_text == "/trace":
             show_trace = not show_trace
@@ -87,8 +99,9 @@ def run_text_chat(
             console.print(
                 Panel(
                     _render_session_memory(bundle),
-                    title="Session Memory",
-                    border_style="green",
+                    title=Text("Session memory", style=st(TITLE)),
+                    border_style=st(BORDER) or "none",
+                    padding=(0, 1),
                 )
             )
             continue
@@ -115,4 +128,6 @@ def _render_session_memory(bundle: TextRuntimeBundle) -> str:
 
 
 def _prompt_user(prompt: str) -> str:
-    return Prompt.ask(f"[bold cyan]{prompt}[/bold cyan]")
+    del prompt
+    marker = st(f"bold {ALT}")
+    return Prompt.ask(f"[{marker}]{ICON.USER}[/{marker}]" if marker else ICON.USER)

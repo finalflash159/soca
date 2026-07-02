@@ -120,10 +120,10 @@ def test_run_voice_loop_renders_streaming_events_without_real_models() -> None:
 
     output = console.export_text()
     assert result == 0
-    assert "SoCa ready" in output
-    assert "Runtime: free_chat" in output
-    assert "Speaking chunk" in output
-    assert "Done in 456 ms" in output
+    assert "SoCa · voice" in output
+    assert "(o> Xin chào, mình là SoCa." in output
+    assert "Speaking chunk" not in output
+    assert "0.5s" in output
     assert pipeline.audio_inputs == [recorded_audio]
     assert pipeline.audio_sink is player
     assert tts.calls == []
@@ -220,11 +220,11 @@ def test_run_voice_loop_streams_llm_tokens_live_and_skips_runtime_panel() -> Non
 
     output = console.export_text()
     # Tokens are rendered live under a speaker prefix.
-    assert "SoCa:" in output
+    assert "(o> " in output
     assert "Xin chào." in output
     # The redundant runtime panel is suppressed once tokens streamed live.
     assert "Runtime: free_chat" not in output
-    assert "Speaking chunk" in output
+    assert "Speaking chunk" not in output
 
 
 def test_run_voice_loop_can_wait_for_enter_in_manual_mode() -> None:

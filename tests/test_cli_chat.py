@@ -87,7 +87,7 @@ def test_chat_reuses_one_runtime_across_multiple_turns(monkeypatch, tmp_path: Pa
     )
 
     assert result.exit_code == 0, result.output
-    assert "SoCa chat runtime" in result.output
+    assert "SoCa · chat" in result.output
     assert "Route: free_chat" in result.output
     assert "Phản hồi số 1." in result.output
     assert "Phản hồi số 2." in result.output
@@ -128,7 +128,7 @@ def test_chat_memory_commands_show_and_clear_session(monkeypatch, tmp_path: Path
     )
 
     assert result.exit_code == 0, result.output
-    assert "Session Memory" in result.output
+    assert "Session memory" in result.output
     assert "Recent conversation:" in result.output
     assert "Session memory cleared" in result.output
     assert "<empty>" in result.output
@@ -172,7 +172,7 @@ def test_chat_help_and_trace_toggle(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 0, result.output
-    assert "Chat Commands" in result.output
+    assert "Lệnh chat" in result.output
     assert "Trace: on" in result.output
     assert "Route: blocked" in result.output
     assert "unsupported_scheduling_action" in result.output

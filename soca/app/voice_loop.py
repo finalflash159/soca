@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 from rich.console import Console
+from rich.text import Text
 
 from soca.app.console import (
     print_recorded_audio,
@@ -16,6 +17,7 @@ from soca.app.console import (
     print_warmup_result,
     print_warmup_start,
 )
+from soca.app.style.palette import ACCENT, ICON, st
 from soca.app.usage_view import print_turn_usage
 from soca.core import AudioSink, EndpointConfig, SoundDevicePlayer, record_until_silence
 from soca.core.text_chunking import normalize_text_for_tts
@@ -117,7 +119,7 @@ def run_voice_loop(
         ):
             if event.type == "llm_token":
                 if not response_open:
-                    console.print("[blue]SoCa:[/blue] ", end="")
+                    console.print(Text(f"{ICON.BIRD} ", style=st(f"bold {ACCENT}")), end="")
                     response_open = True
                 console.print(event.text, end="", markup=False, highlight=False, soft_wrap=True)
                 continue
