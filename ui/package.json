@@ -1,0 +1,30 @@
+{
+  "name": "soca-ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SoCa terminal UI (Ink) — talks to `soca engine` over NDJSON stdio",
+  "bin": {
+    "soca-ui": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.tsx --format esm --out-dir dist --clean --silent",
+    "dev": "tsx src/index.tsx",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ink": "^5.2.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "ink-testing-library": "^4.0.0",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

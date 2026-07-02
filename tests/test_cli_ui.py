@@ -25,7 +25,7 @@ def install_fake_tui(monkeypatch):
 def test_ui_quick_chat_mode_uses_positional_mode(monkeypatch) -> None:
     calls = install_fake_tui(monkeypatch)
 
-    result = CliRunner().invoke(main, ["ui", "chat", "--no-memory", "--no-model"])
+    result = CliRunner().invoke(main, ["ui", "chat", "--no-memory", "--no-model", "--legacy"])
 
     assert result.exit_code == 0, result.output
     assert calls[0]["mode"] == "chat"
@@ -39,7 +39,7 @@ def test_ui_quick_chat_mode_uses_positional_mode(monkeypatch) -> None:
 def test_ui_quick_voice_profile_uses_positional_profile(monkeypatch) -> None:
     calls = install_fake_tui(monkeypatch)
 
-    result = CliRunner().invoke(main, ["ui", "voice", "quality", "--no-model"])
+    result = CliRunner().invoke(main, ["ui", "voice", "quality", "--no-model", "--legacy"])
 
     assert result.exit_code == 0, result.output
     assert calls[0]["mode"] == "voice"
@@ -53,7 +53,7 @@ def test_ui_hidden_llm_model_override_applies_to_text_and_voice_runtime(monkeypa
 
     result = CliRunner().invoke(
         main,
-        ["ui", "voice", "quality", "--llm-model", "qwen3_0_6b_q8_0", "--no-model"],
+        ["ui", "voice", "quality", "--llm-model", "qwen3_0_6b_q8_0", "--no-model", "--legacy"],
     )
 
     assert result.exit_code == 0, result.output
@@ -68,3 +68,35 @@ def test_ui_help_shows_quick_examples_not_hidden_compat_options() -> None:
     assert "soca ui chat" in result.output
     assert "--mode [" not in result.output
     assert "--profile [" not in result.output
+
+
+def test_ui_default_launches_ink_app(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_launch(*, mode, profile, no_model):
+        calls.append({"mode": mode, "profile": profile, "no_model": no_model})
+        return 0
+
+    import soca.cli as cli
+
+    monkeypatch.setattr(cli, "_launch_ink_ui", fake_launch)
+    result = CliRunner().invoke(main, ["ui", "voice", "quality", "--no-model"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [{"mode": "voice", "profile": "quality", "no_model": True}]
+
+
+def test_ui_bare_launches_ink_splash_without_mode(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_launch(*, mode, profile, no_model):
+        calls.append({"mode": mode, "profile": profile, "no_model": no_model})
+        return 0
+
+    import soca.cli as cli
+
+    monkeypatch.setattr(cli, "_launch_ink_ui", fake_launch)
+    result = CliRunner().invoke(main, ["ui"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [{"mode": None, "profile": None, "no_model": False}]

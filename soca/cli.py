@@ -280,6 +280,11 @@ def chat(
 @click.option("--session-chars", type=int, default=1300, hidden=True)
 @click.option("--session-turns", type=int, default=6, hidden=True)
 @click.option("--turn-chars", type=int, default=500, hidden=True)
+@click.option(
+    "--legacy",
+    is_flag=True,
+    help="Use the old Textual cockpit instead of the Ink UI.",
+)
 @click.pass_context
 def ui(
     ctx: click.Context,
@@ -301,13 +306,20 @@ def ui(
     session_chars: int,
     session_turns: int,
     turn_chars: int,
+    legacy: bool,
 ) -> None:
-    """Open the optional Textual cockpit.
+    """Open the SoCa terminal UI (Ink) on top of `soca engine`.
 
     Quick form: soca ui [status|chat|voice] [profile]
     """
     mode = quick_mode or mode_option or "status"
     profile = quick_profile or profile_option or DEFAULT_VOICE_RUNTIME_PROFILE_KEY
+
+    if not legacy:
+        explicit_mode = quick_mode or mode_option
+        ctx.exit(
+            _launch_ink_ui(mode=explicit_mode, profile=quick_profile, no_model=no_model)
+        )
 
     try:
         from soca.app.tui import run_tui
@@ -403,6 +415,29 @@ def build_text_runtime_config(
         )
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
+
+
+def _launch_ink_ui(*, mode: str | None, profile: str | None, no_model: bool) -> int:
+    """Spawn the Ink UI (ui/dist), which owns the terminal and spawns `soca engine`."""
+    import shutil
+
+    node = shutil.which("node")
+    repo_root = Path(__file__).resolve().parents[1]
+    bundle = repo_root / "ui" / "dist" / "index.js"
+    if node is None or not bundle.exists():
+        reason = "Node.js chưa cài" if node is None else "ui/dist chưa build"
+        raise click.ClickException(
+            f"Ink UI chưa sẵn sàng ({reason}). Build bằng: cd ui && npm install && "
+            "npm run build — hoặc dùng bản cũ: soca ui --legacy"
+        )
+    args = [node, str(bundle)]
+    if mode:
+        args.append(mode)
+    if profile:
+        args.append(profile)
+    if no_model:
+        args.append("--no-model")
+    return subprocess.run(args, cwd=repo_root, check=False).returncode
 
 
 @main.command()
