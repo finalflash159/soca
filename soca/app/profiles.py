@@ -9,6 +9,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
+from soca.app.style.palette import ALT, st
 from soca.asr.registry import ASR_MODEL_REGISTRY
 from soca.core.profiles import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
@@ -103,7 +104,7 @@ def collect_runtime_profile_readiness() -> list[RuntimeProfileReadiness]:
 def render_profiles(console: Console, *, show_paths: bool = False) -> None:
     rows = collect_runtime_profile_readiness()
     table = Table(title="SoCa Runtime Profiles")
-    table.add_column("Profile", style="cyan", no_wrap=True)
+    table.add_column("Profile", style=st(ALT) or "none", no_wrap=True)
     table.add_column("Stack", overflow="fold")
     table.add_column("Voice", no_wrap=True)
     table.add_column("Status", no_wrap=True)
@@ -159,7 +160,7 @@ def render_status(console: Console, *, vault: Path = DEFAULT_VAULT) -> None:
     validation_errors = validate_voice_runtime_profiles()
     ready_count = sum(1 for row in rows if row.profile_status == "ok")
     status_table = Table(title="SoCa Status")
-    status_table.add_column("Item", style="cyan")
+    status_table.add_column("Item", style=st(ALT) or "none")
     status_table.add_column("Status", no_wrap=True)
     status_table.add_column("Detail")
 
@@ -189,7 +190,7 @@ def package_version() -> str:
 
 def _profile_paths_table(rows: list[RuntimeProfileReadiness]) -> Table:
     table = Table(title="Profile Artifact Paths")
-    table.add_column("Profile", style="cyan", no_wrap=True)
+    table.add_column("Profile", style=st(ALT) or "none", no_wrap=True)
     table.add_column("ASR path", overflow="fold")
     table.add_column("LLM path", overflow="fold")
     table.add_column("TTS path", overflow="fold")

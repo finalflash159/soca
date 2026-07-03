@@ -7,7 +7,9 @@ from typing import Protocol
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text as RichText
 
+from soca.app.style.palette import ACCENT, ALT, BAD, BORDER, ICON, MUTED, TEXT, st
 from soca.app.usage_view import print_turn_usage
 from soca.core import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
 from soca.core.profiles import DEFAULT_VOICE_RUNTIME_PROFILE_KEY, get_voice_runtime_profile
@@ -227,9 +229,17 @@ def run_text_ask(
 ) -> RuntimeResult:
     bundle = runtime_builder(config)
 
+    header = RichText()
+    header.append(f"{ICON.BIRD} ", style=st(f"bold {ACCENT}"))
+    header.append("SoCa", style=st(f"bold {ACCENT}"))
+    header.append(" · text", style=st(MUTED))
+    console.print(header)
     console.print(
-        f"[green]SoCa text runtime[/green] LLM={bundle.llm_status} "
-        f"Knowledge={bundle.knowledge_status} Memory={bundle.memory_status}"
+        RichText(
+            f"    LLM {bundle.llm_status} {ICON.DOT} knowledge {bundle.knowledge_status}"
+            f" {ICON.DOT} memory {bundle.memory_status}",
+            style=st(MUTED),
+        )
     )
 
     user_text, metadata = normalize_text_turn(text)
@@ -246,18 +256,16 @@ def render_text_result(
     *,
     show_trace: bool = False,
 ) -> None:
-    border = "red" if result.blocked else "magenta"
-    console.print(
-        Panel(
-            result.response_text or "<empty>",
-            title=f"Route: {result.route.value}",
-            border_style=border,
-        )
-    )
+    reply = RichText()
+    reply.append(f"{ICON.BIRD} ", style=st(f"bold {ACCENT}"))
+    reply.append(result.response_text or "<empty>", style=st(TEXT))
+    console.print(reply)
+    note_style = BAD if result.blocked else MUTED
+    console.print(RichText(f"  {ICON.DOT} Route: {result.route.value}", style=st(note_style)))
 
     if result.citations:
         citations = Table(title="Citations")
-        citations.add_column("Ref", style="green")
+        citations.add_column("Ref", style=st(ALT) or "none")
         citations.add_column("Path")
         citations.add_column("Title")
         for index, citation in enumerate(result.citations, start=1):
@@ -271,7 +279,7 @@ def render_text_result(
 def render_trace(console: Console, result: RuntimeResult) -> None:
     trace = result.trace
     if trace is None:
-        console.print(Panel("<none>", title="Trace", border_style="blue"))
+        console.print(Panel("<none>", title="Trace", border_style=st(BORDER) or "none"))
         return
 
     summary = Table(title="Trace Summary")
@@ -323,7 +331,7 @@ def render_trace(console: Console, result: RuntimeResult) -> None:
             )
             or "<none>",
             title="Guardrail Raw",
-            border_style="blue",
+            border_style=st(BORDER) or "none",
         )
     )
 

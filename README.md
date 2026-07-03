@@ -103,16 +103,16 @@ Profiles drive both voice and text; `--llm-model` overrides both. Details:
 
 ## CLI at a glance
 
-| Command                                   | What it does                                                  |
-| ----------------------------------------- | ------------------------------------------------------------- |
-| `soca voice [profile]`                    | Microphone voice loop (CLI)                                   |
+| Command                                   | What it does                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------- |
+| `soca voice [profile]`                    | Microphone voice loop (CLI)                                         |
 | `soca ui [status\|chat\|voice] [profile]` | Ink terminal UI over `soca engine` (needs `cd ui && npm run build`) |
-| `soca ask <text>`                         | One text turn (guardrails / tools / knowledge / memory / LLM) |
-| `soca chat`                               | Multi-turn text session (RAM session memory)                  |
-| `soca profiles`                           | List runtime profiles                                         |
-| `soca asr-models` / `llm-models`          | List registered models + local file status                    |
-| `soca asr-smoke` / `llm-smoke`            | Smoke-test a single model                                     |
-| `soca benchmark-asr` / `calibrate-asr`    | ASR robustness benchmark / threshold calibration              |
+| `soca ask <text>`                         | One text turn (guardrails / tools / knowledge / memory / LLM)       |
+| `soca chat`                               | Multi-turn text session (RAM session memory)                        |
+| `soca profiles`                           | List runtime profiles                                               |
+| `soca asr-models` / `llm-models`          | List registered models + local file status                          |
+| `soca asr-smoke` / `llm-smoke`            | Smoke-test a single model                                           |
+| `soca benchmark-asr` / `calibrate-asr`    | ASR robustness benchmark / threshold calibration                    |
 
 `soca ask` is the fastest way to exercise routing without mic/TTS:
 

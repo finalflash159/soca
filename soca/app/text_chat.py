@@ -7,7 +7,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.text import Text
 
-from soca.app.style.palette import ACCENT, ALT, BORDER, ICON, MUTED, TITLE, st
+from soca.app.style.palette import ACCENT, ALT, BORDER, GOOD, ICON, MUTED, TITLE, WARN, st
 from soca.app.text_runtime import (
     TextRuntimeBundle,
     TextRuntimeConfig,
@@ -70,30 +70,30 @@ def run_text_chat(
         try:
             user_text = ask("\nYou").strip()
         except (EOFError, KeyboardInterrupt):
-            console.print("\n[yellow]Chat aborted.[/yellow]")
+            console.print(Text("\nChat aborted.", style=st(WARN)))
             return 130
 
         if not user_text:
             continue
         if user_text in CHAT_EXIT_COMMANDS:
-            console.print("[green]Bye.[/green]")
+            console.print(Text("Bye.", style=st(GOOD)))
             return 0
         if user_text == "/help":
             console.print(Panel(CHAT_HELP, title=Text("Lệnh chat", style=st(TITLE)), border_style=st(BORDER) or "none", padding=(0, 1)))
             continue
         if user_text == "/trace":
             show_trace = not show_trace
-            console.print(f"[yellow]Trace:[/yellow] {'on' if show_trace else 'off'}")
+            console.print(Text(f"Trace: {'on' if show_trace else 'off'}", style=st(WARN)))
             continue
         if user_text == "/usage":
             render_session_usage(console, session_usage)
             continue
         if user_text == "/clear":
             if bundle.session_memory is None:
-                console.print("[yellow]Memory is disabled.[/yellow]")
+                console.print(Text("Memory is disabled.", style=st(WARN)))
             else:
                 bundle.session_memory.clear()
-                console.print("[yellow]Session memory cleared.[/yellow]")
+                console.print(Text("Session memory cleared.", style=st(WARN)))
             continue
         if user_text == "/memory":
             console.print(

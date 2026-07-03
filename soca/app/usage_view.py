@@ -9,6 +9,7 @@ from __future__ import annotations
 from rich.console import Console
 from rich.table import Table
 
+from soca.app.style.palette import ALT, st
 from soca.core.usage import SessionUsage, TurnUsage
 
 
@@ -52,7 +53,7 @@ def print_turn_usage(console: Console, usage: TurnUsage) -> None:
 def render_session_usage(console: Console, session: SessionUsage) -> None:
     """Session totals, used by `/usage` in chat."""
     table = Table(title="Session Usage")
-    table.add_column("Metric", style="cyan")
+    table.add_column("Metric", style=st(ALT) or "none")
     table.add_column("Value", justify="right")
     table.add_row("turns", str(session.total_turns))
     table.add_row("LLM turns", str(session.llm_turns))

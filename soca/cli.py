@@ -10,6 +10,7 @@ from rich.table import Table
 
 from soca.app import run_voice_loop
 from soca.app.profiles import render_profiles, render_status
+from soca.app.style.palette import ALT, st
 from soca.app.text_chat import run_text_chat
 from soca.app.text_runtime import TextRuntimeConfig, resolve_text_runtime_config, run_text_ask
 from soca.asr.registry import ASR_MODEL_REGISTRY, DEFAULT_ASR_MODEL_KEY
@@ -576,7 +577,7 @@ def asr_smoke(model: str) -> None:
 def asr_models() -> None:
     """List registered PhoWhisper ONNX candidates."""
     table = Table(title="SoCa ASR Registry")
-    table.add_column("Key", style="cyan")
+    table.add_column("Key", style=st(ALT) or "none")
     table.add_column("Role")
     table.add_column("Params", justify="right")
     table.add_column("Exists", justify="center")
@@ -610,7 +611,7 @@ def llm_smoke(model: str) -> None:
 def llm_models() -> None:
     """List registered local LLM candidates."""
     table = Table(title="SoCa LLM Registry")
-    table.add_column("Key", style="cyan")
+    table.add_column("Key", style=st(ALT) or "none")
     table.add_column("Role")
     table.add_column("Prompt")
     table.add_column("Exists", justify="center")
