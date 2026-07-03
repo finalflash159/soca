@@ -98,8 +98,8 @@ Examples:
 
 ```bash
 uv sync --extra dev --extra eval --extra tts
-uv run --extra ui soca ui voice baseline
-uv run --extra ui --extra tts-omnivoice soca ui voice quality
+uv run soca ui voice baseline
+uv run --extra tts-omnivoice soca ui voice quality
 ```
 
 ## Adding a New Model

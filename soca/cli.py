@@ -219,9 +219,9 @@ def chat(
     "ui",
     epilog=(
         "\b\nQuick examples:\n"
-        "  uv run --extra ui soca ui status --no-model\n"
-        "  uv run --extra ui soca ui chat\n"
-        "  uv run --extra ui soca ui voice quality"
+        "  uv run soca ui\n"
+        "  uv run soca ui chat\n"
+        "  uv run soca ui voice quality"
     ),
 )
 @click.argument(
@@ -235,148 +235,23 @@ def chat(
     type=click.Choice(sorted(VOICE_RUNTIME_PROFILES)),
 )
 @click.option(
-    "--mode",
-    "mode_option",
-    default=None,
-    type=click.Choice(["status", "chat", "voice"]),
-    hidden=True,
-    help="Compatibility option. Prefer positional MODE: soca ui chat.",
-)
-@click.option(
-    "--profile",
-    "profile_option",
-    default=None,
-    type=click.Choice(sorted(VOICE_RUNTIME_PROFILES)),
-    hidden=True,
-    help="Compatibility option. Prefer positional PROFILE: soca ui voice quality.",
-)
-@click.option(
-    "--llm-model",
-    default=None,
-    type=click.Choice(sorted(LLM_MODEL_REGISTRY)),
-    hidden=True,
-    help="Override the selected profile LLM for chat mode.",
-)
-@click.option(
-    "--vault",
-    type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
-    show_default=True,
-    help="Knowledge vault root containing wiki/ and memory/profile.md.",
-)
-@click.option("--no-memory", is_flag=True, help="Disable profile/session memory.")
-@click.option("--no-llm", is_flag=True, help="Run chat mode tool/guardrail-only without loading LLM.")
-@click.option(
     "--no-model",
     is_flag=True,
-    help="Do not load model runtimes. Useful for status mode and UI smoke tests.",
-)
-@click.option("--max-tokens", type=int, default=160, hidden=True)
-@click.option("--temperature", type=float, default=0.2, hidden=True)
-@click.option("--top-p", type=float, default=0.95, hidden=True)
-@click.option("--knowledge-limit", type=int, default=3, hidden=True)
-@click.option("--memory-chars", type=int, default=2200, hidden=True)
-@click.option("--profile-chars", type=int, default=900, hidden=True)
-@click.option("--session-chars", type=int, default=1300, hidden=True)
-@click.option("--session-turns", type=int, default=6, hidden=True)
-@click.option("--turn-chars", type=int, default=500, hidden=True)
-@click.option(
-    "--legacy",
-    is_flag=True,
-    help="Use the old Textual cockpit instead of the Ink UI.",
+    help="Do not load model runtimes. Useful for UI smoke tests.",
 )
 @click.pass_context
 def ui(
     ctx: click.Context,
     quick_mode: str | None,
     quick_profile: str | None,
-    mode_option: str | None,
-    profile_option: str | None,
-    llm_model: str | None,
-    vault: Path,
-    no_memory: bool,
-    no_llm: bool,
     no_model: bool,
-    max_tokens: int,
-    temperature: float,
-    top_p: float,
-    knowledge_limit: int,
-    memory_chars: int,
-    profile_chars: int,
-    session_chars: int,
-    session_turns: int,
-    turn_chars: int,
-    legacy: bool,
 ) -> None:
     """Open the SoCa terminal UI (Ink) on top of `soca engine`.
 
-    Quick form: soca ui [status|chat|voice] [profile]
+    Quick form: soca ui [status|chat|voice] [profile]. Without a mode the UI
+    opens on the splash screen.
     """
-    mode = quick_mode or mode_option or "status"
-    profile = quick_profile or profile_option or DEFAULT_VOICE_RUNTIME_PROFILE_KEY
-
-    if not legacy:
-        explicit_mode = quick_mode or mode_option
-        ctx.exit(
-            _launch_ink_ui(mode=explicit_mode, profile=quick_profile, no_model=no_model)
-        )
-
-    try:
-        from soca.app.tui import run_tui
-    except ModuleNotFoundError as exc:
-        missing_name = getattr(exc, "name", "")
-        if missing_name and not missing_name.startswith("textual"):
-            raise
-        raise click.ClickException(
-            "Textual UI dependencies are missing. Install/run with: "
-            "uv sync --extra ui  hoặc  uv run --extra ui soca ui --mode status --no-model"
-        ) from exc
-
-    try:
-        voice_config = resolve_voice_runtime_config(
-            profile_key=profile,
-            llm_model=llm_model,
-            vault=vault,
-            no_memory=no_memory,
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            memory_chars=memory_chars,
-            profile_chars=profile_chars,
-            session_chars=session_chars,
-            session_turns=session_turns,
-            turn_chars=turn_chars,
-        )
-    except ValueError as exc:
-        raise click.ClickException(str(exc)) from exc
-
-    config = build_text_runtime_config(
-        profile=profile,
-        llm_model=voice_config.llm_model,
-        vault=vault,
-        no_memory=no_memory,
-        no_llm=no_llm or no_model,
-        max_tokens=max_tokens,
-        temperature=temperature,
-        top_p=top_p,
-        knowledge_limit=knowledge_limit,
-        memory_chars=memory_chars,
-        profile_chars=profile_chars,
-        session_chars=session_chars,
-        session_turns=session_turns,
-        turn_chars=turn_chars,
-    )
-    # Path B barge-in (AEC + VAD) lives in the duplex sink player, which the TUI
-    # builds lazily the first time voice mode is entered (see _ensure_voice_controller).
-    ctx.exit(
-        run_tui(
-            mode=mode,
-            profile=profile,
-            text_runtime=config,
-            voice_runtime=voice_config,
-            no_model=no_model,
-        )
-    )
+    ctx.exit(_launch_ink_ui(mode=quick_mode, profile=quick_profile, no_model=no_model))
 
 
 def build_text_runtime_config(

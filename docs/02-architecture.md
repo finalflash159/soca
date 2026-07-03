@@ -42,7 +42,7 @@ flowchart TD
         cli[cli.py]
         vloop[app/voice_loop.py]
         tchat[app/text_chat.py + text_runtime.py]
-        tui[app/tui/*]
+        tui[ui/* Ink + app/engine.py]
     end
     subgraph L2["Orchestration Layer (soca/core) — FACADE"]
         runtime[AssistantRuntime]

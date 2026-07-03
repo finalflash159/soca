@@ -73,7 +73,7 @@ Important distinction: **passive silence is not the same as no_input**.
   could not get reliable text. This goes through `plan_repair` inside the
   **pipeline**.
 - **Passive silence**: VAD sees **no speech at all**. The TUI worker handles it
-  directly (`app/tui/voice.py`), skips ASR/LLM to save compute, and periodically
+  directly (`app/voice_controller.py`), skips ASR/LLM to save compute, and periodically
   calls out playfully:
 
 ```mermaid

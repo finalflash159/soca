@@ -64,7 +64,7 @@ uv run python scripts/init_knowledge_vault.py ~/KnowledgeVault
 
 # 4) Run
 uv run soca voice                 # CLI voice loop (baseline profile)
-uv run --extra ui soca ui voice   # Textual TUI, voice mode
+uv run soca ui voice              # Ink terminal UI, voice mode (build: cd ui && npm i && npm run build)
 uv run soca ask "mấy giờ rồi?" --trace   # one text turn (no mic/TTS)
 ```
 
@@ -106,7 +106,7 @@ Profiles drive both voice and text; `--llm-model` overrides both. Details:
 | Command                                   | What it does                                                  |
 | ----------------------------------------- | ------------------------------------------------------------- |
 | `soca voice [profile]`                    | Microphone voice loop (CLI)                                   |
-| `soca ui [status\|chat\|voice] [profile]` | Textual TUI (needs `--extra ui`)                              |
+| `soca ui [status\|chat\|voice] [profile]` | Ink terminal UI over `soca engine` (needs `cd ui && npm run build`) |
 | `soca ask <text>`                         | One text turn (guardrails / tools / knowledge / memory / LLM) |
 | `soca chat`                               | Multi-turn text session (RAM session memory)                  |
 | `soca profiles`                           | List runtime profiles                                         |
@@ -135,7 +135,7 @@ soca/
   knowledge/   Markdown vault search and context packing
   memory/      long-term profile memory + RAM session memory
   tools/       ToolRuntime, tool specs, local time/knowledge tools
-  app/         presentation: CLI helpers + Textual TUI (app/tui/)
+  app/         presentation: CLI helpers + engine (UI itself lives in ui/, Ink)
 
 docs/          system design (start at docs/README.md)
 scripts/       local demos, smoke tests, model download helpers

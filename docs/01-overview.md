@@ -32,7 +32,7 @@ flowchart TB
 
     subgraph App["App Layer — soca/app, soca/cli"]
         CLI["CLI: voice / ask / chat / ui"]
-        TUI["Textual TUI (soca/app/tui)"]
+        TUI["Ink terminal UI (ui/ + soca engine)"]
     end
 
     subgraph Core["Core Layer — soca/core (facade)"]

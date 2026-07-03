@@ -36,7 +36,7 @@ from soca.app.text_runtime import (
     build_text_runtime,
     normalize_text_turn,
 )
-from soca.app.tui.voice import (
+from soca.app.voice_controller import (
     VoiceMonitorController,
     VoiceMonitorEvent,
     VoiceRecorder,

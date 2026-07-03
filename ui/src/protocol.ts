@@ -1,7 +1,14 @@
 // Wire types for the `soca engine` NDJSON protocol (see soca/app/engine.py).
 
 export interface EngineCommand {
-  cmd: "status" | "chat" | "voice_start" | "voice_stop" | "memory" | "usage" | "quit";
+  cmd:
+    | "status"
+    | "chat"
+    | "voice_start"
+    | "voice_stop"
+    | "memory"
+    | "usage"
+    | "quit";
   text?: string;
   max_turns?: number | null;
 }

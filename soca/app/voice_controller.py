@@ -57,7 +57,7 @@ _SILENCE_CALLOUT_INTERVAL_MS = 20_000
 
 
 class VoiceMonitorController:
-    """Thread-side adapter from VoicePipeline streaming events to TUI events."""
+    """Thread-side adapter from VoicePipeline streaming events to UI events."""
 
     def __init__(
         self,

@@ -64,9 +64,6 @@ tts-f5 = [
     "f5-tts>=1.1.20,<2",
 ]
 
-ui = [
-    "textual>=4.0.0",
-]
 
 [project.scripts]
 soca = "soca.cli:main"
