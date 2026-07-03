@@ -211,6 +211,21 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
       }
     case "status":
       return { ...state, profiles: event.profiles };
+    case "memory": {
+      const text = event.enabled
+        ? event.text
+          ? `session memory:\n${event.text}`
+          : "session memory: (trống)"
+        : "session memory: đang tắt (--no-memory)";
+      return { ...state, timeline: push(state.timeline, { kind: "system", text }) };
+    }
+    case "usage": {
+      const text =
+        `phiên: ${event.turns} lượt (${event.llm_turns} LLM) ` +
+        `· prompt ${event.prompt_tokens} tok · completion ${event.completion_tokens} tok ` +
+        `· TTFT ~${Math.round(event.mean_ttft_ms)}ms · ${event.mean_tokens_per_second.toFixed(1)} tok/s`;
+      return { ...state, timeline: push(state.timeline, { kind: "system", text }) };
+    }
     case "engine_error":
       return {
         ...state,

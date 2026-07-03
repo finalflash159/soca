@@ -1,7 +1,7 @@
 // Wire types for the `soca engine` NDJSON protocol (see soca/app/engine.py).
 
 export interface EngineCommand {
-  cmd: "status" | "chat" | "voice_start" | "voice_stop" | "quit";
+  cmd: "status" | "chat" | "voice_start" | "voice_stop" | "memory" | "usage" | "quit";
   text?: string;
   max_turns?: number | null;
 }
@@ -47,6 +47,22 @@ export interface StatusEvent {
   }>;
 }
 
+export interface MemoryEvent {
+  event: "memory";
+  enabled: boolean;
+  text: string;
+}
+
+export interface UsageEvent {
+  event: "usage";
+  turns: number;
+  llm_turns: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  mean_ttft_ms: number;
+  mean_tokens_per_second: number;
+}
+
 export interface EngineErrorEvent {
   event: "engine_error";
   message: string;
@@ -61,6 +77,8 @@ export type EngineEvent =
   | VoiceEvent
   | ChatEvent
   | StatusEvent
+  | MemoryEvent
+  | UsageEvent
   | EngineErrorEvent
   | ByeEvent;
 

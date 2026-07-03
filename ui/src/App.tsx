@@ -140,6 +140,10 @@ export function App({ mode: initialMode, profile, noModel = false }: AppProps) {
         engine?.send({ cmd: "voice_start" });
       } else if (cmd === "/stop") {
         engine?.send({ cmd: "voice_stop" });
+      } else if (cmd === "/memory") {
+        engine?.send({ cmd: "memory" });
+      } else if (cmd === "/usage") {
+        engine?.send({ cmd: "usage" });
       } else if (cmd === "/help") {
         setShowHelp(true);
       } else {

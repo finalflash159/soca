@@ -43,7 +43,7 @@ from soca.app.tui.voice import (
     VoiceRuntimeBuilder,
 )
 from soca.core import AudioSink, ResolvedVoiceRuntimeConfig
-from soca.core.usage import TurnUsage
+from soca.core.usage import SessionUsage, TurnUsage
 from soca.memory import SessionMemory
 
 PROTOCOL_VERSION = 1
@@ -119,6 +119,9 @@ class SocaEngine:
         self._voice_threads: list[threading.Thread] = []
         self._chat_thread: threading.Thread | None = None
         self._chat_lock = threading.Lock()
+        # Session usage accumulates across chat AND voice turns (shared session).
+        self.session_usage = SessionUsage()
+        self._usage_lock = threading.Lock()
 
     # --- lifecycle --------------------------------------------------------------
 
@@ -148,6 +151,10 @@ class SocaEngine:
             return False
         if cmd == "status":
             self._cmd_status()
+        elif cmd == "memory":
+            self._cmd_memory()
+        elif cmd == "usage":
+            self._cmd_usage()
         elif cmd == "chat":
             self._cmd_chat(str(command.get("text") or ""))
         elif cmd == "voice_start":
@@ -188,6 +195,36 @@ class SocaEngine:
         ]
         self.writer.emit({"event": "status", "profiles": profiles})
 
+    # --- memory & usage -----------------------------------------------------------
+
+    def _cmd_memory(self) -> None:
+        if self.session_memory is None:
+            self.writer.emit({"event": "memory", "enabled": False, "text": ""})
+            return
+        rendered = self.session_memory.render().strip()
+        self.writer.emit({"event": "memory", "enabled": True, "text": rendered})
+
+    def _cmd_usage(self) -> None:
+        with self._usage_lock:
+            usage = self.session_usage
+        self.writer.emit(
+            {
+                "event": "usage",
+                "turns": usage.total_turns,
+                "llm_turns": usage.llm_turns,
+                "prompt_tokens": usage.total_prompt_tokens,
+                "completion_tokens": usage.total_completion_tokens,
+                "mean_ttft_ms": usage.mean_ttft_ms,
+                "mean_tokens_per_second": usage.mean_tokens_per_second,
+            }
+        )
+
+    def _track_usage(self, usage: TurnUsage | None) -> None:
+        if usage is None:
+            return
+        with self._usage_lock:
+            self.session_usage = self.session_usage.add(usage)
+
     # --- chat -------------------------------------------------------------------
 
     def _cmd_chat(self, text: str) -> None:
@@ -215,6 +252,7 @@ class SocaEngine:
                 normalized_text, source="engine_chat", metadata=metadata
             )
             usage = TurnUsage.from_runtime_result(result)
+            self._track_usage(usage)
             self.writer.emit(
                 {
                     "event": "chat",
@@ -311,6 +349,7 @@ class SocaEngine:
                     "usage": event.usage,
                 }
             )
+            self._track_usage(event.usage)
         if self.voice_stop_event is not None:
             self.voice_stop_event.set()
 

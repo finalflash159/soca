@@ -19,7 +19,9 @@ export const COLOR = {
 // clack's unicodeOr pattern: fall back to ASCII when the terminal likely
 // lacks unicode glyph support (legacy Windows consoles).
 const isUnicodeSupported =
-  process.platform !== "win32" || Boolean(process.env["WT_SESSION"]) || process.env["TERM_PROGRAM"] === "vscode";
+  process.platform !== "win32" ||
+  Boolean(process.env["WT_SESSION"]) ||
+  process.env["TERM_PROGRAM"] === "vscode";
 
 function u(unicode: string, ascii: string): string {
   return isUnicodeSupported ? unicode : ascii;

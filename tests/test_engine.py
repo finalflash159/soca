@@ -243,3 +243,32 @@ def test_engine_no_model_rejects_voice_and_chat() -> None:
     errors = [e for e in capture.events() if e["event"] == "engine_error"]
     assert len(errors) == 2
     assert all("no-model" in e["message"] for e in errors)
+
+
+def test_engine_memory_and_usage_commands() -> None:
+    capture = ProtocolCapture()
+
+    def stdin():
+        yield json.dumps({"cmd": "chat", "text": "xin chào"}) + "\n"
+        capture.wait_for('"done"')
+        yield '{"cmd": "memory"}\n'
+        capture.wait_for('"memory"')
+        yield '{"cmd": "usage"}\n'
+        capture.wait_for('"usage"')
+        yield '{"cmd": "quit"}\n'
+
+    code = run_engine(
+        voice_config=None,
+        text_config=TextRuntimeConfig(no_memory=False, vault=Path("/tmp/soca-test-vault")),
+        profile="baseline",
+        stdin=stdin(),
+        stdout=capture,
+        text_runtime_builder=_fake_text_builder,
+    )
+
+    assert code == 0
+    events = capture.events()
+    memory = next(e for e in events if e["event"] == "memory")
+    assert memory["enabled"] is True
+    usage = next(e for e in events if e["event"] == "usage")
+    assert usage["turns"] == 1
