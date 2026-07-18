@@ -244,6 +244,7 @@ class VoiceMonitorController:
         endpoint_config = EndpointConfig(
             endpoint_silence_ms=self.config.endpoint_silence_ms,
             max_record_ms=self.config.max_record_ms,
+            partial_interval_ms=self.bundle.partial_interval_ms, # seed from warmup
         )
         queue.put(VoiceMonitorEvent("recording", "Listening"))
         t0 = time.perf_counter()
@@ -255,6 +256,15 @@ class VoiceMonitorController:
         if self._pending_prefix is not None:
             record_kwargs["prefix"] = self._pending_prefix
             self._pending_prefix = None
+        if self.bundle.partial_enabled and self._recorder_accepts("on_partial"):
+            record_kwargs["on_partial"] = lambda committed, tentative: queue.put(
+                VoiceMonitorEvent(
+                    "asr_partial",
+                    f"{committed} {tentative}".strip(),
+                    metadata={"committed": committed, "tentative": tentative},
+                )
+            )
+            record_kwargs["partial_transcriber"] = self._build_partial_transcriber(bundle)
         audio = self.recorder(bundle.detector, **record_kwargs)
         latency_ms = (time.perf_counter() - t0) * 1000
         if stop_event is not None and stop_event.is_set():
@@ -276,6 +286,28 @@ class VoiceMonitorController:
 
         self._mark_user_spoke()
         self._stream_pipeline_events(bundle, audio, queue, stop_event=stop_event)
+
+    def _recorder_accepts(self, name: str) -> bool:
+        """Signature-guard like _turn_streaming: old fake recorders do not break."""
+        import inspect
+        try:
+            params = inspect.signature(self.recorder).parameters
+        except (TypeError, ValueError):
+            return False
+        return name in params or any(
+            p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()
+        )
+
+    @staticmethod
+    def _build_partial_transcriber(bundle):
+        """RobustASR wraps VietnameseASR at .asr — partial uses the RAW one (cheap, no guards)."""
+        inner = getattr(bundle.asr, "asr", None) or bundle.asr
+        if not hasattr(inner, "transcribe"):
+            return None
+        def transcribe(audio):
+            result = inner.transcribe(audio)
+            return getattr(result, "text", "") or ""
+        return transcribe
 
     def _stream_pipeline_events(
         self,

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Box, Text, useStdout } from "ink";
 import { COLOR, ICON, MUSIC_FRAMES } from "../theme.js";
-import type { VoiceState } from "../store.js";
+import type { Caption, VoiceState } from "../store.js";
 
 const LOADING_FRAMES = ["◐", "◓", "◑", "◒"] as const;
 
@@ -19,11 +19,13 @@ export function VoiceStatus({
   note,
   turnIndex,
   latencyMs,
+  caption,
 }: {
   state: VoiceState;
   note: string;
   turnIndex: number | null;
   latencyMs: number | null;
+  caption: Caption | null;
 }) {
   const [frame, setFrame] = useState(0);
   const animated =
@@ -47,25 +49,40 @@ export function VoiceStatus({
   if (turnIndex !== null) right.push(`lượt ${turnIndex}`);
   if (latencyMs !== null) right.push(`${(latencyMs / 1000).toFixed(1)}s`);
 
+  const showCaption =
+    caption !== null && (caption.committed !== "" || caption.tentative !== "");
+
   return (
-    <Box paddingX={1} justifyContent="space-between">
-      <Text>
-        <Text bold color={view.color}>
-          {dot} {view.label}
+    <Box flexDirection="column">
+      <Box paddingX={1} justifyContent="space-between">
+        <Text>
+          <Text bold color={view.color}>
+            {dot} {view.label}
+          </Text>
+          {state === "speaking" ? (
+            <Text
+              color={COLOR.good}
+            >{`  ${MUSIC_FRAMES[frame % MUSIC_FRAMES.length]}`}</Text>
+          ) : null}
+          {note ? (
+            <Text
+              color={state === "error" ? COLOR.bad : COLOR.muted}
+            >{`  ${note}`}</Text>
+          ) : null}
         </Text>
-        {state === "speaking" ? (
-          <Text
-            color={COLOR.good}
-          >{`  ${MUSIC_FRAMES[frame % MUSIC_FRAMES.length]}`}</Text>
+        {right.length > 0 ? (
+          <Text color={COLOR.muted}>{right.join(` ${ICON.dot} `)}</Text>
         ) : null}
-        {note ? (
-          <Text
-            color={state === "error" ? COLOR.bad : COLOR.muted}
-          >{`  ${note}`}</Text>
-        ) : null}
-      </Text>
-      {right.length > 0 ? (
-        <Text color={COLOR.muted}>{right.join(` ${ICON.dot} `)}</Text>
+      </Box>
+      {showCaption ? (
+        <Box paddingX={1}>
+          <Text>
+            <Text color={COLOR.text}>{caption.committed}</Text>
+            {caption.tentative ? (
+              <Text color={COLOR.muted}> {caption.tentative}</Text>
+            ) : null}
+          </Text>
+        </Box>
       ) : null}
     </Box>
   );

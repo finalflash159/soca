@@ -1,13 +1,43 @@
+import time
+from dataclasses import replace
+
 import numpy as np
 
 from soca.core import endpoint as endpoint_module
 from soca.core.endpoint import (
     EndpointConfig,
+    _start_partial_worker,
     block_samples,
     record_until_silence,
     should_stop_recording,
 )
 
+
+class ScriptedStream:
+    """Fake stream: yields scripted blocks + context-manager protocol."""
+    def __init__(self, blocks): self.blocks = list(blocks)
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def read(self, n):
+        if not self.blocks:
+            raise AssertionError("read past the scripted blocks")
+        return self.blocks.pop(0), False
+
+
+class ScriptedModel:
+    def __init__(self, probs): self.probs = list(probs)
+    def __call__(self, tensor, sr):
+        class _O:
+            def __init__(self, v): self._v = v
+            def item(self): return self._v
+        return _O(self.probs.pop(0) if self.probs else 0.0)
+    def reset_states(self): pass
+
+class StreamingDetector:
+    def __init__(self, probs):
+        self.model = ScriptedModel(probs)
+        self.threshold = 0.5
+    def speech_timestamps(self, audio): raise AssertionError("batch path must not be called")
 
 class FakeInputStream:
     def __init__(self, blocks: list[np.ndarray]):
@@ -116,6 +146,7 @@ def test_record_until_silence_stops_after_speech_then_endpoint_silence(monkeypat
         endpoint_silence_ms=200,
         max_record_ms=1000,
         min_audio_ms=100,
+        adaptive=False,  # regression guard: legacy fixed-threshold behavior
     )
     blocks = [
         np.full((100, 1), fill_value=value, dtype=np.float32)
@@ -146,6 +177,7 @@ def test_record_until_silence_prepends_barge_in_prefix(monkeypatch):
         endpoint_silence_ms=200,
         max_record_ms=1000,
         min_audio_ms=100,
+        adaptive=False,  # regression guard: legacy fixed-threshold behavior
     )
     prefix = np.full(150, fill_value=0.9, dtype=np.float32)  # 150ms of captured words
     blocks = [np.zeros((100, 1), dtype=np.float32) for _ in range(3)]
@@ -188,3 +220,58 @@ def test_record_until_silence_keeps_recording_until_max_when_no_speech(monkeypat
     assert detector.calls == [100, 200, 300]
     assert audio.dtype == np.float32
     assert audio.shape == (300,)
+
+def test_adaptive_patient_does_not_cut_short_utterance():
+    # ~0.8s speech then ~0.9s silence: fixed-700 would cut, adaptive patient(1100) does NOT.
+    n_speech, n_sil = 25, 28                        # 800ms speech + 896ms im
+    # max_record = EXACT scripted length: recorder stops at max right after the last block,
+    # so it never over-reads (ScriptedStream raises when empty), as long as adaptive holds.
+    config = replace(
+        EndpointConfig(adaptive=True, max_record_ms=(n_speech + n_sil) * 32),
+        block_ms=32,                                # 1 block=512 samples=32ms <-> 1 frame
+    )
+    probs = [0.9] * n_speech + [0.1] * n_sil
+    blocks = [np.zeros((512, 1), dtype=np.float32) for _ in range(n_speech + n_sil)]
+    detector = StreamingDetector(probs)
+    audio = record_until_silence(
+        detector, config=config, stream_factory=lambda **kw: ScriptedStream(blocks)
+    )
+    assert len(audio) == (n_speech + n_sil) * 512   # ran the whole script, did NOT cut early
+
+
+def test_partial_worker_transcribes_and_reports():
+    calls = []
+    chunks = [np.zeros(16000, dtype=np.float32)]
+    config = EndpointConfig(partial_interval_ms=30)
+    worker = _start_partial_worker(
+        chunks, config,
+        on_partial=lambda c, t: calls.append((c, t)),
+        transcriber=lambda audio: "xin chào",
+    )
+    worker.notify_speech()
+    time.sleep(0.15)
+    worker.stop()
+    assert ("xin chào", "") in calls or ("", "xin chào") in calls
+
+
+def test_partial_worker_never_runs_without_speech():
+    calls = []
+    worker = _start_partial_worker(
+        [np.zeros(16000, dtype=np.float32)], EndpointConfig(partial_interval_ms=30),
+        on_partial=lambda c, t: calls.append((c, t)),
+        transcriber=lambda audio: "x",
+    )
+    time.sleep(0.15)
+    worker.stop()      # no notify_speech -> never transcribes
+    assert calls == []
+
+
+def test_partial_worker_survives_transcriber_crash():
+    def boom(audio): raise RuntimeError("ASR boom")
+    worker = _start_partial_worker(
+        [np.zeros(16000, dtype=np.float32)], EndpointConfig(partial_interval_ms=30),
+        on_partial=lambda c, t: None, transcriber=boom,
+    )
+    worker.notify_speech()
+    time.sleep(0.15)
+    worker.stop()                        # must not raise -> passing = quiet

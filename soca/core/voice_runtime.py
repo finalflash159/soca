@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +14,7 @@ from soca.core.pipeline import VoicePipeline
 from soca.core.profiles import get_voice_runtime_profile
 from soca.core.repair import default_repair_catalog
 from soca.core.runtime import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
+from soca.core.turn_taking import partial_interval_from_cost
 from soca.knowledge import KnowledgeContextBuilder, MarkdownVaultKnowledgeSource
 from soca.llm import LocalLlamaCppLLM
 from soca.llm.registry import LLM_MODEL_REGISTRY
@@ -61,6 +63,9 @@ class VoiceRuntimeBundle:
     memory_status: str
     knowledge_status: str
     session_memory: SessionMemory | None = None
+    partial_interval_ms: int = 800     # partial cadence seed (handles device variance)
+    partial_enabled: bool = True       # False when the device is too slow for partials
+
 
     @property
     def asr_guard_status(self) -> str:
@@ -276,12 +281,22 @@ def _warm_up_asr(bundle: VoiceRuntimeBundle, *, seconds: float) -> VoiceRuntimeW
     try:
         sample_rate = getattr(bundle.asr.asr, "SAMPLING_RATE", 16000)
         audio = np.zeros(max(int(sample_rate * seconds), 1), dtype=np.float32)
-        bundle.asr.asr.transcribe(audio, max_new_tokens=1)
+        bundle.asr.asr.transcribe(audio, max_new_tokens=1)      # kernel warm
+        # --- calibrate partial cadence: one REPRESENTATIVE decode (NOT max_new_tokens=1,
+        #     since 1 token does not measure decoder cost) ---
+        probe = (np.random.randn(sample_rate * 3) * 0.01).astype(np.float32)
+        c0 = time.perf_counter()
+        bundle.asr.asr.transcribe(probe)                        # real decode
+        per_call_ms = (time.perf_counter() - c0) * 1000
+        interval, enabled = partial_interval_from_cost(per_call_ms, os.cpu_count())
+        bundle.partial_interval_ms = interval
+        bundle.partial_enabled = enabled
+        detail = f"{bundle.config.asr_model} · partial={interval}ms{'' if enabled else ' (off)'}"
         return VoiceRuntimeWarmupResult(
             component="asr",
             ok=True,
             latency_ms=(time.perf_counter() - t0) * 1000,
-            detail=bundle.config.asr_model,
+            detail=detail,
         )
     except Exception as exc:
         return VoiceRuntimeWarmupResult(

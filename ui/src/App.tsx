@@ -257,6 +257,7 @@ export function App({ mode: initialMode, profile, noModel = false }: AppProps) {
           note={state.voiceNote}
           turnIndex={state.turnIndex}
           latencyMs={state.lastLatencyMs}
+          caption={state.caption}
         />
       ) : null}
 

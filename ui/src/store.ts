@@ -18,6 +18,13 @@ export interface StatusProfile {
   voice: string | null;
 }
 
+// Live partial transcript while the user is still speaking: committed words are
+// stable (LocalAgreement), tentative words may still change on the next decode.
+export interface Caption {
+  committed: string;
+  tentative: string;
+}
+
 export interface AppState {
   mode: Mode;
   connected: boolean;
@@ -34,6 +41,7 @@ export interface AppState {
   chatBusy: boolean;
   profiles: StatusProfile[];
   notice: string;
+  caption: Caption | null;
 }
 
 export const initialState: AppState = {
@@ -52,6 +60,7 @@ export const initialState: AppState = {
   chatBusy: false,
   profiles: [],
   notice: "",
+  caption: null,
 };
 
 export type Action =
@@ -70,12 +79,21 @@ function push(
 }
 
 // Voice event type -> UI state, mirroring the Textual _VOICE_RENDERERS table.
-function reduceVoice(
+function reduceVoiceCore(
   state: AppState,
   event: EngineEvent & { event: "voice" },
 ): AppState {
   const meta = event.metadata ?? {};
   switch (event.type) {
+    case "asr_partial":
+      return {
+        ...state,
+        voiceState: "listening",
+        caption: {
+          committed: String(meta["committed"] ?? ""),
+          tentative: String(meta["tentative"] ?? ""),
+        },
+      };
     case "loading":
       return { ...state, voiceState: "loading", voiceNote: "tải ASR/LLM/TTS…" };
     case "ready":
@@ -167,6 +185,17 @@ function reduceVoice(
     default:
       return state;
   }
+}
+
+// Any voice event other than "asr_partial" ends the live caption, so the
+// partial transcript never lingers past the moment the user stops speaking.
+function reduceVoice(
+  state: AppState,
+  event: EngineEvent & { event: "voice" },
+): AppState {
+  const next = reduceVoiceCore(state, event);
+  if (event.type === "asr_partial" || next.caption === null) return next;
+  return { ...next, caption: null };
 }
 
 function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {

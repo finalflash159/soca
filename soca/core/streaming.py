@@ -13,6 +13,7 @@ _SENTENCE_END_RE = re.compile(r"([.!?\u2026]+)(\s+|$)")
 
 StreamingEventType = Literal[
     "asr",
+    "asr_partial",
     "repair",
     "runtime",
     "llm_token",

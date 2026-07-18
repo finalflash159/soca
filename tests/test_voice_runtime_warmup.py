@@ -95,7 +95,11 @@ def test_warm_up_voice_runtime_triggers_asr_llm_and_tts_first_call_paths() -> No
 
     assert [result.component for result in results] == ["asr", "llm", "tts"]
     assert all(result.ok for result in results)
-    assert asr.asr.calls == [(8000, 1)]
+    # Warm call (max_new_tokens=1) + a 3s representative probe that calibrates the
+    # partial-caption cadence (default max_new_tokens=128).
+    assert asr.asr.calls == [(8000, 1), (48000, 128)]
+    assert bundle.partial_enabled is True
+    assert bundle.partial_interval_ms == 800  # fake ASR ~instant -> clamps to floor
     assert llm.calls == [
         {
             "prompt": "xin chào",
