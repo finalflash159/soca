@@ -227,7 +227,11 @@ def test_adaptive_patient_does_not_cut_short_utterance():
     # max_record = EXACT scripted length: recorder stops at max right after the last block,
     # so it never over-reads (ScriptedStream raises when empty), as long as adaptive holds.
     config = replace(
-        EndpointConfig(adaptive=True, max_record_ms=(n_speech + n_sil) * 32),
+        EndpointConfig(
+            adaptive=True,
+            endpoint_mode="length",                 # this test pins the length policy
+            max_record_ms=(n_speech + n_sil) * 32,
+        ),
         block_ms=32,                                # 1 block=512 samples=32ms <-> 1 frame
     )
     probs = [0.9] * n_speech + [0.1] * n_sil

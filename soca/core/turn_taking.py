@@ -194,3 +194,115 @@ class LocalAgreement:
     def reset(self) -> None:
         self._prev = []
         self.committed = []
+
+
+# --- P-based endpointing: dynamic silence threshold from P(still speaking) ---
+# The constants below are CALIBRATION TARGETS (tuned by local/eval_endpoint.py),
+# not magic numbers. Design + sources: zplan/endpointing_research.vi.md.
+P_INCOMPLETE_WEIGHT = 0.8            # text ends on a connective -> strong "still going"
+_ENERGY_EDGE_MS = 120               # trailing window for abrupt-vs-tapered energy
+_ENERGY_R_LO, _ENERGY_R_HI = 0.3, 0.9      # edge/ref ratio -> score
+_FILLER_FLUX_LO, _FILLER_FLUX_HI = 0.02, 0.06   # spectral flux: <=LO => held vowel
+_FILLER_DUR_LO, _FILLER_DUR_HI = 250.0, 450.0   # ms of steady sound for a filler
+_STFT_FRAME, _STFT_HOP = 320, 160   # 20ms window / 10ms hop @16kHz
+
+
+def _rms_frames(x: np.ndarray, frame: int = _STFT_FRAME) -> np.ndarray:
+    n = len(x) // frame
+    if n == 0:
+        return np.zeros(0, dtype=np.float32)
+    framed = x[: n * frame].reshape(n, frame)
+    return np.sqrt((framed * framed).mean(axis=1) + 1e-12)
+
+
+def energy_trailing_score(
+    voiced_tail: np.ndarray, *, edge_ms: int = _ENERGY_EDGE_MS, sr: int = 16000
+) -> float:
+    """Acoustic cue via amplitude. 1.0 = voice stopped at ~full loudness (abrupt ->
+    maybe still going); 0.0 = voice tapered to near-silence (final lowering -> done).
+
+    voiced_tail is the speech right before the current pause. Proxy for prosodic
+    final-lowering; weak on its own (loud emphatic endings false-positive).
+    """
+    x = np.asarray(voiced_tail, dtype=np.float32).reshape(-1)
+    rms = _rms_frames(x)
+    if len(rms) < 4:
+        return 0.0
+    ref = float(np.median(rms))                 # typical voiced loudness (robust)
+    k = max(1, int(edge_ms * sr / 1000) // _STFT_FRAME)
+    edge = float(rms[-k:].mean())               # loudness right before the pause
+    ratio = edge / (ref + 1e-9)
+    return float(
+        np.clip((ratio - _ENERGY_R_LO) / (_ENERGY_R_HI - _ENERGY_R_LO), 0.0, 1.0)
+    )
+
+
+def _stft_mag(
+    x: np.ndarray, frame: int = _STFT_FRAME, hop: int = _STFT_HOP
+) -> np.ndarray | None:
+    n = 1 + (len(x) - frame) // hop
+    if n < 2:
+        return None
+    window = np.hanning(frame).astype(np.float32)
+    cols = np.empty((n, frame // 2 + 1), dtype=np.float32)
+    for i in range(n):
+        cols[i] = np.abs(np.fft.rfft(x[i * hop : i * hop + frame] * window))
+    return cols
+
+
+def acoustic_filler_score(voiced_tail: np.ndarray, *, sr: int = 16000) -> float:
+    """Acoustic cue via spectral steadiness. 1.0 = tail is a LONG, spectrally STEADY
+    sound (hesitation 'ummm': the vocal tract is held, so the spectrum barely moves);
+    0.0 = normal articulated speech (formants move -> high spectral flux).
+
+    Independent of ASR text, so it catches held hesitations the transcript misses.
+    Requires steady spectrum AND long AND sustained energy: a *fading* final vowel
+    also has a steady spectrum, so the sustain gate keeps it from looking like a hum.
+    """
+    x = np.asarray(voiced_tail, dtype=np.float32).reshape(-1)
+    mag = _stft_mag(x)
+    if mag is None:
+        return 0.0
+    norm = mag / (mag.sum(axis=1, keepdims=True) + 1e-9)     # per-frame shape
+    flux = np.sqrt((np.diff(norm, axis=0) ** 2).sum(axis=1))  # frame-to-frame change
+    flux_mean = float(flux.mean())                           # LOW => held vowel
+    dur_ms = len(x) / sr * 1000.0
+    steady = np.clip(
+        (_FILLER_FLUX_HI - flux_mean) / (_FILLER_FLUX_HI - _FILLER_FLUX_LO), 0.0, 1.0
+    )
+    long_ = np.clip(
+        (dur_ms - _FILLER_DUR_LO) / (_FILLER_DUR_HI - _FILLER_DUR_LO), 0.0, 1.0
+    )
+    sustain = energy_trailing_score(x, sr=sr)                # 0 if fading out
+    return float(steady * long_ * sustain)                  # steady AND long AND held
+
+
+def estimate_p_still_speaking(
+    partial_text: str, voiced_tail: np.ndarray | None, *, sr: int = 16000
+) -> float:
+    """Fuse cheap cues into P(user is still speaking) in [0, 1].
+
+    Combine with max (not sum/noisy-OR): the text-connective cue and text-filler cue
+    are correlated, so max avoids double-counting. Baseline 0 = default eager; evidence
+    only raises patience. This is a hand-built stand-in for a trained turn model
+    (Smart Turn / LiveKit) — same slot, swappable later.
+    """
+    p = 0.0
+    if is_incomplete_vietnamese(partial_text or ""):
+        p = max(p, P_INCOMPLETE_WEIGHT)
+    if voiced_tail is not None and len(voiced_tail) > 0:
+        p = max(p, energy_trailing_score(voiced_tail, sr=sr))
+        p = max(p, acoustic_filler_score(voiced_tail, sr=sr))
+    return float(min(1.0, p))
+
+
+def required_silence_from_p(p_still: float, config) -> float:
+    """Dynamic end-of-turn silence: floor + span * P(still speaking).
+
+    The production pattern (Vapi default waitFunction = 200 + 8000*x, LiveKit
+    turn-detector modulating VAD timeout). P near 0 -> respond fast; near 1 -> patient.
+    """
+    floor = float(config.floor_silence_ms)
+    ceil = float(config.ceil_silence_ms)
+    p = max(0.0, min(1.0, float(p_still)))
+    return floor + (ceil - floor) * p
