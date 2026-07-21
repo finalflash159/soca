@@ -2,6 +2,7 @@ import time
 from dataclasses import replace
 
 import numpy as np
+import pytest
 
 from soca.core import endpoint as endpoint_module
 from soca.core.endpoint import (
@@ -38,6 +39,16 @@ class StreamingDetector:
         self.model = ScriptedModel(probs)
         self.threshold = 0.5
     def speech_timestamps(self, audio): raise AssertionError("batch path must not be called")
+
+
+class FakeTurnDetector:
+    def __init__(self, p: float):
+        self.p = p
+        self.windows: list[np.ndarray] = []
+
+    def p_still_speaking(self, audio_window: np.ndarray) -> float:
+        self.windows.append(audio_window.copy())
+        return self.p
 
 class FakeInputStream:
     def __init__(self, blocks: list[np.ndarray]):
@@ -204,6 +215,7 @@ def test_record_until_silence_keeps_recording_until_max_when_no_speech(monkeypat
         endpoint_silence_ms=100,
         max_record_ms=300,
         min_audio_ms=100,
+        adaptive=False,
     )
     blocks = [
         np.zeros((100, 1), dtype=np.float32),
@@ -221,26 +233,64 @@ def test_record_until_silence_keeps_recording_until_max_when_no_speech(monkeypat
     assert audio.dtype == np.float32
     assert audio.shape == (300,)
 
-def test_adaptive_patient_does_not_cut_short_utterance():
-    # ~0.8s speech then ~0.9s silence: fixed-700 would cut, adaptive patient(1100) does NOT.
-    n_speech, n_sil = 25, 28                        # 800ms speech + 896ms im
-    # max_record = EXACT scripted length: recorder stops at max right after the last block,
-    # so it never over-reads (ScriptedStream raises when empty), as long as adaptive holds.
+
+def test_adaptive_endpoint_requires_turn_detector():
+    config = EndpointConfig(adaptive=True)
+
+    with pytest.raises(ValueError, match="turn detector"):
+        record_until_silence(object(), config=config)
+
+
+def test_adaptive_endpoint_uses_turn_detector_probability(monkeypatch):
+    config = EndpointConfig(
+        sample_rate=1000,
+        block_ms=100,
+        max_record_ms=1000,
+        min_audio_ms=100,
+        adaptive=True,
+        floor_silence_ms=200,
+        ceil_silence_ms=600,
+    )
+    blocks = [np.full((100, 1), value, dtype=np.float32) for value in range(1, 8)]
+    stream = FakeInputStream(blocks)
+    install_fake_input_stream(monkeypatch, stream)
+    detector = FakeDetector(first_detection_samples=200, speech_end_samples=200)
+    turn_detector = FakeTurnDetector(0.5)
+
+    audio = record_until_silence(detector, config=config, turn_detector=turn_detector)
+
+    assert stream.read_sizes == [100, 100, 100, 100, 100, 100]
+    assert len(turn_detector.windows) == 3
+    assert [len(window) for window in turn_detector.windows] == [200, 200, 200]
+    assert audio.shape == (600,)
+
+
+def test_adaptive_endpoint_uses_incremental_vad_before_smart_turn():
+    # 3 speech frames confirm speech, then 2 silent frames reach floor=64ms.
     config = replace(
         EndpointConfig(
             adaptive=True,
-            endpoint_mode="length",                 # this test pins the length policy
-            max_record_ms=(n_speech + n_sil) * 32,
+            floor_silence_ms=64,
+            ceil_silence_ms=160,
+            max_record_ms=512,
+            min_audio_ms=32,
         ),
-        block_ms=32,                                # 1 block=512 samples=32ms <-> 1 frame
+        block_ms=32,
     )
-    probs = [0.9] * n_speech + [0.1] * n_sil
-    blocks = [np.zeros((512, 1), dtype=np.float32) for _ in range(n_speech + n_sil)]
+    probs = [0.9, 0.9, 0.9, 0.1, 0.1, 0.1]
+    blocks = [np.zeros((512, 1), dtype=np.float32) for _ in probs]
     detector = StreamingDetector(probs)
+    turn_detector = FakeTurnDetector(0.0)
+
     audio = record_until_silence(
-        detector, config=config, stream_factory=lambda **kw: ScriptedStream(blocks)
+        detector,
+        config=config,
+        turn_detector=turn_detector,
+        stream_factory=lambda **kw: ScriptedStream(blocks),
     )
-    assert len(audio) == (n_speech + n_sil) * 512   # ran the whole script, did NOT cut early
+
+    assert len(audio) == 5 * 512
+    assert len(turn_detector.windows) == 1
 
 
 def test_partial_worker_transcribes_and_reports():

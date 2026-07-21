@@ -71,6 +71,7 @@ def run_voice_loop(
     endpoint_config = EndpointConfig(
         endpoint_silence_ms=config.endpoint_silence_ms,
         max_record_ms=config.max_record_ms,
+        adaptive=config.adaptive_endpoint,
     )
 
     print_runtime_header(
@@ -94,7 +95,10 @@ def run_voice_loop(
             input_fn("\nPress ENTER and speak. Ctrl+C to quit.")
         print_waiting_for_speech(console, manual_start=press_enter_to_record)
 
-        record_kwargs: dict[str, Any] = {"config": endpoint_config}
+        record_kwargs: dict[str, Any] = {
+            "config": endpoint_config,
+            "turn_detector": bundle.turn_detector,
+        }
         if pending_prefix is not None:
             record_kwargs["prefix"] = pending_prefix
             pending_prefix = None

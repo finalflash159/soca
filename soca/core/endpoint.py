@@ -17,10 +17,7 @@ from soca.core.turn_taking import (
     IncrementalVadTracker,
     LocalAgreement,
     clamp_interval_ms,
-    estimate_p_still_speaking,
-    is_incomplete_vietnamese,
     required_silence_from_p,
-    required_silence_ms,
 )
 
 _DEBUG = os.environ.get("SOCA_ENDPOINT_DEBUG", "") not in ("", "0")
@@ -42,8 +39,6 @@ class _PartialWorker:
         self._done = threading.Event()
         self._agreement = LocalAgreement()
         self._last_len = 0
-        self.incomplete = False                  # main loop reads this every block
-        self.partial_text = ""                   # latest committed+tentative (P-based cue)
         self._thread: threading.Thread | None = None
         if on_partial is not None and transcriber is not None:
             self._thread = threading.Thread(
@@ -87,8 +82,6 @@ class _PartialWorker:
                 continue                                  # (not measured -> EWMA stays clean)
             self._adapt_interval((time.perf_counter() - t0) * 1000)   # measure REAL wall-time
             committed, tentative = self._agreement.update(text)
-            self.partial_text = f"{committed} {tentative}".strip()
-            self.incomplete = is_incomplete_vietnamese(self.partial_text)
             try:
                 self._on_partial(committed, tentative)
             except Exception:
@@ -107,26 +100,8 @@ class EndpointConfig:
     max_record_ms: int = 10000
     min_audio_ms: int = 300
     adaptive: bool = True
-    # "p_based": dynamic silence = floor + span*P(still speaking) (default, smart).
-    # "length": legacy length-based patient/eager interpolation (kept for comparison).
-    endpoint_mode: str = "p_based"
-    # P-based knobs: P=0 (done) -> respond fast; P=1 (still going) -> very patient.
-    # floor is the blunt patience lever when the P signal is weak/lagging live: with a
-    # crude P, required ~= floor most of the time, so floor must clear a hesitation
-    # pause. 1000ms ~ Deepgram utterance_end default; within-turn pauses reach ~840ms
-    # (zplan/endpointing_research.vi.md §1.2). Tune live via SOCA_ENDPOINT_FLOOR_MS.
     floor_silence_ms: int = 1000
     ceil_silence_ms: int = 3000
-    # --- length-based knobs (only used when endpoint_mode == "length") ---
-    # eager must stay ABOVE a breath (~300-600ms), else a mid-sentence breath
-    # cuts the turn. 700ms ~ a deliberate end-of-turn pause (industry turn-gap).
-    eager_silence_ms: int = 700
-    patient_silence_ms: int = 1100
-    short_speech_ms: int = 1200
-    # a 4s sentence is NOT "done talking"; only treat truly long narration as
-    # eager so normal sentences keep a breath-safe tolerance.
-    long_speech_ms: int = 8000
-    incomplete_hold_ms: int = 500
     use_incremental_vad: bool = True
     partial_interval_ms: int = 900
 
@@ -137,15 +112,9 @@ def _apply_env_overrides(config: EndpointConfig) -> EndpointConfig:
     changes: dict = {}
     if os.environ.get("SOCA_ENDPOINT_ADAPTIVE", "") in ("0", "false"):
         changes["adaptive"] = False
-    mode = os.environ.get("SOCA_ENDPOINT_MODE", "")
-    if mode in ("length", "p_based"):
-        changes["endpoint_mode"] = mode
     for env, fld in (
         ("SOCA_ENDPOINT_FLOOR_MS", "floor_silence_ms"),
         ("SOCA_ENDPOINT_CEIL_MS", "ceil_silence_ms"),
-        ("SOCA_ENDPOINT_PATIENT_MS", "patient_silence_ms"),
-        ("SOCA_ENDPOINT_EAGER_MS", "eager_silence_ms"),
-        ("SOCA_ENDPOINT_HOLD_MS", "incomplete_hold_ms"),
         ("SOCA_PARTIAL_INTERVAL_MS", "partial_interval_ms"),
     ):
         value = os.environ.get(env)
@@ -172,35 +141,36 @@ def block_samples(config: EndpointConfig) -> int:
     return int(config.sample_rate * config.block_ms / 1000)
 
 
-def _voiced_tail(chunks, silence_ms, config, *, window_ms=500):
-    """The speech audio right before the current pause (for acoustic P cues).
-
-    Slices only the last few blocks (bounded by ceil), so it stays cheap even
-    though ``chunks`` grows for the whole turn.
-    """
+def _voiced_window(chunks, silence_ms, config, *, max_s: float = 8.0):
+    """The speech audio right before the current pause (for acoustic P cues), up to max_s (Pipecat Smart Turn cap)."""
     if not chunks:
         return None
-    cap = max(2, int((config.ceil_silence_ms + window_ms) / max(config.block_ms, 1)) + 2)
-    audio = np.concatenate(chunks[-cap:]).astype(np.float32, copy=False)
-    silence_samples = int(silence_ms / 1000 * config.sample_rate)
-    end = len(audio) - silence_samples
+    cap_blocks = max(2, int((config.ceil_silence_ms + max_s * 1000) / max(config.block_ms, 1)) + 2)
+    audio = np.concatenate(chunks[-cap_blocks:]).astype(np.float32, copy=False)
+    end = len(audio) - int(silence_ms / 1000 * config.sample_rate)
     if end <= 0:
         return None
-    start = max(0, end - int(window_ms / 1000 * config.sample_rate))
+    start = max(0, end - int(max_s * config.sample_rate))
     return audio[start:end]
 
 
-def _decide_required_silence(config, speech_ms, silence_ms, worker, chunks) -> float:
-    """How much trailing silence closes the turn, per the configured mode."""
+def _decide_required_silence(config, silence_ms, chunks, turn_detector) -> float:
     if not config.adaptive:
-        return float(config.endpoint_silence_ms)
-    if config.endpoint_mode == "length":
-        return required_silence_ms(speech_ms, config, incomplete=worker.incomplete)
-    # p_based: only pay for P once we are in the decision zone (silence >= floor).
+        return float(config.endpoint_silence_ms)          # fixed, deterministic
     if silence_ms < config.floor_silence_ms:
         return float(config.ceil_silence_ms)
-    tail = _voiced_tail(chunks, silence_ms, config)
-    p = estimate_p_still_speaking(worker.partial_text, tail, sr=config.sample_rate)
+    window = _voiced_window(chunks, silence_ms, config)
+    if window is None:
+        return float(config.ceil_silence_ms)
+    try:
+        p = turn_detector.p_still_speaking(window)
+    except Exception as exc:
+        print(
+            f"[endpoint] turn_detector error: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return float(config.ceil_silence_ms)
     return required_silence_from_p(p, config)
 
 
@@ -210,6 +180,7 @@ def record_until_silence(
     stop_event: Event | None = None,
     prefix: np.ndarray | None = None,
     *,
+    turn_detector=None,
     on_partial=None,
     partial_transcriber=None,
     stream_factory=None,
@@ -220,12 +191,18 @@ def record_until_silence(
     max_samples = int(config.sample_rate * config.max_record_ms / 1000)
     vad_model = getattr(detector, "model", None)
     tracker = None
-    if config.adaptive and config.use_incremental_vad and vad_model is not None \
-            and config.sample_rate == 16000:
+    if (
+        config.adaptive
+        and config.use_incremental_vad
+        and vad_model is not None
+        and config.sample_rate == 16000
+    ):
         tracker = IncrementalVadTracker(
             vad_model, threshold=getattr(detector, "threshold", 0.5)
         )
         tracker.reset()
+    if config.adaptive and turn_detector is None:
+        raise ValueError("adaptive endpoint requires a turn detector")
 
     chunks: list[np.ndarray] = []
     has_seen_speech = False
@@ -277,21 +254,21 @@ def record_until_silence(
                     )
                     last_end = timestamps[-1]["end"] if timestamps else 0
                     silence_ms = (len(audio) - last_end) / config.sample_rate * 1000
+                    if seen:
+                        worker.notify_speech()
 
                 has_seen_speech = seen
                 if not has_seen_speech:
                     continue
 
                 required = _decide_required_silence(
-                    config, speech_ms, silence_ms, worker, chunks
+                    config, silence_ms, chunks, turn_detector
                 )
                 if _DEBUG:
                     print(
-                        f"[endpoint] mode={config.endpoint_mode} "
+                        f"[endpoint] adaptive={config.adaptive} "
                         f"speech={speech_ms:5.0f}ms "
-                        f"silence={silence_ms:4.0f}/{required:4.0f}ms "
-                        f"incomplete={worker.incomplete} "
-                        f"partial={worker.partial_text!r}",
+                        f"silence={silence_ms:4.0f}/{required:4.0f}ms",
                         file=sys.stderr, flush=True,
                     )
                 if silence_ms >= required:

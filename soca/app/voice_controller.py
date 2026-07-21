@@ -245,6 +245,7 @@ class VoiceMonitorController:
             endpoint_silence_ms=self.config.endpoint_silence_ms,
             max_record_ms=self.config.max_record_ms,
             partial_interval_ms=self.bundle.partial_interval_ms, # seed from warmup
+            adaptive=self.config.adaptive_endpoint,
         )
         queue.put(VoiceMonitorEvent("recording", "Listening"))
         t0 = time.perf_counter()
@@ -252,7 +253,11 @@ class VoiceMonitorController:
             # Close any duplex stream left open by the previous turn (incl. a
             # passive-silence callout) so the recorder can reclaim the mic.
             self.player.stop()
-        record_kwargs: dict[str, Any] = {"config": endpoint_config, "stop_event": stop_event}
+        record_kwargs: dict[str, Any] = {
+            "config": endpoint_config,
+            "stop_event": stop_event,
+            "turn_detector": bundle.turn_detector,
+        }
         if self._pending_prefix is not None:
             record_kwargs["prefix"] = self._pending_prefix
             self._pending_prefix = None

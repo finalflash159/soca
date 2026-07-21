@@ -1,4 +1,4 @@
-"""Eval endpoint policies: fixed vs length-adaptive vs P-based, on REAL speech.
+"""Eval endpoint policies: fixed vs Smart Turn, on REAL speech.
 
 Why this design (see zplan/endpointing_research.vi.md §5): the previous eval fed
 whole multi-sentence FLEURS paragraphs, so the endpointer stopped at the first
@@ -13,13 +13,13 @@ This version instead measures two clean, separable things on controlled clips:
   2. end_latency: on a clean phrase with NO inserted gap, how long after real speech
      ends does the turn close? (responsiveness)
 
-Modes compared: fixed (700ms) · length (patient/eager by duration) · p_based
-(floor + span*P(still speaking)). Runs headless, no mic. Real ASR for the P
-semantic cue is opt-in via --with-asr (slower); default uses acoustic cues only.
+Modes compared: fixed (700ms) · smart_turn (floor + span*P(still speaking)).
+Runs headless, no mic. Smart Turn is loaded once and injected into the endpoint.
 """
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import click
@@ -28,6 +28,7 @@ import soundfile as sf
 
 from soca.asr.vad import SpeechDetector
 from soca.core.endpoint import EndpointConfig, record_until_silence
+from soca.core.smart_turn import SmartTurnDetector
 
 SR = 16000
 TAIL_S = 3.5          # long enough to observe a close even at the P ceiling (3000ms)
@@ -94,18 +95,32 @@ def _silence(ms: float, noise: float) -> np.ndarray:
 def _config(mode: str) -> EndpointConfig:
     if mode == "fixed":
         return EndpointConfig(adaptive=False, max_record_ms=30000)
-    return EndpointConfig(adaptive=True, endpoint_mode=mode, max_record_ms=30000)
+    if mode == "smart_turn":
+        return EndpointConfig(adaptive=True, max_record_ms=30000)
+    raise ValueError(f"unknown endpoint mode: {mode}")
 
 
 _DETECTOR: SpeechDetector | None = None
+_TURN_DETECTOR: SmartTurnDetector | None = None
+_SMART_TURN_LATENCIES_MS: list[float] = []
 
 
-def _record(audio: np.ndarray, mode: str, asr_fn) -> np.ndarray:
+class TimedTurnDetector:
+    def __init__(self, detector: SmartTurnDetector) -> None:
+        self.detector = detector
+
+    def p_still_speaking(self, audio_window: np.ndarray) -> float:
+        t0 = time.perf_counter()
+        try:
+            return self.detector.p_still_speaking(audio_window)
+        finally:
+            _SMART_TURN_LATENCIES_MS.append((time.perf_counter() - t0) * 1000)
+
+
+def _record(audio: np.ndarray, mode: str) -> np.ndarray:
     kwargs = {}
-    # Only p_based reads partial_text; running ASR for fixed/length is pure waste.
-    if asr_fn is not None and mode == "p_based":
-        kwargs["on_partial"] = lambda c, t: None
-        kwargs["partial_transcriber"] = asr_fn
+    if mode == "smart_turn":
+        kwargs["turn_detector"] = _TURN_DETECTOR
     return record_until_silence(
         _DETECTOR,
         config=_config(mode),
@@ -114,7 +129,7 @@ def _record(audio: np.ndarray, mode: str, asr_fn) -> np.ndarray:
     )
 
 
-def run_false_cut(phrase, gap_ms, mode, noise, asr_fn) -> bool:
+def run_false_cut(phrase, gap_ms, mode, noise) -> bool:
     """True = closed during the gap (before the 2nd half) = a false cut."""
     split = split_at_dip(phrase)
     part_a, part_b = phrase[:split], phrase[split:]
@@ -122,45 +137,36 @@ def run_false_cut(phrase, gap_ms, mode, noise, asr_fn) -> bool:
         part_a, _silence(gap_ms, noise), part_b, _silence(TAIL_S * 1000, noise)
     ])
     end_of_speech = len(part_a) + int(SR * gap_ms / 1000) + len(part_b)
-    got = _record(audio, mode, asr_fn)
+    got = _record(audio, mode)
     return len(got) < end_of_speech
 
 
-def run_end_latency(phrase, mode, noise, asr_fn) -> float | None:
+def run_end_latency(phrase, mode, noise) -> float | None:
     """ms from real speech end to close, on a clean phrase (no inserted gap)."""
     audio = np.concatenate([phrase, _silence(TAIL_S * 1000, noise)])
-    got = _record(audio, mode, asr_fn)
+    got = _record(audio, mode)
     if len(got) < len(phrase):
         return None                                  # cut inside the phrase -> skip
     return (len(got) - len(phrase)) / (SR / 1000)
-
-
-def build_asr_fn(enabled: bool):
-    if not enabled:
-        return None
-    from soca.asr import VietnameseASR
-
-    asr = VietnameseASR(num_threads=4)
-
-    def transcribe(audio):
-        return getattr(asr.transcribe(audio), "text", "") or ""
-
-    return transcribe
 
 
 @click.command()
 @click.option("--n", default=24, help="number of FLEURS phrases")
 @click.option("--gaps", default="300,500,700,900,1200", help="hesitation gaps (ms)")
 @click.option("--noise", default=0.0, help="silence noise floor amplitude (0 = pure)")
-@click.option("--with-asr", is_flag=True, help="run real ASR for the P semantic cue")
-def main(n: int, gaps: str, noise: float, with_asr: bool) -> None:
-    global _DETECTOR
+def main(n: int, gaps: str, noise: float) -> None:
+    global _DETECTOR, _TURN_DETECTOR, _SMART_TURN_LATENCIES_MS
     from local import config as cfg
 
     _DETECTOR = SpeechDetector()
-    asr_fn = build_asr_fn(with_asr)
+    detector = SmartTurnDetector(
+        Path(__file__).resolve().parents[1] / "models" / "smart-turn-v3-onnx"
+    )
+    detector.warmup()
+    _TURN_DETECTOR = TimedTurnDetector(detector)
+    _SMART_TURN_LATENCIES_MS = []
     gap_list = [int(g) for g in gaps.split(",")]
-    modes = ("fixed", "length", "p_based")
+    modes = ("fixed", "smart_turn")
 
     wavs = sorted(Path(cfg.FLEURS_WAV_DIR).glob("*.wav"))
     phrases: list[np.ndarray] = []
@@ -176,7 +182,7 @@ def main(n: int, gaps: str, noise: float, with_asr: bool) -> None:
     if not phrases:
         raise SystemExit(f"No usable phrases in {cfg.FLEURS_WAV_DIR}")
 
-    print(f"phrases={len(phrases)}  asr={'on' if asr_fn else 'off'}  noise={noise}\n")
+    print(f"phrases={len(phrases)}  smart_turn=on  noise={noise}\n")
 
     # --- Metric 1: false-cut rate vs gap ---
     print("false_cut_rate (lower = more patient, does NOT chop hesitation)")
@@ -186,7 +192,7 @@ def main(n: int, gaps: str, noise: float, with_asr: bool) -> None:
     for g in gap_list:
         cells = []
         for m in modes:
-            rate = sum(run_false_cut(ph, g, m, noise, asr_fn) for ph in phrases) / len(phrases)
+            rate = sum(run_false_cut(ph, g, m, noise) for ph in phrases) / len(phrases)
             fc[m][g] = round(rate, 3)
             cells.append(f"{rate:7.0%} ")
         print(f"{g:6d}  | " + " | ".join(cells))
@@ -195,17 +201,33 @@ def main(n: int, gaps: str, noise: float, with_asr: bool) -> None:
     print("\nend_latency_ms (lower = snappier when the user IS done)")
     lat: dict[str, float | None] = {}
     for m in modes:
-        vals = [run_end_latency(ph, m, noise, asr_fn) for ph in phrases]
+        vals = [run_end_latency(ph, m, noise) for ph in phrases]
         vals = [v for v in vals if v is not None]
         lat[m] = round(sum(vals) / len(vals), 0) if vals else None
         print(f"  {m:>8}: {lat[m]}ms  (n={len(vals)})")
+    smart_turn_cpu_ms = (
+        round(sum(_SMART_TURN_LATENCIES_MS) / len(_SMART_TURN_LATENCIES_MS), 2)
+        if _SMART_TURN_LATENCIES_MS
+        else None
+    )
+    print(f"\nsmart_turn_cpu_ms: {smart_turn_cpu_ms}  (n={len(_SMART_TURN_LATENCIES_MS)})")
 
     out = Path(cfg.EVAL_RESULTS_DIR) / "endpoint_eval.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(
-        {"phrases": len(phrases), "asr": bool(asr_fn), "noise": noise,
-         "false_cut_rate": fc, "end_latency_ms": lat}, indent=2, ensure_ascii=False,
-    ))
+    out.write_text(
+        json.dumps(
+            {
+                "phrases": len(phrases),
+                "smart_turn": True,
+                "noise": noise,
+                "false_cut_rate": fc,
+                "end_latency_ms": lat,
+                "smart_turn_cpu_ms": smart_turn_cpu_ms,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
     print(f"\n-> {out}")
 
 

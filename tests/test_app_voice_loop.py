@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -63,6 +63,7 @@ def make_config() -> ResolvedVoiceRuntimeConfig:
         tts_model="valtec_multispeaker",
         tts_voice="NF",
         endpoint_silence_ms=700,
+        adaptive_endpoint=False,
         max_record_ms=10_000,
         max_tokens=160,
         temperature=0.2,
@@ -129,6 +130,33 @@ def test_run_voice_loop_renders_streaming_events_without_real_models() -> None:
     assert tts.calls == []
     assert player.play_calls == []
     assert input_prompts == []
+
+
+def test_run_voice_loop_wires_adaptive_endpoint_and_turn_detector() -> None:
+    config = replace(make_config(), adaptive_endpoint=True)
+    pipeline = FakePipeline([StreamingEvent(type="done", latency_ms=1.0)])
+    turn_detector = object()
+    bundle = make_bundle(config, pipeline, FakeTTS())
+    bundle.turn_detector = turn_detector  # type: ignore[assignment]
+    captured_kwargs: dict = {}
+
+    def recorder(_detector, **kwargs):
+        captured_kwargs.update(kwargs)
+        return np.zeros(1600, dtype=np.float32)
+
+    run_voice_loop(
+        config,
+        console=Console(record=True),
+        input_fn=lambda _: "",
+        runtime_builder=lambda _: bundle,
+        recorder=recorder,
+        player=FakeAudioSink(),
+        max_turns=1,
+        warmup=False,
+    )
+
+    assert captured_kwargs["config"].adaptive is True
+    assert captured_kwargs["turn_detector"] is turn_detector
 
 
 def test_run_voice_loop_usage_flag_renders_voice_metrics() -> None:

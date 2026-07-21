@@ -9,9 +9,8 @@ from soca.core.turn_taking import (
     VAD_FRAME_SAMPLES,
     IncrementalVadTracker,
     LocalAgreement,
-    is_incomplete_vietnamese,
     partial_interval_from_cost,
-    required_silence_ms,
+    required_silence_from_p,
 )
 
 
@@ -41,40 +40,21 @@ def frames(n: int) -> np.ndarray:
 
 
 class Cfg:
-    endpoint_silence_ms = 700
-    adaptive = True
-    patient_silence_ms = 1100
-    eager_silence_ms = 450
-    short_speech_ms = 1200
-    long_speech_ms = 4000
-    incomplete_hold_ms = 350
+    floor_silence_ms = 500
+    ceil_silence_ms = 3000
 
 
-def test_policy_patient_eager_and_interpolation():
+def test_required_silence_from_p_maps_probability_linearly():
     cfg = Cfg()
-    assert required_silence_ms(500, cfg) == 1100          # short -> patient
-    assert required_silence_ms(9000, cfg) == 450          # long -> cut fast
-    assert required_silence_ms(2600, cfg) == pytest.approx(775)  # middle -> interpolate
-    assert required_silence_ms(500, cfg, incomplete=True) == 1450
-    cfg.adaptive = False
-    assert required_silence_ms(500, cfg) == 700           # legacy behavior
+    assert required_silence_from_p(0.0, cfg) == 500
+    assert required_silence_from_p(1.0, cfg) == 3000
+    assert required_silence_from_p(0.5, cfg) == pytest.approx(1750)
 
 
-@pytest.mark.parametrize(
-    ("text", "expected"),
-    [
-        ("tôi muốn nói với", True),      # "với" is a connective, sentence still open
-        ("cho mình hỏi,", True),
-        ("tức là", True),
-        ("ờ", True),
-        ("mấy giờ rồi", False),          # trap: "rồi" ends a complete sentence
-        ("cái này hay", False),          # trap: "hay" ends a complete sentence
-        ("bật đèn lên.", False),
-        ("", False),
-    ],
-)
-def test_incomplete_vietnamese(text, expected):
-    assert is_incomplete_vietnamese(text) is expected
+def test_required_silence_from_p_clamps_out_of_range_probability():
+    cfg = Cfg()
+    assert required_silence_from_p(-1.0, cfg) == 500
+    assert required_silence_from_p(2.0, cfg) == 3000
 
 
 def test_tracker_confirms_speech_then_counts_silence():

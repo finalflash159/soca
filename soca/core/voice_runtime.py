@@ -14,6 +14,7 @@ from soca.core.pipeline import VoicePipeline
 from soca.core.profiles import get_voice_runtime_profile
 from soca.core.repair import default_repair_catalog
 from soca.core.runtime import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
+from soca.core.smart_turn import SmartTurnDetector
 from soca.core.turn_taking import partial_interval_from_cost
 from soca.knowledge import KnowledgeContextBuilder, MarkdownVaultKnowledgeSource
 from soca.llm import LocalLlamaCppLLM
@@ -36,6 +37,7 @@ class ResolvedVoiceRuntimeConfig:
     tts_model: str
     tts_voice: str | None
     endpoint_silence_ms: int
+    adaptive_endpoint: bool
     max_record_ms: int
     max_tokens: int
     temperature: float
@@ -62,6 +64,7 @@ class VoiceRuntimeBundle:
     pipeline: VoicePipeline
     memory_status: str
     knowledge_status: str
+    turn_detector: SmartTurnDetector | None = None
     session_memory: SessionMemory | None = None
     partial_interval_ms: int = 800     # partial cadence seed (handles device variance)
     partial_enabled: bool = True       # False when the device is too slow for partials
@@ -88,6 +91,7 @@ def resolve_voice_runtime_config(
     tts_model: str | None = None,
     tts_voice: str | None = None,
     endpoint_silence_ms: int | None = None,
+    adaptive_endpoint: bool | None = None,
     max_record_ms: int | None = None,
     max_tokens: int | None = None,
     temperature: float | None = None,
@@ -135,6 +139,7 @@ def resolve_voice_runtime_config(
         endpoint_silence_ms=(
             endpoint_silence_ms if endpoint_silence_ms is not None else profile.endpoint_silence_ms
         ),
+        adaptive_endpoint=adaptive_endpoint if adaptive_endpoint is not None else profile.adaptive_endpoint,
         max_record_ms=max_record_ms if max_record_ms is not None else profile.max_record_ms,
         max_tokens=max_tokens if max_tokens is not None else profile.max_tokens,
         temperature=temperature if temperature is not None else profile.temperature,
@@ -157,6 +162,11 @@ def build_voice_runtime(
     session_memory: SessionMemory | None = None,
 ) -> VoiceRuntimeBundle:
     detector = SpeechDetector()
+    turn_detector = None
+    if config.adaptive_endpoint:
+        model_dir = _smart_turn_model_dir()
+        turn_detector = SmartTurnDetector(model_dir=model_dir)
+
     confidence_calibration = load_confidence_guard_calibration(config.asr_model)
     if confidence_calibration is None:
         asr = RobustASR(
@@ -251,6 +261,7 @@ def build_voice_runtime(
         memory_status=memory_status,
         knowledge_status=knowledge_status,
         session_memory=session_memory if not config.no_memory else None,
+        turn_detector=turn_detector,
     )
 
 
@@ -273,7 +284,13 @@ def warm_up_voice_runtime(
         _warm_up_llm(bundle, prompt=llm_prompt),
         _warm_up_tts(bundle, text=tts_text),
     ]
+    if bundle.turn_detector is not None:
+        results.append(_warm_up_smart_turn(bundle))
     return tuple(results)
+
+
+def _smart_turn_model_dir() -> Path:
+    return Path(__file__).resolve().parents[2] / "models" / "smart-turn-v3-onnx"
 
 
 def _warm_up_asr(bundle: VoiceRuntimeBundle, *, seconds: float) -> VoiceRuntimeWarmupResult:
@@ -349,3 +366,13 @@ def _warm_up_tts(bundle: VoiceRuntimeBundle, *, text: str) -> VoiceRuntimeWarmup
             latency_ms=(time.perf_counter() - t0) * 1000,
             detail=str(exc),
         )
+
+def _warm_up_smart_turn(bundle: VoiceRuntimeBundle) -> VoiceRuntimeWarmupResult:
+    t0 = time.perf_counter()
+    bundle.turn_detector.warmup()
+    return VoiceRuntimeWarmupResult(
+        component="smart_turn",
+        ok=True,
+        latency_ms=(time.perf_counter() - t0) * 1000,
+        detail="smart-turn-v3.2-cpu.onnx",
+    )

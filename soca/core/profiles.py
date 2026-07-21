@@ -16,6 +16,7 @@ class VoiceRuntimeProfile:
     tts_model: str
     tts_voice: str | None = None
     endpoint_silence_ms: int = 700
+    adaptive_endpoint: bool = True
     max_record_ms: int = 10000
     max_tokens: int = 160
     temperature: float = 0.2

@@ -62,6 +62,7 @@ def make_voice_config() -> ResolvedVoiceRuntimeConfig:
         tts_model="valtec_multispeaker",
         tts_voice="NF",
         endpoint_silence_ms=700,
+        adaptive_endpoint=False,
         max_record_ms=10_000,
         max_tokens=160,
         temperature=0.2,

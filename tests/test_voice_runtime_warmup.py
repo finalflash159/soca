@@ -3,10 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from soca.core.voice_runtime import (
     ResolvedVoiceRuntimeConfig,
     VoiceRuntimeBundle,
+    _smart_turn_model_dir,
     warm_up_voice_runtime,
 )
 from soca.tts import TTSResult
@@ -58,6 +60,19 @@ class FakeTTS:
         )
 
 
+class FakeTurnDetector:
+    def __init__(self) -> None:
+        self.warmups = 0
+
+    def warmup(self) -> None:
+        self.warmups += 1
+
+
+class FailingTurnDetector:
+    def warmup(self) -> None:
+        raise RuntimeError("smart turn warmup failed")
+
+
 def make_config() -> ResolvedVoiceRuntimeConfig:
     return ResolvedVoiceRuntimeConfig(
         profile_key="quality",
@@ -66,6 +81,7 @@ def make_config() -> ResolvedVoiceRuntimeConfig:
         tts_model="omnivoice",
         tts_voice="emgai_dangiu",
         endpoint_silence_ms=700,
+        adaptive_endpoint=False,
         max_record_ms=10_000,
         max_tokens=160,
         temperature=0.2,
@@ -110,3 +126,47 @@ def test_warm_up_voice_runtime_triggers_asr_llm_and_tts_first_call_paths() -> No
         }
     ]
     assert tts.calls == ["Xin chào, tôi là SoCa."]
+
+
+def test_warm_up_voice_runtime_includes_smart_turn_when_detector_exists() -> None:
+    turn_detector = FakeTurnDetector()
+    bundle = VoiceRuntimeBundle(
+        config=make_config(),
+        detector=object(),
+        asr=FakeRobustASR(),
+        llm=FakeLLM(),
+        tts=FakeTTS(),
+        assistant_runtime=object(),
+        pipeline=object(),
+        memory_status="disabled:test",
+        knowledge_status="disabled:test",
+        turn_detector=turn_detector,  # type: ignore[arg-type]
+    )
+
+    results = warm_up_voice_runtime(bundle, asr_seconds=0.5)
+
+    assert [result.component for result in results] == ["asr", "llm", "tts", "smart_turn"]
+    assert results[-1].ok is True
+    assert turn_detector.warmups == 1
+
+
+def test_warm_up_voice_runtime_fails_fast_when_smart_turn_warmup_fails() -> None:
+    bundle = VoiceRuntimeBundle(
+        config=make_config(),
+        detector=object(),
+        asr=FakeRobustASR(),
+        llm=FakeLLM(),
+        tts=FakeTTS(),
+        assistant_runtime=object(),
+        pipeline=object(),
+        memory_status="disabled:test",
+        knowledge_status="disabled:test",
+        turn_detector=FailingTurnDetector(),  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(RuntimeError, match="smart turn warmup failed"):
+        warm_up_voice_runtime(bundle, asr_seconds=0.5)
+
+
+def test_smart_turn_model_dir_points_to_repo_models_dir() -> None:
+    assert _smart_turn_model_dir().as_posix().endswith("/models/smart-turn-v3-onnx")
