@@ -59,7 +59,6 @@ def make_voice_config() -> ResolvedVoiceRuntimeConfig:
         profile_key="baseline",
         asr_model="phowhisper_base",
         llm_model="arcee_vylinh_3b_q4_k_m",
-        tts_model="valtec_multispeaker",
         tts_voice="NF",
         endpoint_silence_ms=700,
         adaptive_endpoint=False,

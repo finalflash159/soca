@@ -352,7 +352,8 @@ assistant before changing the runtime default.
 
 **Decision**
 
-- Keep PhoGPT as the historical LLM bake-off baseline only. Product app defaults come from runtime profiles; current baseline/quality profiles use Arcee-VyLinh.
+- Keep PhoGPT as the historical LLM bake-off baseline only. The single current product profile,
+  `baseline`, uses Arcee-VyLinh.
 - Treat Arcee-VyLinh as the leading free-chat candidate after intent routing.
 - Treat Qwen3-0.6B as the low-RAM fallback/smoke model.
 - Do not prioritize VinaLLaMA-2.7B for the default path: clean Vietnamese output,
@@ -530,6 +531,10 @@ uv run --extra tts --extra tts-piper --extra tts-omnivoice --extra tts-vieneu \
 
 ## D3.1 — E2E Voice Loop Benchmark (audio fixture → ASR → runtime → TTS)
 
+> **Historical snapshot (2026-06-01).** The profile names and multi-engine commands in this section
+> document the experiment as it ran. They are not supported by the current singleton `baseline`
+> runtime and must not be copied as current CLI instructions.
+
 **Purpose:** measure the full SoCa voice loop from audio input to first
 available output audio, using fixed WAV fixtures rather than live microphone
 input. This complements the TTS-only bake-off above.
@@ -592,7 +597,7 @@ The fixture-generation run is not used as the official profile measurement,
 because it loads the fixture TTS engine before benchmark timing. The profile
 measurements below were run afterwards in separate fresh processes.
 
-**Profile run commands**
+**Historical profile run commands (no longer supported)**
 
 ```bash
 uv run --extra tts python eval/eval_voice_loop.py \

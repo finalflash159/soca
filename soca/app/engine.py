@@ -45,6 +45,7 @@ from soca.app.voice_controller import (
 from soca.core import AudioSink, ResolvedVoiceRuntimeConfig
 from soca.core.usage import SessionUsage, TurnUsage
 from soca.memory import SessionMemory
+from soca.tts import VALTEC_TTS_CONFIG
 
 PROTOCOL_VERSION = 1
 
@@ -131,7 +132,7 @@ class SocaEngine:
             stack = {
                 "asr": self.voice_config.asr_model,
                 "llm": self.voice_config.llm_model,
-                "tts": self.voice_config.tts_model,
+                "tts": VALTEC_TTS_CONFIG.key,
                 "voice": self.voice_config.tts_voice,
             }
         self.writer.emit(
@@ -188,7 +189,7 @@ class SocaEngine:
                 "status": item.profile_status,
                 "asr": item.asr_model,
                 "llm": item.llm_model,
-                "tts": item.tts_model,
+                "tts": item.tts_engine,
                 "voice": item.tts_voice,
             }
             for item in collect_runtime_profile_readiness()
@@ -271,13 +272,9 @@ class SocaEngine:
     def _ensure_text_bundle(self) -> TextRuntimeBundle:
         if self.text_bundle is not None:
             return self.text_bundle
-        self.writer.emit(
-            {"event": "chat", "type": "loading", "text": "building text runtime"}
-        )
+        self.writer.emit({"event": "chat", "type": "loading", "text": "building text runtime"})
         try:
-            bundle = self.text_runtime_builder(
-                self.text_config, session_memory=self.session_memory
-            )
+            bundle = self.text_runtime_builder(self.text_config, session_memory=self.session_memory)
         except TypeError:
             bundle = self.text_runtime_builder(self.text_config)
         self.text_bundle = bundle

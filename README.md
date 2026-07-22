@@ -56,7 +56,7 @@ CMAKE_ARGS="-DGGML_METAL=on" FORCE_CMAKE=1 \
   uv pip install --force-reinstall --no-cache-dir llama-cpp-python
 
 # 2) Download local models for the default (baseline) profile
-uv run python scripts/download_phowhisper.py --model phowhisper_base
+uv run python scripts/download_phowhisper.py --model phowhisper_small
 uv run python scripts/download_llm.py --model arcee_vylinh_3b_q4_k_m
 
 # 3) Initialize a local Markdown knowledge vault (default: ~/KnowledgeVault)
@@ -82,20 +82,17 @@ auto-writes long-term memory, and vault contents are not committed.
 
 ## Runtime profiles
 
-A profile bundles an ASR + LLM + TTS choice under one name. Default is `baseline`.
+A single public runtime profile keeps the product path deterministic. Its name is `baseline`, and
+TTS is always Valtec.
 
-| Profile           | ASR              | LLM             | TTS / voice                | Use                        |
-| ----------------- | ---------------- | --------------- | -------------------------- | -------------------------- |
-| `baseline`        | phowhisper_base  | arcee_vylinh_3b | valtec / NF                | Fast, default (low RTF)    |
-| `quality`         | phowhisper_small | arcee_vylinh_3b | omnivoice / emgai_dangiu   | Best voice (slow on CPU)   |
-| `edge`            | phowhisper_base  | qwen3_0_6b      | piper                      | Low-RAM fallback           |
-| `balanced_vieneu` | phowhisper_base  | arcee_vylinh_3b | vieneu_v2_turbo / XuanVinh | Quality/latency challenger |
+| Profile | ASR | LLM | TTS / voice | Mục đích |
+|---|---|---|---|---|
+| `baseline` | phowhisper_small | arcee_vylinh_3b | valtec / NF | Runtime mặc định duy nhất |
 
 ```bash
-uv run soca voice quality            # needs --extra tts-omnivoice
-uv run --extra tts-piper soca voice edge
+uv run soca voice baseline
 uv run soca voice --no-memory        # disable memory
-uv run soca voice --asr-model phowhisper_small   # override a single model
+uv run soca voice --asr-model phowhisper_base   # explicit diagnostic override
 ```
 
 Profiles drive both voice and text; `--llm-model` overrides both. Details:
@@ -131,7 +128,7 @@ soca/
                profiles, streaming, endpointing, metrics, usage
   asr/         PhoWhisper ONNX, VAD, RobustASR (de-loop, BoH, heuristics)
   llm/         llama.cpp runner, prompt styles, registry, memory wrapper
-  tts/         multiple Vietnamese engines (valtec/omnivoice/piper/vieneu/...) + factory
+  tts/         Valtec Vietnamese TTS runtime, registry, and factory
   knowledge/   Markdown vault search and context packing
   memory/      long-term profile memory + RAM session memory
   tools/       ToolRuntime, tool specs, local time/knowledge tools
@@ -148,11 +145,12 @@ zplan/         local planning docs
 Full notes in [BENCHMARKS.md](BENCHMARKS.md). Highlights:
 
 - PhoWhisper-tiny ONNX on FLEURS-vi: 23.60% WER / 12.44% CER, ~20× real-time (D1).
-- ASR size bake-off picks `phowhisper_base` as the best real-time next step.
+- Historical ASR bake-offs favored `phowhisper_base`; the current product baseline uses
+  `phowhisper_small` for higher accuracy.
 - PhoGPT-4B Q4_K_M via llama.cpp/Metal: ~61 ms TTFT, 62.8 tok/s (D2). Product
-  profiles use Arcee-VyLinh as baseline; Qwen3-0.6B as low-RAM fallback.
-- TTS: Valtec stable baseline, Piper fastest edge, VieNeu Turbo practical
-  challenger, OmniVoice saved-voice quality path.
+  runtime uses Arcee-VyLinh; other LLM entries remain explicit diagnostic/eval overrides.
+- Product TTS supports only Valtec. Older multi-engine measurements remain historical records in
+  `BENCHMARKS.md`.
 
 Caveats: numbers are local Mac measurements (not Raspberry Pi); LLM behavioral
 rates are heuristic screeners; RobustASR confidence/BoH artifacts are

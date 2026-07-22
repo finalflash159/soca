@@ -5,7 +5,7 @@ from click.testing import CliRunner
 from soca.cli import main
 
 
-def test_profiles_command_lists_runtime_profiles_without_running_voice_loop(monkeypatch) -> None:
+def test_profiles_command_lists_only_valtec_runtime_profiles(monkeypatch) -> None:
     def fail_voice_loop(*_args, **_kwargs):
         raise AssertionError("profiles must not run the voice loop")
 
@@ -16,9 +16,10 @@ def test_profiles_command_lists_runtime_profiles_without_running_voice_loop(monk
     assert result.exit_code == 0, result.output
     assert "SoCa Runtime Profiles" in result.output
     assert "baseline" in result.output
-    assert "quality" in result.output
-    assert "edge" in result.output
-    assert "phowhisper_base" in result.output
+    assert "quality" not in result.output
+    assert "edge" not in result.output
+    assert "phowhisper_small" in result.output
+    assert "phowhisper_base" not in result.output
     assert "arcee_vylinh_3b_q4_k_m" in result.output
     assert "valtec_multispeaker" in result.output
 
@@ -51,6 +52,31 @@ def test_status_command_shows_lightweight_runtime_overview() -> None:
     assert result.exit_code == 0, result.output
     assert "SoCa Status" in result.output
     assert "Primary command" in result.output
-    assert "uv run soca voice --profile baseline" in result.output
+    assert "uv run soca voice" in result.output
+    assert "--profile baseline" not in result.output
     assert "Runtime profiles" in result.output
 
+
+def test_voice_command_rejects_tts_model_override() -> None:
+    result = CliRunner().invoke(
+        main,
+        ["voice", "baseline", "--tts-model", "other_tts"],
+    )
+
+    assert result.exit_code != 0
+    assert "No such option: --tts-model" in result.output
+
+
+def test_voice_command_rejects_removed_profile() -> None:
+    result = CliRunner().invoke(main, ["voice", "quality"])
+
+    assert result.exit_code != 0
+    assert "Invalid value" in result.output
+
+
+def test_root_help_keeps_ui_and_engine_commands() -> None:
+    result = CliRunner().invoke(main, ["--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "ui" in result.output
+    assert "engine" in result.output

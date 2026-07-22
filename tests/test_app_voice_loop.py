@@ -60,7 +60,6 @@ def make_config() -> ResolvedVoiceRuntimeConfig:
         profile_key="baseline",
         asr_model="phowhisper_base",
         llm_model="arcee_vylinh_3b_q4_k_m",
-        tts_model="valtec_multispeaker",
         tts_voice="NF",
         endpoint_silence_ms=700,
         adaptive_endpoint=False,
@@ -278,7 +277,9 @@ def test_run_voice_loop_can_wait_for_enter_in_manual_mode() -> None:
 def test_run_voice_loop_speaks_rejection_fallback_by_default() -> None:
     config = make_config()
     fallback = "Mình chưa nghe rõ, bạn nói lại nhé."
-    pipeline = FakePipeline([StreamingEvent(type="done", text=fallback, metadata={"rejected": True})])
+    pipeline = FakePipeline(
+        [StreamingEvent(type="done", text=fallback, metadata={"rejected": True})]
+    )
     tts = FakeTTS()
     player = FakeAudioSink()
 

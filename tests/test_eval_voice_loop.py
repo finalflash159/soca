@@ -105,20 +105,44 @@ def test_missing_sample_paths_reports_missing_audio(tmp_path: Path) -> None:
 
 def test_parse_profiles_defaults_and_dedupes() -> None:
     assert parse_profiles([], all_profiles=False) == ["baseline"]
-    assert parse_profiles(["baseline,edge", "edge"], all_profiles=False) == ["baseline", "edge"]
+    assert parse_profiles(["baseline,baseline"], all_profiles=False) == ["baseline"]
 
 
 def test_parse_profiles_can_select_all_profiles() -> None:
     profiles = parse_profiles([], all_profiles=True)
 
-    assert "baseline" in profiles
-    assert "quality" in profiles
-    assert "edge" in profiles
+    assert profiles == ["baseline"]
+
+
+@pytest.mark.parametrize("profile", ["quality", "edge"])
+def test_parse_profiles_rejects_removed_profiles(profile: str) -> None:
+    with pytest.raises(ValueError, match="Unknown profile"):
+        parse_profiles([profile], all_profiles=False)
 
 
 def test_parse_profiles_rejects_unknown_profile() -> None:
     with pytest.raises(ValueError, match="Unknown profile"):
         parse_profiles(["nope"], all_profiles=False)
+
+
+def test_parser_rejects_runtime_tts_model_override() -> None:
+    with pytest.raises(SystemExit):
+        eval_voice_loop.build_parser().parse_args(
+            ["--profile", "baseline", "--tts-model", "other_tts"]
+        )
+
+
+def test_parser_rejects_fixture_tts_model_override() -> None:
+    with pytest.raises(SystemExit):
+        eval_voice_loop.build_parser().parse_args(
+            ["--generate-fixtures", "--fixture-tts-model", "other_tts"]
+        )
+
+
+def test_parser_uses_headless_playback_by_default() -> None:
+    args = eval_voice_loop.build_parser().parse_args([])
+
+    assert args.no_playback is False
 
 
 def test_summarize_handles_empty_and_values() -> None:
@@ -149,7 +173,6 @@ def test_generate_audio_fixtures_uses_selected_tts(monkeypatch, tmp_path: Path) 
     rows = generate_audio_fixtures(
         [VoiceLoopPrompt("hello", "free_chat", "xin chào")],
         audio_dir=tmp_path,
-        tts_model="valtec_multispeaker",
         voice="NF",
     )
 
@@ -191,6 +214,11 @@ def test_run_profile_eval_with_fake_runtime(monkeypatch, tmp_path: Path) -> None
                 metadata={"ttfa_ms": 30.0},
             )
             yield StreamingEvent(
+                type="audio",
+                text="Chào bạn.",
+                metadata={"playback_latency_ms": 0.0},
+            )
+            yield StreamingEvent(
                 type="done",
                 text="Chào bạn.",
                 latency_ms=60.0,
@@ -216,7 +244,6 @@ def test_run_profile_eval_with_fake_runtime(monkeypatch, tmp_path: Path) -> None
     args = SimpleNamespace(
         asr_model=None,
         llm_model=None,
-        tts_model=None,
         voice=None,
         max_tokens=None,
         temperature=None,
@@ -228,6 +255,7 @@ def test_run_profile_eval_with_fake_runtime(monkeypatch, tmp_path: Path) -> None
         session_chars=1300,
         session_turns=6,
         turn_chars=500,
+        no_playback=False,
     )
 
     result = run_profile_eval(
@@ -237,7 +265,9 @@ def test_run_profile_eval_with_fake_runtime(monkeypatch, tmp_path: Path) -> None
     )
 
     assert result["status"] == "ok"
+    assert result["playback_sink"] == "NullAudioPlayer"
     assert result["ttfa_ms"]["median"] == pytest.approx(30.0)
+    assert result["tts_ready_ttfa_ms"]["median"] == pytest.approx(30.0)
     assert result["total_latency_ms"]["median"] == pytest.approx(60.0)
     assert result["route_counts"] == {"free_chat": 1}
     assert result["rows"][0]["transcript"] == "xin chào"
@@ -291,4 +321,6 @@ def test_write_outputs_creates_report_and_latest(tmp_path: Path) -> None:
     assert md_path.exists()
     assert run_paths.latest_json_path.exists()
     assert run_paths.latest_md_path.exists()
-    assert "SoCa E2E Voice Loop Benchmark" in md_path.read_text(encoding="utf-8")
+    report = md_path.read_text(encoding="utf-8")
+    assert "SoCa E2E Voice Loop Benchmark" in report
+    assert "Playback: `NullAudioPlayer`" in report

@@ -119,7 +119,7 @@ flowchart TD
 - `stop_event` allows immediate abort when `/stop` is issued or the TUI changes
   mode, instead of waiting for the recording window to end.
 
-## Building a Runtime for One Profile (`build_voice_runtime`)
+## Building the Baseline Runtime (`build_voice_runtime`)
 
 `build_voice_runtime(config)` returns a `VoiceRuntimeBundle` containing the VAD
 `detector`, `asr` (`RobustASR`), `llm`, `tts`, `assistant_runtime`, `pipeline`,
@@ -152,7 +152,7 @@ the same**. Only the presentation layer and loop control differ.
 
 ## Practical Latency Notes
 
-- valtec: RTF around 0.12; fast enough for interactive baseline use.
-- omnivoice: RTF above 1 on macOS CPU, roughly 4.7–6.5 s per chunk in current
-  measurements; better voice quality but slower, so it is used for quality/demo
-  profiles. See `BENCHMARKS.md`.
+- `baseline` is the only public runtime profile: PhoWhisper Small, Arcee-VyLinh, and Valtec `NF`.
+- `quality` and `edge` are retired and are rejected rather than silently aliased to `baseline`.
+- Phase 5/6 replace Valtec's implementation under the same stable key and record new latency in
+  `BENCHMARKS.md`.

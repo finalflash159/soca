@@ -24,10 +24,10 @@ def test_ui_default_launches_ink_app(monkeypatch) -> None:
     import soca.cli as cli
 
     monkeypatch.setattr(cli, "_launch_ink_ui", fake_launch)
-    result = CliRunner().invoke(main, ["ui", "voice", "quality", "--no-model"])
+    result = CliRunner().invoke(main, ["ui", "voice", "baseline", "--no-model"])
 
     assert result.exit_code == 0, result.output
-    assert calls == [{"mode": "voice", "profile": "quality", "no_model": True}]
+    assert calls == [{"mode": "voice", "profile": "baseline", "no_model": True}]
 
 
 def test_ui_bare_launches_ink_splash_without_mode(monkeypatch) -> None:

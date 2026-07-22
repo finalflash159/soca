@@ -30,7 +30,7 @@ flowchart LR
     Mic([🎙 Mic]) --> EP[VAD endpoint<br/>record_until_silence]
     EP --> ASR[RobustASR<br/>PhoWhisper ONNX]
     ASR --> RT[AssistantRuntime<br/>guardrails · tools · knowledge · memory · LLM]
-    RT --> TTS[TTS engine<br/>valtec / omnivoice / ...]
+    RT --> TTS[Valtec TTS engine]
     TTS --> Spk([🔊 Speaker])
     RT -. citations/trace .-> UI[(CLI / TUI)]
     ASR -. rejected .-> REP[Repair layer<br/>Vietnamese follow-up]

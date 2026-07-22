@@ -84,7 +84,6 @@ def make_config() -> ResolvedVoiceRuntimeConfig:
         profile_key="baseline",
         asr_model="phowhisper_base",
         llm_model="arcee_vylinh_3b_q4_k_m",
-        tts_model="valtec_multispeaker",
         tts_voice="NF",
         endpoint_silence_ms=700,
         adaptive_endpoint=False,
@@ -195,13 +194,12 @@ def test_voice_monitor_passive_silence_speaks_playful_call_out() -> None:
     assert repair.metadata["repair_action"] == "reprompt"
 
 
-def test_voice_monitor_reports_omnivoice_extra_hint_and_traceback() -> None:
+def test_voice_monitor_reports_runtime_error_and_traceback() -> None:
     config = ResolvedVoiceRuntimeConfig(
-        profile_key="quality",
+        profile_key="baseline",
         asr_model="phowhisper_small",
         llm_model="arcee_vylinh_3b_q4_k_m",
-        tts_model="omnivoice",
-        tts_voice="emgai_dangiu",
+        tts_voice="NF",
         endpoint_silence_ms=700,
         adaptive_endpoint=False,
         max_record_ms=10_000,
@@ -213,7 +211,7 @@ def test_voice_monitor_reports_omnivoice_extra_hint_and_traceback() -> None:
     )
 
     def failing_builder(_config: ResolvedVoiceRuntimeConfig) -> VoiceRuntimeBundle:
-        raise RuntimeError("OmniVoice runtime could not load omnivoice: bad value(s) in fds_to_keep")
+        raise RuntimeError("Valtec runtime failed to load weights")
 
     queue: Queue = Queue()
     controller = VoiceMonitorController(config, runtime_builder=failing_builder, warmup=False)
@@ -221,6 +219,5 @@ def test_voice_monitor_reports_omnivoice_extra_hint_and_traceback() -> None:
 
     events = _drain_voice_events(queue)
     error = [event for event in events if event.type == "error"][0]
-    assert "bad value(s) in fds_to_keep" in error.text
-    assert "--extra tts-omnivoice" in error.text
+    assert "Valtec runtime failed to load weights" in error.text
     assert "Traceback" in error.metadata["traceback"]

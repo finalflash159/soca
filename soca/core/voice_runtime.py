@@ -26,7 +26,7 @@ from soca.tools import (
     LocalTimeTool,
     ToolRuntime,
 )
-from soca.tts import TTS_MODEL_REGISTRY, create_tts_engine
+from soca.tts import VALTEC_TTS_CONFIG, create_tts_engine
 
 
 @dataclass(frozen=True)
@@ -34,7 +34,6 @@ class ResolvedVoiceRuntimeConfig:
     profile_key: str
     asr_model: str
     llm_model: str
-    tts_model: str
     tts_voice: str | None
     endpoint_silence_ms: int
     adaptive_endpoint: bool
@@ -66,9 +65,8 @@ class VoiceRuntimeBundle:
     knowledge_status: str
     turn_detector: SmartTurnDetector | None = None
     session_memory: SessionMemory | None = None
-    partial_interval_ms: int = 800     # partial cadence seed (handles device variance)
-    partial_enabled: bool = True       # False when the device is too slow for partials
-
+    partial_interval_ms: int = 800  # partial cadence seed (handles device variance)
+    partial_enabled: bool = True  # False when the device is too slow for partials
 
     @property
     def asr_guard_status(self) -> str:
@@ -88,7 +86,6 @@ def resolve_voice_runtime_config(
     profile_key: str,
     asr_model: str | None = None,
     llm_model: str | None = None,
-    tts_model: str | None = None,
     tts_voice: str | None = None,
     endpoint_silence_ms: int | None = None,
     adaptive_endpoint: bool | None = None,
@@ -107,11 +104,6 @@ def resolve_voice_runtime_config(
     llm_gpu_layers: int = -1,
 ) -> ResolvedVoiceRuntimeConfig:
     profile = get_voice_runtime_profile(profile_key)
-    resolved_tts_model = tts_model or profile.tts_model
-
-    if resolved_tts_model not in TTS_MODEL_REGISTRY:
-        valid = ", ".join(sorted(TTS_MODEL_REGISTRY))
-        raise ValueError(f"Unknown TTS model key: {resolved_tts_model}. Valid keys: {valid}")
 
     resolved_asr_model = asr_model or profile.asr_model
     if resolved_asr_model not in ASR_MODEL_REGISTRY:
@@ -123,26 +115,25 @@ def resolve_voice_runtime_config(
         valid = ", ".join(sorted(LLM_MODEL_REGISTRY))
         raise ValueError(f"Unknown LLM model key: {resolved_llm_model}. Valid keys: {valid}")
 
-    if tts_voice is not None:
-        resolved_tts_voice = tts_voice
-    elif resolved_tts_model == profile.tts_model:
-        resolved_tts_voice = profile.tts_voice or TTS_MODEL_REGISTRY[resolved_tts_model].default_voice
-    else:
-        resolved_tts_voice = TTS_MODEL_REGISTRY[resolved_tts_model].default_voice
+    resolved_tts_voice = tts_voice or profile.tts_voice or VALTEC_TTS_CONFIG.default_voice
+    if resolved_tts_voice not in VALTEC_TTS_CONFIG.voices:
+        valid = ", ".join(VALTEC_TTS_CONFIG.voices)
+        raise ValueError(f"Unknown Valtec voice: {resolved_tts_voice!r}. Valid voices: {valid}")
 
     return ResolvedVoiceRuntimeConfig(
         profile_key=profile_key,
         asr_model=resolved_asr_model,
         llm_model=resolved_llm_model,
-        tts_model=resolved_tts_model,
         tts_voice=resolved_tts_voice,
         endpoint_silence_ms=(
             endpoint_silence_ms if endpoint_silence_ms is not None else profile.endpoint_silence_ms
         ),
-        adaptive_endpoint=adaptive_endpoint if adaptive_endpoint is not None else profile.adaptive_endpoint,
-        max_record_ms=max_record_ms if max_record_ms is not None else profile.max_record_ms,
+        adaptive_endpoint=(
+            adaptive_endpoint if adaptive_endpoint is not None else profile.adaptive_endpoint
+        ),
+        max_record_ms=(max_record_ms if max_record_ms is not None else profile.max_record_ms),
         max_tokens=max_tokens if max_tokens is not None else profile.max_tokens,
-        temperature=temperature if temperature is not None else profile.temperature,
+        temperature=(temperature if temperature is not None else profile.temperature),
         top_p=top_p if top_p is not None else profile.top_p,
         vault=Path(vault or Path.home() / "KnowledgeVault").expanduser().resolve(),
         no_memory=no_memory,
@@ -242,7 +233,7 @@ def build_voice_runtime(
         ),
     )
 
-    tts = create_tts_engine(config.tts_model, voice=config.tts_voice)
+    tts = create_tts_engine(voice=config.tts_voice)
     pipeline = VoicePipeline(
         asr=asr,
         llm=llm,
@@ -298,12 +289,12 @@ def _warm_up_asr(bundle: VoiceRuntimeBundle, *, seconds: float) -> VoiceRuntimeW
     try:
         sample_rate = getattr(bundle.asr.asr, "SAMPLING_RATE", 16000)
         audio = np.zeros(max(int(sample_rate * seconds), 1), dtype=np.float32)
-        bundle.asr.asr.transcribe(audio, max_new_tokens=1)      # kernel warm
+        bundle.asr.asr.transcribe(audio, max_new_tokens=1)  # kernel warm
         # --- calibrate partial cadence: one REPRESENTATIVE decode (NOT max_new_tokens=1,
         #     since 1 token does not measure decoder cost) ---
         probe = (np.random.randn(sample_rate * 3) * 0.01).astype(np.float32)
         c0 = time.perf_counter()
-        bundle.asr.asr.transcribe(probe)                        # real decode
+        bundle.asr.asr.transcribe(probe)  # real decode
         per_call_ms = (time.perf_counter() - c0) * 1000
         interval, enabled = partial_interval_from_cost(per_call_ms, os.cpu_count())
         bundle.partial_interval_ms = interval
@@ -357,7 +348,7 @@ def _warm_up_tts(bundle: VoiceRuntimeBundle, *, text: str) -> VoiceRuntimeWarmup
             component="tts",
             ok=True,
             latency_ms=(time.perf_counter() - t0) * 1000,
-            detail=f"{bundle.config.tts_model}:{bundle.config.tts_voice}",
+            detail=f"{VALTEC_TTS_CONFIG.key}:{bundle.config.tts_voice}",
         )
     except Exception as exc:
         return VoiceRuntimeWarmupResult(
@@ -366,6 +357,7 @@ def _warm_up_tts(bundle: VoiceRuntimeBundle, *, text: str) -> VoiceRuntimeWarmup
             latency_ms=(time.perf_counter() - t0) * 1000,
             detail=str(exc),
         )
+
 
 def _warm_up_smart_turn(bundle: VoiceRuntimeBundle) -> VoiceRuntimeWarmupResult:
     t0 = time.perf_counter()

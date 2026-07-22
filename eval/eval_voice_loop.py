@@ -1,5 +1,3 @@
-"""Benchmark SoCa end-to-end voice-loop latency from audio input to first audio."""
-
 from __future__ import annotations
 
 import argparse
@@ -25,12 +23,13 @@ from eval.system_metrics import get_current_memory_mb
 from soca.core import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
     VOICE_RUNTIME_PROFILES,
+    AudioSink,
     NullAudioPlayer,
     ResolvedVoiceRuntimeConfig,
     build_voice_runtime,
     resolve_voice_runtime_config,
 )
-from soca.tts import TTS_MODEL_REGISTRY, TTSRuntimeUnavailableError, create_tts_engine
+from soca.tts import VALTEC_TTS_CONFIG, TTSRuntimeUnavailableError, create_tts_engine
 
 console = Console(width=180)
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -150,16 +149,11 @@ def generate_audio_fixtures(
     prompts: Sequence[VoiceLoopPrompt],
     *,
     audio_dir: Path,
-    tts_model: str,
     voice: str | None = None,
     overwrite: bool = False,
 ) -> list[dict[str, Any]]:
-    if tts_model not in TTS_MODEL_REGISTRY:
-        valid = ", ".join(sorted(TTS_MODEL_REGISTRY))
-        raise ValueError(f"Unknown fixture TTS model: {tts_model}. Valid keys: {valid}")
-
     audio_dir.mkdir(parents=True, exist_ok=True)
-    engine = create_tts_engine(tts_model, voice=voice)
+    engine = create_tts_engine(voice=voice)
     rows: list[dict[str, Any]] = []
     for prompt in prompts:
         audio_path = audio_dir / f"{prompt.prompt_id}.wav"
@@ -181,7 +175,7 @@ def generate_audio_fixtures(
                 "text": prompt.text,
                 "audio_path": str(audio_path),
                 "status": "generated",
-                "tts_model": tts_model,
+                "tts_model": VALTEC_TTS_CONFIG.key,
                 "voice": result.voice,
                 "sample_rate": result.sample_rate,
                 "audio_duration_ms": result.audio_duration_ms,
@@ -226,7 +220,12 @@ def sample_audio_duration_s(audio: np.ndarray, sample_rate: int = ASR_SAMPLE_RAT
     return len(audio) / sample_rate if sample_rate > 0 else 0.0
 
 
-def evaluate_sample(bundle: Any, sample: VoiceLoopSample) -> dict[str, Any]:
+def evaluate_sample(
+    bundle: Any,
+    sample: VoiceLoopSample,
+    *,
+    audio_sink: AudioSink,
+) -> dict[str, Any]:
     started = time.perf_counter()
     try:
         audio = load_audio(sample.audio_path)
@@ -256,20 +255,28 @@ def evaluate_sample(bundle: Any, sample: VoiceLoopSample) -> dict[str, Any]:
         "rejected": False,
         "repair_kind": "",
         "tts_chunks": 0,
-        "ttfa_ms": None,
+        "tts_ready_ttfa_ms": None,
+        "audible_ttfa_ms": None,
+        "synthesis_slack_ms": [],
+        "crossfade_fallback_count": 0,
+        "output_underflow_count": 0,
+        "peak_abs": 0.0,
         "total_latency_ms": None,
         "stage_latencies_ms": {},
         "errors": [],
     }
 
     try:
-        for event in bundle.pipeline.turn_streaming(audio, audio_sink=NullAudioPlayer()):
+        for event in bundle.pipeline.turn_streaming(audio, audio_sink=audio_sink):
+            metadata = event.metadata or {}
             if event.type == "asr":
                 row["transcript"] = event.text
-                row["asr_rejection_reason"] = (event.metadata or {}).get("rejection_reason", "")
+                row["asr_rejection_reason"] = metadata.get(
+                    "rejection_reason",
+                    "",
+                )
             elif event.type == "runtime":
                 row["response_text"] = event.text
-                metadata = event.metadata or {}
                 row["runtime_route"] = metadata.get("route", "")
                 row["runtime_blocked"] = bool(metadata.get("blocked", False))
                 row["used_tool"] = bool(metadata.get("used_tool", False))
@@ -277,28 +284,62 @@ def evaluate_sample(bundle: Any, sample: VoiceLoopSample) -> dict[str, Any]:
                 row["citations"] = metadata.get("citations", [])
             elif event.type == "tts":
                 row["tts_chunks"] += 1
-                metadata = event.metadata or {}
-                if row["ttfa_ms"] is None:
-                    row["ttfa_ms"] = metadata.get("ttfa_ms")
+                if row["tts_ready_ttfa_ms"] is None:
+                    row["tts_ready_ttfa_ms"] = metadata.get(
+                        "tts_ready_ttfa_ms",
+                        metadata.get("ttfa_ms"),
+                    )
                 if event.tts is not None:
                     row.setdefault("tts_audio_duration_ms", 0.0)
                     row["tts_audio_duration_ms"] += event.tts.audio_duration_ms
+            elif event.type == "audio":
+                if row["audible_ttfa_ms"] is None:
+                    row["audible_ttfa_ms"] = metadata.get("audible_ttfa_ms")
+                if metadata.get("synthesis_slack_ms") is not None:
+                    row["synthesis_slack_ms"].append(float(metadata["synthesis_slack_ms"]))
+                row["crossfade_fallback_count"] += int(
+                    metadata.get("crossfade_fallback") == "non_overlapping"
+                )
+                row["output_underflow_count"] = max(
+                    row["output_underflow_count"],
+                    int(metadata.get("output_underflow_count", 0)),
+                )
+                row["peak_abs"] = max(
+                    row["peak_abs"],
+                    float(metadata.get("peak_abs", 0.0)),
+                )
             elif event.type == "error":
                 row["errors"].append(event.text)
             elif event.type == "done":
-                metadata = event.metadata or {}
                 row["response_text"] = row["response_text"] or event.text
                 row["rejected"] = bool(metadata.get("rejected", False))
-                row["repair_kind"] = metadata.get("repair_kind", row["repair_kind"])
-                row["runtime_blocked"] = bool(metadata.get("runtime_blocked", row["runtime_blocked"]))
-                row["runtime_route"] = metadata.get("runtime_route", row["runtime_route"])
-                row["stage_latencies_ms"] = metadata.get("stage_latencies_ms", {})
+                row["repair_kind"] = metadata.get(
+                    "repair_kind",
+                    row["repair_kind"],
+                )
+                row["runtime_blocked"] = bool(
+                    metadata.get("runtime_blocked", row["runtime_blocked"])
+                )
+                row["runtime_route"] = metadata.get(
+                    "runtime_route",
+                    row["runtime_route"],
+                )
+                row["stage_latencies_ms"] = metadata.get(
+                    "stage_latencies_ms",
+                    {},
+                )
+                playback = metadata.get("playback", {})
+                row["output_underflow_count"] = max(
+                    row["output_underflow_count"],
+                    int(playback.get("output_underflow_count", 0)),
+                )
                 row["total_latency_ms"] = event.latency_ms
     except Exception as exc:
         row["status"] = "error"
         row["errors"].append(f"{type(exc).__name__}: {exc}")
-        row["total_latency_ms"] = (time.perf_counter() - started) * 1000
+        row["total_latency_ms"] = (time.perf_counter() - started) * 1000.0
 
+    row["ttfa_ms"] = row["audible_ttfa_ms"] or row["tts_ready_ttfa_ms"]
     if row["errors"] and row["status"] == "ok":
         row["status"] = "partial"
     return row
@@ -309,7 +350,7 @@ def runtime_config_to_dict(config: ResolvedVoiceRuntimeConfig) -> dict[str, Any]
         "profile": config.profile_key,
         "asr_model": config.asr_model,
         "llm_model": config.llm_model,
-        "tts_model": config.tts_model,
+        "tts_model": VALTEC_TTS_CONFIG.key,
         "tts_voice": config.tts_voice,
         "endpoint_silence_ms": config.endpoint_silence_ms,
         "max_record_ms": config.max_record_ms,
@@ -331,7 +372,6 @@ def run_profile_eval(
         profile_key=profile_key,
         asr_model=args.asr_model,
         llm_model=args.llm_model,
-        tts_model=args.tts_model,
         tts_voice=args.voice,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
@@ -357,10 +397,17 @@ def run_profile_eval(
     load_ms = (time.perf_counter() - load_started) * 1000
 
     peak_memory_mb = get_current_memory_mb()
-    rows = [
-        evaluate_sample(bundle, sample)
-        for sample in track(samples, description=f"Benchmarking voice loop {profile_key}...")
-    ]
+    audio_sink: AudioSink = NullAudioPlayer()
+    try:
+        rows = [
+            evaluate_sample(bundle, sample, audio_sink=audio_sink)
+            for sample in track(
+                samples,
+                description=f"Benchmarking voice loop {profile_key}...",
+            )
+        ]
+    finally:
+        audio_sink.stop()
     current_memory_mb = get_current_memory_mb()
     if current_memory_mb is not None:
         peak_memory_mb = max(peak_memory_mb or current_memory_mb, current_memory_mb)
@@ -370,6 +417,17 @@ def run_profile_eval(
         float(row["total_latency_ms"]) for row in ok_rows if row.get("total_latency_ms") is not None
     ]
     ttfa_values = [float(row["ttfa_ms"]) for row in ok_rows if row.get("ttfa_ms") is not None]
+    tts_ready_ttfa_values = [
+        float(row["tts_ready_ttfa_ms"])
+        for row in ok_rows
+        if row.get("tts_ready_ttfa_ms") is not None
+    ]
+    audible_ttfa_values = [
+        float(row["audible_ttfa_ms"]) for row in ok_rows if row.get("audible_ttfa_ms") is not None
+    ]
+    synthesis_slack_values = [
+        float(value) for row in ok_rows for value in row.get("synthesis_slack_ms", [])
+    ]
     asr_values = [
         float(row.get("stage_latencies_ms", {}).get("asr"))
         for row in ok_rows
@@ -401,6 +459,7 @@ def run_profile_eval(
         "profile": profile_key,
         "config": runtime_config_to_dict(config),
         "status": "ok" if len(ok_rows) == len(rows) else "partial",
+        "playback_sink": type(audio_sink).__name__,
         "load_ms": load_ms,
         "memory_status": bundle.memory_status,
         "knowledge_status": bundle.knowledge_status,
@@ -424,6 +483,14 @@ def run_profile_eval(
         "repair_kind_counts": dict(sorted(repair_kind_counts.items())),
         "total_latency_ms": summarize(total_latencies),
         "ttfa_ms": summarize(ttfa_values),
+        "tts_ready_ttfa_ms": summarize(tts_ready_ttfa_values),
+        "audible_ttfa_ms": summarize(audible_ttfa_values),
+        "synthesis_slack_ms": summarize(synthesis_slack_values),
+        "crossfade_fallback_count": sum(
+            int(row.get("crossfade_fallback_count", 0)) for row in ok_rows
+        ),
+        "output_underflow_count": sum(int(row.get("output_underflow_count", 0)) for row in ok_rows),
+        "peak_abs": max((float(row.get("peak_abs", 0.0)) for row in ok_rows), default=0.0),
         "asr_latency_ms": summarize(asr_values),
         "runtime_latency_ms": summarize(runtime_values),
         "first_tts_latency_ms": summarize(first_tts_values),
@@ -533,7 +600,9 @@ def write_outputs(
         "fixture_generation": list(fixture_generation),
         "results": list(results),
     }
-    run_paths.json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    run_paths.json_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     lines = [
         "# SoCa E2E Voice Loop Benchmark",
@@ -626,7 +695,9 @@ def parse_profiles(values: Sequence[str], all_profiles: bool) -> list[str]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run SoCa E2E voice-loop benchmark.")
-    parser.add_argument("--profile", action="append", default=[], help="Runtime profile. Can be comma-separated.")
+    parser.add_argument(
+        "--profile", action="append", default=[], help="Runtime profile. Can be comma-separated."
+    )
     parser.add_argument("--all-profiles", action="store_true", help="Run every runtime profile.")
     parser.add_argument("--audio-dir", type=Path, default=DEFAULT_AUDIO_DIR)
     parser.add_argument("--audio-file", action="append", default=[], type=Path)
@@ -642,19 +713,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--turn-chars", type=int, default=500)
     parser.add_argument("--asr-model", default=None)
     parser.add_argument("--llm-model", default=None)
-    parser.add_argument("--tts-model", default=None)
     parser.add_argument("--voice", default=None)
     parser.add_argument("--max-tokens", type=int, default=None)
     parser.add_argument("--temperature", type=float, default=None)
     parser.add_argument("--top-p", type=float, default=None)
-    parser.add_argument("--no-playback", action="store_true", help="Accepted for clarity; benchmark always uses NullAudioPlayer.")
+    parser.add_argument(
+        "--no-playback",
+        action="store_true",
+        help="Accepted for clarity; benchmark always uses NullAudioPlayer.",
+    )
     parser.add_argument(
         "--generate-fixtures",
         action="store_true",
         help="Generate missing fixture WAV files from --prompts before benchmarking.",
     )
     parser.add_argument("--overwrite-fixtures", action="store_true")
-    parser.add_argument("--fixture-tts-model", default="valtec_multispeaker")
     parser.add_argument("--fixture-voice", default=None)
     return parser
 
@@ -674,7 +747,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         fixture_generation = generate_audio_fixtures(
             prompts,
             audio_dir=args.audio_dir,
-            tts_model=args.fixture_tts_model,
             voice=args.fixture_voice,
             overwrite=args.overwrite_fixtures,
         )

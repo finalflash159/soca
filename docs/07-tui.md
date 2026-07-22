@@ -18,7 +18,7 @@ ui/ (Ink)  ── commands (stdin) ──▶  soca engine (Python)
 ```bash
 cd ui && npm install && npm run build   # một lần
 uv run soca ui                          # splash → ↵ chat · v voice · s status
-uv run soca ui voice quality            # vào thẳng voice mode
+uv run soca ui voice baseline           # vào thẳng voice mode
 ```
 
 Dev UI: `cd ui && npm run dev`. Override lệnh engine: env `SOCA_ENGINE_CMD`.

@@ -71,19 +71,10 @@ Thumbs.db
 zplan/
 claude_web/
 
-# Pinned lightweight voice config for the default OmniVoice persona.
+# Keep the TTS model root available for checksum-pinned Valtec artifacts.
 !models/
 models/*
 !models/tts/
 models/tts/*
-!models/tts/omnivoice/
-models/tts/omnivoice/*
-!models/tts/omnivoice/voices/
-models/tts/omnivoice/voices/*
-!models/tts/omnivoice/voices/emgai_dangiu/
-models/tts/omnivoice/voices/emgai_dangiu/*
-!models/tts/omnivoice/voices/emgai_dangiu/meta.json
-!models/tts/omnivoice/voices/emgai_dangiu/prompt.pt
-!models/tts/omnivoice/voices/emgai_dangiu/preview.wav
 ui/node_modules/
 ui/dist/

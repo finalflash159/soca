@@ -29,9 +29,7 @@ def test_voice_command_delegates_to_app_voice_loop(monkeypatch) -> None:
 
     # Stub the duplex sink so the CLI does not load the real models here.
     player_sentinel = object()
-    monkeypatch.setattr(
-        "soca.core.duplex_aec_sink.DuplexAecSink", lambda **kwargs: player_sentinel
-    )
+    monkeypatch.setattr("soca.core.duplex_aec_sink.DuplexAecSink", lambda **kwargs: player_sentinel)
     monkeypatch.setattr("soca.cli.run_voice_loop", fake_run_voice_loop)
 
     result = CliRunner().invoke(
@@ -39,11 +37,9 @@ def test_voice_command_delegates_to_app_voice_loop(monkeypatch) -> None:
         [
             "voice",
             "--profile",
-            "quality",
+            "baseline",
             "--asr-model",
             "phowhisper_base",
-            "--tts-model",
-            "valtec_multispeaker",
             "--voice",
             "SF",
             "--max-tokens",
@@ -63,10 +59,10 @@ def test_voice_command_delegates_to_app_voice_loop(monkeypatch) -> None:
     assert captured["player"] is player_sentinel  # console barge-in wired via DuplexAecSink
 
     config = captured["config"]
-    assert config.profile_key == "quality"
+    assert config.profile_key == "baseline"
     assert config.asr_model == "phowhisper_base"
     assert config.llm_model == "arcee_vylinh_3b_q4_k_m"
-    assert config.tts_model == "valtec_multispeaker"
+    assert not hasattr(config, "tts_model")
     assert config.tts_voice == "SF"
     assert config.max_tokens == 96
     assert config.no_memory is True
@@ -92,10 +88,10 @@ def test_voice_command_accepts_quick_profile_argument(monkeypatch) -> None:
     monkeypatch.setattr("soca.core.duplex_aec_sink.DuplexAecSink", lambda **kwargs: object())
     monkeypatch.setattr("soca.cli.run_voice_loop", fake_run_voice_loop)
 
-    result = CliRunner().invoke(main, ["voice", "quality", "--no-warmup"])
+    result = CliRunner().invoke(main, ["voice", "baseline", "--no-warmup"])
 
     assert result.exit_code == 0, result.output
-    assert captured["config"].profile_key == "quality"
+    assert captured["config"].profile_key == "baseline"
     assert captured["warmup"] is False
 
 
@@ -105,7 +101,9 @@ def test_voice_command_shows_help() -> None:
     assert result.exit_code == 0
     assert "Run the interactive SoCa microphone voice loop" in result.output
     assert "Quick form: soca voice [profile]" in result.output
-    assert "soca voice quality" in result.output
+    assert "soca voice baseline" in result.output
+    assert "soca voice quality" not in result.output
+    assert "soca voice edge" not in result.output
     assert "--profile" not in result.output
     assert "--tts-model" not in result.output
     assert "--press-enter-to-record" in result.output

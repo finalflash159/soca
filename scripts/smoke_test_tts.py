@@ -1,4 +1,4 @@
-"""Smoke test one local TTS engine and optionally write WAV files."""
+"""Smoke test Valtec TTS and optionally write WAV files."""
 
 from __future__ import annotations
 
@@ -12,8 +12,7 @@ from rich.table import Table
 
 from soca.core.audio_out import SoundDevicePlayer
 from soca.tts import (
-    DEFAULT_TTS_MODEL_KEY,
-    TTS_MODEL_REGISTRY,
+    VALTEC_TTS_CONFIG,
     TTSRuntimeUnavailableError,
     create_tts_engine,
 )
@@ -54,15 +53,16 @@ def select_voices(
     available_voices: Sequence[str],
     requested_voices: Sequence[str],
     max_voices: int | None,
-    default_voices: Sequence[str] | None = None,
 ) -> list[str]:
-    selected_voices = list(requested_voices or default_voices or available_voices)
+    selected_voices = list(requested_voices or available_voices)
     if max_voices is not None:
         selected_voices = selected_voices[:max_voices]
 
     unknown_voices = sorted(set(selected_voices) - set(available_voices))
     if unknown_voices:
-        raise ValueError(f"Unknown voice(s): {unknown_voices}. Available voices: {available_voices}")
+        raise ValueError(
+            f"Unknown voice(s): {unknown_voices}. Available voices: {available_voices}"
+        )
     return selected_voices
 
 
@@ -102,20 +102,14 @@ def build_voice_jobs(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run a quick SoCa TTS smoke test.")
-    parser.add_argument(
-        "--model",
-        default=DEFAULT_TTS_MODEL_KEY,
-        choices=sorted(TTS_MODEL_REGISTRY),
-        help="TTS registry key to load.",
-    )
+    parser = argparse.ArgumentParser(description="Run a quick SoCa Valtec TTS smoke test.")
     parser.add_argument(
         "--voice",
         action="append",
         default=[],
         help=(
             "Voice/speaker id where supported. Can be passed multiple times. "
-            "Defaults to every voice exposed by the engine."
+            "Defaults to every Valtec voice."
         ),
     )
     parser.add_argument(
@@ -140,7 +134,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-voices",
         type=int,
         default=None,
-        help="Limit how many voices to test. Useful for Piper's large speaker list.",
+        help="Limit how many Valtec voices to test.",
     )
     parser.add_argument(
         "--sentences-per-voice",
@@ -154,19 +148,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--split-sentences",
         action="store_true",
-        help=(
-            "Synthesize each sentence separately. Default is one clip per voice "
-            "so zero-shot voice-design models keep a more stable timbre."
-        ),
+        help=("Synthesize each sentence separately. Default is one clip per voice."),
     )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--no-write", action="store_true", help="Do not write WAV files.")
-    parser.add_argument("--play", action="store_true", help="Play synthesized audio through speakers.")
+    parser.add_argument(
+        "--play", action="store_true", help="Play synthesized audio through speakers."
+    )
     parser.add_argument(
         "--output-sample-rate",
         type=int,
         default=None,
-        help="Optional playback sample rate. Defaults to each model's sample rate.",
+        help="Optional playback sample rate. Defaults to Valtec's sample rate.",
     )
     return parser
 
@@ -174,20 +167,18 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    console.print(f"[bold]Loading TTS:[/bold] {args.model}")
+    console.print(f"[bold]Loading TTS:[/bold] {VALTEC_TTS_CONFIG.key}")
     try:
-        engine = create_tts_engine(args.model, voice=args.voice[0] if args.voice else None)
+        engine = create_tts_engine(voice=args.voice[0] if args.voice else None)
     except TTSRuntimeUnavailableError as exc:
         console.print(f"[yellow]Runtime unavailable:[/yellow] {exc}")
         return 2
 
     available_voices = engine.list_voices()
-    default_voices = TTS_MODEL_REGISTRY[args.model].smoke_test_voices
     selected_voices = select_voices(
         available_voices,
         args.voice,
         args.max_voices,
-        default_voices=default_voices,
     )
     sentences_per_voice = len(
         build_voice_texts(
@@ -218,7 +209,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.output_dir.mkdir(parents=True, exist_ok=True)
     player = SoundDevicePlayer(output_sample_rate=args.output_sample_rate) if args.play else None
 
-    table = Table(title=f"TTS Smoke Test — {args.model}", show_lines=True)
+    table = Table(title=f"TTS Smoke Test - {VALTEC_TTS_CONFIG.key}", show_lines=True)
     table.add_column("Text", style="cyan", width=72, overflow="fold")
     table.add_column("Voice", justify="right")
     table.add_column("sr", justify="right")

@@ -28,6 +28,7 @@ from soca.core.voice_runtime import (
     build_voice_runtime,
     warm_up_voice_runtime,
 )
+from soca.tts import VALTEC_TTS_CONFIG
 
 InputFn = Callable[[str], str]
 RuntimeBuilder = Callable[[ResolvedVoiceRuntimeConfig], VoiceRuntimeBundle]
@@ -79,7 +80,7 @@ def run_voice_loop(
         profile_key=config.profile_key,
         asr_model=config.asr_model,
         llm_model=config.llm_model,
-        tts_model=config.tts_model,
+        tts_engine=VALTEC_TTS_CONFIG.key,
         voice=config.tts_voice,
         memory_status=bundle.memory_status,
         knowledge_status=bundle.knowledge_status,
@@ -201,9 +202,8 @@ def _turn_streaming(
         signature = inspect.signature(pipeline.turn_streaming)
     except (TypeError, ValueError):
         signature = None
-    supports_extra_kwargs = (
-        signature is not None
-        and any(param.kind is inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values())
+    supports_extra_kwargs = signature is not None and any(
+        param.kind is inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()
     )
     if signature is not None and (
         "speak_rejections" in signature.parameters or supports_extra_kwargs

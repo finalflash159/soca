@@ -96,14 +96,21 @@ def test_chat_reuses_one_runtime_across_multiple_turns(monkeypatch, tmp_path: Pa
     assert len(FakeChatLLM.instances[0].calls) == 2
 
 
-def test_chat_profile_override_controls_default_llm(monkeypatch, tmp_path: Path) -> None:
+def test_chat_llm_override_controls_runtime_model(monkeypatch, tmp_path: Path) -> None:
     write_vault(tmp_path)
     FakeChatLLM.instances.clear()
     monkeypatch.setattr("soca.app.text_runtime.LocalLlamaCppLLM", FakeChatLLM)
 
     result = CliRunner().invoke(
         main,
-        ["chat", "--profile", "edge", "--vault", str(tmp_path), "--no-memory"],
+        [
+            "chat",
+            "--llm-model",
+            "qwen3_0_6b_q8_0",
+            "--vault",
+            str(tmp_path),
+            "--no-memory",
+        ],
         input="xin chào\n/exit\n",
     )
 

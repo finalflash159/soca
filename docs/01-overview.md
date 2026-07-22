@@ -92,7 +92,7 @@ be tested with fake runtimes.
 
 ## Current Status
 
-- ✅ Local voice loop runs (`soca voice --profile baseline`).
+- ✅ Local voice loop runs (`soca voice`).
 - ✅ RobustASR: VAD, de-loop, confidence guard, BoH, hallucination heuristics.
 - ✅ ASR/LLM/TTS registries, profiles, and resolved runtime config.
 - ✅ AssistantRuntime: multi-stage guardrails, tool routing, knowledge+memory,
