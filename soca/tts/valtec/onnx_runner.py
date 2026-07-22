@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import onnxruntime as ort
 
 from soca.tts.base import TTSResult
 from soca.tts.config import VALTEC_TTS_CONFIG
@@ -28,6 +29,8 @@ class ValtecOnnxTTS:
         frontend: ValtecFrontend,
         seed: int | None = None,
         max_audio_seconds: float = 60.0,
+        noise_scale: float | None = None,
+        length_scale: float | None = None,
     ) -> None:
         self.voice = voice or VALTEC_TTS_CONFIG.default_voice
         self.artifact_root = artifact_root
@@ -38,7 +41,13 @@ class ValtecOnnxTTS:
         self._rng = np.random.default_rng(seed)
         if max_audio_seconds <= 0:
             raise ValueError("max_audio_seconds must be positive")
+        if noise_scale is not None and noise_scale < 0:
+            raise ValueError("noise_scale must not be negative")
+        if length_scale is not None and length_scale <= 0:
+            raise ValueError("length_scale must be positive")
         self._max_audio_seconds = max_audio_seconds
+        self._noise_scale_override = noise_scale
+        self._length_scale_override = length_scale
 
         self._sessions: dict[str, Any] = {}
         self._sample_rate = 24000
@@ -54,8 +63,6 @@ class ValtecOnnxTTS:
         if self._sessions:
             return
 
-        import onnxruntime as ort
-
         artifacts = resolve_valtec_onnx_artifacts(
             self.artifact_root,
             variant=self.artifact_variant,
@@ -64,6 +71,16 @@ class ValtecOnnxTTS:
         self._artifacts = artifacts
         self._sample_rate = artifacts.sample_rate
         self._hop_length = artifacts.hop_length
+        self._noise_scale = (
+            artifacts.noise_scale
+            if self._noise_scale_override is None
+            else self._noise_scale_override
+        )
+        self._length_scale = (
+            artifacts.length_scale
+            if self._length_scale_override is None
+            else self._length_scale_override
+        )
         self._noise_scale = artifacts.noise_scale
         self._length_scale = artifacts.length_scale
         self._speaker_map = artifacts.voice_map

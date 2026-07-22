@@ -74,3 +74,6 @@ packages = ["soca"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+markers = [
+    "real_model: tests requiring downloaded model artifacts and real inference",
+]
