@@ -1,7 +1,10 @@
 {
   "schema_version": 1,
-  "generated_from": "external/valtec-tts/deployments/web/vietnamese_g2p.js",
-  "source_sha256": "2522b86019229b13e69dc9edadc93b36a9634dd6985dcca76fa2c6a645cf8618",
+  "generated_from": "https://raw.githubusercontent.com/tronghieuit/valtec-tts/a5e77a138960c1101c022a61614d6ee72aeccadc/deployments/web/vietnamese_g2p.js",
+  "source_repository": "https://github.com/tronghieuit/valtec-tts",
+  "source_revision": "a5e77a138960c1101c022a61614d6ee72aeccadc",
+  "source_path": "deployments/web/vietnamese_g2p.js",
+  "source_sha256": "b568cc804e1f9d03a242cff869a71bcab2e662cbdd020190793c6eb3e861e63b",
   "tables": {
     "codas": {
       "c": "k",

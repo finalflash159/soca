@@ -11,7 +11,7 @@ from soca.tts.valtec.normalizer import ValtecTextNormalizer, number_to_words
     ("raw", "expected_contains"),
     [
         ("Giá là 100.000đ", "một trăm nghìn đồng"),
-        ("Giá là 13.800,25 USD", "mười ba nghìn tám trăm phẩy hai năm đô la"),
+        ("Giá là 13.800,25 USD", "mười ba nghìn, tám trăm phẩy hai năm đô la"),
         ("Họp lúc 14:30", "mười bốn giờ ba mươi phút"),
         ("Họp lúc 15h30", "mười lăm giờ ba mươi phút"),
         ("Khoảng 2 giờ 20 phút", "hai giờ hai mươi phút"),
@@ -47,10 +47,48 @@ def test_invalid_date_is_not_presented_as_valid_date(raw):
     assert "tháng" not in result
 
 
-def test_email_and_url_are_removed_before_symbol_expansion():
-    result = ValtecTextNormalizer().normalize("Gửi a@example.com hoặc https://example.com nhé")
-    assert "example" not in result
-    assert "a còng" not in result
+def test_email_is_read_with_a_cong_and_cham():
+    result = ValtecTextNormalizer().normalize("Gửi anh@example.com nhé")
+    assert "anh a còng example chấm com" in result
+    assert "@" not in result
+
+
+def test_url_reads_domain_and_drops_scheme_path_and_query():
+    result = ValtecTextNormalizer().normalize("Xem https://example.com/docs?q=1 nhé")
+    assert "example chấm com" in result
+    for leftover in ("https", "://", "/docs", "?q"):
+        assert leftover not in result
+
+
+def test_www_url_reads_domain_without_www_prefix():
+    result = ValtecTextNormalizer().normalize("Vào www.example.com nhé")
+    assert "example chấm com" in result
+    assert "www" not in result
+
+
+def test_web_is_respelled_to_pronounceable_vep():
+    assert "trang vép" in ValtecTextNormalizer().normalize("Xem trang web nhé")
+
+
+def test_numeric_linh_is_rewritten_to_le_and_scale_words_get_rests():
+    normalizer = ValtecTextNormalizer()
+    assert (
+        normalizer.normalize("một nghìn không trăm linh năm")
+        == "một nghìn, không trăm, lẻ năm"
+    )
+    assert normalizer.normalize("một trăm linh hai") == "một trăm, lẻ hai"
+    assert normalizer.normalize("một trăm hai mươi ba") == "một trăm, hai mươi ba"
+
+
+def test_scale_word_rest_skips_non_number_continuations():
+    normalizer = ValtecTextNormalizer()
+    assert normalizer.normalize("một trăm nghìn đồng") == "một trăm nghìn đồng"
+    assert normalizer.normalize("tám mươi lăm phần trăm") == "tám mươi lăm phần trăm"
+
+
+def test_linh_outside_numbers_is_untouched():
+    normalizer = ValtecTextNormalizer()
+    assert normalizer.normalize("Chị Linh rất linh hoạt") == "Chị Linh rất linh hoạt"
 
 
 @pytest.mark.parametrize(

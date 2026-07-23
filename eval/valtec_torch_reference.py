@@ -35,6 +35,9 @@ def synthesize_torch_reference(
 ) -> TorchReferenceResult:
     if not trust_checkpoint:
         raise ValueError("Torch reference requires explicit trust_checkpoint=True")
+    checkpoint = checkpoint.expanduser().resolve()
+    config = config.expanduser().resolve()
+    source_root = source_root.expanduser().resolve()
     for path in (checkpoint, config, source_root / "src", WORKER):
         if not path.exists():
             raise FileNotFoundError(f"Missing Valtec Torch reference input: {path}")

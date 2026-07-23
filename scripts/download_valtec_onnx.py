@@ -69,7 +69,7 @@ def main() -> None:
                 },
                 "runtime_defaults": {
                     "sample_rate": 24000,
-                    "hop_length": 256,
+                    "hop_length": 512,
                     "noise_scale": 0.667,
                     "length_scale": 1.0,
                     "tone_offset_vi": 16,

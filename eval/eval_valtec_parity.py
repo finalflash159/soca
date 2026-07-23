@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import hashlib
 import json
 from dataclasses import asdict, dataclass
@@ -73,6 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--artifact-root", type=Path, required=True)
     parser.add_argument("--variant", default=None)
     parser.add_argument("--allow-reference", action="store_true")
+    parser.add_argument("--allow-candidate", action="store_true")
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--trust-checkpoint", action="store_true")
@@ -90,6 +90,7 @@ def main() -> int:
         args.artifact_root,
         variant=args.variant,
         allow_reference=args.allow_reference,
+        allow_candidate=args.allow_candidate,
     )
     frontend = ValtecVietnameseFrontend.from_artifacts(artifacts)
     model_inputs = frontend.prepare(args.text)
@@ -105,10 +106,14 @@ def main() -> int:
         artifact_root=args.artifact_root,
         artifact_variant=args.variant,
         allow_reference=args.allow_reference,
+        allow_candidate=args.allow_candidate,
         frontend=frontend,
         noise_scale=0.0,
         length_scale=1.0,
         seed=0,
+        # The Torch reference renders the full text in one pass, so the ONNX
+        # side must skip sentence chunking for a like-for-like comparison.
+        sentence_chunking=False,
     )
     onnx_result = onnx_engine.synthesize(args.text, voice=args.voice)
     metrics = compare_audio(

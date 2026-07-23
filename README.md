@@ -85,8 +85,8 @@ auto-writes long-term memory, and vault contents are not committed.
 A single public runtime profile keeps the product path deterministic. Its name is `baseline`, and
 TTS is always Valtec.
 
-| Profile | ASR | LLM | TTS / voice | Mục đích |
-|---|---|---|---|---|
+| Profile    | ASR              | LLM             | TTS / voice | Mục đích                  |
+| ---------- | ---------------- | --------------- | ----------- | ------------------------- |
 | `baseline` | phowhisper_small | arcee_vylinh_3b | valtec / NF | Runtime mặc định duy nhất |
 
 ```bash

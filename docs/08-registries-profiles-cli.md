@@ -18,11 +18,11 @@ flowchart LR
 
 ## Registries: Metadata Only
 
-| Registry | File              | Example Keys                                                                                                                                                                    |
-| -------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ASR      | `asr/registry.py` | `phowhisper_tiny` · `phowhisper_base` · `phowhisper_small` · `phowhisper_medium`                                                                                                |
-| LLM      | `llm/registry.py` | `phogpt_4b_q4_k_m` · `arcee_vylinh_3b_q4_k_m` · `qwen3_0_6b_q8_0` · `qwen3_4b_q4_k_m` · `vinallama_*` · `dataops_*` · `bkai_llama2_*`                                           |
-| TTS      | `tts/config.py` | một cấu hình cố định `VALTEC_TTS_CONFIG` (`valtec_multispeaker`) |
+| Registry | File              | Example Keys                                                                                                                          |
+| -------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| ASR      | `asr/registry.py` | `phowhisper_tiny` · `phowhisper_base` · `phowhisper_small` · `phowhisper_medium`                                                      |
+| LLM      | `llm/registry.py` | `phogpt_4b_q4_k_m` · `arcee_vylinh_3b_q4_k_m` · `qwen3_0_6b_q8_0` · `qwen3_4b_q4_k_m` · `vinallama_*` · `dataops_*` · `bkai_llama2_*` |
+| TTS      | `tts/config.py`   | một cấu hình cố định `VALTEC_TTS_CONFIG` (`valtec_multispeaker`)                                                                      |
 
 Each entry describes local paths, runtime role, prompt style, license notes, and related metadata.
 Registries are metadata only; model weights load when a runtime is built.
@@ -33,8 +33,8 @@ Registries are metadata only; model weights load when a runtime is built.
 such as `max_tokens` and `temperature`. **Default = `baseline`**
 (`DEFAULT_VOICE_RUNTIME_PROFILE_KEY`).
 
-| Profile | ASR | LLM | TTS / voice | Mục đích |
-|---|---|---|---|---|
+| Profile    | ASR              | LLM             | TTS / voice              | Mục đích                  |
+| ---------- | ---------------- | --------------- | ------------------------ | ------------------------- |
 | `baseline` | phowhisper_small | arcee_vylinh_3b | valtec_multispeaker / NF | Runtime mặc định duy nhất |
 
 `validate_voice_runtime_profiles()` checks the singleton profile against its registries and enforces
@@ -74,12 +74,12 @@ flowchart TD
 
 Install only what you need so the environment stays manageable:
 
-| Extra | Purpose |
-|---|---|
-| `dev` | pytest, ruff, jupyter |
-| `eval` | jiwer (WER), datasets, matplotlib |
-| `llm` | llama-cpp-python, Metal build when needed |
-| `tts` | Valtec dependencies: vinorm, viphoneme, underthesea, torchaudio |
+| Extra  | Purpose                                                         |
+| ------ | --------------------------------------------------------------- |
+| `dev`  | pytest, ruff, jupyter                                           |
+| `eval` | jiwer (WER), datasets, matplotlib                               |
+| `llm`  | llama-cpp-python, Metal build when needed                       |
+| `tts`  | Valtec dependencies: vinorm, viphoneme, underthesea, torchaudio |
 
 Examples:
 

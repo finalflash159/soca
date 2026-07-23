@@ -11,6 +11,12 @@ class ValtecModelInputs:
     language_ids: tuple[int, ...]
     backend: str
     unknown_phoneme_count: int = 0
+    # Phones produced by English IPA or letter spelling; the runtime stretches
+    # exactly these phones so foreign words stay intelligible without slowing
+    # the surrounding Vietnamese.
+    foreign_phone_count: int = 0
+    # 0/1 per position in phone_ids (empty tuple = no foreign phones).
+    foreign_flags: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         lengths = {len(self.phone_ids), len(self.tone_ids), len(self.language_ids)}
@@ -20,6 +26,10 @@ class ValtecModelInputs:
             raise ValueError("Valtec phone/tone/language sequences must have equal length")
         if self.unknown_phoneme_count < 0:
             raise ValueError("unknown_phoneme_count must not be negative")
+        if self.foreign_phone_count < 0:
+            raise ValueError("foreign_phone_count must not be negative")
+        if self.foreign_flags and len(self.foreign_flags) != len(self.phone_ids):
+            raise ValueError("foreign_flags must align with phone_ids")
 
 
 class ValtecFrontend(Protocol):

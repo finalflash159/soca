@@ -238,10 +238,47 @@ def _convert_phone_numbers(text: str) -> str:
     return pattern.sub(replace, text)
 
 
+SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?…])\s+")
+
+
+def split_sentences(text: str) -> tuple[str, ...]:
+    """Split text on sentence-final punctuation, dropping empty chunks."""
+    chunks = tuple(chunk.strip() for chunk in SENTENCE_BOUNDARY.split(text))
+    filtered = tuple(chunk for chunk in chunks if chunk)
+    return filtered or (text.strip(),)
+
+
+WWW_PREFIX = re.compile(r"^www\.", re.IGNORECASE)
+
+
+def _speak_dots(raw: str) -> str:
+    return " chấm ".join(part for part in raw.split(".") if part)
+
+
+def _speak_url(match: re.Match[str]) -> str:
+    domain = WWW_PREFIX.sub("", match.group(1))
+    return f" {_speak_dots(domain)} "
+
+
+def _speak_emails_and_urls(text: str) -> str:
+    """Read emails/URLs aloud instead of deleting them like upstream does."""
+    text = re.sub(
+        r"(?:https?://|www\.)([^\s/?#]+)[^\s]*",
+        _speak_url,
+        text,
+        flags=re.IGNORECASE,
+    )
+    return re.sub(
+        r"\b([\w.+-]+)@([\w-]+(?:\.[\w-]+)+)",
+        lambda match: f"{_speak_dots(match.group(1))} a còng {_speak_dots(match.group(2))}",
+        text,
+    )
+
+
 class ValtecTextNormalizer:
     def normalize(self, text: str) -> str:
         normalized = unicodedata.normalize("NFC", text)
-        normalized = re.sub(r"https?://\S+|www\.\S+|\S+@\S+\.\S+", " ", normalized)
+        normalized = _speak_emails_and_urls(normalized)
         normalized = normalized.translate(
             str.maketrans({"&": " và ", "@": " a còng ", "#": " thăng ", "_": " "})
         )
@@ -272,6 +309,17 @@ class ValtecTextNormalizer:
             normalized,
         )
         normalized = re.sub(r"\bwi-?fi\b", "oai phai", normalized, flags=re.IGNORECASE)
+        # "vép" is the Vietnamese rendering the Valtec checkpoint can actually
+        # pronounce; the English IPA [wɛb] gets swallowed (no final /b/ in VN).
+        normalized = re.sub(r"\bweb\b", "vép", normalized, flags=re.IGNORECASE)
+        # The checkpoint garbles "linh" in numbers but reads the equivalent
+        # "lẻ" wording cleanly; both mean the same connector.
+        normalized = re.sub(
+            r"\b(trăm|nghìn|ngàn|triệu|tỷ)\s+linh\s+"
+            r"(?=(?:một|hai|ba|bốn|năm|sáu|bảy|tám|chín|mười)\b)",
+            r"\1 lẻ ",
+            normalized,
+        )
         normalized = _convert_phone_numbers(normalized)
         normalized = re.sub(
             r"(?<![\w.,])-?\d+(?:[.,]\d+)+(?![\w.,])",
@@ -285,6 +333,15 @@ class ValtecTextNormalizer:
                 if len(match.group(0)) > 1 and match.group(0).startswith("0")
                 else number_to_words(match.group(0))
             ),
+            normalized,
+        )
+        # Compound numbers slur on the Valtec checkpoint; a short rest after
+        # each scale word makes them read like well-paced dictation (the same
+        # reason digit-by-digit phone numbers already sound clean).
+        normalized = re.sub(
+            r"\b(trăm|nghìn|ngàn|triệu|tỷ)\s+"
+            r"(?=(?:không|một|hai|ba|bốn|năm|sáu|bảy|tám|chín|mười|lẻ|mốt|tư|lăm)\b)",
+            r"\1, ",
             normalized,
         )
         return re.sub(r"\s+", " ", normalized).strip()

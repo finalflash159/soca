@@ -48,6 +48,7 @@ def resolve_valtec_onnx_artifacts(
     *,
     variant: str | None = None,
     allow_reference: bool = False,
+    allow_candidate: bool = False,
     verify_checksums: bool = False,
 ) -> ValtecOnnxArtifacts:
     root = root.resolve()
@@ -67,7 +68,14 @@ def resolve_valtec_onnx_artifacts(
     role = str(payload.get("role", ""))
     if role == "reference":
         if not allow_reference:
-            raise ValueError("Reference Valtec artifact is not allowed in production runtime")
+            raise ValueError(
+                "Reference Valtec artifact is not allowed in production runtime"
+            )
+    elif role == "candidate":
+        if not allow_candidate:
+            raise ValueError(
+                "Candidate Valtec artifact is not allowed in production runtime"
+            )
     elif role != "release":
         raise ValueError(f"Unsupported Valtec artifact role: {role!r}")
 

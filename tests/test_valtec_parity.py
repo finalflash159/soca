@@ -1,6 +1,15 @@
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
 import numpy as np
+import pytest
+import soundfile as sf
 
 from eval.eval_valtec_parity import compare_audio
+from eval.valtec_torch_reference import synthesize_torch_reference
+from soca.tts.valtec.frontend import ValtecModelInputs
 
 
 def test_exact_audio_has_perfect_parity():
@@ -42,3 +51,40 @@ def test_sample_rate_mismatch_is_explicit():
         same_checkpoint=True,
     )
     assert not metrics.sample_rate_match
+
+
+def test_torch_worker_receives_absolute_paths_before_cwd_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    Path("G.pth").write_bytes(b"checkpoint")
+    Path("config.json").write_text("{}", encoding="utf-8")
+    (Path("external") / "src").mkdir(parents=True)
+
+    def fake_run(command, *, cwd, env, check, capture_output, text):
+        del env, check, capture_output, text
+        assert Path(cwd).is_absolute()
+        for flag in ("--checkpoint", "--config", "--inputs", "--output"):
+            assert Path(command[command.index(flag) + 1]).is_absolute()
+        output = Path(command[command.index("--output") + 1])
+        sf.write(output, np.zeros(512, dtype=np.float32), 24000)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("eval.valtec_torch_reference.subprocess.run", fake_run)
+    result = synthesize_torch_reference(
+        ValtecModelInputs(
+            phone_ids=(1, 2),
+            tone_ids=(16, 16),
+            language_ids=(7, 7),
+            backend="test",
+        ),
+        speaker_id=0,
+        checkpoint=Path("G.pth"),
+        config=Path("config.json"),
+        trust_checkpoint=True,
+        source_root=Path("external"),
+    )
+
+    assert result.sample_rate == 24000
+    assert result.audio.shape == (512,)
