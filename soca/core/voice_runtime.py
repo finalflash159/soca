@@ -99,6 +99,7 @@ def resolve_voice_runtime_config(
     max_tokens: int | None = None,
     temperature: float | None = None,
     top_p: float | None = None,
+    first_clause_enabled: bool | None = None,
     vault: str | Path | None = None,
     no_memory: bool = False,
     memory_chars: int = 2200,
@@ -141,7 +142,11 @@ def resolve_voice_runtime_config(
         max_tokens=max_tokens if max_tokens is not None else profile.max_tokens,
         temperature=(temperature if temperature is not None else profile.temperature),
         top_p=top_p if top_p is not None else profile.top_p,
-        first_clause_enabled=profile.first_clause_enabled,
+        first_clause_enabled=(
+            first_clause_enabled
+            if first_clause_enabled is not None
+            else profile.first_clause_enabled
+        ),
         first_clause_min_chars=profile.first_clause_min_chars,
         first_clause_min_words=profile.first_clause_min_words,
         first_clause_max_scan_chars=profile.first_clause_max_scan_chars,
