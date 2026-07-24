@@ -50,7 +50,7 @@ SoCa uses **Python 3.11** and **`uv`**.
 
 ```bash
 # 1) Environment
-uv sync --extra dev --extra eval --extra tts
+uv sync --extra dev --extra eval
 # Optional: rebuild llama-cpp-python with Apple Metal
 CMAKE_ARGS="-DGGML_METAL=on" FORCE_CMAKE=1 \
   uv pip install --force-reinstall --no-cache-dir llama-cpp-python
@@ -128,7 +128,7 @@ soca/
                profiles, streaming, endpointing, metrics, usage
   asr/         PhoWhisper ONNX, VAD, RobustASR (de-loop, BoH, heuristics)
   llm/         llama.cpp runner, prompt styles, registry, memory wrapper
-  tts/         Valtec Vietnamese TTS runtime, registry, and factory
+  tts/         Valtec ONNX Vietnamese TTS runtime, config, and factory
   knowledge/   Markdown vault search and context packing
   memory/      long-term profile memory + RAM session memory
   tools/       ToolRuntime, tool specs, local time/knowledge tools

@@ -2716,13 +2716,6 @@ eval = [
 llm = [
     { name = "llama-cpp-python" },
 ]
-tts = [
-    { name = "eng-to-ipa" },
-    { name = "torchaudio" },
-    { name = "underthesea" },
-    { name = "vinorm" },
-    { name = "viphoneme" },
-]
 valtec-build = [
     { name = "onnx" },
     { name = "torch" },
@@ -2733,7 +2726,6 @@ requires-dist = [
     { name = "click", specifier = ">=8.1" },
     { name = "datasets", marker = "extra == 'eval'", specifier = ">=3.0" },
     { name = "eng-to-ipa", specifier = ">=0.0.2" },
-    { name = "eng-to-ipa", marker = "extra == 'tts'", specifier = ">=0.0.2" },
     { name = "huggingface-hub", specifier = ">=1.14.0" },
     { name = "ipython", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "jiwer", marker = "extra == 'eval'", specifier = ">=3.0" },
@@ -2755,15 +2747,11 @@ requires-dist = [
     { name = "sounddevice", specifier = ">=0.5" },
     { name = "soundfile", specifier = ">=0.12" },
     { name = "torch", marker = "extra == 'valtec-build'", specifier = ">=2.0" },
-    { name = "torchaudio", marker = "extra == 'tts'", specifier = ">=2.0" },
     { name = "torchcodec", specifier = ">=0.12.0" },
     { name = "tqdm", specifier = ">=4.66" },
     { name = "transformers", specifier = ">=4.45" },
-    { name = "underthesea", marker = "extra == 'tts'", specifier = ">=8.0.0" },
-    { name = "vinorm", marker = "extra == 'tts'", specifier = ">=2.0.0" },
-    { name = "viphoneme", marker = "extra == 'tts'", specifier = ">=3.0.0" },
 ]
-provides-extras = ["dev", "llm", "eval", "valtec-build", "tts"]
+provides-extras = ["dev", "llm", "eval", "valtec-build"]
 
 [[package]]
 name = "sounddevice"
@@ -3082,46 +3070,6 @@ wheels = [
 ]
 
 [[package]]
-name = "underthesea"
-version = "9.5.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "click" },
-    { name = "huggingface-hub" },
-    { name = "joblib" },
-    { name = "pyyaml" },
-    { name = "requests" },
-    { name = "tqdm" },
-    { name = "underthesea-core" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/2d/84/a30d22b98e9b0f48d41c0a4534618fdeb1e7f9cbe60bc3ab2ff603bd237a/underthesea-9.5.0.tar.gz", hash = "sha256:ad6261e9fa5a26f6314ec283513260f82ac227844a2811c520ee62b6d967a4f4", size = 7219950, upload-time = "2026-05-17T11:13:02.244Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ef/d5/9d81c3d04ad8aac071115bbc8e1870741308d6dadffd201be7a6fde0329f/underthesea-9.5.0-py3-none-any.whl", hash = "sha256:81400f41b75ceff6f80c52b4ad043806c80f5899ec555d8e6374d468a59bce56", size = 7273326, upload-time = "2026-05-17T11:12:59.674Z" },
-]
-
-[[package]]
-name = "underthesea-core"
-version = "3.3.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/6a/f3/ca729bb9a39ce2b2cc837c3c0fe5a05a4c87b8dcbc641a6e4a098098098d/underthesea_core-3.3.0.tar.gz", hash = "sha256:b22e20309cc53ceafedbee344d85367e08d566c4d497cb6e75a19a1b1c4a8259", size = 683272, upload-time = "2026-02-07T02:23:06.292Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a7/e5/69ff83b20a935226dda1aba2e78e06cb3a8c2e64a376c3d08d117397da06/underthesea_core-3.3.0-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:1e6be5f7a220682623dad163c8b42fb8336541f8a7ab7edfa3c484887033bccb", size = 1409668, upload-time = "2026-02-07T02:22:22.912Z" },
-    { url = "https://files.pythonhosted.org/packages/7e/af/6b99c81a0aa7b10aeffdd2c265519baf10caeec7de306ed72e0ce1da9ef5/underthesea_core-3.3.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:945102e77561eaed540d864985036f1a7cab9da18c3cd16ca06de680d5ef2542", size = 1352035, upload-time = "2026-02-07T02:22:24.251Z" },
-    { url = "https://files.pythonhosted.org/packages/7d/2a/1832a913670e0257ca28deb4c6e9a210e2dfc0caa2a8545fe59d0894cdbe/underthesea_core-3.3.0-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:53b2abe9cb6231b3abe1f7c07b2fd25971b423678b7d8e02c51f3350cb6668d5", size = 1504255, upload-time = "2026-02-07T02:22:25.574Z" },
-    { url = "https://files.pythonhosted.org/packages/5d/20/f282b34c21ec2473865a43574c0e3593b33ff3d47cb6e9290faa4dfd88dd/underthesea_core-3.3.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b9ad5ad48c89f40d255889fdb320595a5a8ba15eb29b8415d4bbe9e0ed280bb9", size = 1521361, upload-time = "2026-02-07T02:22:26.766Z" },
-    { url = "https://files.pythonhosted.org/packages/1a/3c/815cba674599a227c93268733d4ee00c3bfc7ba42b8f38b14f105022e91c/underthesea_core-3.3.0-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:7644095707917a0dc402c8219a01e78c4d47e0f664f52ed6dfcde41237a58833", size = 1681879, upload-time = "2026-02-07T02:22:28.613Z" },
-    { url = "https://files.pythonhosted.org/packages/7f/91/d972f410a53b11919d59f2130c44ba1f1e2672d724911a6457cd7f01b151/underthesea_core-3.3.0-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:5f0387bc99c8ea1467d4447e707437a92954bd08037c68ab4ab5dde695d8041c", size = 1771188, upload-time = "2026-02-07T02:22:29.833Z" },
-    { url = "https://files.pythonhosted.org/packages/f2/3c/9a99a2c1f5d0e4546c791c5f282988d59fc718fb72f5c4676043d762f82f/underthesea_core-3.3.0-cp311-cp311-win_amd64.whl", hash = "sha256:25db108a331dc7bef376eba5308795ace8003add4ba634c538a10d1975801c74", size = 1222650, upload-time = "2026-02-07T02:22:31.78Z" },
-    { url = "https://files.pythonhosted.org/packages/da/17/9a9b5e384c5acf54236db3800ca73f939205c38ed5d81aab2fa1e14f8a45/underthesea_core-3.3.0-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:e719ee19fd4c91d42cd1cf18c7a0577c9f974fba979c75916e85090a0f83cda9", size = 1407168, upload-time = "2026-02-07T02:22:33.458Z" },
-    { url = "https://files.pythonhosted.org/packages/a0/d8/505230f5db3d894854bcb6fe4824b26af01086e83df59b4f135fed6df477/underthesea_core-3.3.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:75cf0578d1a5f8c0811c5902959ab4ed59d15f02f686448f66cc2851b88dc1fc", size = 1349499, upload-time = "2026-02-07T02:22:35.701Z" },
-    { url = "https://files.pythonhosted.org/packages/31/0e/1f9c5685cba784d6d0a0e732a7d4844f88298cf1f92876a6a035d59cfdfc/underthesea_core-3.3.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:875eaeb6308189f363c03ccc24ae2c42ec80f1b89c431b700a7bb08a01257ca7", size = 1506234, upload-time = "2026-02-07T02:22:37.047Z" },
-    { url = "https://files.pythonhosted.org/packages/13/5c/341795adbd70a5d6db9ada4b326816013340d00e7aa8e444e18d62218e7f/underthesea_core-3.3.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:406c1b57a5c7f385c408de0f60d1407959bdd8a1eb47d88834fde6227126c24f", size = 1522643, upload-time = "2026-02-07T02:22:38.771Z" },
-    { url = "https://files.pythonhosted.org/packages/63/58/527ee8c98bb7abcf39212bd36d485504ab42dfd5c84f680411df3ddeb9ad/underthesea_core-3.3.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:6a2a70bdb855fd16651a39b02e7d6dd42bec54d672eb354cf40c9249d6c2c38b", size = 1683285, upload-time = "2026-02-07T02:22:40.059Z" },
-    { url = "https://files.pythonhosted.org/packages/ad/44/7337dc4f1a1352686fc92de770542ae412d498947cf7dd24f6249b717784/underthesea_core-3.3.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:838f2e148fcccbbd2ce1747152ca61d4dcc233df1983d6a752ce7ba80af16dfe", size = 1772552, upload-time = "2026-02-07T02:22:41.587Z" },
-    { url = "https://files.pythonhosted.org/packages/0d/2c/9663a0b5282c9f74e24320be3ae34730dd4ebd0a5fc1bfeffa8ebaead806/underthesea_core-3.3.0-cp312-cp312-win_amd64.whl", hash = "sha256:214daf1271dbe6a3b63bda02b0e8f96b99653111d63c4aeb9afb1b613d8d0f5d", size = 1222335, upload-time = "2026-02-07T02:22:42.874Z" },
-]
-
-[[package]]
 name = "uri-template"
 version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3137,24 +3085,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/53/0c/06f8b233b8fd13b9e5ee11424ef85419ba0d8ba0b3138bf360be2ff56953/urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c", size = 433602, upload-time = "2026-05-07T16:13:18.596Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897", size = 131087, upload-time = "2026-05-07T16:13:17.151Z" },
-]
-
-[[package]]
-name = "vinorm"
-version = "2.0.7"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/9c/3c/764745fe4737ff8313ebf3d1bfe25d437a8577cb1fa9a3478f2c485e9b0f/vinorm-2.0.7.tar.gz", hash = "sha256:1ec35ce3bbc5259c64e56537d07512787aad55648e0d6063404f8efc96f993a8", size = 40164007, upload-time = "2020-12-24T19:29:18.974Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/af/2c/1c75ac16ad68cc8c25e535d5c78353abe74dbdb083a2075397484ea8cbbb/vinorm-2.0.7-py3-none-any.whl", hash = "sha256:822d28bdd181480ddbe30caf1746fb79e904fea1bdb31d52274e766704779ed1", size = 40355367, upload-time = "2020-12-24T19:29:08.016Z" },
-]
-
-[[package]]
-name = "viphoneme"
-version = "3.0.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/34/82/5b597b75d53466b81e77fe2ae7365ff6da3bcf9f90b6bcf7510ce15b7eac/viphoneme-3.0.0.tar.gz", hash = "sha256:53763830d4de8422446767f8229937161c7e18d3508f0c6f4ac09799da559b38", size = 56939, upload-time = "2023-10-23T04:16:55.428Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b4/26/98e5235dc3bd94fe0bafc96a373810ba711b764f7fb71f6c28d13f13f03c/viphoneme-3.0.0-py3-none-any.whl", hash = "sha256:d13900c94a4ca554c38c09e43f29a809366568fbff93259e48284881db59ef6e", size = 58877, upload-time = "2023-10-23T04:16:52.584Z" },
 ]
 
 [[package]]

@@ -45,13 +45,6 @@ valtec-build = [
     "onnx>=1.17,<2.0",
     "torch>=2.0",
 ]
-tts = [
-    "eng-to-ipa>=0.0.2",
-    "torchaudio>=2.0",
-    "underthesea>=8.0.0",
-    "viphoneme>=3.0.0",
-    "vinorm>=2.0.0",
-]
 
 [project.scripts]
 soca = "soca.cli:main"

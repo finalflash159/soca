@@ -84,7 +84,7 @@ Install only what you need so the environment stays manageable:
 Examples:
 
 ```bash
-uv sync --extra dev --extra eval --extra tts
+uv sync --extra dev --extra eval
 uv run soca ui voice baseline
 ```
 
