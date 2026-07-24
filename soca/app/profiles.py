@@ -55,7 +55,9 @@ def collect_runtime_profile_readiness() -> list[RuntimeProfileReadiness]:
 
     for key in sorted(VOICE_RUNTIME_PROFILES):
         profile = VOICE_RUNTIME_PROFILES[key]
-        errors = validation_errors.get(key, ())
+        # Whole-config invariant failures ("global") apply to every profile, so
+        # surface them on each row instead of letting the table read all-ok.
+        errors = validation_errors.get(key, ()) + validation_errors.get("global", ())
         if errors:
             invalid = ComponentReadiness("invalid", "; ".join(errors))
             rows.append(
@@ -209,8 +211,15 @@ def _profile_paths_table(rows: list[RuntimeProfileReadiness]) -> Table:
 def _group_validation_errors(errors: list[str]) -> dict[str, tuple[str, ...]]:
     grouped: dict[str, list[str]] = {}
     for error in errors:
-        key, _, message = error.partition(":")
-        grouped.setdefault(key.strip() or "global", []).append(message.strip() or error)
+        # Profile-scoped errors are "<profile>: message"; anything without a
+        # colon is a whole-config invariant (e.g. the profile-set check) and
+        # must bucket under "global" so it is not lost against a profile name.
+        if ":" in error:
+            key, _, message = error.partition(":")
+            key, message = key.strip() or "global", message.strip() or error
+        else:
+            key, message = "global", error
+        grouped.setdefault(key, []).append(message)
     return {key: tuple(messages) for key, messages in grouped.items()}
 
 

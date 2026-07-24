@@ -46,6 +46,23 @@ def test_profiles_command_surfaces_profile_validation_errors(monkeypatch) -> Non
     assert "unknown ASR model" in result.output
 
 
+def test_profiles_command_surfaces_global_validation_errors(monkeypatch) -> None:
+    # A whole-config invariant error has no "<profile>:" prefix; it must still
+    # mark the profile table invalid instead of being silently dropped.
+    monkeypatch.setattr(
+        "soca.app.profiles.validate_voice_runtime_profiles",
+        lambda: ["runtime profiles must contain exactly ['baseline'], got ['baseline', 'extra']"],
+    )
+
+    result = CliRunner().invoke(main, ["profiles"])
+
+    assert result.exit_code == 0, result.output
+    assert "invalid" in result.output
+    # Rich wraps table cells, so normalize whitespace before matching the message.
+    normalized = " ".join(result.output.split())
+    assert "runtime profiles must contain exactly" in normalized
+
+
 def test_status_command_shows_lightweight_runtime_overview() -> None:
     result = CliRunner().invoke(main, ["status"])
 
