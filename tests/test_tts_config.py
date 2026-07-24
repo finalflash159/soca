@@ -4,7 +4,8 @@ import inspect
 
 import pytest
 
-from soca.tts import VALTEC_TTS_CONFIG, create_tts_engine
+import soca.tts.factory as factory
+from soca.tts import VALTEC_TTS_CONFIG, TTSRuntimeUnavailableError, create_tts_engine
 
 
 def test_valtec_is_the_only_tts_configuration() -> None:
@@ -31,3 +32,13 @@ def test_valtec_config_points_to_onnx() -> None:
 
     assert config.runner == "valtec_onnx"
     assert config.default_voice == "NF"
+
+
+def test_factory_wraps_missing_artifact_in_runtime_unavailable(monkeypatch) -> None:
+    def _missing() -> object:
+        raise FileNotFoundError("no current.json")
+
+    monkeypatch.setattr(factory, "resolve_current_valtec_release", _missing)
+
+    with pytest.raises(TTSRuntimeUnavailableError):
+        create_tts_engine()
