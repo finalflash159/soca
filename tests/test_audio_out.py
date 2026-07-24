@@ -94,3 +94,49 @@ def test_wav_file_sink_empty_audio_is_noop(tmp_path) -> None:
     assert result.played is False
     assert result.reason == "empty_audio"
     assert not output_path.exists()
+
+
+def test_sounddevice_session_reuses_one_output_stream(monkeypatch) -> None:
+    instances = []
+
+    class FakeOutputStream:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.writes = []
+            self.started = False
+            self.stopped = False
+            self.closed = False
+            instances.append(self)
+
+        def start(self):
+            self.started = True
+
+        def write(self, block):
+            self.writes.append(np.asarray(block).copy())
+            return False
+
+        def stop(self):
+            self.stopped = True
+
+        def abort(self):
+            self.stopped = True
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr("soca.core.audio_out.sd.OutputStream", FakeOutputStream)
+    player = SoundDevicePlayer(output_sample_rate=24_000)
+
+    session = player.begin_playback(16_000)
+    first = session.write(np.ones(480, dtype=np.float32))
+    second = session.write(np.ones(240, dtype=np.float32))
+    session.finish()
+
+    assert len(instances) == 1
+    assert instances[0].started is True
+    assert instances[0].stopped is True
+    assert instances[0].closed is True
+    assert first.played is True
+    assert second.played is True
+    assert session.sample_rate == 24_000
+    assert session.output_underflow_count == 0

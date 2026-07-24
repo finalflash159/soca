@@ -1,4 +1,12 @@
-from .audio_out import AudioSink, NullAudioPlayer, PlaybackResult, SoundDevicePlayer, WavFileSink
+from .audio_out import (
+    AudioPlaybackSession,
+    AudioSink,
+    NullAudioPlayer,
+    PlaybackResult,
+    SoundDevicePlayer,
+    StreamingAudioSink,
+    WavFileSink,
+)
 from .endpoint import EndpointConfig, block_samples, record_until_silence, should_stop_recording
 from .guardrails import (
     GuardrailAction,
@@ -42,7 +50,9 @@ from .voice_runtime import (
 )
 
 __all__ = [
+    "AudioPlaybackSession",
     "AudioSink",
+    "StreamingAudioSink",
     "AssistantRuntime",
     "DefaultRuntimeToolRouter",
     "EndpointConfig",
