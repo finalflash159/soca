@@ -803,14 +803,31 @@ this isolates the TTS → pump → session → speaker path Phase 7 changed.
 > not a valid comparison to 1331 ms. It only confirms `output_underflow_count == 0` in the
 > full loop.
 
-**Still open (needs controlled run, not fabricated):**
+**(d) First-clause TTFA A/B (controlled)** — `eval/measure_first_clause_ttfa.py`. Captures one
+real LLM (`arcee_vylinh_3b_q4_k_m`) token stream per prompt **with per-token arrival times**, then
+replays that exact stream (same tokens, same delays) through the runtime with `first_clause`
+ON vs OFF. ASR is excluded and held constant, so the delta isolates the flush-point effect. 8
+conversational transcripts.
 
-- First-clause **E2E TTFA delta**: a same-prompt, same-fixture `first_clause` on-vs-off
-  A/B (ASR held constant) on short prompts — the current `eval_voice_loop.py` CLI has no
-  `first_clause` toggle and no `--playback` mode, so both are follow-up tooling.
-- `eval/eval_voice_loop.py --playback`: the guide assumes it; the harness currently always
-  uses `NullAudioPlayer`. Device metrics above came from a standalone measurement, not this
-  flag.
+| Metric (positive = first-clause faster) | p50     | range         | Prompts helped |
+| --------------------------------------- | ------- | ------------- | -------------- |
+| Δ time-to-first-sentence (text side)    | +184 ms | −0 … +453 ms  | 7 / 8          |
+| Δ tts_ready (text + Valtec synth)       | +395 ms | −14 … +928 ms | 7 / 8          |
+
+> This closes the "does I1 lower TTFA" question with a **positive, honest** result: on 7/8
+> conversational prompts first-clause flushes the first chunk ~184 ms earlier (text side), and
+> ~395 ms earlier to first playable audio because the shorter first clause also synthesizes
+> faster. The 1/8 no-benefit case is a response with no clause boundary before the first period
+> (on == off) — expected, not a regression. This is the LLM→first-chunk delta attributable to
+> first-clause, not an absolute E2E TTFA figure.
+
+**Still open (follow-up tooling, not blockers):**
+
+- `eval/eval_voice_loop.py --playback` + a `first_clause` CLI toggle: the guide assumes
+  `--playback`; the harness always uses `NullAudioPlayer`. The device (b) and A/B (d) numbers came
+  from the standalone `eval/measure_device_playback.py` / `eval/measure_first_clause_ttfa.py`, not
+  the main harness. Folding them into `eval_voice_loop.py` (with tests) would make them CLI-native.
+- DuplexAecSink far-path is unit-tested but not validated live (needs mic + barge-in loop).
 
 ---
 
