@@ -20,7 +20,6 @@ from soca.core import (
     resolve_voice_runtime_config,
 )
 from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
-from soca.tts.registry import TTS_MODEL_REGISTRY
 
 console = Console()
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -175,7 +174,9 @@ def ask(
 @click.option("--session-turns", type=int, default=6, show_default=True)
 @click.option("--turn-chars", type=int, default=500, show_default=True)
 @click.option("--trace/--no-trace", default=False, show_default=True)
-@click.option("--usage", is_flag=True, help="Show per-turn usage line; /usage shows session totals.")
+@click.option(
+    "--usage", is_flag=True, help="Show per-turn usage line; /usage shows session totals."
+)
 @click.pass_context
 def chat(
     ctx: click.Context,
@@ -222,7 +223,7 @@ def chat(
         "\b\nQuick examples:\n"
         "  uv run soca ui\n"
         "  uv run soca ui chat\n"
-        "  uv run soca ui voice quality"
+        "  uv run soca ui voice baseline"
     ),
 )
 @click.argument(
@@ -394,14 +395,7 @@ def engine(
     )
 
 
-@main.command(
-    epilog=(
-        "\b\nQuick examples:\n"
-        "  uv run soca voice baseline\n"
-        "  uv run --extra tts-omnivoice soca voice quality\n"
-        "  uv run --extra tts-piper soca voice edge"
-    )
-)
+@main.command(epilog=("\b\nQuick examples:\n  uv run soca voice\n  uv run soca voice baseline"))
 @click.argument(
     "quick_profile",
     required=False,
@@ -413,7 +407,7 @@ def engine(
     default=None,
     type=click.Choice(sorted(VOICE_RUNTIME_PROFILES)),
     hidden=True,
-    help="Voice runtime profile to use before explicit model overrides.",
+    help="Voice runtime profile to use before ASR/LLM/voice overrides.",
 )
 @click.option(
     "--asr-model",
@@ -430,13 +424,11 @@ def engine(
     help="Override the LLM registry key from the selected profile.",
 )
 @click.option(
-    "--tts-model",
+    "--voice",
     default=None,
-    type=click.Choice(sorted(TTS_MODEL_REGISTRY)),
     hidden=True,
-    help="Override the TTS registry key from the selected profile.",
+    help="Override the Valtec voice/speaker id.",
 )
-@click.option("--voice", default=None, hidden=True, help="Override the TTS voice/speaker id.")
 @click.option("--endpoint-silence-ms", type=int, default=None, hidden=True)
 @click.option("--max-record-ms", type=int, default=None, hidden=True)
 @click.option(
@@ -476,14 +468,20 @@ def engine(
     is_flag=True,
     help="Skip ASR/LLM/TTS first-call warmup before listening.",
 )
-@click.option("--usage", is_flag=True, help="Show ASR/LLM/TTS latency + token usage after each turn.")
+@click.option(
+    "--usage",
+    is_flag=True,
+    help="Show ASR/LLM/TTS latency + token usage after each turn.",
+)
 @click.option(
     "--barge-in/--no-barge-in",
     "barge_in",
     default=True,
     show_default=True,
-    help="Interrupt playback when you start speaking. Use --no-barge-in on speakers "
-    "without echo cancellation, otherwise SoCa hears itself and self-interrupts.",
+    help=(
+        "Interrupt playback when you start speaking. Use --no-barge-in on "
+        "speakers without echo cancellation, otherwise SoCa hears itself."
+    ),
 )
 @click.pass_context
 def voice(
@@ -492,7 +490,6 @@ def voice(
     profile_option: str | None,
     asr_model: str | None,
     llm_model: str | None,
-    tts_model: str | None,
     voice: str | None,
     endpoint_silence_ms: int | None,
     max_record_ms: int | None,
@@ -524,7 +521,6 @@ def voice(
             profile_key=profile,
             asr_model=asr_model,
             llm_model=llm_model,
-            tts_model=tts_model,
             tts_voice=voice,
             endpoint_silence_ms=endpoint_silence_ms,
             max_record_ms=max_record_ms,
@@ -544,7 +540,6 @@ def voice(
 
     player = None
     if barge_in:
-        # Path B: duplex AEC sink does playback + echo cancel + barge-in on one clock.
         from soca.core.duplex_aec_sink import DuplexAecSink
 
         player = DuplexAecSink()

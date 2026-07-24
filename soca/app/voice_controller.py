@@ -36,6 +36,7 @@ from soca.core.repair import (
 )
 from soca.core.text_chunking import normalize_text_for_tts
 from soca.memory import SessionMemory
+from soca.tts import VALTEC_TTS_CONFIG
 
 
 @dataclass(frozen=True)
@@ -155,7 +156,7 @@ class VoiceMonitorController:
             queue.put(
                 VoiceMonitorEvent(
                     "error",
-                    _voice_runtime_error_message(exc, config=self.config),
+                    str(exc),
                     metadata={"traceback": traceback.format_exc()},
                 )
             )
@@ -177,7 +178,7 @@ class VoiceMonitorController:
                     "profile": self.config.profile_key,
                     "asr_model": self.config.asr_model,
                     "llm_model": self.config.llm_model,
-                    "tts_model": self.config.tts_model,
+                    "tts_model": VALTEC_TTS_CONFIG.key,
                     "voice": self.config.tts_voice,
                 },
             )
@@ -220,14 +221,11 @@ class VoiceMonitorController:
         except (TypeError, ValueError):
             signature = None
 
-        supports_session_memory = (
-            signature is not None
-            and (
-                "session_memory" in signature.parameters
-                or any(
-                    param.kind is inspect.Parameter.VAR_KEYWORD
-                    for param in signature.parameters.values()
-                )
+        supports_session_memory = signature is not None and (
+            "session_memory" in signature.parameters
+            or any(
+                param.kind is inspect.Parameter.VAR_KEYWORD
+                for param in signature.parameters.values()
             )
         )
         if supports_session_memory:
@@ -244,7 +242,7 @@ class VoiceMonitorController:
         endpoint_config = EndpointConfig(
             endpoint_silence_ms=self.config.endpoint_silence_ms,
             max_record_ms=self.config.max_record_ms,
-            partial_interval_ms=self.bundle.partial_interval_ms, # seed from warmup
+            partial_interval_ms=self.bundle.partial_interval_ms,  # seed from warmup
             adaptive=self.config.adaptive_endpoint,
         )
         queue.put(VoiceMonitorEvent("recording", "Listening"))
@@ -295,6 +293,7 @@ class VoiceMonitorController:
     def _recorder_accepts(self, name: str) -> bool:
         """Signature-guard like _turn_streaming: old fake recorders do not break."""
         import inspect
+
         try:
             params = inspect.signature(self.recorder).parameters
         except (TypeError, ValueError):
@@ -309,9 +308,11 @@ class VoiceMonitorController:
         inner = getattr(bundle.asr, "asr", None) or bundle.asr
         if not hasattr(inner, "transcribe"):
             return None
+
         def transcribe(audio):
             result = inner.transcribe(audio)
             return getattr(result, "text", "") or ""
+
         return transcribe
 
     def _stream_pipeline_events(
@@ -320,7 +321,7 @@ class VoiceMonitorController:
         audio: np.ndarray,
         queue: VoiceEventQueue,
         *,
-        stop_event: Event | None = None
+        stop_event: Event | None = None,
     ) -> None:
         runtime_meta: dict[str, Any] = {}
         first_tts_meta: dict[str, Any] | None = None
@@ -561,19 +562,6 @@ def _maybe_float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
-
-
-def _voice_runtime_error_message(exc: Exception, *, config: ResolvedVoiceRuntimeConfig) -> str:
-    text = str(exc)
-    if config.tts_model == "omnivoice":
-        return (
-            f"{text}\n"
-            f"Profile `{config.profile_key}` dùng OmniVoice, đây là backend optional và khá nặng. "
-            "Chạy lại bằng "
-            f"`uv run --extra ui --extra tts-omnivoice soca ui voice {config.profile_key}`, "
-            "hoặc dùng profile ổn định hơn: `uv run --extra ui soca ui voice baseline`."
-        )
-    return text
 
 
 __all__ = [

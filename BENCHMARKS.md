@@ -352,7 +352,8 @@ assistant before changing the runtime default.
 
 **Decision**
 
-- Keep PhoGPT as the historical LLM bake-off baseline only. Product app defaults come from runtime profiles; current baseline/quality profiles use Arcee-VyLinh.
+- Keep PhoGPT as the historical LLM bake-off baseline only. The single current product profile,
+  `baseline`, uses Arcee-VyLinh.
 - Treat Arcee-VyLinh as the leading free-chat candidate after intent routing.
 - Treat Qwen3-0.6B as the low-RAM fallback/smoke model.
 - Do not prioritize VinaLLaMA-2.7B for the default path: clean Vietnamese output,
@@ -370,6 +371,13 @@ assistant before changing the runtime default.
 ---
 
 ## D3 — TTS Bake-Off (Vietnamese local runtimes)
+
+> **Status 2026-07-24 (historical):** this multi-engine bake-off is the record of
+> _why_ Valtec was chosen; it predates the ONNX cutover. The registry and the
+> per-model runners it references (`soca/tts/registry.py`, `mms_tts_vie`, `piper`,
+> `vieneu`, `kani`, `f5`, `omnivoice`, …) no longer exist — SoCa collapsed to a
+> single Valtec ONNX runtime. Current numbers are in **D3.0** below; the
+> "Decision"/"Next benchmark" blocks in this section are superseded by that cutover.
 
 **Purpose:** compare the practical Vietnamese TTS runtimes for the SoCa voice
 loop before changing the default TTS engine.
@@ -528,7 +536,56 @@ uv run --extra tts --extra tts-piper --extra tts-omnivoice --extra tts-vieneu \
 
 ---
 
+## D3.0 — Valtec ONNX release (current, cutover complete)
+
+**Purpose:** record the post-cutover numbers for the single Valtec ONNX runtime
+that replaced the D3 registry. SoCa now ships one self-built, checksum-pinned
+Valtec release; there is no model selector.
+
+**Setup**
+
+| Field          | Value                                                                                          |
+| -------------- | ---------------------------------------------------------------------------------------------- |
+| Runtime        | `soca.tts` → `create_tts_engine(voice=…)` → `ValtecOnnxTTS` (four ONNX graphs, fp32)           |
+| Active release | `soca-valtec-20260724-50fd400` (`current.json`), rollback point `soca-valtec-20260722-a1b2c3d` |
+| Checkpoint     | `valtecAI-team/valtec-tts-pretrained` rev `d58e991…`, license CC BY-NC 2.0                     |
+| Prompt set     | `eval/prompts/tts_bakeoff_vi.jsonl` (bench 12 / loopback 12), 5 voices NF·SF·NM1·SM·NM2        |
+| Reviewer       | listening + license: `vominhthinh` (fail-closed acceptance)                                    |
+| Run date       | 2026-07-24                                                                                     |
+
+**Results (fp32, active variant)**
+
+| Metric                 | Value    | Release gate | Pass |
+| ---------------------- | -------- | ------------ | ---- |
+| Parity (5 voices)      | all pass | 5/5          | ✅   |
+| Latency p50            | 271.0 ms | ≤ 300 ms     | ✅   |
+| Latency p95            | 416.4 ms | ≤ 550 ms     | ✅   |
+| RTF p50 (primary gate) | 0.070    | ≤ 0.12       | ✅   |
+| ASR loopback CER       | 0.134    | ≤ 0.15       | ✅   |
+
+**Variant decision**
+
+- **fp32 active.** int8 dynamic quantization is **−27% slower** on M4 arm64 (dynamic
+  quant has no arm64 kernel win here) while spectrally near-identical (parity cosine
+  0.99999, waveform MAE 0.021). Slower + no quality gain → int8 is built and kept in
+  the manifest but not selected.
+- RTF is the primary latency gate (proves real-time headroom); the absolute-ms gates
+  are secondary head-room bounds raised to 300/550 to admit long sentences.
+
+**Caveats**
+
+- Loopback CER uses 12 prompts, so a single ASR mis-hear moves it noticeably; 0.134
+  passed the gate and the subjective listening review, but is worth re-checking on a
+  larger slice if pronunciation regressions surface.
+- Latency measured on the D3 common hardware (Apple M4), single process, warm engine.
+
+---
+
 ## D3.1 — E2E Voice Loop Benchmark (audio fixture → ASR → runtime → TTS)
+
+> **Historical snapshot (2026-06-01).** The profile names and multi-engine commands in this section
+> document the experiment as it ran. They are not supported by the current singleton `baseline`
+> runtime and must not be copied as current CLI instructions.
 
 **Purpose:** measure the full SoCa voice loop from audio input to first
 available output audio, using fixed WAV fixtures rather than live microphone
@@ -592,7 +649,7 @@ The fixture-generation run is not used as the official profile measurement,
 because it loads the fixture TTS engine before benchmark timing. The profile
 measurements below were run afterwards in separate fresh processes.
 
-**Profile run commands**
+**Historical profile run commands (no longer supported)**
 
 ```bash
 uv run --extra tts python eval/eval_voice_loop.py \

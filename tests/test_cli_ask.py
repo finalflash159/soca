@@ -171,7 +171,7 @@ def test_ask_free_chat_uses_fake_llm(monkeypatch, tmp_path: Path) -> None:
     assert FakeLLM.instances[0].model_key == "arcee_vylinh_3b_q4_k_m"
 
 
-def test_ask_profile_override_controls_default_llm(monkeypatch, tmp_path: Path) -> None:
+def test_ask_llm_override_controls_runtime_model(monkeypatch, tmp_path: Path) -> None:
     write_vault(tmp_path)
     FakeLLM.instances.clear()
     monkeypatch.setattr("soca.app.text_runtime.LocalLlamaCppLLM", FakeLLM)
@@ -181,8 +181,8 @@ def test_ask_profile_override_controls_default_llm(monkeypatch, tmp_path: Path) 
         [
             "ask",
             "xin chào",
-            "--profile",
-            "edge",
+            "--llm-model",
+            "qwen3_0_6b_q8_0",
             "--vault",
             str(tmp_path),
             "--no-memory",

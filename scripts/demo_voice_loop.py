@@ -14,7 +14,6 @@ from soca.core import (
     resolve_voice_runtime_config,
 )
 from soca.llm.registry import LLM_MODEL_REGISTRY
-from soca.tts import TTS_MODEL_REGISTRY
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -23,7 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--profile",
         default=DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
         choices=sorted(VOICE_RUNTIME_PROFILES),
-        help="Voice runtime profile to use before explicit model overrides.",
+        help="Voice runtime profile to use before ASR/LLM/voice overrides.",
     )
     parser.add_argument(
         "--llm-model",
@@ -38,15 +37,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override the ASR registry key from the selected profile.",
     )
     parser.add_argument(
-        "--tts-model",
-        default=None,
-        choices=sorted(TTS_MODEL_REGISTRY),
-        help="Override the TTS registry key from the selected profile.",
-    )
-    parser.add_argument(
         "--voice",
         default=None,
-        help="Override the TTS voice/speaker id from the selected profile.",
+        help="Override the Valtec voice/speaker id from the selected profile.",
     )
     parser.add_argument("--endpoint-silence-ms", type=int, default=None)
     parser.add_argument("--max-record-ms", type=int, default=None)
@@ -56,7 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path.home() / "KnowledgeVault",
         help="Knowledge vault root containing memory/profile.md.",
     )
-    parser.add_argument("--no-memory", action="store_true", help="Disable profile/session memory.")
+    parser.add_argument(
+        "--no-memory",
+        action="store_true",
+        help="Disable profile/session memory.",
+    )
     parser.add_argument("--memory-chars", type=int, default=2200)
     parser.add_argument("--profile-chars", type=int, default=900)
     parser.add_argument("--session-chars", type=int, default=1300)
@@ -88,7 +85,6 @@ def build_runtime_config(args: argparse.Namespace) -> ResolvedVoiceRuntimeConfig
         profile_key=args.profile,
         asr_model=args.asr_model,
         llm_model=args.llm_model,
-        tts_model=args.tts_model,
         tts_voice=args.voice,
         endpoint_silence_ms=args.endpoint_silence_ms,
         max_record_ms=args.max_record_ms,
@@ -109,7 +105,6 @@ def resolve_runtime_args(args: argparse.Namespace) -> argparse.Namespace:
     config = build_runtime_config(args)
     args.asr_model = config.asr_model
     args.llm_model = config.llm_model
-    args.tts_model = config.tts_model
     args.voice = config.tts_voice
     args.endpoint_silence_ms = config.endpoint_silence_ms
     args.max_record_ms = config.max_record_ms
@@ -123,8 +118,7 @@ def resolve_runtime_args(args: argparse.Namespace) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = resolve_runtime_args(build_parser().parse_args(argv))
     print(
-        "Note: scripts/demo_voice_loop.py is kept for compatibility. "
-        "Prefer: uv run soca voice",
+        "Note: scripts/demo_voice_loop.py is kept for compatibility. Prefer: uv run soca voice",
         file=sys.stderr,
     )
     return run_voice_loop(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from scripts.demo_voice_loop import build_parser, resolve_runtime_args
 
 
@@ -7,53 +9,50 @@ def parse_args(argv: list[str]):
     return resolve_runtime_args(build_parser().parse_args(argv))
 
 
-def test_quality_profile_resolves_omnivoice_voice() -> None:
-    args = parse_args(["--profile", "quality"])
+def test_demo_baseline_resolves_former_quality_stack_with_valtec() -> None:
+    args = parse_args(["--profile", "baseline"])
 
     assert args.asr_model == "phowhisper_small"
     assert args.llm_model == "arcee_vylinh_3b_q4_k_m"
-    assert args.tts_model == "omnivoice"
-    assert args.voice == "emgai_dangiu"
-
-
-def test_tts_model_override_uses_overridden_model_default_voice() -> None:
-    args = parse_args(["--profile", "quality", "--tts-model", "valtec_multispeaker"])
-
-    assert args.asr_model == "phowhisper_small"
-    assert args.llm_model == "arcee_vylinh_3b_q4_k_m"
-    assert args.tts_model == "valtec_multispeaker"
+    assert not hasattr(args, "tts_model")
     assert args.voice == "NF"
+
+
+@pytest.mark.parametrize("profile", ["quality", "edge"])
+def test_demo_parser_rejects_removed_profiles(profile: str) -> None:
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["--profile", profile])
+
+
+def test_demo_parser_rejects_tts_model_override() -> None:
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["--profile", "baseline", "--tts-model", "other_tts"])
 
 
 def test_explicit_voice_override_wins() -> None:
     args = parse_args(["--profile", "baseline", "--voice", "SF"])
 
-    assert args.tts_model == "valtec_multispeaker"
     assert args.voice == "SF"
 
 
-def test_explicit_model_overrides_win_over_profile() -> None:
+def test_asr_and_llm_overrides_still_win() -> None:
     args = parse_args(
         [
             "--profile",
-            "quality",
+            "baseline",
             "--asr-model",
             "phowhisper_base",
             "--llm-model",
             "phogpt_4b_q4_k_m",
-            "--tts-model",
-            "mms_tts_vie",
         ]
     )
 
     assert args.asr_model == "phowhisper_base"
     assert args.llm_model == "phogpt_4b_q4_k_m"
-    assert args.tts_model == "mms_tts_vie"
-    assert args.voice == "default"
 
 
 def test_profile_runtime_options_resolve() -> None:
-    args = parse_args(["--profile", "quality"])
+    args = parse_args(["--profile", "baseline"])
 
     assert args.endpoint_silence_ms == 700
     assert args.max_record_ms == 10000
@@ -66,7 +65,7 @@ def test_runtime_option_overrides_win() -> None:
     args = parse_args(
         [
             "--profile",
-            "quality",
+            "baseline",
             "--endpoint-silence-ms",
             "900",
             "--max-record-ms",

@@ -75,11 +75,10 @@ class FailingTurnDetector:
 
 def make_config() -> ResolvedVoiceRuntimeConfig:
     return ResolvedVoiceRuntimeConfig(
-        profile_key="quality",
+        profile_key="baseline",
         asr_model="phowhisper_small",
         llm_model="arcee_vylinh_3b_q4_k_m",
-        tts_model="omnivoice",
-        tts_voice="emgai_dangiu",
+        tts_voice="NF",
         endpoint_silence_ms=700,
         adaptive_endpoint=False,
         max_record_ms=10_000,

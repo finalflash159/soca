@@ -51,7 +51,7 @@ def print_runtime_header(
     profile_key: str,
     asr_model: str,
     llm_model: str,
-    tts_model: str,
+    tts_engine: str,
     voice: str | None,
     memory_status: str,
     knowledge_status: str,
@@ -59,28 +59,43 @@ def print_runtime_header(
 ) -> None:
     """Print the resolved voice runtime before entering the recording loop."""
     console.print()
-    console.print(_line((f"{ICON.BIRD} ", f"bold {ACCENT}"), ("SoCa", f"bold {ACCENT}"), (" · voice", MUTED)))
+    console.print(
+        _line((f"{ICON.BIRD} ", f"bold {ACCENT}"), ("SoCa", f"bold {ACCENT}"), (" · voice", MUTED))
+    )
     console.print(
         _line(
             ("    ", ""),
             (profile_key, ALT),
-            (f" {ICON.DOT} ASR {asr_model} {ICON.DOT} LLM {llm_model} {ICON.DOT} TTS {tts_model}", MUTED),
+            (
+                f" {ICON.DOT} ASR {asr_model} {ICON.DOT} LLM {llm_model} "
+                f"{ICON.DOT} TTS {tts_engine}",
+                MUTED,
+            ),
             (f"/{voice}" if voice else "", MUTED),
         )
     )
     console.print(
         _line(
             ("    ", ""),
-            (f"memory {memory_status} {ICON.DOT} knowledge {knowledge_status} {ICON.DOT} guards {asr_guard_status}", MUTED),
+            (
+                f"memory {memory_status} {ICON.DOT} knowledge {knowledge_status} {ICON.DOT} guards {asr_guard_status}",
+                MUTED,
+            ),
         )
     )
     console.print()
 
 
 def print_waiting_for_speech(console: Console, *, manual_start: bool = False) -> None:
-    hint = "nói tự nhiên, im lặng để kết thúc" if not manual_start else "nói đi, ngừng nói để kết thúc lượt"
+    hint = (
+        "nói tự nhiên, im lặng để kết thúc"
+        if not manual_start
+        else "nói đi, ngừng nói để kết thúc lượt"
+    )
     console.print(
-        _line((f"{ICON.STATE_ON} ", ACCENT), ("Đang nghe… ", f"bold {ACCENT}"), (f"({hint})", MUTED))
+        _line(
+            (f"{ICON.STATE_ON} ", ACCENT), ("Đang nghe… ", f"bold {ACCENT}"), (f"({hint})", MUTED)
+        )
     )
 
 
@@ -119,9 +134,7 @@ def print_followup(console: Console, text: str) -> None:
 def print_streaming_event(console: Console, event: StreamingEvent) -> None:
     """Render a VoicePipeline streaming event without performing side effects."""
     if event.type == "asr":
-        console.print(
-            _line((f"{ICON.USER} ", f"bold {ALT}"), (event.text or "<trống>", TEXT))
-        )
+        console.print(_line((f"{ICON.USER} ", f"bold {ALT}"), (event.text or "<trống>", TEXT)))
     elif event.type == "repair":
         kind = _metadata_value(event.metadata, "repair_kind", "")
         console.print(
@@ -133,9 +146,7 @@ def print_streaming_event(console: Console, event: StreamingEvent) -> None:
         )
     elif event.type == "runtime":
         # Only reached when tokens did NOT stream live (voice_loop skips it otherwise).
-        console.print(
-            _line((f"{ICON.BIRD} ", f"bold {ACCENT}"), (event.text or "<trống>", TEXT))
-        )
+        console.print(_line((f"{ICON.BIRD} ", f"bold {ACCENT}"), (event.text or "<trống>", TEXT)))
     elif event.type == "audio":
         if VERBOSE_EVENTS:
             console.print(_line((f"{ICON.DOT} chunk: {event.text}", MUTED)))

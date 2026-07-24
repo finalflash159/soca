@@ -1,39 +1,27 @@
-from __future__ import annotations
-
 from .base import TTSEngine
-from .external_command_runner import ExternalCommandTTS
-from .f5_runner import F5VietnameseTTS
-from .kani_runner import KaniTTSRunner
-from .mms_runner import MMSTTS
-from .omnivoice_runner import OmniVoiceTTS
-from .piper_runner import PiperTTS
-from .registry import get_tts_model_config
-from .valtec_runner import VietnameseTTS
-from .vieneu_runner import VieneuTTS
-from .viettts_server_runner import VietTTSServerTTS
+from .config import VALTEC_TTS_CONFIG
+from .errors import TTSRuntimeUnavailableError
+from .valtec import (
+    ValtecOnnxTTS,
+    ValtecVietnameseFrontend,
+    resolve_current_valtec_release,
+    resolve_valtec_onnx_artifacts,
+)
 
 
-def create_tts_engine(model_key: str, *, voice: str | None = None) -> TTSEngine:
-    config = get_tts_model_config(model_key)
-    selected_voice = voice or config.default_voice
-
-    if config.runner == "valtec":
-        return VietnameseTTS(voice=selected_voice)
-    if config.runner == "mms_transformers":
-        return MMSTTS()
-    if config.runner == "piper":
-        return PiperTTS(config=config)
-    if config.runner == "vieneu":
-        return VieneuTTS(config=config, voice=selected_voice)
-    if config.runner == "kani":
-        return KaniTTSRunner(config=config, voice=selected_voice)
-    if config.runner == "f5":
-        return F5VietnameseTTS(config=config, voice=selected_voice)
-    if config.runner == "omnivoice":
-        return OmniVoiceTTS(config=config, voice=selected_voice)
-    if config.runner == "viettts_server":
-        return VietTTSServerTTS(config=config, voice=selected_voice)
-    if config.runner == "external_command":
-        return ExternalCommandTTS(config=config, voice=selected_voice)
-
-    raise NotImplementedError(f"Unsupported TTS runner {config.runner!r} for {model_key}.")
+def create_tts_engine(*, voice: str | None = None) -> TTSEngine:
+    # Artifact resolution and manifest validation raise plain builtins
+    # (FileNotFoundError/KeyError/ValueError). Wrap them in the runtime-domain
+    # error so eval/smoke tooling that catches TTSRuntimeUnavailableError can
+    # skip gracefully instead of crashing when a release is missing/malformed.
+    try:
+        release_root = resolve_current_valtec_release()
+        artifacts = resolve_valtec_onnx_artifacts(release_root)
+        frontend = ValtecVietnameseFrontend.from_artifacts(artifacts)
+    except (FileNotFoundError, KeyError, TypeError, ValueError) as exc:
+        raise TTSRuntimeUnavailableError(f"Valtec artifact is not ready: {exc}") from exc
+    return ValtecOnnxTTS(
+        artifact_root=release_root,
+        frontend=frontend,
+        voice=voice or VALTEC_TTS_CONFIG.default_voice,
+    )

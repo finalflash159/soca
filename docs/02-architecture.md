@@ -10,7 +10,7 @@ soca/
 │   ├── runtime.py          #   AssistantRuntime: text-turn routing
 │   ├── pipeline.py         #   VoicePipeline: voice-turn orchestration
 │   ├── voice_runtime.py    #   build_voice_runtime + ResolvedVoiceRuntimeConfig + bundle
-│   ├── profiles.py         #   VoiceRuntimeProfile (baseline/quality/edge/...)
+│   ├── profiles.py         #   singleton VoiceRuntimeProfile: baseline
 │   ├── guardrails.py       #   multi-stage check_* functions + policy
 │   ├── repair.py           #   RepairCatalog/Kind/Action + plan_repair/plan_no_reply
 │   ├── turn.py             #   TurnFrame, RuntimeResult, RuntimeTrace, RuntimeRoute
@@ -22,7 +22,7 @@ soca/
 │   └── usage.py            #   LLMUsage / TurnUsage / SessionUsage
 ├── asr/                    # RobustASR + PhoWhisper ONNX + VAD/deloop/BoH/heuristics
 ├── llm/                    # llama.cpp runner + registry + memory-aware + output cleaning
-├── tts/                    # Engines: valtec/omnivoice/piper/vieneu/f5/mms/... + factory
+├── tts/                    # Valtec Vietnamese TTS runtime + factory
 ├── knowledge/              # Markdown vault + retrieval context
 ├── memory/                 # Long-term (profile.md) + session memory (RAM)
 ├── tools/                  # ToolRuntime: local_time, knowledge tools

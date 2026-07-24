@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import importlib.metadata
-import importlib.util
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,15 +12,16 @@ from soca.asr.registry import ASR_MODEL_REGISTRY
 from soca.core.profiles import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
     VOICE_RUNTIME_PROFILES,
-    VoiceRuntimeProfile,
     validate_voice_runtime_profiles,
 )
 from soca.llm.registry import LLM_MODEL_REGISTRY
-from soca.tts.registry import TTS_MODEL_REGISTRY, TTSModelConfig
+from soca.tts import VALTEC_TTS_CONFIG
+from soca.tts.valtec.artifacts import (
+    resolve_current_valtec_release,
+    resolve_valtec_onnx_artifacts,
+)
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_VAULT = Path.home() / "KnowledgeVault"
-VALTEC_SOURCE_ENV = "VALTEC_TTS_SOURCE_DIR"
 
 
 @dataclass(frozen=True)
@@ -43,7 +42,7 @@ class RuntimeProfileReadiness:
     asr_status: ComponentReadiness
     llm_model: str
     llm_status: ComponentReadiness
-    tts_model: str
+    tts_engine: str
     tts_voice: str | None
     tts_status: ComponentReadiness
     profile_status: str
@@ -56,7 +55,9 @@ def collect_runtime_profile_readiness() -> list[RuntimeProfileReadiness]:
 
     for key in sorted(VOICE_RUNTIME_PROFILES):
         profile = VOICE_RUNTIME_PROFILES[key]
-        errors = validation_errors.get(key, ())
+        # Whole-config invariant failures ("global") apply to every profile, so
+        # surface them on each row instead of letting the table read all-ok.
+        errors = validation_errors.get(key, ()) + validation_errors.get("global", ())
         if errors:
             invalid = ComponentReadiness("invalid", "; ".join(errors))
             rows.append(
@@ -67,7 +68,7 @@ def collect_runtime_profile_readiness() -> list[RuntimeProfileReadiness]:
                     asr_status=invalid,
                     llm_model=profile.llm_model,
                     llm_status=invalid,
-                    tts_model=profile.tts_model,
+                    tts_engine=VALTEC_TTS_CONFIG.key,
                     tts_voice=profile.tts_voice,
                     tts_status=invalid,
                     profile_status="invalid",
@@ -78,7 +79,7 @@ def collect_runtime_profile_readiness() -> list[RuntimeProfileReadiness]:
 
         asr_status = _asr_readiness(profile.asr_model)
         llm_status = _llm_readiness(profile.llm_model)
-        tts_status = _tts_readiness(profile)
+        tts_status = _valtec_readiness()
         status = _combine_status(asr_status, llm_status, tts_status)
         notes = _join_notes(profile.description, tts_status.detail)
 
@@ -90,7 +91,7 @@ def collect_runtime_profile_readiness() -> list[RuntimeProfileReadiness]:
                 asr_status=asr_status,
                 llm_model=profile.llm_model,
                 llm_status=llm_status,
-                tts_model=profile.tts_model,
+                tts_engine=VALTEC_TTS_CONFIG.key,
                 tts_voice=profile.tts_voice,
                 tts_status=tts_status,
                 profile_status=status,
@@ -117,7 +118,7 @@ def render_profiles(console: Console, *, show_paths: bool = False) -> None:
                 [
                     f"ASR: {_format_component(row.asr_model, row.asr_status)}",
                     f"LLM: {_format_component(row.llm_model, row.llm_status)}",
-                    f"TTS: {_format_component(row.tts_model, row.tts_status)}",
+                    f"TTS: {_format_component(row.tts_engine, row.tts_status)}",
                 ]
             ),
             row.tts_voice or "default",
@@ -132,7 +133,7 @@ def render_profiles(console: Console, *, show_paths: bool = False) -> None:
         console.print(
             f"{row.key}: ASR={row.asr_model} ({row.asr_status.status}); "
             f"LLM={row.llm_model} ({row.llm_status.status}); "
-            f"TTS={row.tts_model} voice={row.tts_voice or 'default'} "
+            f"TTS={row.tts_engine} voice={row.tts_voice or 'default'} "
             f"({row.tts_status.status}); status={row.profile_status}; "
             f"{row.notes}",
             highlight=False,
@@ -145,12 +146,11 @@ def render_profiles(console: Console, *, show_paths: bool = False) -> None:
         for row in rows:
             asr = ASR_MODEL_REGISTRY.get(row.asr_model)
             llm = LLM_MODEL_REGISTRY.get(row.llm_model)
-            tts = TTS_MODEL_REGISTRY.get(row.tts_model)
             console.print(
                 f"{row.key}: "
                 f"ASR={asr.local_dir if asr else 'unknown'}; "
                 f"LLM={llm.local_path if llm else 'unknown'}; "
-                f"TTS={tts.local_dir if tts else 'unknown'}",
+                f"TTS={VALTEC_TTS_CONFIG.local_dir}",
                 highlight=False,
             )
 
@@ -165,7 +165,7 @@ def render_status(console: Console, *, vault: Path = DEFAULT_VAULT) -> None:
     status_table.add_column("Detail")
 
     status_table.add_row("Package", "ok", f"soca {package_version()}")
-    status_table.add_row("Primary command", "ok", "uv run soca voice --profile baseline")
+    status_table.add_row("Primary command", "ok", "uv run soca voice")
     status_table.add_row("Default profile", "ok", DEFAULT_VOICE_RUNTIME_PROFILE_KEY)
     status_table.add_row(
         "Runtime profiles",
@@ -198,12 +198,11 @@ def _profile_paths_table(rows: list[RuntimeProfileReadiness]) -> Table:
     for row in rows:
         asr = ASR_MODEL_REGISTRY.get(row.asr_model)
         llm = LLM_MODEL_REGISTRY.get(row.llm_model)
-        tts = TTS_MODEL_REGISTRY.get(row.tts_model)
         table.add_row(
             row.key,
             str(asr.local_dir if asr else "unknown"),
             str(llm.local_path if llm else "unknown"),
-            str(tts.local_dir if tts else "unknown"),
+            str(VALTEC_TTS_CONFIG.local_dir),
         )
 
     return table
@@ -212,17 +211,22 @@ def _profile_paths_table(rows: list[RuntimeProfileReadiness]) -> Table:
 def _group_validation_errors(errors: list[str]) -> dict[str, tuple[str, ...]]:
     grouped: dict[str, list[str]] = {}
     for error in errors:
-        key, _, message = error.partition(":")
-        grouped.setdefault(key.strip() or "global", []).append(message.strip() or error)
+        # Profile-scoped errors are "<profile>: message"; anything without a
+        # colon is a whole-config invariant (e.g. the profile-set check) and
+        # must bucket under "global" so it is not lost against a profile name.
+        if ":" in error:
+            key, _, message = error.partition(":")
+            key, message = key.strip() or "global", message.strip() or error
+        else:
+            key, message = "global", error
+        grouped.setdefault(key, []).append(message)
     return {key: tuple(messages) for key, messages in grouped.items()}
 
 
 def _asr_readiness(model_key: str) -> ComponentReadiness:
     config = ASR_MODEL_REGISTRY[model_key]
     missing = [
-        path.name
-        for path in (config.encoder_path, config.decoder_path)
-        if not path.exists()
+        path.name for path in (config.encoder_path, config.decoder_path) if not path.exists()
     ]
     if missing:
         return ComponentReadiness(
@@ -242,106 +246,16 @@ def _llm_readiness(model_key: str) -> ComponentReadiness:
     return ComponentReadiness("ok", "GGUF found")
 
 
-def _tts_readiness(profile: VoiceRuntimeProfile) -> ComponentReadiness:
-    config = TTS_MODEL_REGISTRY[profile.tts_model]
-    voice = profile.tts_voice or config.default_voice
-
-    if config.runner == "valtec":
-        return _valtec_readiness()
-    if config.runner == "piper":
-        return _piper_readiness(config)
-    if config.runner == "omnivoice":
-        return _omnivoice_readiness(config, voice)
-    if config.runner == "vieneu":
-        return _package_readiness("vieneu", "uv sync --extra tts-vieneu")
-    if config.runner == "mms_transformers":
-        return _packages_readiness(("torch", "transformers"), "uv sync --extra tts")
-    if config.runner == "kani":
-        return _package_readiness("kani_tts", "uv pip install kani-tts-2")
-    if config.runner == "f5":
-        return _f5_readiness(config)
-    if config.runner == "viettts_server":
-        return ComponentReadiness(
-            "warning",
-            "external server runner; start VietTTS server before use",
-        )
-    if config.runner == "external_command":
-        return _external_command_readiness(config)
-
-    return ComponentReadiness("warning", f"unknown runner readiness for {config.runner}")
-
-
 def _valtec_readiness() -> ComponentReadiness:
-    source = Path(os.environ.get(VALTEC_SOURCE_ENV, REPO_ROOT / "external" / "valtec-tts"))
-    required = (source / "infer.py", source / "src")
-    if all(path.exists() for path in required):
-        return ComponentReadiness("ok", f"valtec source found: {source}")
+    try:
+        release_root = resolve_current_valtec_release()
+        artifacts = resolve_valtec_onnx_artifacts(release_root)
+    except (FileNotFoundError, KeyError, TypeError, ValueError) as exc:
+        return ComponentReadiness("missing", f"Valtec artifact is not ready: {exc}")
     return ComponentReadiness(
-        "missing",
-        f"missing valtec source checkout; expected {source}",
+        "ok",
+        f"Valtec {release_root.name}/{artifacts.precision} manifest verified",
     )
-
-
-def _piper_readiness(config: TTSModelConfig) -> ComponentReadiness:
-    package = _package_readiness("piper", "uv sync --extra tts-piper")
-    if not package.ok:
-        return package
-
-    if not config.hf_model_file or not config.hf_config_file:
-        return ComponentReadiness("missing", "missing Piper artifact metadata")
-
-    model_path = config.local_dir / config.hf_model_file
-    config_path = config.local_dir / config.hf_config_file
-    if model_path.exists() and config_path.exists():
-        return ComponentReadiness("ok", "Piper package and ONNX artifacts found")
-    return ComponentReadiness("missing", f"missing Piper ONNX artifacts under {config.local_dir}")
-
-
-def _omnivoice_readiness(config: TTSModelConfig, voice: str) -> ComponentReadiness:
-    package = _package_readiness("omnivoice", "uv pip install omnivoice")
-    if not package.ok:
-        return package
-
-    if voice in {config.default_voice, "auto"} or voice in (config.voice_designs or {}):
-        return ComponentReadiness("ok", "OmniVoice package found; using generated voice design")
-
-    voice_dir = config.local_dir / "voices" / voice
-    if (voice_dir / "prompt.pt").exists() and (voice_dir / "meta.json").exists():
-        return ComponentReadiness("ok", f"saved OmniVoice prompt found: {voice}")
-
-    return ComponentReadiness("missing", f"missing saved OmniVoice voice prompt: {voice_dir}")
-
-
-def _f5_readiness(config: TTSModelConfig) -> ComponentReadiness:
-    package = _package_readiness("f5_tts", "uv sync --extra tts-f5")
-    if not package.ok:
-        return package
-
-    audio = os.environ.get(config.reference_audio_env_var or "")
-    text = os.environ.get(config.reference_text_env_var or "")
-    if audio and text and Path(audio).expanduser().exists():
-        return ComponentReadiness("ok", "F5 package and reference audio/text configured")
-    return ComponentReadiness("missing", "missing F5 reference audio/text env vars")
-
-
-def _external_command_readiness(config: TTSModelConfig) -> ComponentReadiness:
-    command = os.environ.get(config.command_env_var or "") or ""
-    if command.strip():
-        return ComponentReadiness("ok", f"external command configured via {config.command_env_var}")
-    return ComponentReadiness("missing", f"missing external command env var {config.command_env_var}")
-
-
-def _package_readiness(module_name: str, install_hint: str) -> ComponentReadiness:
-    if importlib.util.find_spec(module_name):
-        return ComponentReadiness("ok", f"package {module_name} available")
-    return ComponentReadiness("missing", f"missing package {module_name}; {install_hint}")
-
-
-def _packages_readiness(module_names: tuple[str, ...], install_hint: str) -> ComponentReadiness:
-    missing = [name for name in module_names if not importlib.util.find_spec(name)]
-    if not missing:
-        return ComponentReadiness("ok", f"packages available: {', '.join(module_names)}")
-    return ComponentReadiness("missing", f"missing package(s): {', '.join(missing)}; {install_hint}")
 
 
 def _combine_status(*components: ComponentReadiness) -> str:
