@@ -55,6 +55,11 @@ class VoicePipeline:
         metrics: MetricsLogger | None = None,
         reject_response: str = "[laughter] Moshi moshi? Có ai đó hăm?",
         repair_catalog: RepairCatalog | None = None,
+        first_clause_enabled: bool = True,
+        first_clause_min_chars: int = 12,
+        first_clause_min_words: int = 2,
+        first_clause_max_scan_chars: int = 80,
+        pcm_crossfade_ms: float = 12.0,
     ) -> None:
         self.asr = asr
         self.llm = llm
@@ -65,6 +70,19 @@ class VoicePipeline:
         # e.g. unit tests). Production injects ``repair_catalog`` for variety.
         self.reject_response = reject_response
         self.repair_catalog = repair_catalog
+        if first_clause_min_chars < 1:
+            raise ValueError("first_clause_min_chars must be positive")
+        if first_clause_min_words < 1:
+            raise ValueError("first_clause_min_words must be positive")
+        if first_clause_max_scan_chars < first_clause_min_chars:
+            raise ValueError("first_clause_max_scan_chars must be at least first_clause_min_chars")
+        if not 0.0 <= pcm_crossfade_ms <= 20.0:
+            raise ValueError("pcm_crossfade_ms must be between 0 and 20")
+        self.first_clause_enabled = first_clause_enabled
+        self.first_clause_min_chars = first_clause_min_chars
+        self.first_clause_min_words = first_clause_min_words
+        self.first_clause_max_scan_chars = first_clause_max_scan_chars
+        self.pcm_crossfade_ms = pcm_crossfade_ms
         self._repair_state = RepairState()
         self._repair_rng = random.Random()
 
@@ -192,7 +210,10 @@ class VoicePipeline:
             yield StreamingEvent(
                 type="repair",
                 text=repair.text,
-                metadata={**repair_meta, "technical_reason": rejection_reason or "empty_transcript"},
+                metadata={
+                    **repair_meta,
+                    "technical_reason": rejection_reason or "empty_transcript",
+                },
             )
             if speak_rejections:
                 chunks = chunk_text_for_tts(repair.text, min_chars=min_sentence_chars)
@@ -258,9 +279,7 @@ class VoicePipeline:
                 "blocked": bool(getattr(runtime_result, "blocked", False)),
                 "used_tool": bool(getattr(trace, "used_tool", False)),
                 "used_llm": bool(getattr(trace, "used_llm", False)),
-                "citations": [
-                    {"path": item.path, "title": item.title} for item in citations
-                ],
+                "citations": [{"path": item.path, "title": item.title} for item in citations],
                 # LLM telemetry for `soca voice --usage`. Object is fine in metadata;
                 # eval/console read named keys, not the whole dict.
                 "llm_usage": getattr(runtime_result, "usage", None),
@@ -326,20 +345,31 @@ class VoicePipeline:
         first_sentence_min_chars: int | None = None,
         interrupt_event: threading.Event | None = None,
     ) -> Iterator[StreamingEvent]:
-        pump = _TTSPlaybackPump(self.tts, sink, self.metrics, turn_start_time=turn_start_time, interrupt_event=interrupt_event)
+        pump = _TTSPlaybackPump(
+            self.tts,
+            sink,
+            self.metrics,
+            turn_start_time=turn_start_time,
+            interrupt_event=interrupt_event,
+        )
         pump.start()
 
         runtime_result: Any | None = None
         stream = self.assistant_runtime.stream_text_turn(
-            transcript, source="asr",
+            transcript,
+            source="asr",
             metadata={"asr_rejection_reason": rejection_reason},
             min_sentence_chars=min_sentence_chars,
             first_sentence_min_chars=first_sentence_min_chars,
+            first_clause_enabled=self.first_clause_enabled,
+            first_clause_min_chars=self.first_clause_min_chars,
+            first_clause_min_words=self.first_clause_min_words,
+            first_clause_max_scan_chars=self.first_clause_max_scan_chars,
         )
         try:
             for event in stream:
                 if interrupt_event is not None and interrupt_event.is_set():
-                    break                       # stop
+                    break  # stop
                 if event.type == "token":
                     yield StreamingEvent(type="llm_token", text=event.text)
                 elif event.type == "sentence":
@@ -365,7 +395,7 @@ class VoicePipeline:
             latency_ms=(time.perf_counter() - turn_start_time) * 1000,
             metadata={
                 "rejected": False,
-                "interrupted": interrupted,      # cho UI/loop biết
+                "interrupted": interrupted,  # cho UI/loop biết
                 "runtime_blocked": bool(getattr(runtime_result, "blocked", False)),
                 "runtime_route": getattr(getattr(runtime_result, "route", None), "value", ""),
                 "stage_latencies_ms": self.metrics.snapshot(),
@@ -381,7 +411,13 @@ class VoicePipeline:
         interrupt_event: threading.Event | None = None,
     ) -> Iterator[StreamingEvent]:
         """Synthesize + play a fixed list of sentences via the shared pump."""
-        pump = _TTSPlaybackPump(self.tts, sink, self.metrics, turn_start_time=turn_start_time, interrupt_event=interrupt_event)
+        pump = _TTSPlaybackPump(
+            self.tts,
+            sink,
+            self.metrics,
+            turn_start_time=turn_start_time,
+            interrupt_event=interrupt_event,
+        )
         pump.start()
         pump.submit_all(sentences)
         pump.close()
@@ -526,7 +562,12 @@ class _TTSPlaybackPump:
                 assert isinstance(event, StreamingEvent)
                 assert event.audio is not None
                 assert event.sample_rate is not None
-                playback = self._sink.play(event.audio, event.sample_rate, blocking=True, interrupt_event=self._interrupt_event)
+                playback = self._sink.play(
+                    event.audio,
+                    event.sample_rate,
+                    blocking=True,
+                    interrupt_event=self._interrupt_event,
+                )
                 metadata = dict(event.metadata or {})
                 metadata["playback_latency_ms"] = playback.latency_ms
                 self._event_queue.put(

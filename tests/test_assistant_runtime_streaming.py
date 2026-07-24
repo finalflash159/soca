@@ -127,6 +127,27 @@ def test_stream_llm_route_emits_tokens_then_sentences_then_result() -> None:
     assert llm.generate_calls == []
 
 
+def test_stream_emits_safe_first_clause_before_later_tokens() -> None:
+    llm = StreamSpyLLM(["Tuy nhiên, mình sẽ kiểm tra ", "thêm trước khi trả lời."])
+    runtime = AssistantRuntime(llm=llm)
+
+    events = list(
+        runtime.stream_text_turn(
+            "kiểm tra giúp tôi",
+            min_sentence_chars=24,
+            first_clause_enabled=True,
+            first_clause_min_chars=8,
+            first_clause_min_words=2,
+            first_clause_max_scan_chars=80,
+        )
+    )
+
+    sentences = [event.text for event in events if event.type == "sentence"]
+    types = [event.type for event in events]
+    assert sentences[0] == "Tuy nhiên,"
+    assert types.index("sentence") < len(types) - 1 - types[::-1].index("token")
+
+
 def test_stream_first_sentence_emitted_before_later_tokens() -> None:
     llm = StreamSpyLLM(["Câu đầu tiên đủ dài rồi. ", "Câu thứ hai theo sau."])
     runtime = AssistantRuntime(llm=llm)

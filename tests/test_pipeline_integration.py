@@ -108,6 +108,10 @@ class FakeStreamingRuntime:
         metadata: dict | None = None,
         min_sentence_chars: int = 24,
         first_sentence_min_chars: int | None = None,
+        first_clause_enabled: bool = True,
+        first_clause_min_chars: int = 12,
+        first_clause_min_words: int = 2,
+        first_clause_max_scan_chars: int = 80,
     ):
         self.calls.append(text)
         for sentence in self.sentences:
@@ -232,7 +236,9 @@ def test_voice_pipeline_streaming_strips_markdown_before_tts():
     )
 
     assert any(event.type == "sentence" and "**Tình hình:**" in event.text for event in events)
-    assert any(event.type == "tts" and event.text == "Tình hình: nên ăn đủ đạm." for event in events)
+    assert any(
+        event.type == "tts" and event.text == "Tình hình: nên ăn đủ đạm." for event in events
+    )
     assert tts.calls == ["Tình hình: nên ăn đủ đạm."]
 
 

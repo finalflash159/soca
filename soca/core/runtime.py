@@ -20,7 +20,7 @@ from soca.core.guardrails import (
     is_time_question,
     normalize_vi,
 )
-from soca.core.streaming import pop_ready_sentence
+from soca.core.streaming import pop_ready_first_clause, pop_ready_sentence
 from soca.core.text_chunking import chunk_text_for_tts
 from soca.core.turn import (
     RuntimeResult,
@@ -46,8 +46,7 @@ class RuntimeOptions:
 
 
 class RuntimeToolRouter(Protocol):
-    def select(self, text: str, *, knowledge_limit: int) -> ToolCall | None:
-        ...
+    def select(self, text: str, *, knowledge_limit: int) -> ToolCall | None: ...
 
 
 class DefaultRuntimeToolRouter:
@@ -177,6 +176,10 @@ class AssistantRuntime:
         metadata: dict[str, Any] | None = None,
         min_sentence_chars: int = 24,
         first_sentence_min_chars: int | None = None,
+        first_clause_enabled: bool = True,
+        first_clause_min_chars: int = 12,
+        first_clause_min_words: int = 2,
+        first_clause_max_scan_chars: int = 80,
     ) -> Iterator[RuntimeStreamEvent]:
         """Streaming counterpart of run_text_turn.
 
@@ -224,6 +227,10 @@ class AssistantRuntime:
             knowledge_context,
             min_sentence_chars=min_sentence_chars,
             first_sentence_min_chars=first_sentence_min_chars,
+            first_clause_enabled=first_clause_enabled,
+            first_clause_min_chars=first_clause_min_chars,
+            first_clause_min_words=first_clause_min_words,
+            first_clause_max_scan_chars=first_clause_max_scan_chars,
         )
 
     def _emit_fixed_result(
@@ -312,6 +319,10 @@ class AssistantRuntime:
         *,
         min_sentence_chars: int,
         first_sentence_min_chars: int | None = None,
+        first_clause_enabled: bool = True,
+        first_clause_min_chars: int = 12,
+        first_clause_min_words: int = 2,
+        first_clause_max_scan_chars: int = 80,
     ) -> Iterator[RuntimeStreamEvent]:
         if self.llm is None:
             result = self._blocked_result(
@@ -350,15 +361,36 @@ class AssistantRuntime:
                 yield RuntimeStreamEvent(type="token", text=token)
 
                 while True:
-                    active_min = (
-                        first_sentence_min_chars
-                        if (not spoken_sentences and first_sentence_min_chars is not None)
-                        else min_sentence_chars
-                    )
-                    sentence, buffer = pop_ready_sentence(buffer, min_chars=active_min)
+                    sentence: str | None = None
+                    if first_clause_enabled and not spoken_sentences:
+                        sentence, next_buffer = pop_ready_first_clause(
+                            buffer,
+                            min_chars=first_clause_min_chars,
+                            min_words=first_clause_min_words,
+                            max_scan_chars=first_clause_max_scan_chars,
+                        )
+                        if sentence is not None:
+                            buffer = next_buffer
+
+                    if sentence is None:
+                        active_min = (
+                            first_sentence_min_chars
+                            if (not spoken_sentences and first_sentence_min_chars is not None)
+                            else min_sentence_chars
+                        )
+                        sentence, buffer = pop_ready_sentence(
+                            buffer,
+                            min_chars=active_min,
+                        )
+
                     if sentence is None:
                         break
-                    guard = self._guard_sentence(sentence, knowledge_used, citations)
+
+                    guard = self._guard_sentence(
+                        sentence,
+                        knowledge_used,
+                        citations,
+                    )
                     draft.guardrail_events.append(guard)
                     if guard.blocked:
                         block_event = guard
@@ -459,7 +491,8 @@ class AssistantRuntime:
             return self._blocked_result(
                 frame,
                 draft,
-                reason=tool_input_event.message or self._safe_block_message(tool_input_event.reason),
+                reason=tool_input_event.message
+                or self._safe_block_message(tool_input_event.reason),
                 route=RuntimeRoute.BLOCKED,
             )
 
@@ -474,7 +507,8 @@ class AssistantRuntime:
             return self._blocked_result(
                 frame,
                 draft,
-                reason=tool_output_event.message or self._safe_block_message(tool_output_event.reason),
+                reason=tool_output_event.message
+                or self._safe_block_message(tool_output_event.reason),
                 route=RuntimeRoute.BLOCKED,
             )
 
@@ -697,10 +731,7 @@ class AssistantRuntime:
         return "Mình không thể xử lý yêu cầu này một cách an toàn."
 
     def _should_build_knowledge_context(self, frame: TurnFrame) -> bool:
-        return bool(
-            frame.metadata.get("use_knowledge")
-            or frame.metadata.get("knowledge_query")
-        )
+        return bool(frame.metadata.get("use_knowledge") or frame.metadata.get("knowledge_query"))
 
     def _citations_from_tool_result(self, result: ToolResult) -> tuple[KnowledgeCitation, ...]:
         if not result.name.startswith("knowledge."):
