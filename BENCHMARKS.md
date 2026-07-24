@@ -738,6 +738,104 @@ timer; scheduling requests stay blocked until a real scheduler backend exists.
 
 ---
 
+## D3.2 — Phase 7 clause chunking + PCM continuity (`tts-improvement`)
+
+**Purpose:** record what Phase 7 (I1–I6) actually changed and what was measured for
+it. Phase 7 has three independent parts: safe first-clause chunking (text side, lower
+TTFA), tail-holding equal-gain cross-fade (DSP), and a persistent playback session
+(device continuity, no inter-chunk gap). Each is measured by a different gate; **numbers
+are not conflated**.
+
+**Setup**
+
+| Field           | Value                                                                  |
+| --------------- | ---------------------------------------------------------------------- |
+| Branch          | `tts-improvement` (cut from `main` after `tts-refactor` merged, PR #2) |
+| Active release  | `soca-valtec-20260724-50fd400`, role `release`, fp32                   |
+| Manifest sha256 | `e61889df0aaf867f79266e8aa5ac60cf7adb38fa149e28c6a35bb8bc79df7a04`     |
+| Run date        | 2026-07-24, Apple M4, warm engine, single process                      |
+| Unit tests      | 580 passed / 1 skipped; ruff + compileall clean                        |
+
+**(a) Offline A/B waveform** — `eval/eval_valtec_chunk_join.py`, 5 voices × 30 prompts →
+450 WAV built from **identical** synthesized chunks (`hard` / `equal_gain_8ms` /
+`equal_gain_12ms`). Output `eval/results/valtec_chunk_join/` (gitignored).
+
+| Metric                      | Value                   | Gate     | Pass |
+| --------------------------- | ----------------------- | -------- | ---- |
+| `peak_abs` max (all)        | 0.9633                  | ≤ 1.0    | ✅   |
+| `hard_boundary_jump`        | median 0.0, p95 0.0002  | — (info) | —    |
+| Multi-chunk rows (A/B real) | 125 / 150               | —        | —    |
+| `chunk_latency_ms`          | median 204.7, p95 453.2 | —        | —    |
+
+> Finding: at these clause boundaries the hard-join sample jump is already ≈ 0 (Valtec
+> chunks begin/end near silence), so cross-fade **introduces no artifact** but also shows
+> no measurable offline win. Listening review (user, 2026-07-24) confirmed **no audible
+> difference** between hard / 8 ms / 12 ms → listening gate **PASS**; `pcm_crossfade_ms`
+> default kept at **12 ms** because that switch also keeps the gap-free session path on.
+
+**(b) Device playback** — real `SoundDevicePlayer` on the default output ("Loa MacBook
+Pro"), 5 turns / 7 boundaries. ASR + LLM **bypassed** (they produce no device metric);
+this isolates the TTS → pump → session → speaker path Phase 7 changed.
+
+| Metric                   | Value                  | Gate            | Pass |
+| ------------------------ | ---------------------- | --------------- | ---- |
+| `audible_ttfa_ms`        | p50 239, p95 310       | improves        | ✅   |
+| `tts_ready_ttfa_ms`      | p50 211                | separate #      | ✅   |
+| ready → audible delta    | ~28 ms                 | device cost     | ✅   |
+| `synthesis_slack_ms`     | p50 2829, p05 2137     | p50≥100, p05≥40 | ✅   |
+| `crossfade_ms`           | 12.0 on 7/7 boundaries | overlap real    | ✅   |
+| `output_underflow_count` | 0                      | == 0            | ✅   |
+| `crossfade_fallback`     | 0 (0.0%)               | < 1%            | ✅   |
+
+**(c) E2E voice loop** — `eval/eval_voice_loop.py --profile baseline` (real
+`phowhisper_base` + `arcee_vylinh_3b_q4_k_m` + Valtec), NullAudioPlayer, 12 prompts,
+`eval/results/valtec_chunk_join_live/` (gitignored).
+
+| Metric                   | Value         | Note                                          |
+| ------------------------ | ------------- | --------------------------------------------- |
+| `output_underflow_count` | 0 on all rows | Phase 7 continuity holds end-to-end ✅        |
+| TTFA p50                 | 3071 ms       | **ASR-bound, not comparable to D3.1 1331 ms** |
+
+> Honest caveat: the E2E TTFA here is dominated by ASR (per-row `stage_latencies_ms/asr`
+> ≈ 1.7–2.6 s) because `--generate-fixtures` synthesized the **long** chunk-join prompts
+> into long input audio. That is a different (harder) prompt set than the D3.1 baseline
+> (ASR p50 364 ms), so this run does **not** measure the first-clause TTFA effect and is
+> not a valid comparison to 1331 ms. It only confirms `output_underflow_count == 0` in the
+> full loop.
+
+**(d) First-clause TTFA A/B (controlled)** — `eval/measure_first_clause_ttfa.py`. Captures one
+real LLM (`arcee_vylinh_3b_q4_k_m`) token stream per prompt **with per-token arrival times**, then
+replays that exact stream (same tokens, same delays) through the runtime with `first_clause`
+ON vs OFF. ASR is excluded and held constant, so the delta isolates the flush-point effect. 8
+conversational transcripts.
+
+| Metric (positive = first-clause faster) | p50     | range         | Prompts helped |
+| --------------------------------------- | ------- | ------------- | -------------- |
+| Δ time-to-first-sentence (text side)    | +184 ms | −0 … +453 ms  | 7 / 8          |
+| Δ tts_ready (text + Valtec synth)       | +395 ms | −14 … +928 ms | 7 / 8          |
+
+> This closes the "does I1 lower TTFA" question with a **positive, honest** result: on 7/8
+> conversational prompts first-clause flushes the first chunk ~184 ms earlier (text side), and
+> ~395 ms earlier to first playable audio because the shorter first clause also synthesizes
+> faster. The 1/8 no-benefit case is a response with no clause boundary before the first period
+> (on == off) — expected, not a regression. This is the LLM→first-chunk delta attributable to
+> first-clause, not an absolute E2E TTFA figure.
+
+**Harness (now CLI-native):** `eval/eval_voice_loop.py` gained `--playback` (routes a real
+`SoundDevicePlayer` through the pump's persistent-session + crossfade path) and
+`--first-clause` / `--no-first-clause` (overrides the profile for an on/off A/B, via a new
+`first_clause_enabled` override on `resolve_voice_runtime_config`). A `--playback` smoke on 2
+prompts confirmed the harness populates device metrics: `playback_sink=SoundDevicePlayer`,
+`audible_ttfa_ms` non-null, ready→audible ≈ 37 ms, `output_underflow_count` 0. (Absolute TTFA
+there is still ASR-bound on the long fixtures — the controlled A/B (d) remains the valid
+first-clause number.) The standalone `eval/measure_*.py` scripts are kept as focused probes.
+
+**Still open (not blockers):**
+
+- DuplexAecSink far-path is unit-tested but not validated live (needs mic + barge-in loop).
+
+---
+
 ## D2.5 — ASR Robustness (adapted from Barański et al. ICASSP 2025)
 
 Five sub-deliverables: **(A)** non-speech dataset, **(B)** Vietnamese BoH

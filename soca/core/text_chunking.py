@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import re
 
-_SENTENCE_BOUNDARY_RE = re.compile(
-    r"(?P<punct>[.!?\u2026]+)(?P<trailing>\s+|$)|(?P<newline>\n+)"
-)
+_SENTENCE_BOUNDARY_RE = re.compile(r"(?P<punct>[.!?\u2026]+)(?P<trailing>\s+|$)|(?P<newline>\n+)")
 _MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 _MARKDOWN_EMPHASIS_RE = re.compile(r"(\*\*|__)(.*?)\1|(?<!\w)(\*|_)([^*_]+?)\3(?!\w)")
 _MARKDOWN_CODE_RE = re.compile(r"`([^`]+)`")
@@ -12,6 +10,8 @@ _MARKDOWN_HEADING_RE = re.compile(r"(?m)^\s{0,3}#{1,6}\s+")
 _MARKDOWN_LIST_BULLET_RE = re.compile(r"(?m)^\s*[-*+]\s+")
 _MARKDOWN_RULE_RE = re.compile(r"(?m)^\s*[-*_]{3,}\s*$")
 _MULTISPACE_RE = re.compile(r"[ \t]{2,}")
+_CLAUSE_BOUNDARY_RE = re.compile(r"(?P<punct>[,;:]|[—–])(?P<trailing>[ \t]+)")
+_WORD_RE = re.compile(r"[^\W_]+", flags=re.UNICODE)
 
 
 def is_numbered_list_marker(text: str, punctuation_start: int, punctuation: str) -> bool:
@@ -116,3 +116,67 @@ def normalize_text_for_tts(text: str) -> str:
     cleaned = re.sub(r"\s+\n", "\n", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
+
+
+def _inside_protected_markdown(text: str, index: int) -> bool:
+    if text[:index].count("`") % 2 == 1:
+        return True
+
+    for match in re.finditer(r"\[[^\]]*\]\([^)]*\)", text):
+        if match.start() <= index < match.end():
+            return True
+    return False
+
+
+def _looks_like_protected_boundary(text: str, punct_at: int, punct: str) -> bool:
+    if _inside_protected_markdown(text, punct_at):
+        return True
+
+    before = text[punct_at - 1] if punct_at > 0 else ""
+    remainder = text[punct_at + 1 :]
+    next_non_space = next((char for char in remainder if not char.isspace()), "")
+
+    return punct in {",", ":"} and before.isdigit() and next_non_space.isdigit()
+
+
+def split_first_clause(
+    text: str,
+    *,
+    min_chars: int = 12,
+    min_words: int = 2,
+    max_scan_chars: int = 80,
+) -> tuple[str | None, str]:
+    if min_chars < 1:
+        raise ValueError("min_chars must be positive")
+    if min_words < 1:
+        raise ValueError("min_words must be positive")
+    if max_scan_chars < min_chars:
+        raise ValueError("max_scan_chars must be at least min_chars")
+
+    cleaned = text.lstrip()
+    if not cleaned:
+        return None, text
+
+    for match in _CLAUSE_BOUNDARY_RE.finditer(cleaned):
+        boundary_end = match.end("punct")
+        if boundary_end > max_scan_chars:
+            break
+        punct = match.group("punct")
+        if _looks_like_protected_boundary(
+            cleaned,
+            match.start("punct"),
+            punct,
+        ):
+            continue
+
+        clause = cleaned[:boundary_end].strip()
+        remainder = cleaned[match.end() :].lstrip()
+        if not remainder:
+            continue
+        if len(clause) < min_chars:
+            continue
+        if len(_WORD_RE.findall(clause)) < min_words:
+            continue
+        return clause, remainder
+
+    return None, text

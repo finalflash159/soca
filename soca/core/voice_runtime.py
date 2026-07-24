@@ -41,6 +41,12 @@ class ResolvedVoiceRuntimeConfig:
     max_tokens: int
     temperature: float
     top_p: float
+    first_clause_enabled: bool
+    first_clause_min_chars: int
+    first_clause_min_words: int
+    first_clause_max_scan_chars: int
+    pcm_crossfade_enabled: bool
+    pcm_crossfade_ms: float
     vault: Path
     no_memory: bool = False
     memory_chars: int = 2200
@@ -93,6 +99,7 @@ def resolve_voice_runtime_config(
     max_tokens: int | None = None,
     temperature: float | None = None,
     top_p: float | None = None,
+    first_clause_enabled: bool | None = None,
     vault: str | Path | None = None,
     no_memory: bool = False,
     memory_chars: int = 2200,
@@ -135,6 +142,16 @@ def resolve_voice_runtime_config(
         max_tokens=max_tokens if max_tokens is not None else profile.max_tokens,
         temperature=(temperature if temperature is not None else profile.temperature),
         top_p=top_p if top_p is not None else profile.top_p,
+        first_clause_enabled=(
+            first_clause_enabled
+            if first_clause_enabled is not None
+            else profile.first_clause_enabled
+        ),
+        first_clause_min_chars=profile.first_clause_min_chars,
+        first_clause_min_words=profile.first_clause_min_words,
+        first_clause_max_scan_chars=profile.first_clause_max_scan_chars,
+        pcm_crossfade_enabled=profile.pcm_crossfade_enabled,
+        pcm_crossfade_ms=profile.pcm_crossfade_ms,
         vault=Path(vault or Path.home() / "KnowledgeVault").expanduser().resolve(),
         no_memory=no_memory,
         memory_chars=memory_chars,
@@ -240,6 +257,11 @@ def build_voice_runtime(
         tts=tts,
         assistant_runtime=assistant_runtime,
         repair_catalog=default_repair_catalog(),
+        first_clause_enabled=config.first_clause_enabled,
+        first_clause_min_chars=config.first_clause_min_chars,
+        first_clause_min_words=config.first_clause_min_words,
+        first_clause_max_scan_chars=config.first_clause_max_scan_chars,
+        pcm_crossfade_ms=(config.pcm_crossfade_ms if config.pcm_crossfade_enabled else 0.0),
     )
     return VoiceRuntimeBundle(
         config=config,

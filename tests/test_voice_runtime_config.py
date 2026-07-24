@@ -45,6 +45,20 @@ def test_explicit_valtec_voice_override_is_allowed(
     assert config.tts_voice == voice
 
 
+def test_first_clause_defaults_to_profile_and_can_be_overridden(tmp_path: Path) -> None:
+    default = resolve_voice_runtime_config(profile_key="baseline", vault=tmp_path)
+    assert default.first_clause_enabled is True  # baseline profile default
+
+    off = resolve_voice_runtime_config(
+        profile_key="baseline",
+        first_clause_enabled=False,
+        vault=tmp_path,
+    )
+    assert off.first_clause_enabled is False
+    # Override only touches the toggle, not the other clause knobs.
+    assert off.first_clause_min_chars == default.first_clause_min_chars
+
+
 def test_unknown_valtec_voice_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="Unknown Valtec voice"):
         resolve_voice_runtime_config(

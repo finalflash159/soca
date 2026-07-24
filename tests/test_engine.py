@@ -66,6 +66,12 @@ def make_voice_config() -> ResolvedVoiceRuntimeConfig:
         max_tokens=160,
         temperature=0.2,
         top_p=0.95,
+        first_clause_enabled=True,
+        first_clause_min_chars=12,
+        first_clause_min_words=2,
+        first_clause_max_scan_chars=80,
+        pcm_crossfade_enabled=True,
+        pcm_crossfade_ms=12.0,
         vault=Path("/tmp/soca-test-vault"),
         no_memory=True,
     )

@@ -20,6 +20,12 @@ class VoiceRuntimeProfile:
     max_tokens: int = 160
     temperature: float = 0.2
     top_p: float = 0.95
+    first_clause_enabled: bool = True
+    first_clause_min_chars: int = 12
+    first_clause_min_words: int = 2
+    first_clause_max_scan_chars: int = 80
+    pcm_crossfade_enabled: bool = True
+    pcm_crossfade_ms: float = 12.0
 
 
 DEFAULT_VOICE_RUNTIME_PROFILE_KEY = "baseline"

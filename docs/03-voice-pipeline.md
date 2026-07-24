@@ -150,6 +150,57 @@ flowchart LR
 Both paths call `bundle.pipeline.turn_streaming(...)`, so the **audio pipeline is
 the same**. Only the presentation layer and loop control differ.
 
+## Clause Chunking And PCM Join
+
+Phase 7 (`tts-improvement`) lowers time-to-first-audio and removes the click/gap at
+chunk boundaries. The flow for one streamed turn is:
+
+```text
+LLM token buffer -> safe first clause -> per-chunk guardrail -> Valtec ONNX
+-> resample to playback session rate -> tail-holding equal-gain cross-fade
+-> one persistent device/duplex session -> speaker and identical AEC far reference
+```
+
+- **Safe first clause** (`core/text_chunking.py` `split_first_clause`,
+  `core/streaming.py` `pop_ready_first_clause`): only the very first spoken chunk may
+  split at a comma/semicolon/colon/dash. It uses punctuation look-ahead (requires
+  whitespace after the mark), never a word fallback, and never splits inside a code
+  span, a markdown link, or a number/time like `1,000` / `12:30`. Later chunks keep the
+  full-sentence boundary. Gated by `first_clause_*` on `VoiceRuntimeProfile`.
+- **Tail-holding cross-fade** (`core/audio_join.py`): adjacent PCM buffers are joined
+  with a raised-cosine **equal-gain** window (default `12 ms`, configurable `8..20 ms`
+  via `pcm_crossfade_ms`). Equal-gain satisfies `fade_out + fade_in = 1`, so correlated
+  speech does not spike to +3 dB. Chunks shorter than four fade widths are passed through
+  with overlap `0` to protect TTFA.
+- **Persistent playback session** (`core/audio_out.py` `AudioPlaybackSession`,
+  `core/duplex_aec_sink.py` `_DuplexPlaybackSession`): one device/duplex session stays
+  open for the whole turn. PCM is resampled to the session rate **before** the join, and
+  the duplex sink pads a partial frame only once, in `finish()` — so no zero gap is
+  wedged between two chunks, and the speaker and AEC far reference receive identical PCM.
+
+### Latency telemetry (do not conflate the two TTFA numbers)
+
+| Metric                   | Meaning                                                           |
+| ------------------------ | ----------------------------------------------------------------- |
+| `tts_ready_ttfa_ms`      | First `TTSResult` ready (also mirrored to legacy `ttfa_ms`).      |
+| `audible_ttfa_ms`        | First successful `session.write()`, relative to turn start.       |
+| `synthesis_slack_ms`     | Per boundary: how much the next chunk beat the playback deadline. |
+| `crossfade_ms`           | Actual overlap applied (0 on the non-overlapping fallback).       |
+| `crossfade_fallback`     | `none` \| `non_overlapping` \| `legacy_sink`.                     |
+| `output_underflow_count` | Device/stream underflows for the turn (target `0`).               |
+
+When `synthesis_slack_ms < crossfade_ms` (short chunk, cold cache, CPU contention), the
+pump flushes the held tail with a 4 ms fade-out and plays the next chunk with a 4 ms
+fade-in **without overlap**, records `crossfade_fallback="non_overlapping"`, and never
+inserts silence to hide the miss. The per-turn `done` event carries a `playback` summary
+(`crossfade_fallback_count`, `output_underflow_count`, `audible_ttfa_ms`).
+
+A/B waveforms (`hard` / `equal_gain_8ms` / `equal_gain_12ms`) are built from **identical**
+synthesized chunks by `eval/eval_valtec_chunk_join.py`; audible TTFA, slack, underflow and
+fallback are device metrics and come from `eval/eval_voice_loop.py --playback`, not from
+offline WAVs. `BENCHMARKS.md` only accepts numbers once the JSON report, listening CSV and
+artifact checksum are saved together.
+
 ## Practical Latency Notes
 
 - `baseline` is the only public runtime profile: PhoWhisper Small, Arcee-VyLinh, and Valtec `NF`.

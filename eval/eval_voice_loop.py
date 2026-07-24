@@ -26,6 +26,7 @@ from soca.core import (
     AudioSink,
     NullAudioPlayer,
     ResolvedVoiceRuntimeConfig,
+    SoundDevicePlayer,
     build_voice_runtime,
     resolve_voice_runtime_config,
 )
@@ -376,6 +377,7 @@ def run_profile_eval(
         max_tokens=args.max_tokens,
         temperature=args.temperature,
         top_p=args.top_p,
+        first_clause_enabled=getattr(args, "first_clause", None),
         vault=args.vault,
         no_memory=args.no_memory,
         memory_chars=args.memory_chars,
@@ -397,7 +399,9 @@ def run_profile_eval(
     load_ms = (time.perf_counter() - load_started) * 1000
 
     peak_memory_mb = get_current_memory_mb()
-    audio_sink: AudioSink = NullAudioPlayer()
+    audio_sink: AudioSink = (
+        SoundDevicePlayer() if getattr(args, "playback", False) else NullAudioPlayer()
+    )
     try:
         rows = [
             evaluate_sample(bundle, sample, audio_sink=audio_sink)
@@ -583,6 +587,7 @@ def write_outputs(
     *,
     samples: Sequence[VoiceLoopSample],
     fixture_generation: Sequence[dict[str, Any]],
+    playback_label: str = "NullAudioPlayer",
 ) -> tuple[Path, Path]:
     run_paths.run_dir.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -610,7 +615,7 @@ def write_outputs(
         f"- Created at: `{run_paths.run_dir.name}`",
         f"- Sample count: `{len(samples)}`",
         f"- Fixture generation rows: `{len(fixture_generation)}`",
-        "- Playback: `NullAudioPlayer` (audio is synthesized but not sent to speakers)",
+        f"- Playback: `{playback_label}`",
         "",
         "| Profile | ASR | LLM | TTS | Voice | Status | Load ms | TTFA p50 | TTFA p95 | Total p50 | Total p95 | Reject | Err | Peak MB | Skip reason |",
         "|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
@@ -718,9 +723,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--temperature", type=float, default=None)
     parser.add_argument("--top-p", type=float, default=None)
     parser.add_argument(
+        "--playback",
+        action="store_true",
+        help=(
+            "Play synthesized audio through a real SoundDevicePlayer (the pump's "
+            "persistent-session + crossfade path), so audible_ttfa_ms / "
+            "output_underflow_count reflect the device. Default: headless NullAudioPlayer."
+        ),
+    )
+    parser.add_argument(
         "--no-playback",
         action="store_true",
-        help="Accepted for clarity; benchmark always uses NullAudioPlayer.",
+        help="Back-compat no-op; headless NullAudioPlayer is already the default.",
+    )
+    parser.add_argument(
+        "--first-clause",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Override the profile's first-clause chunking (--first-clause / "
+            "--no-first-clause) for an on/off TTFA A/B. Default: use the profile value."
+        ),
     )
     parser.add_argument(
         "--generate-fixtures",
@@ -768,9 +791,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Run again with --generate-fixtures, or pass --audio-file for existing WAVs."
         )
 
+    playback_sink_name = "SoundDevicePlayer" if args.playback else "NullAudioPlayer"
     console.print(
         f"[bold]E2E voice-loop benchmark[/bold]: {len(profiles)} profile(s), "
-        f"{len(samples)} sample(s), playback=NullAudioPlayer"
+        f"{len(samples)} sample(s), playback={playback_sink_name}"
     )
     created_at = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_paths = make_eval_run_paths(args.output_dir, "voice_loop", created_at)
@@ -782,6 +806,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         run_paths,
         samples=samples,
         fixture_generation=fixture_generation,
+        playback_label=playback_sink_name,
     )
     console.print(f"\n[green]Saved[/green] {json_path}")
     console.print(f"[green]Saved[/green] {md_path}")

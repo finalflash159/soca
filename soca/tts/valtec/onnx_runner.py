@@ -209,6 +209,21 @@ class ValtecOnnxTTS:
     def frontend_metadata(self) -> dict[str, Any]:
         return dict(self._last_frontend_metadata)
 
+    @property
+    def artifact_metadata(self) -> dict[str, Any]:
+        """Read-only provenance for eval/report rows and release gating."""
+        self._ensure_loaded()
+        assert self._artifacts is not None
+        artifacts = self._artifacts
+        return {
+            "manifest_sha256": artifacts.manifest_sha256,
+            "role": artifacts.role,
+            "artifact_id": artifacts.artifact_id,
+            "variant": artifacts.variant,
+            "precision": artifacts.precision,
+            "sample_rate": artifacts.sample_rate,
+        }
+
     def _speaker_id(self, selected_voice: str) -> int:
         if selected_voice not in self._speaker_map:
             raise ValueError(

@@ -143,6 +143,16 @@ def test_parser_uses_headless_playback_by_default() -> None:
     args = eval_voice_loop.build_parser().parse_args([])
 
     assert args.no_playback is False
+    assert args.playback is False
+    assert args.first_clause is None  # use the profile value unless overridden
+
+
+def test_parser_playback_and_first_clause_toggles() -> None:
+    parser = eval_voice_loop.build_parser()
+
+    assert parser.parse_args(["--playback"]).playback is True
+    assert parser.parse_args(["--first-clause"]).first_clause is True
+    assert parser.parse_args(["--no-first-clause"]).first_clause is False
 
 
 def test_summarize_handles_empty_and_values() -> None:
@@ -256,6 +266,8 @@ def test_run_profile_eval_with_fake_runtime(monkeypatch, tmp_path: Path) -> None
         session_turns=6,
         turn_chars=500,
         no_playback=False,
+        playback=False,
+        first_clause=None,
     )
 
     result = run_profile_eval(
@@ -271,6 +283,61 @@ def test_run_profile_eval_with_fake_runtime(monkeypatch, tmp_path: Path) -> None
     assert result["total_latency_ms"]["median"] == pytest.approx(60.0)
     assert result["route_counts"] == {"free_chat": 1}
     assert result["rows"][0]["transcript"] == "xin chào"
+
+
+def test_run_profile_eval_playback_selects_sounddevice(monkeypatch, tmp_path: Path) -> None:
+    audio_path = tmp_path / "hi.wav"
+    write_wav(audio_path)
+    seen: dict[str, str] = {}
+
+    class RecordingPipeline:
+        def turn_streaming(self, audio, audio_sink=None):
+            seen["sink"] = type(audio_sink).__name__
+            yield StreamingEvent(type="asr", text="xin chào", metadata={"rejection_reason": ""})
+            yield StreamingEvent(
+                type="done",
+                text="Chào bạn.",
+                latency_ms=10.0,
+                metadata={
+                    "rejected": False,
+                    "runtime_route": "free_chat",
+                    "stage_latencies_ms": {},
+                },
+            )
+
+    fake_bundle = SimpleNamespace(
+        pipeline=RecordingPipeline(),
+        memory_status="disabled",
+        knowledge_status="disabled",
+        asr_guard_status="disabled",
+    )
+    monkeypatch.setattr(eval_voice_loop, "build_voice_runtime", lambda config: fake_bundle)
+    # Keep the audio device untouched: only stop() would reach it, and no session is opened.
+    monkeypatch.setattr("soca.core.audio_out.sd.stop", lambda: None)
+
+    args = SimpleNamespace(
+        asr_model=None,
+        llm_model=None,
+        voice=None,
+        max_tokens=None,
+        temperature=None,
+        top_p=None,
+        vault=tmp_path,
+        no_memory=True,
+        memory_chars=2200,
+        profile_chars=900,
+        session_chars=1300,
+        session_turns=6,
+        turn_chars=500,
+        no_playback=False,
+        playback=True,
+        first_clause=False,
+    )
+
+    result = run_profile_eval("baseline", [VoiceLoopSample("hi", audio_path)], args=args)
+
+    assert seen["sink"] == "SoundDevicePlayer"
+    assert result["playback_sink"] == "SoundDevicePlayer"
 
 
 def test_write_outputs_creates_report_and_latest(tmp_path: Path) -> None:

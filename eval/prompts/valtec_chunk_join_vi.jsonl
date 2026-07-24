@@ -1,0 +1,30 @@
+{"id":"discourse_tuy_nhien","text":"Tuy nhiên, mình cần kiểm tra thêm trước khi đưa ra kết luận cuối cùng.","category":"discourse_marker"}
+{"id":"discourse_vi_vay","text":"Vì vậy, bạn nên sao lưu dữ liệu trước khi tiếp tục cập nhật hệ thống.","category":"discourse_marker"}
+{"id":"comma_simple","text":"Mình đã nhận yêu cầu, bây giờ mình sẽ bắt đầu xử lý.","category":"comma"}
+{"id":"semicolon","text":"Bản thử nghiệm đã chạy xong; kết quả chi tiết sẽ được lưu vào báo cáo.","category":"semicolon"}
+{"id":"colon","text":"Có ba việc cần làm: kiểm tra dữ liệu, chạy benchmark và nghe lại âm thanh.","category":"colon"}
+{"id":"dash","text":"Độ trễ đã giảm rõ rệt - nhưng chất lượng phát âm vẫn phải được kiểm tra kỹ.","category":"dash"}
+{"id":"very_short","text":"Được rồi.","category":"very_short"}
+{"id":"long_sentence","text":"Sau khi mô hình hoàn tất việc tổng hợp cụm đầu tiên, hệ thống phát âm thanh ngay trong khi tiến trình ONNX tiếp tục tạo phần còn lại để tránh khoảng lặng giữa các đoạn.","category":"long_sentence"}
+{"id":"numbered_list","text":"Thực hiện ba bước: một, tải artifact; hai, kiểm tra checksum; ba, chạy đánh giá thật.","category":"numbered_list"}
+{"id":"decimal_dot","text":"Nhiệt độ hiện tại là 25.5 độ C, độ ẩm ở mức 72.3 phần trăm.","category":"decimal"}
+{"id":"decimal_comma","text":"Phiên bản 3,1 đã sẵn sàng, nhưng cần xác nhận cách đọc số thập phân.","category":"decimal"}
+{"id":"grouped_number","text":"Hệ thống đã xử lý 1.250.000 yêu cầu, không có bản ghi nào bị mất.","category":"grouped_number"}
+{"id":"currency_vnd","text":"Tổng chi phí là 125.000 đồng, đã bao gồm thuế và phí vận chuyển.","category":"currency"}
+{"id":"currency_usd","text":"Gói dịch vụ có giá 19.5 USD, thanh toán một lần cho mỗi thiết bị.","category":"currency"}
+{"id":"percent","text":"Tiến độ đã đạt 85%, phần còn lại dự kiến hoàn thành trong hôm nay.","category":"percent"}
+{"id":"date","text":"Cuộc họp được chuyển sang ngày 15/08/2026, bạn nhớ cập nhật lịch.","category":"date"}
+{"id":"time","text":"Mình sẽ nhắc bạn lúc 14:30, trước cuộc gọi khoảng mười lăm phút.","category":"time"}
+{"id":"date_time","text":"Lịch bảo trì bắt đầu lúc 23:45 ngày 31/12/2026, dịch vụ có thể gián đoạn ngắn.","category":"date_time"}
+{"id":"phone_local","text":"Bạn có thể gọi số 0912345678, nhân viên hỗ trợ sẽ trả lời trong giờ làm việc.","category":"phone"}
+{"id":"phone_country_code","text":"Số liên hệ quốc tế là +84 912 345 678, hệ thống phải đọc với số không ở đầu.","category":"phone"}
+{"id":"url","text":"Xem https://soca.local/docs/a, rồi báo mình nếu liên kết không mở được.","category":"url"}
+{"id":"email","text":"Gửi kết quả tới support@example.com, sau đó lưu một bản trong thư mục dự án.","category":"email"}
+{"id":"markdown_inline","text":"Dùng `a, b` để thử, rồi so sánh kết quả với cấu hình mặc định.","category":"markdown"}
+{"id":"markdown_link","text":"Mở [tài liệu, hướng dẫn](https://example.com/guide), rồi làm theo mục kiểm thử.","category":"markdown"}
+{"id":"quoted_clause","text":"Mình nghe câu \"hãy kiểm tra, rồi báo lại\", nhưng chưa nhận được tệp đầu vào.","category":"quotation"}
+{"id":"parentheses","text":"Artifact hiện tại (bản đã duyệt, không phải candidate) sẽ được dùng cho benchmark.","category":"parentheses"}
+{"id":"ellipsis","text":"Mình đang kiểm tra... kết quả đầu tiên cho thấy âm thanh đã mượt hơn.","category":"ellipsis"}
+{"id":"multi_sentence","text":"Cụm đầu đã sẵn sàng. Cụm thứ hai đang được tổng hợp, và loa vẫn phát liên tục.","category":"multi_sentence"}
+{"id":"diacritics_names","text":"Chị Nguyễn Thị Ánh Tuyết, anh Trần Đăng Khoa và cô Đặng Thùy Trâm đều đã xác nhận.","category":"vietnamese_diacritics"}
+{"id":"issue_3_pronunciation","text":"Bé hỏi bà rằng bã mía có để cạnh bạ lúa được không, rồi chờ câu trả lời thật rõ ràng.","category":"six_tone_pronunciation"}

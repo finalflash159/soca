@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from soca.core import (
     RuntimeTrace,
     VoicePipeline,
 )
+from soca.core.audio_join import crossfade_pcm
 from soca.tts import TTSResult
 
 
@@ -54,7 +56,9 @@ class SpyTTS:
 
 
 class SlowAudioSink:
-    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True, interrupt_event=None) -> PlaybackResult:
+    def play(
+        self, audio: np.ndarray, sample_rate: int, blocking: bool = True, interrupt_event=None
+    ) -> PlaybackResult:
         time.sleep(0.05)
         return PlaybackResult(
             played=True,
@@ -68,7 +72,9 @@ class SlowAudioSink:
 
 
 class FailingAudioSink:
-    def play(self, audio: np.ndarray, sample_rate: int, blocking: bool = True, interrupt_event=None) -> PlaybackResult:
+    def play(
+        self, audio: np.ndarray, sample_rate: int, blocking: bool = True, interrupt_event=None
+    ) -> PlaybackResult:
         raise RuntimeError("playback failed")
 
     def stop(self) -> None:
@@ -102,6 +108,10 @@ class SpyStreamingRuntime:
         metadata=None,
         min_sentence_chars: int = 24,
         first_sentence_min_chars: int | None = None,
+        first_clause_enabled: bool = True,
+        first_clause_min_chars: int = 12,
+        first_clause_min_words: int = 2,
+        first_clause_max_scan_chars: int = 80,
     ) -> Iterator[RuntimeStreamEvent]:
         self.calls.append(
             {
@@ -255,3 +265,131 @@ def test_pipeline_stream_yields_error_when_playback_fails() -> None:
 
     assert any(e.type == "error" and e.text == "playback failed" for e in events)
     assert events[-1].type == "done"
+
+
+class RecordingPlaybackSession:
+    sample_rate = 24_000
+
+    def __init__(self, *, block_first_write: float = 0.0) -> None:
+        self.block_first_write = block_first_write
+        self.writes: list[np.ndarray] = []
+        self.output_underflow_count = 0
+        self.finished = False
+        self.first_write = threading.Event()
+
+    def write(self, audio, *, interrupt_event=None):
+        del interrupt_event
+        arr = np.asarray(audio, dtype=np.float32).copy()
+        self.writes.append(arr)
+        self.first_write.set()
+        if len(self.writes) == 1 and self.block_first_write:
+            time.sleep(self.block_first_write)
+        return PlaybackResult(
+            played=bool(arr.size),
+            sample_rate=self.sample_rate,
+            audio_duration_ms=len(arr) / self.sample_rate * 1000.0,
+            latency_ms=0.0,
+        )
+
+    def finish(self, *, interrupt_event=None):
+        del interrupt_event
+        self.finished = True
+        return PlaybackResult(False, self.sample_rate, 0.0, 0.0)
+
+
+class RecordingStreamingSink:
+    def __init__(self, session: RecordingPlaybackSession) -> None:
+        self.session = session
+
+    def begin_playback(self, sample_rate):
+        assert sample_rate == 24_000
+        return self.session
+
+    def play(self, *args, **kwargs):
+        raise AssertionError("streaming sink must use begin_playback")
+
+    def stop(self):
+        return None
+
+
+class TwoWaveTTS:
+    def __init__(self, waves, *, require_first_write=None) -> None:
+        self.waves = waves
+        self.calls = 0
+        self.require_first_write = require_first_write
+
+    def synthesize(self, text, voice=None):
+        del voice
+        index = self.calls
+        self.calls += 1
+        if index == 1 and self.require_first_write is not None:
+            assert self.require_first_write.wait(timeout=1.0)
+        audio = self.waves[index]
+        return TTSResult(
+            text=text,
+            audio=audio,
+            sample_rate=24_000,
+            latency_ms=1.0,
+            audio_duration_ms=len(audio) / 24_000 * 1000.0,
+            rtf=0.01,
+            voice="NF",
+            engine="fake",
+        )
+
+
+def test_session_writes_first_chunk_before_second_synthesis_finishes() -> None:
+    session = RecordingPlaybackSession()
+    tts = TwoWaveTTS(
+        [
+            np.linspace(-0.2, 0.2, 2_400, dtype=np.float32),
+            np.linspace(0.2, -0.2, 2_400, dtype=np.float32),
+        ],
+        require_first_write=session.first_write,
+    )
+    pipeline = VoicePipeline(
+        asr=FakeASR("xin chào"),
+        llm=object(),
+        tts=tts,
+        assistant_runtime=SpyStreamingRuntime(["Câu đầu tiên.", "Câu thứ hai."]),
+    )
+
+    events = list(
+        pipeline.turn_streaming(
+            np.zeros(16_000, dtype=np.float32),
+            audio_sink=RecordingStreamingSink(session),
+            min_sentence_chars=8,
+        )
+    )
+
+    assert session.first_write.is_set()
+    assert tts.calls == 2
+    assert session.finished is True
+    assert any(
+        event.type == "audio" and "audible_ttfa_ms" in (event.metadata or {})
+        for event in events
+    )
+
+
+def test_session_pcm_matches_offline_crossfade_when_second_chunk_catches_up() -> None:
+    first = np.linspace(-0.4, 0.4, 2_400, dtype=np.float32)
+    second = np.linspace(0.4, -0.4, 2_400, dtype=np.float32)
+    session = RecordingPlaybackSession(block_first_write=0.03)
+    pipeline = VoicePipeline(
+        asr=FakeASR("xin chào"),
+        llm=object(),
+        tts=TwoWaveTTS([first, second]),
+        assistant_runtime=SpyStreamingRuntime(["Câu đầu tiên.", "Câu thứ hai."]),
+        pcm_crossfade_ms=12.0,
+    )
+
+    list(
+        pipeline.turn_streaming(
+            np.zeros(16_000, dtype=np.float32),
+            audio_sink=RecordingStreamingSink(session),
+            min_sentence_chars=8,
+        )
+    )
+
+    streamed = np.concatenate(session.writes)
+    expected = crossfade_pcm(first, second, sample_rate=24_000, fade_ms=12.0)
+    np.testing.assert_allclose(streamed, expected, atol=1e-6)

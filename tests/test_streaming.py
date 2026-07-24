@@ -1,4 +1,4 @@
-from soca.core.streaming import pop_ready_sentence
+from soca.core.streaming import pop_ready_first_clause, pop_ready_sentence
 
 
 def test_pop_ready_sentence_waits_for_min_chars():
@@ -49,3 +49,27 @@ def test_pop_ready_sentence_keeps_numbered_marker_with_item_text():
 
     assert sentence == "Tình hình:\n1. Ăn đủ đạm."
     assert rest == "2. Ngủ sớm."
+
+
+def test_pop_ready_first_clause_preserves_buffer_until_lookahead() -> None:
+    buffer = "Tuy nhiên, "
+
+    clause, rest = pop_ready_first_clause(
+        buffer,
+        min_chars=8,
+        min_words=2,
+    )
+
+    assert clause is None
+    assert rest == buffer
+
+
+def test_pop_ready_first_clause_returns_clause_and_remainder() -> None:
+    clause, rest = pop_ready_first_clause(
+        "Tuy nhiên, mình cần kiểm tra thêm.",
+        min_chars=8,
+        min_words=2,
+    )
+
+    assert clause == "Tuy nhiên,"
+    assert rest == "mình cần kiểm tra thêm."

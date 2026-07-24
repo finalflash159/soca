@@ -6,7 +6,7 @@ from typing import Literal
 
 import numpy as np
 
-from soca.core.text_chunking import is_numbered_list_marker
+from soca.core.text_chunking import is_numbered_list_marker, split_first_clause
 from soca.tts import TTSResult
 
 _SENTENCE_END_RE = re.compile(r"([.!?\u2026]+)(\s+|$)")
@@ -50,3 +50,21 @@ def pop_ready_sentence(buffer: str, min_chars: int = 24) -> tuple[str | None, st
             return sentence, buffer[end_pos:].lstrip()
 
     return None, buffer
+
+
+def pop_ready_first_clause(
+    buffer: str,
+    *,
+    min_chars: int = 12,
+    min_words: int = 2,
+    max_scan_chars: int = 80,
+) -> tuple[str | None, str]:
+    clause, remainder = split_first_clause(
+        buffer,
+        min_chars=min_chars,
+        min_words=min_words,
+        max_scan_chars=max_scan_chars,
+    )
+    if clause is None:
+        return None, buffer
+    return clause, remainder

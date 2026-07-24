@@ -10,7 +10,15 @@ from typing import Any
 
 import numpy as np
 
-from soca.core.audio_out import AudioSink, NullAudioPlayer
+from soca.core.audio_join import TailHoldingCrossfader
+from soca.core.audio_out import (
+    AudioPlaybackSession,
+    AudioSink,
+    NullAudioPlayer,
+    PlaybackResult,
+    _resample,
+    _to_float32_mono,
+)
 from soca.core.metrics import MetricsLogger
 from soca.core.repair import (
     RepairAction,
@@ -55,6 +63,11 @@ class VoicePipeline:
         metrics: MetricsLogger | None = None,
         reject_response: str = "[laughter] Moshi moshi? Có ai đó hăm?",
         repair_catalog: RepairCatalog | None = None,
+        first_clause_enabled: bool = True,
+        first_clause_min_chars: int = 12,
+        first_clause_min_words: int = 2,
+        first_clause_max_scan_chars: int = 80,
+        pcm_crossfade_ms: float = 12.0,
     ) -> None:
         self.asr = asr
         self.llm = llm
@@ -65,6 +78,19 @@ class VoicePipeline:
         # e.g. unit tests). Production injects ``repair_catalog`` for variety.
         self.reject_response = reject_response
         self.repair_catalog = repair_catalog
+        if first_clause_min_chars < 1:
+            raise ValueError("first_clause_min_chars must be positive")
+        if first_clause_min_words < 1:
+            raise ValueError("first_clause_min_words must be positive")
+        if first_clause_max_scan_chars < first_clause_min_chars:
+            raise ValueError("first_clause_max_scan_chars must be at least first_clause_min_chars")
+        if not 0.0 <= pcm_crossfade_ms <= 20.0:
+            raise ValueError("pcm_crossfade_ms must be between 0 and 20")
+        self.first_clause_enabled = first_clause_enabled
+        self.first_clause_min_chars = first_clause_min_chars
+        self.first_clause_min_words = first_clause_min_words
+        self.first_clause_max_scan_chars = first_clause_max_scan_chars
+        self.pcm_crossfade_ms = pcm_crossfade_ms
         self._repair_state = RepairState()
         self._repair_rng = random.Random()
 
@@ -192,7 +218,10 @@ class VoicePipeline:
             yield StreamingEvent(
                 type="repair",
                 text=repair.text,
-                metadata={**repair_meta, "technical_reason": rejection_reason or "empty_transcript"},
+                metadata={
+                    **repair_meta,
+                    "technical_reason": rejection_reason or "empty_transcript",
+                },
             )
             if speak_rejections:
                 chunks = chunk_text_for_tts(repair.text, min_chars=min_sentence_chars)
@@ -258,9 +287,7 @@ class VoicePipeline:
                 "blocked": bool(getattr(runtime_result, "blocked", False)),
                 "used_tool": bool(getattr(trace, "used_tool", False)),
                 "used_llm": bool(getattr(trace, "used_llm", False)),
-                "citations": [
-                    {"path": item.path, "title": item.title} for item in citations
-                ],
+                "citations": [{"path": item.path, "title": item.title} for item in citations],
                 # LLM telemetry for `soca voice --usage`. Object is fine in metadata;
                 # eval/console read named keys, not the whole dict.
                 "llm_usage": getattr(runtime_result, "usage", None),
@@ -326,20 +353,32 @@ class VoicePipeline:
         first_sentence_min_chars: int | None = None,
         interrupt_event: threading.Event | None = None,
     ) -> Iterator[StreamingEvent]:
-        pump = _TTSPlaybackPump(self.tts, sink, self.metrics, turn_start_time=turn_start_time, interrupt_event=interrupt_event)
+        pump = _TTSPlaybackPump(
+            self.tts,
+            sink,
+            self.metrics,
+            turn_start_time=turn_start_time,
+            interrupt_event=interrupt_event,
+            crossfade_ms=self.pcm_crossfade_ms,
+        )
         pump.start()
 
         runtime_result: Any | None = None
         stream = self.assistant_runtime.stream_text_turn(
-            transcript, source="asr",
+            transcript,
+            source="asr",
             metadata={"asr_rejection_reason": rejection_reason},
             min_sentence_chars=min_sentence_chars,
             first_sentence_min_chars=first_sentence_min_chars,
+            first_clause_enabled=self.first_clause_enabled,
+            first_clause_min_chars=self.first_clause_min_chars,
+            first_clause_min_words=self.first_clause_min_words,
+            first_clause_max_scan_chars=self.first_clause_max_scan_chars,
         )
         try:
             for event in stream:
                 if interrupt_event is not None and interrupt_event.is_set():
-                    break                       # stop
+                    break  # stop
                 if event.type == "token":
                     yield StreamingEvent(type="llm_token", text=event.text)
                 elif event.type == "sentence":
@@ -365,10 +404,11 @@ class VoicePipeline:
             latency_ms=(time.perf_counter() - turn_start_time) * 1000,
             metadata={
                 "rejected": False,
-                "interrupted": interrupted,      # cho UI/loop biết
+                "interrupted": interrupted,  # cho UI/loop biết
                 "runtime_blocked": bool(getattr(runtime_result, "blocked", False)),
                 "runtime_route": getattr(getattr(runtime_result, "route", None), "value", ""),
                 "stage_latencies_ms": self.metrics.snapshot(),
+                "playback": pump.playback_summary,
             },
         )
 
@@ -381,11 +421,24 @@ class VoicePipeline:
         interrupt_event: threading.Event | None = None,
     ) -> Iterator[StreamingEvent]:
         """Synthesize + play a fixed list of sentences via the shared pump."""
-        pump = _TTSPlaybackPump(self.tts, sink, self.metrics, turn_start_time=turn_start_time, interrupt_event=interrupt_event)
+        pump = _TTSPlaybackPump(
+            self.tts,
+            sink,
+            self.metrics,
+            turn_start_time=turn_start_time,
+            interrupt_event=interrupt_event,
+            crossfade_ms=self.pcm_crossfade_ms,
+        )
         pump.start()
         pump.submit_all(sentences)
         pump.close()
         yield from pump.drain_until_done()
+
+
+@dataclass(frozen=True)
+class _PlaybackChunk:
+    event: StreamingEvent
+    ready_at: float
 
 
 class _TTSPlaybackPump:
@@ -412,19 +465,29 @@ class _TTSPlaybackPump:
         *,
         turn_start_time: float,
         interrupt_event: threading.Event | None = None,
+        crossfade_ms: float = 12.0,
     ) -> None:
         self._tts = tts
         self._sink = sink
         self._metrics = metrics
         self._turn_start_time = turn_start_time
         self._sentence_queue: queue.Queue[str | None] = queue.Queue()
-        self._playback_queue: queue.Queue[StreamingEvent | object] = queue.Queue()
+        self._playback_queue: queue.Queue[_PlaybackChunk | object] = queue.Queue()
+        self._crossfade_ms = crossfade_ms
+        self._playback_summary: dict[str, Any] = {
+            "crossfade_fallback_count": 0,
+            "output_underflow_count": 0,
+        }
         self._event_queue: queue.Queue[StreamingEvent | object] = queue.Queue()
         self._tts_thread = threading.Thread(target=self._tts_worker, name="soca-tts-worker")
         self._playback_thread = threading.Thread(
             target=self._playback_worker, name="soca-playback-worker"
         )
         self._interrupt_event = interrupt_event
+
+    @property
+    def playback_summary(self) -> dict[str, Any]:
+        return dict(self._playback_summary)
 
     def _interrupted(self) -> bool:
         return self._interrupt_event is not None and self._interrupt_event.is_set()
@@ -470,30 +533,31 @@ class _TTSPlaybackPump:
         self._playback_thread.join()
 
     def _tts_worker(self) -> None:
-        first_audio_time: float | None = None
+        first_ready_at: float | None = None
         index = 0
         try:
             while True:
                 sentence = self._sentence_queue.get()
                 if sentence is None:
                     return
-
                 if self._interrupted():
-                    continue  # Skip synthesis/playback if interrupted; drain the queue to exit.
+                    continue
 
                 speech_text = _speech_text(sentence)
                 with self._metrics.stage(f"tts_{index}"):
                     tts_result = self._tts.synthesize(speech_text)
+                ready_at = time.perf_counter()
+                if first_ready_at is None:
+                    first_ready_at = ready_at
 
-                if first_audio_time is None:
-                    first_audio_time = time.perf_counter()
-
-                metadata: dict[str, float | int] = {
+                metadata: dict[str, float | int | str] = {
                     "chunk_index": index,
                     "tts_latency_ms": tts_result.latency_ms,
                 }
                 if index == 0:
-                    metadata["ttfa_ms"] = (first_audio_time - self._turn_start_time) * 1000
+                    tts_ready_ttfa_ms = (first_ready_at - self._turn_start_time) * 1000.0
+                    metadata["ttfa_ms"] = tts_ready_ttfa_ms
+                    metadata["tts_ready_ttfa_ms"] = tts_ready_ttfa_ms
 
                 event = StreamingEvent(
                     type="tts",
@@ -505,7 +569,7 @@ class _TTSPlaybackPump:
                     metadata=metadata,
                 )
                 self._event_queue.put(event)
-                self._playback_queue.put(event)
+                self._playback_queue.put(_PlaybackChunk(event=event, ready_at=ready_at))
                 index += 1
         except Exception as exc:
             self._event_queue.put(StreamingEvent(type="error", text=str(exc)))
@@ -513,33 +577,206 @@ class _TTSPlaybackPump:
             self._playback_queue.put(self._DONE)
             self._event_queue.put(self._DONE)
 
-    def _playback_worker(self) -> None:
-        try:
-            while True:
-                event = self._playback_queue.get()
-                if event is self._DONE:
-                    return
+    def _audio_event(
+        self,
+        chunk: _PlaybackChunk,
+        playback: PlaybackResult,
+        metadata: dict[str, Any],
+    ) -> StreamingEvent:
+        event = chunk.event
+        return StreamingEvent(
+            type="audio",
+            text=event.text,
+            audio=event.audio,
+            sample_rate=event.sample_rate,
+            tts=event.tts,
+            latency_ms=playback.latency_ms,
+            metadata=metadata,
+        )
 
-                if self._interrupted():
-                    continue  # Skip playback if interrupted; drain the queue to exit.
-
-                assert isinstance(event, StreamingEvent)
+    def _play_legacy(self, first: _PlaybackChunk) -> None:
+        item: _PlaybackChunk | object = first
+        while item is not self._DONE:
+            assert isinstance(item, _PlaybackChunk)
+            if not self._interrupted():
+                event = item.event
                 assert event.audio is not None
                 assert event.sample_rate is not None
-                playback = self._sink.play(event.audio, event.sample_rate, blocking=True, interrupt_event=self._interrupt_event)
-                metadata = dict(event.metadata or {})
-                metadata["playback_latency_ms"] = playback.latency_ms
-                self._event_queue.put(
-                    StreamingEvent(
-                        type="audio",
-                        text=event.text,
-                        audio=event.audio,
-                        sample_rate=event.sample_rate,
-                        tts=event.tts,
-                        latency_ms=playback.latency_ms,
-                        metadata=metadata,
-                    )
+                playback = self._sink.play(
+                    event.audio,
+                    event.sample_rate,
+                    blocking=True,
+                    interrupt_event=self._interrupt_event,
                 )
+                metadata = dict(event.metadata or {})
+                metadata.update(
+                    {
+                        "playback_latency_ms": playback.latency_ms,
+                        "crossfade_ms": 0.0,
+                        "crossfade_fallback": "legacy_sink",
+                    }
+                )
+                self._event_queue.put(self._audio_event(item, playback, metadata))
+            item = self._playback_queue.get()
+
+    @staticmethod
+    def _empty_playback(sample_rate: int) -> PlaybackResult:
+        return PlaybackResult(
+            played=False,
+            sample_rate=sample_rate,
+            audio_duration_ms=0.0,
+            latency_ms=0.0,
+            reason="empty_join_output",
+        )
+
+    def _write_session(
+        self,
+        session: AudioPlaybackSession,
+        audio: np.ndarray,
+    ) -> tuple[PlaybackResult, float]:
+        write_started_at = time.perf_counter()
+        if audio.size == 0:
+            return self._empty_playback(session.sample_rate), write_started_at
+        return (
+            session.write(audio, interrupt_event=self._interrupt_event),
+            write_started_at,
+        )
+
+    def _play_session(
+        self,
+        first: _PlaybackChunk,
+        begin_playback: Any,
+    ) -> None:
+        first_event = first.event
+        assert first_event.sample_rate is not None
+        session: AudioPlaybackSession = begin_playback(first_event.sample_rate)
+        joiner = TailHoldingCrossfader(
+            sample_rate=session.sample_rate,
+            fade_ms=self._crossfade_ms,
+        )
+
+        item: _PlaybackChunk | object = first
+        previous_deadline: float | None = None
+        pending_fallback = "none"
+        pending_late_ms = 0.0
+        fade_in_next = False
+        finished = False
+        try:
+            while item is not self._DONE:
+                assert isinstance(item, _PlaybackChunk)
+                if self._interrupted():
+                    joiner.reset()
+                    break
+
+                event = item.event
+                assert event.audio is not None
+                assert event.sample_rate is not None
+                prepared = _resample(
+                    _to_float32_mono(event.audio),
+                    event.sample_rate,
+                    session.sample_rate,
+                )
+
+                slack_ms: float | None = None
+                if previous_deadline is not None:
+                    slack_ms = (previous_deadline - item.ready_at) * 1000.0
+                    if pending_fallback == "none" and slack_ms < self._crossfade_ms:
+                        residual = joiner.finish(fade_out=True)
+                        if residual.size:
+                            self._write_session(session, residual)
+                        joiner = TailHoldingCrossfader(
+                            sample_rate=session.sample_rate,
+                            fade_ms=self._crossfade_ms,
+                        )
+                        fade_in_next = True
+                        pending_fallback = "non_overlapping"
+                        pending_late_ms = max(0.0, -slack_ms)
+                        self._playback_summary["crossfade_fallback_count"] += 1
+
+                output = joiner.push(prepared, fade_in=fade_in_next)
+                fade_in_next = False
+                playback, write_started_at = self._write_session(session, output)
+                if output.size:
+                    previous_deadline = write_started_at + len(output) / session.sample_rate
+
+                metadata = dict(event.metadata or {})
+                metadata.update(
+                    {
+                        "playback_latency_ms": playback.latency_ms,
+                        "crossfade_ms": (
+                            joiner.last_overlap_samples / session.sample_rate * 1000.0
+                        ),
+                        "crossfade_fallback": pending_fallback,
+                        "late_chunk_ms": pending_late_ms,
+                        "output_underflow_count": session.output_underflow_count,
+                        "peak_abs": (float(np.max(np.abs(output))) if output.size else 0.0),
+                    }
+                )
+                if slack_ms is not None:
+                    metadata["synthesis_slack_ms"] = slack_ms
+                if "audible_ttfa_ms" not in self._playback_summary and playback.played:
+                    audible_ttfa_ms = (write_started_at - self._turn_start_time) * 1000.0
+                    metadata["audible_ttfa_ms"] = audible_ttfa_ms
+                    self._playback_summary["audible_ttfa_ms"] = audible_ttfa_ms
+
+                self._event_queue.put(self._audio_event(item, playback, metadata))
+                pending_fallback = "none"
+                pending_late_ms = 0.0
+
+                try:
+                    item = self._playback_queue.get_nowait()
+                except queue.Empty:
+                    # Prefix đã phát xong mà chunk sau chưa ready. Phát tail có
+                    # fade-out ngay để không giữ device đói chỉ vì chờ cross-fade.
+                    residual = joiner.finish(fade_out=True)
+                    residual_result, residual_started = self._write_session(
+                        session,
+                        residual,
+                    )
+                    if residual.size:
+                        previous_deadline = (
+                            residual_started + len(residual) / session.sample_rate
+                        )
+                    if residual_result.interrupted:
+                        break
+                    joiner = TailHoldingCrossfader(
+                        sample_rate=session.sample_rate,
+                        fade_ms=self._crossfade_ms,
+                    )
+                    fade_in_next = True
+                    pending_fallback = "non_overlapping"
+                    self._playback_summary["crossfade_fallback_count"] += 1
+                    item = self._playback_queue.get()
+                    if isinstance(item, _PlaybackChunk) and previous_deadline is not None:
+                        pending_late_ms = max(
+                            0.0,
+                            (item.ready_at - previous_deadline) * 1000.0,
+                        )
+
+            if not self._interrupted():
+                residual = joiner.finish()
+                if residual.size:
+                    self._write_session(session, residual)
+            else:
+                joiner.reset()
+            session.finish(interrupt_event=self._interrupt_event)
+            finished = True
+        finally:
+            if not finished:
+                session.finish(interrupt_event=self._interrupt_event)
+            self._playback_summary["output_underflow_count"] = session.output_underflow_count
+
+    def _playback_worker(self) -> None:
+        try:
+            first = self._playback_queue.get()
+            if first is self._DONE:
+                return
+            assert isinstance(first, _PlaybackChunk)
+            begin_playback = getattr(self._sink, "begin_playback", None)
+            if callable(begin_playback) and self._crossfade_ms > 0.0:
+                self._play_session(first, begin_playback)
+            else:
+                self._play_legacy(first)
         except Exception as exc:
             self._event_queue.put(StreamingEvent(type="error", text=str(exc)))
         finally:
