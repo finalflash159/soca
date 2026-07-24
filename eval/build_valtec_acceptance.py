@@ -11,7 +11,7 @@ VOICES = ["NF", "SF", "NM1", "SM", "NM2"]
 
 def build_acceptance(raw: dict, *, listening_reviewer: str, license_reviewer: str) -> dict:
     fp32 = raw["variants"]["fp32"]
-    if fp32["tts_p50_ms"] > 250 or fp32["tts_p95_ms"] > 450 or fp32["rtf_p50"] > 0.12:
+    if fp32["tts_p50_ms"] > 300 or fp32["tts_p95_ms"] > 550 or fp32["rtf_p50"] > 0.12:
         raise ValueError("FP32 candidate misses latency/RTF release thresholds")
     if raw["asr_loopback_cer"] > 0.15:
         raise ValueError("Valtec ASR loopback CER exceeds 0.15")

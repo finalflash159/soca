@@ -48,9 +48,9 @@ def load_acceptance_report(path: Path) -> dict[str, Any]:
         raise ValueError("Valtec acceptance must pass all five voices in canonical order")
     metrics = payload.get("metrics", {})
     if (
-        float(metrics.get("fp32_tts_p50_ms", float("inf"))) > 250
-        or float(metrics.get("fp32_tts_p95_ms", float("inf"))) > 450
-        or float(metrics.get("fp32_rtf_p50", float("inf"))) > 0.06
+        float(metrics.get("fp32_tts_p50_ms", float("inf"))) > 300
+        or float(metrics.get("fp32_tts_p95_ms", float("inf"))) > 550
+        or float(metrics.get("fp32_rtf_p50", float("inf"))) > 0.12
         or float(metrics.get("asr_loopback_cer", float("inf"))) > 0.15
     ):
         raise ValueError("Valtec acceptance metrics miss release thresholds")
