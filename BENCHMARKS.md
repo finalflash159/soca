@@ -821,12 +821,17 @@ conversational transcripts.
 > (on == off) — expected, not a regression. This is the LLM→first-chunk delta attributable to
 > first-clause, not an absolute E2E TTFA figure.
 
-**Still open (follow-up tooling, not blockers):**
+**Harness (now CLI-native):** `eval/eval_voice_loop.py` gained `--playback` (routes a real
+`SoundDevicePlayer` through the pump's persistent-session + crossfade path) and
+`--first-clause` / `--no-first-clause` (overrides the profile for an on/off A/B, via a new
+`first_clause_enabled` override on `resolve_voice_runtime_config`). A `--playback` smoke on 2
+prompts confirmed the harness populates device metrics: `playback_sink=SoundDevicePlayer`,
+`audible_ttfa_ms` non-null, ready→audible ≈ 37 ms, `output_underflow_count` 0. (Absolute TTFA
+there is still ASR-bound on the long fixtures — the controlled A/B (d) remains the valid
+first-clause number.) The standalone `eval/measure_*.py` scripts are kept as focused probes.
 
-- `eval/eval_voice_loop.py --playback` + a `first_clause` CLI toggle: the guide assumes
-  `--playback`; the harness always uses `NullAudioPlayer`. The device (b) and A/B (d) numbers came
-  from the standalone `eval/measure_device_playback.py` / `eval/measure_first_clause_ttfa.py`, not
-  the main harness. Folding them into `eval_voice_loop.py` (with tests) would make them CLI-native.
+**Still open (not blockers):**
+
 - DuplexAecSink far-path is unit-tested but not validated live (needs mic + barge-in loop).
 
 ---
