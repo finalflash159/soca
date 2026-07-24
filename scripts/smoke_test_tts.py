@@ -241,7 +241,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if not args.no_write:
                 output_path_obj = (
                     args.output_dir
-                    / f"{safe_filename(args.model)}_{safe_filename(selected_voice)}_{text_index:02d}.wav"
+                    / f"valtec_{safe_filename(selected_voice)}_{text_index:02d}.wav"
                 )
                 sf.write(output_path_obj, result.audio, result.sample_rate)
                 output_path = str(output_path_obj)

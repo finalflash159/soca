@@ -11,10 +11,10 @@ TTS_MODELS_ROOT = REPO_ROOT / "models" / "tts"
 class ValtecTTSConfig:
     key: str = "valtec_multispeaker"
     display_name: str = "Valtec multi-speaker Vietnamese TTS"
-    runner: str = "valtec"
+    runner: str = "valtec_onnx"
     default_voice: str = "NF"
     voices: tuple[str, ...] = ("NF", "SF", "NM1", "SM", "NM2")
-    license: str = "CC BY-NC 4.0"
+    license: str = "CC BY-NC 2.0 (HF valtecAI-team/valtec-tts-pretrained, verified 2026-07-23)"
     source_url: str = "https://github.com/tronghieuit/valtec-tts"
 
     @property

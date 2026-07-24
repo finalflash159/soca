@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.metadata
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,10 +16,12 @@ from soca.core.profiles import (
 )
 from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.tts import VALTEC_TTS_CONFIG
+from soca.tts.valtec.artifacts import (
+    resolve_current_valtec_release,
+    resolve_valtec_onnx_artifacts,
+)
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_VAULT = Path.home() / "KnowledgeVault"
-VALTEC_SOURCE_ENV = "VALTEC_TTS_SOURCE_DIR"
 
 
 @dataclass(frozen=True)
@@ -237,13 +238,14 @@ def _llm_readiness(model_key: str) -> ComponentReadiness:
 
 
 def _valtec_readiness() -> ComponentReadiness:
-    source = Path(os.environ.get(VALTEC_SOURCE_ENV, REPO_ROOT / "external" / "valtec-tts"))
-    required = (source / "infer.py", source / "src")
-    if all(path.exists() for path in required):
-        return ComponentReadiness("ok", f"valtec source found: {source}")
+    try:
+        release_root = resolve_current_valtec_release()
+        artifacts = resolve_valtec_onnx_artifacts(release_root)
+    except (FileNotFoundError, KeyError, TypeError, ValueError) as exc:
+        return ComponentReadiness("missing", f"Valtec artifact is not ready: {exc}")
     return ComponentReadiness(
-        "missing",
-        f"missing valtec source checkout; expected {source}",
+        "ok",
+        f"Valtec {release_root.name}/{artifacts.precision} manifest verified",
     )
 
 

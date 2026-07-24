@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from soca.tts.valtec.g2p import PortableVietnameseG2P, TABLE_PATH
+from soca.tts.valtec.g2p import TABLE_PATH, PortableVietnameseG2P
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 UPSTREAM_REVISION = "a5e77a138960c1101c022a61614d6ee72aeccadc"

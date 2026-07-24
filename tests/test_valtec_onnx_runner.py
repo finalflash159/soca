@@ -5,11 +5,13 @@ import json
 import subprocess
 import sys
 import types
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from soca.tts import TTSResult
 from soca.tts.valtec.frontend import ValtecModelInputs
 from soca.tts.valtec.onnx_runner import ValtecOnnxTTS
 
@@ -268,3 +270,19 @@ def test_import_does_not_load_torch_or_upstream_modules():
     )
     completed = subprocess.run([sys.executable, "-c", code], check=False, capture_output=True, text=True)
     assert completed.returncode == 0, completed.stderr
+
+
+def test_tts_result_is_frozen():
+    result = TTSResult(
+        text="xin chào",
+        audio=np.zeros(10, dtype=np.float32),
+        sample_rate=24000,
+        latency_ms=1.0,
+        audio_duration_ms=10.0,
+        rtf=0.1,
+        voice="NF",
+        engine="test",
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        result.text = "changed"

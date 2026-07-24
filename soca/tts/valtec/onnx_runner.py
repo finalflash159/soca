@@ -78,7 +78,7 @@ def _match_loudness(chunks: list[np.ndarray]) -> list[np.ndarray]:
     low, high = LOUDNESS_GAIN_RANGE
     leveled = [
         chunk * float(np.clip(target / value, low, high)) if value > 1e-4 else chunk
-        for chunk, value in zip(chunks, rms)
+        for chunk, value in zip(chunks, rms, strict=True)
     ]
     peak = max((float(np.max(np.abs(chunk))) for chunk in leveled if chunk.size), default=0.0)
     if peak > PEAK_LIMIT:

@@ -288,7 +288,7 @@ class ValtecVietnameseFrontend:
         self.g2p = g2p
 
     @classmethod
-    def from_artifacts(cls, artifacts: ValtecOnnxArtifacts) -> "ValtecVietnameseFrontend":
+    def from_artifacts(cls, artifacts: ValtecOnnxArtifacts) -> ValtecVietnameseFrontend:
         config = json.loads(artifacts.config.read_text(encoding="utf-8"))
         symbol_to_id = config.get("symbol_to_id")
         if not isinstance(symbol_to_id, dict):
