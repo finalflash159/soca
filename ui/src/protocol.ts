@@ -8,9 +8,19 @@ export interface EngineCommand {
     | "voice_stop"
     | "memory"
     | "usage"
+    | "llm_providers"
+    | "llm_models"
+    | "llm_set_key"
+    | "llm_select"
+    | "llm_config"
     | "quit";
   text?: string;
   max_turns?: number | null;
+  provider?: string;
+  query?: string;
+  key?: string;
+  backend?: "local" | "remote";
+  model?: string;
 }
 
 export interface HelloEvent {
@@ -70,6 +80,52 @@ export interface UsageEvent {
   mean_tokens_per_second: number;
 }
 
+export interface LlmProviderEvent {
+  event: "llm_providers";
+  providers: Array<{
+    key: string;
+    label: string;
+    has_key: boolean;
+    has_pricing_api: boolean;
+  }>;
+}
+
+export interface RemoteModelEvent {
+  id: string;
+  label: string;
+  context_length: number | null;
+  price_prompt_per_1m: number | null;
+  price_completion_per_1m: number | null;
+  pricing_source: "live" | "table" | "unknown";
+}
+
+export interface LlmCatalogEvent {
+  event: "llm_catalog";
+  provider: string;
+  models: RemoteModelEvent[];
+  pricing_as_of: string;
+}
+
+export interface LlmKeyStatusEvent {
+  event: "llm_key_status";
+  provider: string;
+  ok: boolean;
+  masked?: string;
+  message?: string;
+}
+
+export interface LlmConfigEvent {
+  event: "llm_config";
+  backend: "local" | "remote";
+  provider: string;
+  model: string;
+  max_tokens: number;
+  temperature: number;
+  top_p: number;
+  pricing_as_of: string;
+  pricing: RemoteModelEvent | null;
+}
+
 export interface EngineErrorEvent {
   event: "engine_error";
   message: string;
@@ -86,6 +142,10 @@ export type EngineEvent =
   | StatusEvent
   | MemoryEvent
   | UsageEvent
+  | LlmProviderEvent
+  | LlmCatalogEvent
+  | LlmKeyStatusEvent
+  | LlmConfigEvent
   | EngineErrorEvent
   | ByeEvent;
 
@@ -93,8 +153,12 @@ export function parseEngineEvent(line: string): EngineEvent | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
   try {
-    const parsed = JSON.parse(trimmed) as { event?: string };
-    if (typeof parsed !== "object" || parsed === null || !parsed.event)
+    const parsed: unknown = JSON.parse(trimmed);
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      typeof (parsed as { event?: unknown }).event !== "string"
+    )
       return null;
     return parsed as EngineEvent;
   } catch {

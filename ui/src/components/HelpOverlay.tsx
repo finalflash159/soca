@@ -7,7 +7,8 @@ const GROUPS: Array<{ title: string; hints: Array<[string, string]> }> = [
   {
     title: "Lệnh",
     hints: [
-      ["/chat /voice /status", "chuyển chế độ"],
+      ["/chat /voice /status /settings", "chuyển chế độ"],
+      ["/s", "mở cài đặt LLM"],
       ["/listen", "chạy voice loop"],
       ["/stop", "dừng voice loop"],
       ["/memory", "xem session memory"],
@@ -19,8 +20,8 @@ const GROUPS: Array<{ title: string; hints: Array<[string, string]> }> = [
     title: "Phím",
     hints: [
       ["↵", "gửi tin nhắn / lệnh"],
-      ["?", "mở/đóng bảng phím (khi ô nhập trống)"],
-      ["esc", "đóng bảng này"],
+      ["?", "mở bảng phím này (khi ô nhập trống)"],
+      ["bất kỳ phím", "đóng bảng này"],
       ["^c", "thoát"],
     ],
   },

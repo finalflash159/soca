@@ -12,6 +12,7 @@ import { COLOR, ICON } from "./theme.js";
 import { TimelineLine } from "./components/Timeline.js";
 import { VoiceStatus } from "./components/VoiceStatus.js";
 import { HelpOverlay } from "./components/HelpOverlay.js";
+import { SettingsScreen } from "./components/SettingsScreen.js";
 import { Bird, Wordmark } from "./components/Logo.js";
 import {
   FooterHints,
@@ -21,7 +22,8 @@ import {
 } from "./components/Primitives.js";
 
 export interface AppProps {
-  mode: Mode;
+  /** The mode the user picked on the splash / CLI. */
+  target: Mode;
   profile?: string;
   noModel?: boolean;
 }
@@ -34,7 +36,7 @@ type StaticItem =
 
 function footerHints(mode: Mode, voiceRunning: boolean): Hint[] {
   const base: Hint[] = [
-    { keys: "/chat /voice /status", label: "chế độ" },
+    { keys: "/chat /voice /status /settings", label: "chế độ" },
     { keys: "?", label: "phím" },
     { keys: "^c", label: "thoát" },
   ];
@@ -49,7 +51,10 @@ function footerHints(mode: Mode, voiceRunning: boolean): Hint[] {
   return base;
 }
 
-function Brand({ profile, llm }: { profile: string; llm: string }) {
+function Brand({ profile }: { profile: string }) {
+  // No LLM model name here: this renders inside <Static> (painted once), so a
+  // model shown here would freeze at startup and mislead after /settings. The
+  // active backend lives in the always-live footer instead.
   return (
     <Box flexDirection="column" paddingX={1} marginBottom={1}>
       <Box marginTop={1}>
@@ -65,18 +70,22 @@ function Brand({ profile, llm }: { profile: string; llm: string }) {
         </Text>
       </Box>
       <Text color={COLOR.muted}>
-        {profile}
-        {llm ? ` ${ICON.dot} ${llm}` : ""} {ICON.dot} asr · llm · tts ·
-        barge-in, không cloud
+        {profile} {ICON.dot} asr · llm · tts · barge-in, không cloud
       </Text>
     </Box>
   );
 }
 
-export function App({ mode: initialMode, profile, noModel = false }: AppProps) {
+export function App({ target, profile, noModel = false }: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const rawInput = Boolean(useStdin().isRawModeSupported);
+  // Choosing chat/voice routes through Settings first so the user picks the LLM
+  // for this session; leaving Settings (Esc or picking a model) continues into
+  // that mode. status/settings targets open directly.
+  const gated = target === "chat" || target === "voice";
+  const initialMode: Mode = gated ? "settings" : target;
+  const homeMode: Mode = gated ? target : "chat";
   const [state, dispatch] = useReducer(reduce, {
     ...initialState,
     mode: initialMode,
@@ -95,21 +104,30 @@ export function App({ mode: initialMode, profile, noModel = false }: AppProps) {
       dispatch({ type: "system_message", text: "engine đã thoát" }),
     );
     engine.start({ profile, noModel });
+    engine.send({ cmd: "llm_providers" });
+    engine.send({ cmd: "llm_config" });
     if (initialMode === "status") engine.send({ cmd: "status" });
-    if (initialMode === "voice" && !noModel) {
-      dispatch({ type: "voice_started" });
-      engine.send({ cmd: "voice_start" });
-    }
+    // A voice target opens in Settings first; the listening loop starts on
+    // leaveSettings, not here.
     return () => engine.stop();
   }, []);
 
-  useInput(
-    (char, key) => {
-      if (key.escape && showHelp) setShowHelp(false);
-      else if (char === "?" && input === "") setShowHelp((v) => !v);
-    },
-    { isActive: rawInput },
-  );
+  // While the help overlay is open it owns every key: the prompt is blurred
+  // (see `focus` below), so any key — Esc, ?, Enter — just closes it. This keeps
+  // the toggle reliable and avoids the stray-"?" bug that came from a focused
+  // TextInput also receiving the key. Opening happens in `onPromptChange`.
+  useInput(() => setShowHelp(false), { isActive: rawInput && showHelp });
+
+  function onPromptChange(value: string): void {
+    // Claude Code convention: "?" on an empty prompt opens the shortcuts panel
+    // rather than being typed. Any other input (incl. "?" mid-message) passes
+    // through untouched.
+    if (!showHelp && input === "" && value === "?") {
+      setShowHelp(true);
+      return;
+    }
+    setInput(value);
+  }
 
   const engine = engineRef.current;
 
@@ -117,7 +135,21 @@ export function App({ mode: initialMode, profile, noModel = false }: AppProps) {
     if (next !== "voice" && state.voiceRunning)
       engine?.send({ cmd: "voice_stop" });
     if (next === "status") engine?.send({ cmd: "status" });
+    if (next === "settings") {
+      engine?.send({ cmd: "llm_providers" });
+      engine?.send({ cmd: "llm_config" });
+    }
     dispatch({ type: "set_mode", mode: next });
+  }
+
+  // Leaving Settings continues into the session mode the user picked (homeMode);
+  // for a voice session that also starts the listening loop.
+  function leaveSettings() {
+    if (homeMode === "voice" && !state.voiceRunning && !noModel) {
+      dispatch({ type: "voice_started" });
+      engine?.send({ cmd: "voice_start" });
+    }
+    switchMode(homeMode);
   }
 
   function onSubmit(raw: string) {
@@ -129,8 +161,14 @@ export function App({ mode: initialMode, profile, noModel = false }: AppProps) {
       if (cmd === "/quit" || cmd === "/exit") {
         engine?.stop();
         exit();
-      } else if (cmd === "/chat" || cmd === "/voice" || cmd === "/status") {
-        switchMode(cmd.slice(1) as Mode);
+      } else if (
+        cmd === "/chat" ||
+        cmd === "/voice" ||
+        cmd === "/status" ||
+        cmd === "/settings" ||
+        cmd === "/s"
+      ) {
+        switchMode(cmd === "/s" ? "settings" : (cmd.slice(1) as Mode));
         if (cmd === "/voice" && !state.voiceRunning && !noModel) {
           dispatch({ type: "voice_started" });
           engine?.send({ cmd: "voice_start" });
@@ -165,7 +203,11 @@ export function App({ mode: initialMode, profile, noModel = false }: AppProps) {
     engine?.send({ cmd: "chat", text });
   }
 
-  const llm = String(state.stack["llm"] ?? "");
+  const llm = state.llmConfig
+    ? state.llmConfig.backend === "remote"
+      ? `${state.llmConfig.provider}:${state.llmConfig.model}`
+      : state.llmConfig.model
+    : String(state.stack["llm"] ?? "");
   const hints = useMemo(
     () => footerHints(state.mode, state.voiceRunning),
     [state.mode, state.voiceRunning],
@@ -198,7 +240,7 @@ export function App({ mode: initialMode, profile, noModel = false }: AppProps) {
       <Static items={staticItems}>
         {(item) =>
           item.kind === "brand" ? (
-            <Brand key="brand" profile={state.profile} llm={llm} />
+            <Brand key="brand" profile={state.profile} />
           ) : (
             <TimelineLine key={item.index} entry={item.entry} />
           )
@@ -261,28 +303,50 @@ export function App({ mode: initialMode, profile, noModel = false }: AppProps) {
         />
       ) : null}
 
-      <Box paddingX={1}>
-        <Panel title={state.mode} width={cols - 2} height={2} focused>
-          <Box>
-            <Text color={COLOR.accent}>{`${ICON.pointer} `}</Text>
-            <Box flexGrow={1}>
-              <TextInput
-                focus={rawInput}
-                value={input}
-                onChange={setInput}
-                onSubmit={onSubmit}
-                placeholder={
-                  state.mode === "voice"
-                    ? "voice loop: /stop, /listen, /chat, /help…"
-                    : state.chatBusy
-                      ? "SoCa đang soạn câu trả lời…"
-                      : "nhập tin nhắn hoặc /lệnh…"
-                }
-              />
+      {state.mode === "settings" ? (
+        <SettingsScreen
+          config={state.llmConfig}
+          providers={state.llmProviders}
+          catalog={state.llmCatalog}
+          catalogProvider={state.llmCatalogProvider}
+          notice={state.settingsNotice}
+          onRequestModels={(provider, query) =>
+            engine?.send({ cmd: "llm_models", provider, query })
+          }
+          onSetKey={(provider, key) =>
+            engine?.send({ cmd: "llm_set_key", provider, key })
+          }
+          onSelect={({ backend, provider, model }) =>
+            engine?.send({ cmd: "llm_select", backend, provider, model })
+          }
+          onExit={leaveSettings}
+        />
+      ) : null}
+
+      {state.mode !== "settings" ? (
+        <Box paddingX={1}>
+          <Panel title={state.mode} width={cols - 2} height={2} focused>
+            <Box>
+              <Text color={COLOR.accent}>{`${ICON.pointer} `}</Text>
+              <Box flexGrow={1}>
+                <TextInput
+                  focus={rawInput && !showHelp}
+                  value={input}
+                  onChange={onPromptChange}
+                  onSubmit={onSubmit}
+                  placeholder={
+                    state.mode === "voice"
+                      ? "voice loop: /stop, /listen, /chat, /help…"
+                      : state.chatBusy
+                        ? "SoCa đang soạn câu trả lời…"
+                        : "nhập tin nhắn hoặc /lệnh…"
+                  }
+                />
+              </Box>
             </Box>
-          </Box>
-        </Panel>
-      </Box>
+          </Panel>
+        </Box>
+      ) : null}
       <Box justifyContent="space-between">
         <FooterHints hints={hints} />
         <Box paddingX={1}>
@@ -291,6 +355,22 @@ export function App({ mode: initialMode, profile, noModel = false }: AppProps) {
               {state.mode}
             </Text>
             {` ${ICON.dot} ${state.profile} ${ICON.dot} mem${noModel ? ICON.off : ICON.on}`}
+            {llm ? (
+              <Text>
+                {` ${ICON.dot} `}
+                <Text
+                  color={
+                    state.llmConfig?.backend === "remote"
+                      ? COLOR.warn
+                      : COLOR.good
+                  }
+                >
+                  {state.llmConfig?.backend === "remote"
+                    ? `remote ${llm}`
+                    : `local ${llm}`}
+                </Text>
+              </Text>
+            ) : null}
           </Text>
         </Box>
       </Box>
@@ -304,7 +384,7 @@ export function Splash({ onDone }: { onDone: (mode: Mode) => void }) {
     (char, key) => {
       if (key.return) onDone("chat");
       else if (char === "v") onDone("voice");
-      else if (char === "s") onDone("status");
+      else if (char === "s") onDone("settings");
     },
     { isActive: rawInput },
   );
@@ -337,7 +417,7 @@ export function Splash({ onDone }: { onDone: (mode: Mode) => void }) {
           <Text color={COLOR.muted}> voice</Text>
           <Text color={COLOR.muted}>{`  ${ICON.dot}  `}</Text>
           <Text color={COLOR.alt}>s</Text>
-          <Text color={COLOR.muted}> status</Text>
+          <Text color={COLOR.muted}> cài đặt</Text>
           <Text color={COLOR.muted}>{`  ${ICON.dot}  `}</Text>
           <Text color={COLOR.alt}>^c</Text>
           <Text color={COLOR.muted}> thoát</Text>

@@ -12,7 +12,13 @@ interface CliArgs {
 function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = { mode: null, noModel: false };
   for (const arg of argv) {
-    if (arg === "chat" || arg === "voice" || arg === "status") args.mode = arg;
+    if (
+      arg === "chat" ||
+      arg === "voice" ||
+      arg === "status" ||
+      arg === "settings"
+    )
+      args.mode = arg;
     else if (arg === "--no-model") args.noModel = true;
     else if (!arg.startsWith("-") && !args.profile && args.mode)
       args.profile = arg;
@@ -22,9 +28,11 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 function Root({ args }: { args: CliArgs }) {
-  const [mode, setMode] = useState<Mode | null>(args.mode);
-  if (mode === null) return <Splash onDone={setMode} />;
-  return <App mode={mode} profile={args.profile} noModel={args.noModel} />;
+  // Cold launch shows the main UI (splash). Picking chat/voice there routes
+  // through Settings first (handled in <App>), then into that mode.
+  const [target, setTarget] = useState<Mode | null>(args.mode);
+  if (target === null) return <Splash onDone={setTarget} />;
+  return <App target={target} profile={args.profile} noModel={args.noModel} />;
 }
 
 const args = parseArgs(process.argv.slice(2));
