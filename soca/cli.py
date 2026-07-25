@@ -229,7 +229,7 @@ def chat(
 @click.argument(
     "quick_mode",
     required=False,
-    type=click.Choice(["status", "chat", "voice"]),
+    type=click.Choice(["status", "chat", "voice", "settings"]),
 )
 @click.argument(
     "quick_profile",
@@ -371,7 +371,7 @@ def engine(
 
     text_config = build_text_runtime_config(
         profile=profile,
-        llm_model=voice_config.llm_model,
+        llm_model=llm_model,
         vault=vault,
         no_memory=no_memory,
         no_llm=no_model,
