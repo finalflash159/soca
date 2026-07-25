@@ -1057,3 +1057,69 @@ over-rejection adds error.
 Matches the qualitative mitigation pattern from Barański et al. for
 Whisper-large-v3 on LibriSpeech-augmented, adapted for Vietnamese
 PhoWhisper-tiny.
+
+---
+
+## P3.1 — Conversational Robustness (barge-in + turn-taking)
+
+**Purpose:** turn the already-built barge-in (`DuplexAecSink`) and adaptive
+endpoint (Smart-Turn) into measured, reproducible numbers, phrased in
+Full-Duplex-Bench vocabulary. Method = **frame-stepped offline replay**: the
+decision arithmetic is lifted out of the sounddevice loops and driven from
+`(far, near)` buffers, with time = frame index (deterministic, machine-
+independent). AEC + VAD injected → unit-tested without hardware, then fed the
+production WebRTC AEC3 + Silero for the real runs. Full writeup:
+`notes/conversation_research.md`.
+
+**Setup**
+
+| Field         | Value                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------ |
+| Replay core   | `eval/barge_in_replay.py` (`BargeInDecider`, `TurnEndpointDecider`)                              |
+| Metrics       | `eval/conversation_metrics.py`                                                                   |
+| Tier 1 data   | AEC-Challenge `real/` (16 kHz mic+lpb pairs), 13,626 pairs, 150/condition (seed 42)              |
+| Tier 1 synth  | FLEURS `vi_vn` far+user + MIT IR Survey RIR echo (`data/rir/mit`, 270 real RIRs @16k)            |
+| Tier 2 data   | FLEURS `vi_vn` shaped into clean + mid_pause(800 ms) timelines, 60 utterances                    |
+| Barge-in gate | sustained 400 ms, Silero threshold 0.7 (production `DuplexAecSink` defaults)                     |
+| Policies      | `fixed` (700 ms) vs `p_based` (floor 1000 + span·P, ceil 3000; Smart-Turn v3.2)                  |
+| Run date      | 2026-07-25                                                                                       |
+| Output paths  | `eval/results/conversation_tier1{,_synth}.json`, `conversation_tier2.json` (gitignored)          |
+| Reproduce     | `uv run python -m eval.eval_conversation` / `eval.eval_barge_in_synth` / `eval.eval_turn_taking` |
+
+**Tier 1 — barge-in (false-interrupt ≈ FDB Takeover Rate; detection = recall)**
+
+| Run                         | pairs / scenarios | false-interrupt | detection | notes                       |
+| --------------------------- | ----------------: | --------------: | --------: | --------------------------- |
+| Real echo (AEC-Challenge)   |               300 |            2.7% |     94.7% | static 96.0% / moving 93.3% |
+| Synth VN over real-RIR echo |               240 |            2.5% |     92.5% | backchannel-fire 3.8%       |
+
+Synth cross-validates real (2.5 vs 2.7% false-int, 92.5 vs 94.7% detection) on
+disjoint audio → the RIR synthesis is realistic and barge-in survives real echo.
+Synth median stop-latency 2344 ms / p90 5336 ms (gated by the 400 ms sustained
+floor + read-speech VAD; grows under stronger echo).
+
+**Tier 2 — turn-taking (120 scenarios, 800 ms within-turn pause)**
+
+| Policy      | cut-in rate | premature-close | median over-wait |
+| ----------- | ----------: | --------------: | ---------------: |
+| fixed       |      100.0% |           61.7% |           704 ms |
+| **p_based** |    **3.3%** |       **18.3%** |          1312 ms |
+
+**Key findings**
+
+- Adaptive `p_based` drops cut-in **100% → 3.3%** and premature-close **61.7% →
+  18.3%** (30x / 3.4x) for ~608 ms more patience — the FDB TOR vs response-
+  latency trade-off, measured for Vietnamese.
+- `p_based` still closes 18.3% of VN turns early because Smart-Turn is
+  English-trained → argues for a Vietnamese turn model (future work).
+- The 400 ms sustained gate filters 400 ms backchannels only because it needs
+  416 ms (13×32 ms); a 500 ms "vâng ạ" would leak → a backchannel classifier is
+  the real fix. Honest, not hidden.
+
+**Caveats**
+
+- Latency is a system number (sustained floor + VAD on read speech), not a pure
+  front-end reaction time; FLEURS has more micro-pauses than a short command.
+- Backchannel is a synthetic 400 ms FLEURS head, not recorded "vâng/dạ".
+- Tier 1 synth uses one echo level (alpha 0.5) and MIT RIRs only; a full SER
+  curve + OpenSLR simulated RIRs would strengthen the acoustic claim.
