@@ -28,7 +28,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 from local import config as cfg  # noqa: E402
 
 # (display name, params in millions, result-JSON path relative to results dir).
-# Ordered by model size — the x-axis of every sweep chart.
+# Ordered by model size - the x-axis of every sweep chart.
 DEFAULT_SWEEP = [
     ("tiny", 39, "table7_phowhisper_tiny_focused.json"),
     ("base", 74, "table7_phowhisper_base.json"),
@@ -105,7 +105,7 @@ def plot_wer_rtf(rows: list[dict], out: Path) -> None:
 
     ax1.set_xticks(list(x))
     ax1.set_xticklabels(_labels(rows))
-    ax1.set_title("Accuracy saturates, compute explodes — PhoWhisper size sweep")
+    ax1.set_title("Accuracy saturates, compute explodes - PhoWhisper size sweep")
     fig.tight_layout()
     fig.savefig(out, dpi=130)
     plt.close(fig)
