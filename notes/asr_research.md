@@ -2,7 +2,7 @@
 
 > Research note (P1.1). Narrative English; numbers are read from real benchmark runs
 > (`local/eval_table7.py` → `eval/robustness_metrics.py`), not estimated.
-> Status: **complete — tiny ablation (§4–§5) and PhoWhisper-large probe (§6) both run.**
+> Status: **complete — tiny ablation (§4–§5) + full 5-size PhoWhisper sweep (§6).**
 
 ## 1. Problem
 
@@ -35,7 +35,7 @@ gate so the ablation can isolate them:
     pure noise is rejected by VAD at the gate, so only speech-like noise that _leaks
     past VAD_ can reveal what the later stages actually catch.
 - **Model**: PhoWhisper-tiny (ONNX, greedy, no KV-cache) — matches the paper's "tiny".
-  A large-model probe is reported in §6.
+  All five sizes (tiny→large) are swept in §6.
 - **Configs (6)**: `raw / deloop / vad / boh / deloop_boh / vad_deloop_boh(full)`.
 - **Metrics** (`eval/robustness_metrics.py`): WER/CER on accepted speech, hallucination
   rate on non-speech, **false-reject rate** on speech, and a **per-stage breakdown** of
@@ -92,32 +92,45 @@ catch-rate = **91.7%**, false-reject = **0.00%**.
   caveat is that a harder speech set (noisy field audio) would eventually surface the
   precision/recall trade the guards buy.
 
-## 6. Robustness × model size (PhoWhisper-large probe)
+## 6. Robustness × model size — full PhoWhisper sweep
 
-Focused run (15 speech + 30 noise, `raw` + `full` only — the six-config sweep is
-infeasible at large's speed). RTF = mean processing time ÷ mean clip duration (~8.5 s).
+All five PhoWhisper sizes on the **same focused basis** (15 speech + 30 noise, `raw` +
+`full`, seed 42 → identical items across models). RTF = mean processing time ÷ mean clip
+duration (~8.5 s); values are per-item so they do not depend on _n_.
 
-| Model            | Params | WER % (raw) | CER % (raw) | Halluc % (raw) | Halluc % (full) |  RTF |
-| ---------------- | -----: | ----------: | ----------: | -------------: | --------------: | ---: |
-| PhoWhisper-tiny  |   39 M |       25.45 |       12.52 |          100.0 |            8.33 | 0.11 |
-| PhoWhisper-large | 1.55 B |       12.41 |        5.48 |          100.0 |           10.00 | 2.86 |
+| Model             | Params | WER % (raw) | CER % (raw) | Halluc % (raw) | Halluc % (full) |  RTF |
+| ----------------- | -----: | ----------: | ----------: | -------------: | --------------: | ---: |
+| PhoWhisper-tiny   |   39 M |       20.46 |        9.44 |          100.0 |         **3.3** | 0.12 |
+| PhoWhisper-base   |   74 M |       17.70 |        8.83 |          100.0 |            10.0 | 0.21 |
+| PhoWhisper-small  |  244 M |   **12.18** |        5.43 |          100.0 |            10.0 | 0.54 |
+| PhoWhisper-medium |  769 M |       12.41 |        5.63 |          100.0 |            10.0 | 1.48 |
+| PhoWhisper-large  | 1.55 B |       12.41 |        5.48 |          100.0 |            10.0 | 2.86 |
 
-Two findings, both sharper than a "bigger is better" prior:
+![WER vs RTF across sizes](figs/model_sweep_wer_rtf.png)
+![Hallucination raw vs full across sizes](figs/model_sweep_halluc.png)
 
-- **Size halves recognition error but does _nothing_ for hallucination.** Large cuts WER
-  25.45% → 12.41% and CER 12.52% → 5.48%, yet raw hallucination stays pinned at **100%**,
-  identical to tiny. Scaling the acoustic model does not teach it to refuse non-speech —
-  hallucination is orthogonal to capacity, and only the RobustASR pipeline closes it
-  (large full = 10.0%, tiny full = 8.33%, both leaning on VAD + confidence guard; large's
-  3 leaks are all `speech_like`, pure = 0.0%).
-- **RTF ≈ 2.86 rules large out on-device.** Large runs ~3× slower than real time (mean
-  24.4 s to transcribe an 8.5 s clip) — **25× slower than tiny** (RTF ≈ 0.11). For a live
-  assistant that is unusable. The edge sweet spot is therefore **tiny + RobustASR**:
-  1/25th the compute, real-time headroom, and — because hallucination is a pipeline
-  problem, not a size problem — comparable safety.
+Three findings, all sharper than a "bigger is better" prior:
 
-Caveat: confidence thresholds are tiny-calibrated and reused as-is on large; a rigorous
-large evaluation would recalibrate them (see Limitations). n = 15/30 is a probe.
+- **Raw hallucination is 100% at _every_ size.** The flat red line is the headline:
+  scaling from 39 M to 1.55 B does not teach the model to refuse non-speech. Hallucination
+  is orthogonal to acoustic capacity; only the RobustASR pipeline closes it (full column
+  drops to 3–10%, on VAD + the confidence guard).
+- **WER saturates at `small`, but RTF keeps climbing.** Accuracy falls 20.5% → 12.2% by
+  `small` (244 M) and then flattens — `medium` and `large` add **zero** accuracy while RTF
+  goes 0.54 → 1.48 → 2.86. So the two useful operating points are **`tiny`** (RTF 0.12,
+  the latency pick) and **`small`** (RTF 0.54, the last size under real-time and already at
+  large's accuracy). `medium`/`large` are strictly dominated on-device.
+- **Bigger models hallucinate _more confidently_.** All five leak the same 3 `speech_like`
+  clips past VAD, but `tiny`'s confidence guard rejects 2 of them (full = 3.3%) while
+  `base`+ reject 0 (full = 10.0%). Larger models emit higher-confidence fabrications, so
+  the `avg_logprob` gate catches fewer — a small-_n_ (3-item) observation here, but it
+  matches the 200/300 tiny run where the guard was clearly active, and the confidence-
+  filtering literature (§7). It also argues the thresholds should be **recalibrated per
+  size** rather than reused from tiny.
+
+Caveat: confidence thresholds are tiny-calibrated and reused as-is on every size (see
+Limitations); n = 15/30 is a probe, so the `full` column (3 leaks) is noisy — the 200/300
+tiny run (§4) is the reliable read on the pipeline's steady-state behaviour.
 
 ## 7. Anchors
 
@@ -126,7 +139,9 @@ large evaluation would recalibrate them (see Limitations). n = 15/30 is a probe.
 
 ## 8. Limitations
 
-- **Thresholds are tiny-calibrated**; the large probe reuses them (§6 caveat).
+- **Thresholds are tiny-calibrated**; every size in the sweep reuses them, though §6
+  suggests larger models need higher `avg_logprob` cutoffs (they hallucinate more
+  confidently).
 - **Babble is synthetic** (overlapped FLEURS), not recorded crowd noise / MUSAN — cheap
   and reproducible, but a real MUSAN `speech`/`music` set would strengthen the claim.
 - **Scale**: 200 speech / 300 noise — enough for the pattern, not a leaderboard number.
