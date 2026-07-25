@@ -93,7 +93,11 @@ def noise_stage_breakdown(diagnostics: list[Diagnostic]) -> dict[str, int]:
         for d in diagnostics
         if d.kind == "noise"
     )
-    return {stage: counts[stage] for stage in STAGE_ORDER if counts[stage]}
+    # Known stages first in pipeline order, then any unrecognised reason appended
+    # rather than silently dropped, so the breakdown always sums to n_noise.
+    ordered = {stage: counts[stage] for stage in STAGE_ORDER if counts[stage]}
+    extras = {s: c for s, c in counts.items() if s not in STAGE_ORDER and c}
+    return {**ordered, **extras}
 
 
 def _accepted_speech_wer_cer(

@@ -196,8 +196,14 @@ def _load_fleurs_pool() -> list[np.ndarray]:
     return pool
 
 
-def collect_synthetic_babble(rows: list[dict], rng: np.random.Generator) -> None:
-    """Build speech-like babble by overlapping FLEURS voices (subtype=speech_like)."""
+def collect_synthetic_babble(
+    rows: list[dict], rng: np.random.Generator, target: int | None = None
+) -> None:
+    """Build speech-like babble by overlapping FLEURS voices (subtype=speech_like).
+
+    ``target`` caps the total sample count on the fresh-build path so babble
+    respects ``--target``; ``--augment`` passes ``None`` (babble is additive there).
+    """
     babble_cfg = cfg.SYNTHETIC_BABBLE
     if not babble_cfg["enabled"]:
         return
@@ -211,8 +217,12 @@ def collect_synthetic_babble(rows: list[dict], rng: np.random.Generator) -> None
         )
         return
 
-    console.print(f"[bold]Synthesizing babble[/bold] ({babble_cfg['n_samples']} clips from FLEURS)")
-    for idx in range(babble_cfg["n_samples"]):
+    n_babble = babble_cfg["n_samples"]
+    if target is not None:
+        n_babble = max(0, min(n_babble, target - len(rows)))
+
+    console.print(f"[bold]Synthesizing babble[/bold] ({n_babble} clips from FLEURS)")
+    for idx in range(n_babble):
         n_voices = int(rng.choice(babble_cfg["voices_per_clip"]))
         duration = float(rng.choice(babble_cfg["durations_s"]))
         n_samples = int(duration * cfg.SAMPLE_RATE)
@@ -225,7 +235,7 @@ def collect_synthetic_babble(rows: list[dict], rng: np.random.Generator) -> None
                 subtype="speech_like",
             )
         )
-    console.print(f"  Babble collected: {babble_cfg['n_samples']}")
+    console.print(f"  Babble collected: {n_babble}")
 
 
 def _load_existing_rows() -> list[dict]:
@@ -282,7 +292,7 @@ def main(target: int, seed: int, force: bool, augment: bool) -> None:
         rows = []
         collect_esc50(rows, target)
         collect_synthetic(rows, target, rng)
-        collect_synthetic_babble(rows, rng)
+        collect_synthetic_babble(rows, rng, target)
 
     with cfg.NOISE_MANIFEST.open("w", encoding="utf-8") as f:
         for row in rows:

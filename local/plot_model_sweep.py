@@ -27,14 +27,16 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 from local import config as cfg  # noqa: E402
 
-# (display name, params in millions, result-JSON path relative to results dir).
-# Ordered by model size - the x-axis of every sweep chart.
+# (display name, params in millions, candidate result-JSON filenames relative to
+# results dir - first existing wins). Ordered by model size - the sweep x-axis.
+# tiny falls back to table7_replication.json, which is what eval_table7 writes
+# for the default model when no focused run has been copied aside.
 DEFAULT_SWEEP = [
-    ("tiny", 39, "table7_phowhisper_tiny_focused.json"),
-    ("base", 74, "table7_phowhisper_base.json"),
-    ("small", 244, "table7_phowhisper_small.json"),
-    ("medium", 769, "table7_phowhisper_medium.json"),
-    ("large", 1550, "table7_phowhisper_large.json"),
+    ("tiny", 39, ("table7_phowhisper_tiny_focused.json", "table7_replication.json")),
+    ("base", 74, ("table7_phowhisper_base.json",)),
+    ("small", 244, ("table7_phowhisper_small.json",)),
+    ("medium", 769, ("table7_phowhisper_medium.json",)),
+    ("large", 1550, ("table7_phowhisper_large.json",)),
 ]
 
 WER_COLOR = "#e6a817"
@@ -51,12 +53,22 @@ def _rtf(raw_config: dict) -> float:
     return (raw_config["latency_mean_ms"] / 1000) / (st.mean(durs) / 1000)
 
 
-def load_sweep(results_dir: Path, sweep: list[tuple[str, int, str]]) -> list[dict]:
+def _resolve(results_dir: Path, filenames: str | tuple[str, ...]) -> Path | None:
+    """First existing candidate file (accepts a single name or a fallback tuple)."""
+    candidates = (filenames,) if isinstance(filenames, str) else filenames
+    for name in candidates:
+        path = results_dir / name
+        if path.exists():
+            return path
+    return None
+
+
+def load_sweep(results_dir: Path, sweep: list[tuple[str, int, str | tuple[str, ...]]]) -> list[dict]:
     """Read each model's focused JSON into a flat row of the metrics we plot."""
     rows: list[dict] = []
-    for name, params_m, filename in sweep:
-        path = results_dir / filename
-        if not path.exists():
+    for name, params_m, filenames in sweep:
+        path = _resolve(results_dir, filenames)
+        if path is None:
             continue
         report = json.loads(path.read_text(encoding="utf-8"))
         raw = report["results"]["raw"]

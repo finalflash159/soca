@@ -33,6 +33,10 @@ class ASRModelConfig:
 
     @property
     def download_command(self) -> str:
+        # PhoWhisper-large ships ONNX as external-data / int8 variants the generic
+        # allow-patterns don't map, so it has a dedicated downloader.
+        if self.model_key == "phowhisper_large":
+            return "uv run python scripts/download_phowhisper_large.py"
         return f"uv run python scripts/download_phowhisper.py --model {self.model_key}"
 
 

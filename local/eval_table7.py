@@ -432,8 +432,17 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str, model_key: s
         metrics = compute_metrics(items, run["predictions"], run["latencies_ms"])
         report = _robustness_report(run["diagnostics"])
         reports[code] = report
+        # Single WER/CER definition across the summary table, saved JSON, and
+        # both plot scripts: WER on *accepted* speech (what the note documents),
+        # with false-reject reported as its own orthogonal axis. The all-speech
+        # variant (rejected speech counted as error) is kept under explicit keys
+        # so nothing is lost. When no speech survives, fall back to all-speech.
         all_results[code] = {
             **metrics,
+            "wer_all_speech": metrics["wer"],
+            "cer_all_speech": metrics["cer"],
+            "wer": report.wer if report.wer is not None else metrics["wer"],
+            "cer": report.cer if report.cer is not None else metrics["cer"],
             "robustness": _report_to_dict(report),
             "predictions": run["predictions"],
             "latencies_ms": run["latencies_ms"],

@@ -53,3 +53,18 @@ def test_load_sweep_computes_rtf_and_skips_missing(tmp_path: Path) -> None:
     assert [r["name"] for r in rows] == ["tiny"]  # missing base skipped
     assert rows[0]["wer_raw"] == 20.5
     assert abs(rows[0]["rtf"] - 0.12) < 1e-9
+
+
+def test_load_sweep_falls_back_to_second_candidate(tmp_path: Path) -> None:
+    # Only the fallback file (table7_replication.json) is present; the primary
+    # focused name is absent → tiny is still picked up, not skipped.
+    (tmp_path / "table7_replication.json").write_text(
+        json.dumps(_fake_report(0.205, 1.0, 0.033, 10000, 1200)), encoding="utf-8"
+    )
+    sweep = [
+        ("tiny", 39, ("table7_phowhisper_tiny_focused.json", "table7_replication.json")),
+    ]
+    rows = load_sweep(tmp_path, sweep)
+
+    assert [r["name"] for r in rows] == ["tiny"]
+    assert rows[0]["wer_raw"] == 20.5

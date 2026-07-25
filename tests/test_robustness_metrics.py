@@ -112,6 +112,24 @@ def test_noise_stage_breakdown_groups_by_stage_in_order() -> None:
     ]
 
 
+def test_noise_stage_breakdown_keeps_unknown_reasons() -> None:
+    # An unrecognised reason must be appended (after the known stages), not dropped,
+    # so the breakdown always sums to the noise count.
+    breakdown = noise_stage_breakdown(
+        [
+            noise("", reason="no_speech"),
+            noise("", reason="some_new_guard:0.1"),
+            noise("ảo giác", reason=""),
+        ]
+    )
+
+    assert breakdown == {"no_speech": 1, "accepted": 1, "some_new_guard": 1}
+    assert sum(breakdown.values()) == 3  # nothing dropped
+    # Known stages stay in pipeline order and precede the unknown extra.
+    assert list(breakdown)[:2] == ["no_speech", "accepted"]
+    assert list(breakdown)[-1] == "some_new_guard"
+
+
 def test_wer_cer_computed_on_accepted_speech_only() -> None:
     report = compute_robustness_report(
         [
