@@ -65,6 +65,7 @@ from soca.asr import (
     VietnameseBoH,
     remove_consecutive_repeats,
 )
+from soca.asr.registry import ASR_MODEL_REGISTRY, DEFAULT_ASR_MODEL_KEY
 
 console = Console()
 
@@ -372,7 +373,12 @@ def compute_metrics(items: list[Item], predictions: list[str], latencies_ms: lis
     type=click.Choice(["auto", "cpu"]),
     help="auto = CoreML + CPU fallback (Mac), cpu = force CPU.",
 )
-def main(n_speech: int, n_noise: int, configs: str, providers: str) -> None:
+@click.option(
+    "--model", "model_key", default=DEFAULT_ASR_MODEL_KEY,
+    type=click.Choice(sorted(ASR_MODEL_REGISTRY)),
+    help="PhoWhisper size to benchmark (robustness x model size).",
+)
+def main(n_speech: int, n_noise: int, configs: str, providers: str, model_key: str) -> None:
     config_list = [c.strip() for c in configs.split(",") if c.strip()]
     unknown = [c for c in config_list if c not in CONFIG_CODES]
     if unknown:
@@ -396,8 +402,10 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str) -> None:
     items = speech_items + noise_items
     console.print(f"  Loaded {len(speech_items)} speech, {len(noise_items)} noise\n")
 
-    console.print("[bold]Loading models...[/bold]")
-    asr = VietnameseASR(num_threads=cfg.NUM_THREADS, providers=provider_list)
+    console.print(f"[bold]Loading models...[/bold] (ASR = {model_key})")
+    asr = VietnameseASR(
+        model_key=model_key, num_threads=cfg.NUM_THREADS, providers=provider_list
+    )
     vad = SpeechDetector()
     try:
         boh = VietnameseBoH()
@@ -433,7 +441,7 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str) -> None:
         }
 
     # Summary table
-    table = Table(title="Table VII replication — Vietnamese PhoWhisper-tiny")
+    table = Table(title=f"Table VII replication — Vietnamese {model_key}")
     table.add_column("Config", style="cyan")
     table.add_column("WER", justify="right", style="yellow")
     table.add_column("CER", justify="right")
@@ -458,9 +466,15 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str) -> None:
     if "vad_deloop_boh" in reports:
         _print_stage_breakdown(reports["vad_deloop_boh"])
 
-    # Save
+    # Save. Default model keeps the canonical filename; others get their own so
+    # a "robustness x model size" sweep does not overwrite itself.
     cfg.EVAL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = cfg.EVAL_RESULTS_DIR / "table7_replication.json"
+    out_name = (
+        "table7_replication.json"
+        if model_key == DEFAULT_ASR_MODEL_KEY
+        else f"table7_{model_key}.json"
+    )
+    out_path = cfg.EVAL_RESULTS_DIR / out_name
     payload = {
         "metadata": {
             "execution_mode": "local",

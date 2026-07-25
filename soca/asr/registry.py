@@ -67,6 +67,13 @@ ASR_MODEL_REGISTRY: dict[str, ASRModelConfig] = {
         params_m=769,
         role="quality_ceiling_probe",
     ),
+    "phowhisper_large": ASRModelConfig(
+        model_key="phowhisper_large",
+        hf_repo="huuquyet/PhoWhisper-large",
+        local_dir_name="phowhisper-large-onnx",
+        params_m=1550,
+        role="large_robustness_probe",
+    ),
 }
 
 ASR_BAKEOFF_MODEL_KEYS = [
