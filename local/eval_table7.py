@@ -36,6 +36,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import random
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -153,6 +154,7 @@ class Item:
     ground_truth: str
     duration_ms: float
     kind: str  # "speech" | "noise"
+    subtype: str = "unknown"  # noise: "pure" | "speech_like"; speech: "unknown"
 
 
 def load_audio(path: Path) -> np.ndarray:
@@ -200,23 +202,28 @@ def load_noise_items(n: int) -> list[Item]:
             "Run: uv run python -m local.collect_noise"
         )
 
-    items: list[Item] = []
+    rows: list[dict] = []
     with cfg.NOISE_MANIFEST.open(encoding="utf-8") as f:
         for line in f:
-            if not line.strip():
-                continue
-            row = json.loads(line)
-            audio = load_audio(cfg.NOISE_ROOT / row["path"])
-            items.append(
-                Item(
-                    audio=audio,
-                    ground_truth="",  # noise should produce nothing
-                    duration_ms=len(audio) / cfg.SAMPLE_RATE * 1000,
-                    kind="noise",
-                )
+            if line.strip():
+                rows.append(json.loads(line))
+
+    # Deterministic shuffle so any subset stays stratified across pure/speech_like
+    # (babble is appended at the tail of the manifest). Full runs load everything.
+    random.Random(cfg.SEED).shuffle(rows)
+
+    items: list[Item] = []
+    for row in rows[:n]:
+        audio = load_audio(cfg.NOISE_ROOT / row["path"])
+        items.append(
+            Item(
+                audio=audio,
+                ground_truth="",  # noise should produce nothing
+                duration_ms=len(audio) / cfg.SAMPLE_RATE * 1000,
+                kind="noise",
+                subtype=row.get("subtype", "pure"),
             )
-            if len(items) >= n:
-                break
+        )
     return items
 
 
