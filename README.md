@@ -14,8 +14,12 @@ bake-off before it becomes a default (see [BENCHMARKS.md](BENCHMARKS.md)).
 
 - **Voice loop** (CLI + TUI): mic → VAD → RobustASR → AssistantRuntime → TTS → speaker.
 - **Text runtime**: `soca ask` / `soca chat` — same runtime, no mic/TTS.
-- **Textual TUI**: `soca ui` with status / chat / voice modes, a live voice status
-  bar, and shared session memory across modes.
+- **Ink TUI**: `soca ui` with status / chat / voice / settings modes, a live voice
+  status bar, and shared session memory across modes.
+- **Remote LLM providers (opt-in)**: swap the core LLM for a third-party API
+  (OpenAI / Groq / OpenRouter / Gemini) from the TUI settings screen. Local stays the
+  default and the only thing in the voice hot path. See
+  [notes/llm_providers.md](notes/llm_providers.md).
 - **RobustASR**: VAD, de-looping, confidence guard, model-specific BoH matching,
   and hallucination heuristics — turns flaky Whisper output into trusted text or a
   clean reject with a reason.
@@ -76,6 +80,19 @@ uv run soca asr-models
 uv run soca llm-models
 ```
 
+**Optional — remote LLM providers** (OpenAI / Groq / OpenRouter / Gemini). Local is
+the default and stays in the voice hot path; remote is opt-in and text-first:
+
+```bash
+uv sync --extra llm-remote        # openai client + keyring for secure key storage
+uv run soca ui                    # open Settings, pick a provider, paste key, choose model
+```
+
+Keys are stored in the OS keyring (never auto-written to `.env`) and masked in the UI;
+the chosen backend persists in `~/.config/soca/llm.json`. Remote sends the transcript
+to a third party — details and the read/precedence rules are in
+[notes/llm_providers.md](notes/llm_providers.md).
+
 The runtime reads local Markdown only (notes under `~/KnowledgeVault/wiki/`,
 curated profile memory in `~/KnowledgeVault/memory/profile.md`); it never
 auto-writes long-term memory, and vault contents are not committed.
@@ -100,16 +117,16 @@ Profiles drive both voice and text; `--llm-model` overrides both. Details:
 
 ## CLI at a glance
 
-| Command                                   | What it does                                                        |
-| ----------------------------------------- | ------------------------------------------------------------------- |
-| `soca voice [profile]`                    | Microphone voice loop (CLI)                                         |
-| `soca ui [status\|chat\|voice] [profile]` | Ink terminal UI over `soca engine` (needs `cd ui && npm run build`) |
-| `soca ask <text>`                         | One text turn (guardrails / tools / knowledge / memory / LLM)       |
-| `soca chat`                               | Multi-turn text session (RAM session memory)                        |
-| `soca profiles`                           | List runtime profiles                                               |
-| `soca asr-models` / `llm-models`          | List registered models + local file status                          |
-| `soca asr-smoke` / `llm-smoke`            | Smoke-test a single model                                           |
-| `soca benchmark-asr` / `calibrate-asr`    | ASR robustness benchmark / threshold calibration                    |
+| Command                                             | What it does                                                                                           |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `soca voice [profile]`                              | Microphone voice loop (CLI)                                                                            |
+| `soca ui [status\|chat\|voice\|settings] [profile]` | Ink terminal UI over `soca engine`; `/settings` picks the LLM backend (needs `cd ui && npm run build`) |
+| `soca ask <text>`                                   | One text turn (guardrails / tools / knowledge / memory / LLM)                                          |
+| `soca chat`                                         | Multi-turn text session (RAM session memory)                                                           |
+| `soca profiles`                                     | List runtime profiles                                                                                  |
+| `soca asr-models` / `llm-models`                    | List registered models + local file status                                                             |
+| `soca asr-smoke` / `llm-smoke`                      | Smoke-test a single model                                                                              |
+| `soca benchmark-asr` / `calibrate-asr`              | ASR robustness benchmark / threshold calibration                                                       |
 
 `soca ask` is the fastest way to exercise routing without mic/TTS:
 
