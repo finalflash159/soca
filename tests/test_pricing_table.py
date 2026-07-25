@@ -10,14 +10,22 @@ def test_as_of_label_is_a_nonempty_string() -> None:
     assert pricing_table.PRICING_TABLE_AS_OF.strip()
 
 
-def test_lookup_known_model_returns_prompt_and_completion_floats() -> None:
-    price = pricing_table.lookup_pricing("openai", "gpt-4o-mini")
-    assert price is not None
-    prompt_per_1m, completion_per_1m = price
-    assert isinstance(prompt_per_1m, float)
-    assert isinstance(completion_per_1m, float)
-    # Completion is never cheaper than prompt for these providers.
-    assert completion_per_1m >= prompt_per_1m >= 0.0
+def test_lookup_returns_floats_when_model_is_present(monkeypatch) -> None:
+    # Independent of the shipped (empty) table: verify the lookup mechanism
+    # coerces stored numbers to a (float, float) tuple.
+    fake = {"as_of": "test", "prices": {"openai": {"demo-model": [1, 2]}}}
+    monkeypatch.setattr(pricing_table, "load_pricing_table", lambda: fake)
+
+    price = pricing_table.lookup_pricing("openai", "demo-model")
+
+    assert price == (1.0, 2.0)
+    assert all(isinstance(x, float) for x in price)
+
+
+def test_shipped_table_is_empty_by_design() -> None:
+    # Decision (2026-07): ship no hand-typed prices; unknown beats a stale guess.
+    table = pricing_table.load_pricing_table()
+    assert all(models == {} for models in table["prices"].values())
 
 
 def test_lookup_unknown_model_returns_none() -> None:
