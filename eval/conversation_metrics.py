@@ -107,3 +107,83 @@ def barge_in_report(outcomes: list[BargeInOutcome]) -> BargeInReport:
         median_fire_ms=float(median(fire_times)) if fire_times else None,
         by_movement=_movement_split(outcomes),
     )
+
+
+# --------------------------------------------------------------------------- #
+# Tier 2 — turn-taking (endpoint policy: over-wait on clean ends, cut-in on pauses)
+# --------------------------------------------------------------------------- #
+
+SCENARIO_CLEAN = "clean"
+SCENARIO_MID_PAUSE = "mid_pause"
+
+
+@dataclass(frozen=True)
+class TurnOutcome:
+    """One endpoint replay: when a policy closed the turn vs the ground truth."""
+
+    scenario_type: str  # clean | mid_pause
+    policy: str
+    stopped: bool
+    stop_ms: float | None
+    true_end_ms: float
+    pause_end_ms: float | None = None  # mid_pause only
+
+
+def _over_wait_ms(outcome: TurnOutcome) -> float | None:
+    """How long after the real turn end the policy kept waiting (patience cost)."""
+    if outcome.stop_ms is None:
+        return None
+    return outcome.stop_ms - outcome.true_end_ms
+
+
+def _is_cut_in(outcome: TurnOutcome) -> bool:
+    """Closed *inside* a within-turn pause → premature end-of-turn (a cut-in error)."""
+    if outcome.scenario_type != SCENARIO_MID_PAUSE or not outcome.stopped:
+        return False
+    if outcome.stop_ms is None or outcome.pause_end_ms is None:
+        return False
+    return outcome.stop_ms < outcome.pause_end_ms
+
+
+def _is_premature_clean(outcome: TurnOutcome) -> bool:
+    """Clean turn closed *before* the user finished → the endpoint fired too early
+    (typically into a natural intra-sentence pause of read speech)."""
+    if outcome.scenario_type != SCENARIO_CLEAN or not outcome.stopped:
+        return False
+    return outcome.stop_ms is not None and outcome.stop_ms < outcome.true_end_ms
+
+
+def turn_taking_report(outcomes: list[TurnOutcome]) -> dict[str, dict[str, float | int | None]]:
+    """Per-policy accuracy/patience split, keeping early and late errors distinct.
+
+    - ``cut_in_rate``      : mid-pause turns closed inside the within-turn pause.
+    - ``premature_close_rate``: clean turns closed before the real end (early error).
+    - ``median_over_wait_ms``: over-wait on *correct* clean closes only (stop ≥ end),
+      so an early stop never masquerades as a (negative) over-wait.
+    Together these are the trade-off axis: eager policies fire early (cut-in /
+    premature); patient ones wait past the end."""
+    policies = sorted({o.policy for o in outcomes})
+    report: dict[str, dict[str, float | int | None]] = {}
+    for policy in policies:
+        rows = [o for o in outcomes if o.policy == policy]
+        clean = [o for o in rows if o.scenario_type == SCENARIO_CLEAN]
+        mids = [o for o in rows if o.scenario_type == SCENARIO_MID_PAUSE]
+        cut_ins = sum(1 for o in mids if _is_cut_in(o))
+        prematures = sum(1 for o in clean if _is_premature_clean(o))
+        # Over-wait only where the policy actually waited past the true end.
+        over_waits = [
+            w
+            for o in clean
+            if o.stopped and not _is_premature_clean(o) and (w := _over_wait_ms(o)) is not None
+        ]
+        report[policy] = {
+            "n_clean": len(clean),
+            "n_mid_pause": len(mids),
+            "cut_in_rate": _rate(cut_ins, len(mids)),
+            "cut_in_count": cut_ins,
+            "premature_close_rate": _rate(prematures, len(clean)),
+            "premature_close_count": prematures,
+            "median_over_wait_ms": float(median(over_waits)) if over_waits else None,
+            "n_correct_close": len(over_waits),
+        }
+    return report
