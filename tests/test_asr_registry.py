@@ -45,6 +45,13 @@ def test_phowhisper_mid_tier_models_are_registered() -> None:
     assert base.download_command.endswith("--model phowhisper_base")
 
 
+def test_large_download_command_points_to_dedicated_script() -> None:
+    large = get_asr_model_config("phowhisper_large")
+    assert large.params_m == 1550
+    # Large ships external-data/int8 ONNX the generic downloader can't map.
+    assert large.download_command == "uv run python scripts/download_phowhisper_large.py"
+
+
 def test_asr_profiles() -> None:
     assert get_asr_profile_model_keys("minimal") == [DEFAULT_ASR_MODEL_KEY]
     assert get_asr_profile_model_keys("bakeoff") == [

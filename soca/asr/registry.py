@@ -33,6 +33,10 @@ class ASRModelConfig:
 
     @property
     def download_command(self) -> str:
+        # PhoWhisper-large ships ONNX as external-data / int8 variants the generic
+        # allow-patterns don't map, so it has a dedicated downloader.
+        if self.model_key == "phowhisper_large":
+            return "uv run python scripts/download_phowhisper_large.py"
         return f"uv run python scripts/download_phowhisper.py --model {self.model_key}"
 
 
@@ -66,6 +70,13 @@ ASR_MODEL_REGISTRY: dict[str, ASRModelConfig] = {
         local_dir_name="phowhisper-medium-onnx",
         params_m=769,
         role="quality_ceiling_probe",
+    ),
+    "phowhisper_large": ASRModelConfig(
+        model_key="phowhisper_large",
+        hf_repo="huuquyet/PhoWhisper-large",
+        local_dir_name="phowhisper-large-onnx",
+        params_m=1550,
+        role="large_robustness_probe",
     ),
 }
 

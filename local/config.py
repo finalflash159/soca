@@ -80,6 +80,19 @@ SYNTHETIC_NOISE = {
     "amplitudes": [0.001, 0.003, 0.005, 0.01],
 }
 
+# Speech-like "babble" built by overlapping several FLEURS utterances. Unlike the
+# pure noise above (which Silero VAD rejects at the gate), babble clears VAD and
+# forces the confidence/BoH/heuristic stages to do the catching — this is what
+# makes the ablation table show each stage's contribution (P1.1 §2.2).
+SYNTHETIC_BABBLE = {
+    "enabled": True,
+    "n_samples": 200,
+    "voices_per_clip": [3, 4, 5, 6],
+    "durations_s": [3.0, 5.0, 8.0],
+    "target_rms": 0.05,  # speech-like loudness so VAD lets it through
+    "reverse_prob": 0.5,  # scramble intelligibility of some overlapped voices
+}
+
 # --- BoH config (mirror notebooks/02) ---
 
 MIN_COUNT = 2

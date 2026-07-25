@@ -36,6 +36,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import random
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -50,6 +51,12 @@ from rich.console import Console
 from rich.progress import track
 from rich.table import Table
 
+from eval.robustness_metrics import (
+    STAGE_ORDER,
+    Diagnostic,
+    RobustnessReport,
+    compute_robustness_report,
+)
 from local import config as cfg
 from soca.asr import (
     RobustASR,
@@ -58,8 +65,78 @@ from soca.asr import (
     VietnameseBoH,
     remove_consecutive_repeats,
 )
+from soca.asr.registry import ASR_MODEL_REGISTRY, DEFAULT_ASR_MODEL_KEY
 
 console = Console()
+
+
+def _to_diagnostic(d: dict) -> Diagnostic:
+    return Diagnostic(
+        kind=d["kind"],
+        rejection_reason=d.get("rejection_reason", ""),
+        final_text=d.get("final_text", ""),
+        ground_truth=d.get("ground_truth", ""),
+        subtype=d.get("subtype", "unknown"),
+    )
+
+
+def _robustness_report(diagnostics: list[dict]) -> RobustnessReport:
+    return compute_robustness_report([_to_diagnostic(d) for d in diagnostics])
+
+
+def _report_to_dict(report: RobustnessReport) -> dict:
+    return {
+        "n_speech": report.n_speech,
+        "n_noise": report.n_noise,
+        "false_reject_count": report.false_reject_count,
+        "false_reject_rate": report.false_reject_rate,
+        "hallucination_count": report.hallucination_count,
+        "hallucination_rate": report.hallucination_rate,
+        "catch_rate": report.catch_rate,
+        "wer_accepted": report.wer,
+        "cer_accepted": report.cer,
+        "noise_stage_breakdown": report.noise_stage_breakdown,
+        "hallucination_rate_by_subtype": report.hallucination_rate_by_subtype,
+    }
+
+
+def _print_stage_breakdown(report: RobustnessReport) -> None:
+    """Show which stage caught each non-speech item, for the full pipeline."""
+    breakdown = report.noise_stage_breakdown
+    if not report.n_noise:
+        return
+
+    table = Table(title="Stage contribution — non-speech catches (full pipeline)")
+    table.add_column("Stage", style="cyan")
+    table.add_column("Caught", justify="right")
+    table.add_column("% of noise", justify="right")
+    for stage in STAGE_ORDER:
+        count = breakdown.get(stage, 0)
+        if not count:
+            continue
+        style = "red" if stage == "accepted" else None
+        label = f"{stage} (leaked through)" if stage == "accepted" else stage
+        table.add_row(
+            f"[red]{label}[/red]" if style else label,
+            str(count),
+            f"{count / report.n_noise * 100:.1f}%",
+        )
+    console.print(table)
+    console.print(
+        f"  catch-rate={report.catch_rate * 100:.1f}%  "
+        f"false-reject={report.false_reject_rate * 100:.2f}%  "
+        f"WER(accepted)={_fmt_pct(report.wer)}"
+    )
+    if report.hallucination_rate_by_subtype:
+        parts = ", ".join(
+            f"{sub}={rate * 100:.1f}%"
+            for sub, rate in sorted(report.hallucination_rate_by_subtype.items())
+        )
+        console.print(f"  hallucination-rate by subtype: {parts}")
+
+
+def _fmt_pct(value: float | None) -> str:
+    return "n/a" if value is None else f"{value * 100:.2f}%"
 
 CONFIG_CODES = ("raw", "deloop", "vad", "boh", "deloop_boh", "vad_deloop_boh")
 CONFIG_LABELS = {
@@ -78,6 +155,7 @@ class Item:
     ground_truth: str
     duration_ms: float
     kind: str  # "speech" | "noise"
+    subtype: str = "unknown"  # noise: "pure" | "speech_like"; speech: "unknown"
 
 
 def load_audio(path: Path) -> np.ndarray:
@@ -125,23 +203,28 @@ def load_noise_items(n: int) -> list[Item]:
             "Run: uv run python -m local.collect_noise"
         )
 
-    items: list[Item] = []
+    rows: list[dict] = []
     with cfg.NOISE_MANIFEST.open(encoding="utf-8") as f:
         for line in f:
-            if not line.strip():
-                continue
-            row = json.loads(line)
-            audio = load_audio(cfg.NOISE_ROOT / row["path"])
-            items.append(
-                Item(
-                    audio=audio,
-                    ground_truth="",  # noise should produce nothing
-                    duration_ms=len(audio) / cfg.SAMPLE_RATE * 1000,
-                    kind="noise",
-                )
+            if line.strip():
+                rows.append(json.loads(line))
+
+    # Deterministic shuffle so any subset stays stratified across pure/speech_like
+    # (babble is appended at the tail of the manifest). Full runs load everything.
+    random.Random(cfg.SEED).shuffle(rows)
+
+    items: list[Item] = []
+    for row in rows[:n]:
+        audio = load_audio(cfg.NOISE_ROOT / row["path"])
+        items.append(
+            Item(
+                audio=audio,
+                ground_truth="",  # noise should produce nothing
+                duration_ms=len(audio) / cfg.SAMPLE_RATE * 1000,
+                kind="noise",
+                subtype=row.get("subtype", "pure"),
             )
-            if len(items) >= n:
-                break
+        )
     return items
 
 
@@ -235,10 +318,17 @@ def run_config(
             }
         )
 
+    # Enrich each diagnostic with its item's ground truth + noise subtype so the
+    # JSON is self-sufficient for downstream stage-decomposition (eval.robustness_metrics).
+    enriched = [
+        {**d, "ground_truth": it.ground_truth, "subtype": getattr(it, "subtype", "unknown")}
+        for it, d in zip(items, diagnostics, strict=True)
+    ]
+
     return {
         "predictions": predictions,
         "latencies_ms": latencies_ms,
-        "diagnostics": diagnostics,
+        "diagnostics": enriched,
     }
 
 
@@ -283,7 +373,12 @@ def compute_metrics(items: list[Item], predictions: list[str], latencies_ms: lis
     type=click.Choice(["auto", "cpu"]),
     help="auto = CoreML + CPU fallback (Mac), cpu = force CPU.",
 )
-def main(n_speech: int, n_noise: int, configs: str, providers: str) -> None:
+@click.option(
+    "--model", "model_key", default=DEFAULT_ASR_MODEL_KEY,
+    type=click.Choice(sorted(ASR_MODEL_REGISTRY)),
+    help="PhoWhisper size to benchmark (robustness x model size).",
+)
+def main(n_speech: int, n_noise: int, configs: str, providers: str, model_key: str) -> None:
     config_list = [c.strip() for c in configs.split(",") if c.strip()]
     unknown = [c for c in config_list if c not in CONFIG_CODES]
     if unknown:
@@ -307,8 +402,10 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str) -> None:
     items = speech_items + noise_items
     console.print(f"  Loaded {len(speech_items)} speech, {len(noise_items)} noise\n")
 
-    console.print("[bold]Loading models...[/bold]")
-    asr = VietnameseASR(num_threads=cfg.NUM_THREADS, providers=provider_list)
+    console.print(f"[bold]Loading models...[/bold] (ASR = {model_key})")
+    asr = VietnameseASR(
+        model_key=model_key, num_threads=cfg.NUM_THREADS, providers=provider_list
+    )
     vad = SpeechDetector()
     try:
         boh = VietnameseBoH()
@@ -328,23 +425,37 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str) -> None:
         asr.transcribe(items[0].audio)
 
     all_results: dict[str, dict] = {}
+    reports: dict[str, RobustnessReport] = {}
     for code in config_list:
         console.print(f"[bold cyan]{CONFIG_LABELS[code]}[/bold cyan]")
         run = run_config(code, items, asr, vad, boh, robust_asr)
         metrics = compute_metrics(items, run["predictions"], run["latencies_ms"])
+        report = _robustness_report(run["diagnostics"])
+        reports[code] = report
+        # Single WER/CER definition across the summary table, saved JSON, and
+        # both plot scripts: WER on *accepted* speech (what the note documents),
+        # with false-reject reported as its own orthogonal axis. The all-speech
+        # variant (rejected speech counted as error) is kept under explicit keys
+        # so nothing is lost. When no speech survives, fall back to all-speech.
         all_results[code] = {
             **metrics,
+            "wer_all_speech": metrics["wer"],
+            "cer_all_speech": metrics["cer"],
+            "wer": report.wer if report.wer is not None else metrics["wer"],
+            "cer": report.cer if report.cer is not None else metrics["cer"],
+            "robustness": _report_to_dict(report),
             "predictions": run["predictions"],
             "latencies_ms": run["latencies_ms"],
             "diagnostics": run["diagnostics"],
         }
 
     # Summary table
-    table = Table(title="Table VII replication — Vietnamese PhoWhisper-tiny")
+    table = Table(title=f"Table VII replication — Vietnamese {model_key}")
     table.add_column("Config", style="cyan")
     table.add_column("WER", justify="right", style="yellow")
     table.add_column("CER", justify="right")
     table.add_column("Halluc rate", justify="right", style="red")
+    table.add_column("False-rej", justify="right", style="magenta")
     table.add_column("Lat p50 ms", justify="right")
     table.add_column("Lat p95 ms", justify="right")
     for code in config_list:
@@ -354,14 +465,25 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str) -> None:
             f"{m['wer'] * 100:.2f}%",
             f"{m['cer'] * 100:.2f}%",
             f"{m['hallucination_rate'] * 100:.2f}%",
+            f"{reports[code].false_reject_rate * 100:.2f}%",
             f"{m['latency_p50_ms']:.0f}",
             f"{m['latency_p95_ms']:.0f}",
         )
     console.print(table)
 
-    # Save
+    # Stage-contribution: which stage caught each non-speech item (full pipeline).
+    if "vad_deloop_boh" in reports:
+        _print_stage_breakdown(reports["vad_deloop_boh"])
+
+    # Save. Default model keeps the canonical filename; others get their own so
+    # a "robustness x model size" sweep does not overwrite itself.
     cfg.EVAL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = cfg.EVAL_RESULTS_DIR / "table7_replication.json"
+    out_name = (
+        "table7_replication.json"
+        if model_key == DEFAULT_ASR_MODEL_KEY
+        else f"table7_{model_key}.json"
+    )
+    out_path = cfg.EVAL_RESULTS_DIR / out_name
     payload = {
         "metadata": {
             "execution_mode": "local",
