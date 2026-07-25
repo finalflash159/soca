@@ -65,6 +65,12 @@ external/**/*.mp4
 .DS_Store
 Thumbs.db
 
+# Secrets — never commit API keys
+.env
+.env.*
+!.env.example
+~/.config/soca/keys.json
+
 # Streamlit
 .streamlit/secrets.toml
 

@@ -36,6 +36,11 @@ dev = [
 llm = [
     "llama-cpp-python>=0.3.0",  # for D2
 ]
+llm-remote = [
+    "openai>=1.0",   # OpenAI-compatible client for OpenAI/Groq/OpenRouter/Gemini
+    "keyring>=25",   # secure API-key storage (P3)
+    "tiktoken>=0.7", # optional pre-send token estimate
+]
 eval = [
     "jiwer>=3.0",        # Word Error Rate
     "datasets>=3.0",     # HuggingFace datasets (Common Voice VI)
