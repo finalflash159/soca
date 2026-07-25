@@ -7,6 +7,7 @@ from soca.app.text_runtime import (
     build_text_runtime,
     normalize_text_turn,
 )
+from soca.config.llm_settings import LlmSettings
 from soca.memory import SessionMemory
 
 
@@ -64,6 +65,52 @@ def test_text_runtime_uses_injected_session_memory(tmp_path: Path) -> None:
     assert bundle.session_memory is shared
     bundle.runtime.run_text_turn("mấy giờ rồi?", source="test")
     assert len(shared.turns) == 2
+
+
+def test_text_runtime_uses_persisted_remote_selection(monkeypatch, tmp_path: Path) -> None:
+    persisted = LlmSettings(
+        backend="remote",
+        provider_key="groq",
+        model_id="llama-3.1-8b-instant",
+    )
+    captured: dict[str, object] = {}
+
+    def fake_engine(settings, secrets, **kwargs):
+        captured["settings"] = settings
+        captured["secrets"] = secrets
+        captured["local_factory"] = kwargs["local_factory"]
+        return object()
+
+    monkeypatch.setattr("soca.app.text_runtime.load_settings", lambda: persisted)
+    bundle = build_text_runtime(
+        _config(tmp_path / "absent", no_llm=False),
+        secret_store=object(),
+        engine_factory=fake_engine,
+    )
+
+    assert captured["settings"] == persisted
+    assert bundle.llm_status == "enabled:groq:llama-3.1-8b-instant"
+
+
+def test_text_runtime_uses_persisted_local_model_without_cli_override(
+    monkeypatch, tmp_path: Path
+) -> None:
+    persisted = LlmSettings(model_id="qwen3_0_6b_q8_0")
+    captured: dict[str, object] = {}
+
+    def fake_engine(settings, secrets, **kwargs):
+        captured["settings"] = settings
+        return object()
+
+    monkeypatch.setattr("soca.app.text_runtime.load_settings", lambda: persisted)
+    bundle = build_text_runtime(
+        _config(tmp_path / "absent", no_llm=False),
+        secret_store=object(),
+        engine_factory=fake_engine,
+    )
+
+    assert captured["settings"] == persisted
+    assert bundle.llm_status == "enabled:qwen3_0_6b_q8_0"
 
 
 def test_normalize_text_turn_extracts_knowledge_prefix() -> None:
