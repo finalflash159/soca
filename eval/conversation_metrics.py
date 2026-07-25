@@ -25,6 +25,10 @@ from statistics import median
 CONDITION_ECHO_ONLY = "echo_only"
 CONDITION_DOUBLE_TALK = "double_talk"
 
+KIND_ECHO_ONLY = "echo_only"
+KIND_BARGE_IN = "barge_in"
+KIND_BACKCHANNEL = "backchannel"
+
 
 @dataclass(frozen=True)
 class BargeInOutcome:
@@ -187,3 +191,71 @@ def turn_taking_report(outcomes: list[TurnOutcome]) -> dict[str, dict[str, float
             "n_correct_close": len(over_waits),
         }
     return report
+
+
+# --------------------------------------------------------------------------- #
+# Tier 1 synth — barge-in with controlled onset (latency + backchannel probe)
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class SynthBargeOutcome:
+    """One synthesized barge-in replay, carrying the onset needed for latency."""
+
+    kind: str  # echo_only | barge_in | backchannel
+    expected_interrupt: bool
+    interrupted: bool
+    onset_ms: float | None = None
+    interrupt_ms: float | None = None
+
+
+@dataclass(frozen=True)
+class SynthBargeReport:
+    n_echo_only: int
+    n_barge_in: int
+    n_backchannel: int
+    false_interrupt_rate: float  # echo_only fires
+    detection_rate: float  # barge_in fires
+    backchannel_fire_rate: float  # backchannel fires (the honest finding)
+    median_latency_ms: float | None  # over detected barge_ins, fire − onset
+    p90_latency_ms: float | None
+
+
+def _percentile(values: list[float], pct: float) -> float:
+    """Nearest-rank percentile on a copy (no numpy dependency at metric layer)."""
+    ordered = sorted(values)
+    rank = max(0, min(len(ordered) - 1, round(pct / 100 * (len(ordered) - 1))))
+    return ordered[rank]
+
+
+def synth_barge_report(outcomes: list[SynthBargeOutcome]) -> SynthBargeReport:
+    """Decompose synth barge-in outcomes; latency is fire − onset on detected turns.
+
+    A detection whose fire lands *before* the onset is a spurious pre-fire, not a
+    real reaction, so it is excluded from the latency distribution (and does not count
+    as detection)."""
+    echo = [o for o in outcomes if o.kind == KIND_ECHO_ONLY]
+    barge = [o for o in outcomes if o.kind == KIND_BARGE_IN]
+    back = [o for o in outcomes if o.kind == KIND_BACKCHANNEL]
+
+    def _detected(o: SynthBargeOutcome) -> bool:
+        return (
+            o.interrupted
+            and o.interrupt_ms is not None
+            and o.onset_ms is not None
+            and o.interrupt_ms >= o.onset_ms
+        )
+
+    detections = [o for o in barge if _detected(o)]
+    latencies = [o.interrupt_ms - o.onset_ms for o in detections]  # type: ignore[operator]
+
+    return SynthBargeReport(
+        n_echo_only=len(echo),
+        n_barge_in=len(barge),
+        n_backchannel=len(back),
+        false_interrupt_rate=_rate(sum(1 for o in echo if o.interrupted), len(echo)),
+        detection_rate=_rate(len(detections), len(barge)),
+        backchannel_fire_rate=_rate(sum(1 for o in back if o.interrupted), len(back)),
+        median_latency_ms=float(median(latencies)) if latencies else None,
+        p90_latency_ms=_percentile(latencies, 90) if latencies else None,
+    )
