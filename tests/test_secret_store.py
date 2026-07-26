@@ -6,7 +6,7 @@ import stat
 
 import pytest
 
-from soca.config.secret_store import SecretStore
+from soca.config.secret_store import READ_DOTENV_ENV, SecretStore
 
 
 class FakeKeyring:
@@ -98,6 +98,32 @@ def test_dotenv_used_when_keyring_and_env_empty(tmp_path) -> None:
     store = SecretStore(keyring_module=FakeKeyring(), env={}, dotenv_path=dotenv)
 
     assert store.get_key("openai") == "from-dotenv"
+
+
+def test_default_store_does_not_read_dotenv_from_the_working_directory(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("OPENAI_API_KEY=from-cwd-dotenv\n", encoding="utf-8")
+    store = SecretStore(
+        keyring_module=FakeKeyring(),
+        env={},
+        json_path=tmp_path / "keys.json",
+    )
+
+    assert store.get_key("openai") is None
+
+
+def test_dotenv_read_requires_explicit_environment_opt_in(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("OPENAI_API_KEY=from-cwd-dotenv\n", encoding="utf-8")
+    store = SecretStore(
+        keyring_module=FakeKeyring(),
+        env={READ_DOTENV_ENV: "1"},
+        json_path=tmp_path / "keys.json",
+    )
+
+    assert store.get_key("openai") == "from-cwd-dotenv"
 
 
 def test_json_fallback_used_last(tmp_path) -> None:

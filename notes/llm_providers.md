@@ -64,9 +64,10 @@ API keys are secrets and are handled as such:
 - **Writes go only to the OS keyring** (service `soca-llm`, username = provider key).
   On a machine without a keyring backend, `set_key` falls back to
   `~/.config/soca/keys.json` at mode `0600`. **Keys are never auto-written to `.env`.**
-- **Reads follow a fixed precedence**: keyring → process env → `.env` (read-only) →
-  `keys.json`. This lets a developer keep a key in `.env` for local work while the
-  UI-saved keyring value always wins.
+- **Reads follow a fixed precedence**: keyring → process env → optional `.env`
+  (read-only) → `keys.json`. To prevent the working directory from silently
+  selecting a billing account, `.env` is read only when `SOCA_READ_DOTENV=1` or
+  a caller explicitly supplies `dotenv_path`; the UI-saved keyring value always wins.
 - Keys are **masked** as `sk-…abcd` for display, never logged, and never echoed raw
   into the NDJSON protocol.
 - `.env` is git-ignored.

@@ -24,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import json
+import logging
 import sys
 import threading
 from collections.abc import Callable
@@ -45,7 +46,7 @@ from soca.app.voice_controller import (
     VoiceRecorder,
     VoiceRuntimeBuilder,
 )
-from soca.config import LlmSettings, SecretStore, load_settings, save_settings
+from soca.config import DEFAULT_SETTINGS, LlmSettings, SecretStore, load_settings, save_settings
 from soca.core import AudioSink, ResolvedVoiceRuntimeConfig
 from soca.core.usage import SessionUsage, TurnUsage
 from soca.llm.providers import (
@@ -61,6 +62,7 @@ from soca.memory import SessionMemory
 from soca.tts import VALTEC_TTS_CONFIG
 
 PROTOCOL_VERSION = 1
+LOGGER = logging.getLogger(__name__)
 
 TextRuntimeBuilder = Callable[..., TextRuntimeBundle]
 SettingsLoader = Callable[[], LlmSettings]
@@ -144,7 +146,15 @@ class SocaEngine:
         self.voice_player = voice_player
         self.warmup_voice = warmup_voice
         self.llm_settings_saver = llm_settings_saver
-        self.llm_settings = llm_settings_loader()
+        self._settings_warning: str | None = None
+        try:
+            self.llm_settings = llm_settings_loader()
+        except ValueError:
+            LOGGER.warning(
+                "Ignoring invalid persisted LLM settings; using local defaults", exc_info=True
+            )
+            self.llm_settings = DEFAULT_SETTINGS
+            self._settings_warning = "Không thể đọc cấu hình LLM đã lưu; đang dùng Local mặc định."
         self.secret_store = secret_store or SecretStore()
         self.catalog_fetcher = catalog_fetcher
 
@@ -179,6 +189,8 @@ class SocaEngine:
                 "stack": stack,
             }
         )
+        if self._settings_warning is not None:
+            self._error(self._settings_warning)
 
     def dispatch(self, command: dict[str, Any]) -> bool:
         """Handle one command; return False when the engine should exit."""
@@ -270,6 +282,16 @@ class SocaEngine:
         except RemoteLLMError as exc:
             self._error(str(exc), provider=provider.key)
             return
+        except Exception as exc:  # noqa: BLE001 - external catalog adapters are untrusted
+            LOGGER.warning(
+                "Unexpected model catalog failure for provider %s (%s)",
+                provider.key,
+                type(exc).__name__,
+            )
+            self._error(
+                f"Không thể lấy danh sách model của {provider.label}.", provider=provider.key
+            )
+            return
         query = command.get("query", "")
         if not isinstance(query, str):
             self._error("LLM model query phải là chuỗi.")
@@ -297,6 +319,18 @@ class SocaEngine:
             self.secret_store.set_key(provider.key, secret)
         except (RemoteLLMError, ValueError) as exc:
             self._emit_key_status(provider.key, ok=False, message=str(exc))
+            return
+        except Exception as exc:  # noqa: BLE001 - never expose adapter diagnostics or keys to the UI
+            LOGGER.warning(
+                "Unexpected API-key validation failure for provider %s (%s)",
+                provider.key,
+                type(exc).__name__,
+            )
+            self._emit_key_status(
+                provider.key,
+                ok=False,
+                message="Không thể xác thực API key. Hãy thử lại sau.",
+            )
             return
         self._emit_key_status(provider.key, ok=True, masked=self.secret_store.mask(secret))
 
@@ -364,6 +398,13 @@ class SocaEngine:
             provider = get_provider(settings.provider_key)
             catalog = self.catalog_fetcher(provider, api_key)
         except RemoteLLMError:
+            return None
+        except Exception as exc:  # noqa: BLE001 - config output must not terminate the engine
+            LOGGER.warning(
+                "Unexpected active-model lookup failure for %s (%s)",
+                settings.provider_key,
+                type(exc).__name__,
+            )
             return None
         return next((model for model in catalog if model.id == settings.model_id), None)
 

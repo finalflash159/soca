@@ -7,22 +7,23 @@ from typing import Any
 import pytest
 
 from soca.llm.providers import (
+    RemoteLLMError,
     RemoteModelInfo,
     fetch_catalog,
     get_provider,
+    model_catalog,
     search_models,
 )
-from soca.llm.providers import model_catalog
 
 
 class FakeHttp:
     """Records the request and returns a canned JSON payload."""
 
-    def __init__(self, payload: dict[str, Any]) -> None:
+    def __init__(self, payload: object) -> None:
         self.payload = payload
         self.calls: list[tuple[str, dict[str, str]]] = []
 
-    def __call__(self, url: str, headers: dict[str, str]) -> dict[str, Any]:
+    def __call__(self, url: str, headers: dict[str, str]) -> object:
         self.calls.append((url, headers))
         return self.payload
 
@@ -172,6 +173,21 @@ def test_missing_context_is_none() -> None:
     assert catalog[0].context_length is None
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        {"data": "not a list"},
+        {"data": [{}]},
+        {"data": [{"id": 123}]},
+        {"data": [{"id": "model", "pricing": "not an object"}]},
+    ],
+)
+def test_fetch_catalog_rejects_malformed_provider_payloads(payload: object) -> None:
+    with pytest.raises(RemoteLLMError, match="danh sách model"):
+        fetch_catalog(get_provider("openrouter"), "sk-test", http=FakeHttp(payload))
+
+
 # -- Label fallback ----------------------------------------------------------
 
 
@@ -189,7 +205,9 @@ def test_label_falls_back_to_id_when_name_missing() -> None:
 
 def _sample_catalog() -> list[RemoteModelInfo]:
     return [
-        RemoteModelInfo("meta-llama/llama-3.3-70b-instruct", "Llama 3.3 70B", 131072, 0.59, 0.79, "live"),
+        RemoteModelInfo(
+            "meta-llama/llama-3.3-70b-instruct", "Llama 3.3 70B", 131072, 0.59, 0.79, "live"
+        ),
         RemoteModelInfo("qwen/qwen-2.5-72b-instruct", "Qwen 2.5 72B", 32768, 0.4, 0.4, "live"),
         RemoteModelInfo("gpt-4o-mini", "GPT-4o mini", None, 0.15, 0.6, "table"),
     ]

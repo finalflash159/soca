@@ -116,6 +116,37 @@ def test_engine_reports_invalid_json_without_crashing() -> None:
     assert "engine_error" in kinds
 
 
+def test_engine_uses_local_defaults_when_saved_llm_settings_are_invalid() -> None:
+    capture = ProtocolCapture()
+
+    def stdin():
+        yield '{"cmd": "llm_config"}\n'
+        yield '{"cmd": "quit"}\n'
+
+    def invalid_settings_loader():
+        raise ValueError("settings file is malformed")
+
+    code = run_engine(
+        voice_config=None,
+        text_config=make_text_config(),
+        profile="baseline",
+        no_model=True,
+        stdin=stdin(),
+        stdout=capture,
+        llm_settings_loader=invalid_settings_loader,
+    )
+
+    assert code == 0
+    events = capture.events()
+    assert events[0]["event"] == "hello"
+    assert any(
+        event["event"] == "engine_error" and "cấu hình llm" in event["message"].lower()
+        for event in events
+    )
+    config = next(event for event in events if event["event"] == "llm_config")
+    assert config["backend"] == "local"
+
+
 class _FakeAssistantRuntime:
     def run_text_turn(self, text: str, *, source: str, metadata: dict) -> RuntimeResult:
         return RuntimeResult(response_text=f"echo: {text}", route=RuntimeRoute.FREE_CHAT)

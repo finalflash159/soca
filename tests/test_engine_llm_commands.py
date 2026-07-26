@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 from soca.app.engine import SocaEngine, _ProtocolWriter, run_engine
 from soca.app.text_runtime import TextRuntimeConfig
 from soca.config.llm_settings import LlmSettings
-from soca.llm.providers import RemoteModelInfo
+from soca.llm.providers import LLMProvider, RemoteModelInfo
+
+CatalogFetcher = Callable[[LLMProvider, str], list[RemoteModelInfo]]
 
 
 class ProtocolCapture:
@@ -83,6 +86,7 @@ def _run(
     *,
     settings: LlmSettings | None = None,
     secrets: FakeSecrets | None = None,
+    catalog_fetcher: CatalogFetcher = _catalog,
 ) -> tuple[ProtocolCapture, list[LlmSettings]]:
     capture = ProtocolCapture()
     saved: list[LlmSettings] = []
@@ -102,7 +106,7 @@ def _run(
         llm_settings_loader=lambda: settings or LlmSettings(),
         llm_settings_saver=saved.append,
         secret_store=secrets or FakeSecrets({"groq": "sk-existing-1234"}),
-        catalog_fetcher=_catalog,
+        catalog_fetcher=catalog_fetcher,
     )
     return capture, saved
 
@@ -126,6 +130,18 @@ def test_llm_models_filters_catalog_by_query() -> None:
     assert [model["id"] for model in event["models"]] == ["qwen/qwen3-32b"]
 
 
+def test_llm_models_converts_an_unexpected_catalog_failure_to_a_safe_error() -> None:
+    def broken_catalog(provider: LLMProvider, api_key: str) -> list[RemoteModelInfo]:
+        raise RuntimeError("internal catalog diagnostic")
+
+    capture, _ = _run([{"cmd": "llm_models", "provider": "groq"}], catalog_fetcher=broken_catalog)
+
+    event = next(item for item in capture.events() if item["event"] == "engine_error")
+    assert event["provider"] == "groq"
+    assert "không thể lấy danh sách model" in event["message"].lower()
+    assert "internal catalog diagnostic" not in event["message"]
+
+
 def test_llm_set_key_validates_then_masks_without_echoing_secret() -> None:
     secret = "sk-super-secret-9876"
     capture, _ = _run(
@@ -141,6 +157,43 @@ def test_llm_set_key_validates_then_masks_without_echoing_secret() -> None:
         "masked": "sk-...9876",
     }
     assert secret not in "\n".join(capture.lines)
+
+
+def test_llm_set_key_converts_an_unexpected_catalog_failure_to_a_safe_status() -> None:
+    def broken_catalog(provider: LLMProvider, api_key: str) -> list[RemoteModelInfo]:
+        raise RuntimeError("internal catalog diagnostic")
+
+    capture, _ = _run(
+        [{"cmd": "llm_set_key", "provider": "groq", "key": "sk-test-key"}],
+        secrets=FakeSecrets(),
+        catalog_fetcher=broken_catalog,
+    )
+
+    event = next(item for item in capture.events() if item["event"] == "llm_key_status")
+    assert event["ok"] is False
+    assert "không thể xác thực api key" in event["message"].lower()
+    assert "internal catalog diagnostic" not in event["message"]
+
+
+def test_llm_select_survives_an_unexpected_active_model_lookup_failure() -> None:
+    def broken_catalog(provider: LLMProvider, api_key: str) -> list[RemoteModelInfo]:
+        raise RuntimeError("internal catalog diagnostic")
+
+    capture, saved = _run(
+        [
+            {
+                "cmd": "llm_select",
+                "backend": "remote",
+                "provider": "groq",
+                "model": "llama-3.1-8b-instant",
+            }
+        ],
+        catalog_fetcher=broken_catalog,
+    )
+
+    assert saved[0].backend == "remote"
+    event = next(item for item in capture.events() if item["event"] == "llm_config")
+    assert event["pricing"] is None
 
 
 def test_llm_select_persists_remote_config_and_emits_active_config() -> None:

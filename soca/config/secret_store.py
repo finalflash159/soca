@@ -14,6 +14,7 @@ from soca.llm.providers import get_provider
 KEYRING_SERVICE = "soca-llm"
 DEFAULT_CONFIG_DIR = Path.home() / ".config" / "soca"
 DEFAULT_KEYS_PATH = DEFAULT_CONFIG_DIR / "keys.json"
+READ_DOTENV_ENV = "SOCA_READ_DOTENV"
 
 
 class _Unset:
@@ -30,19 +31,25 @@ class KeyringBackend(Protocol):
 
 
 class SecretStore:
-    """Resolve provider keys from keyring, env, read-only dotenv, then JSON."""
+    """Resolve provider keys from keyring, env, opt-in dotenv, then JSON."""
 
     def __init__(
         self,
         *,
         keyring_module: KeyringBackend | None | _Unset = _UNSET,
         env: Mapping[str, str] | None = None,
-        dotenv_path: Path | None | _Unset = _UNSET,
+        dotenv_path: Path | None = None,
         json_path: Path = DEFAULT_KEYS_PATH,
     ) -> None:
         self._keyring = _load_keyring() if keyring_module is _UNSET else keyring_module
         self._env = dict(os.environ if env is None else env)
-        self._dotenv_path = Path.cwd() / ".env" if dotenv_path is _UNSET else dotenv_path
+        self._dotenv_path = (
+            dotenv_path
+            if dotenv_path is not None
+            else Path.cwd() / ".env"
+            if self._env.get(READ_DOTENV_ENV) == "1"
+            else None
+        )
         self._json_path = json_path
 
     def get_key(self, provider_key: str) -> str | None:
@@ -110,8 +117,8 @@ def _load_keyring() -> KeyringBackend | None:
     return keyring
 
 
-def _read_dotenv(path: Path | None | _Unset) -> dict[str, str]:
-    if not isinstance(path, Path):
+def _read_dotenv(path: Path | None) -> dict[str, str]:
+    if path is None:
         return {}
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -171,4 +178,4 @@ def _write_json_key(path: Path, provider_key: str, value: str) -> None:
             temporary_path.unlink(missing_ok=True)
 
 
-__all__ = ["DEFAULT_KEYS_PATH", "KEYRING_SERVICE", "SecretStore"]
+__all__ = ["DEFAULT_KEYS_PATH", "KEYRING_SERVICE", "READ_DOTENV_ENV", "SecretStore"]
