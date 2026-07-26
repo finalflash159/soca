@@ -1,0 +1,9 @@
+{
+  "as_of": "2026-07",
+  "note": "Intentionally empty. OpenRouter pricing is fetched live from its API. OpenAI, Groq, and Gemini expose no pricing API, so rather than ship hand-typed (and quickly stale) numbers, they report pricing_source='unknown' and the UI shows 'giá: không rõ'. For transparent live prices on those models, view them through OpenRouter (e.g. openai/gpt-4o-mini). To opt in to static prices, add verified rows below as \"<provider>\": { \"<model-id>\": [prompt_per_1m, completion_per_1m] } and bump as_of.",
+  "prices": {
+    "openai": {},
+    "gemini": {},
+    "groq": {}
+  }
+}

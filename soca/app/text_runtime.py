@@ -11,12 +11,14 @@ from rich.text import Text as RichText
 
 from soca.app.style.palette import ACCENT, ALT, BAD, BORDER, ICON, MUTED, TEXT, st
 from soca.app.usage_view import print_turn_usage
+from soca.config import LlmSettings, SecretStore, load_settings
 from soca.core import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
 from soca.core.profiles import DEFAULT_VOICE_RUNTIME_PROFILE_KEY, get_voice_runtime_profile
 from soca.core.turn import RuntimeResult
 from soca.core.usage import TurnUsage
 from soca.knowledge import KnowledgeContextBuilder, MarkdownVaultKnowledgeSource
 from soca.llm import LLMEngine, LocalLlamaCppLLM
+from soca.llm.factory import SecretReader, build_llm_engine
 from soca.memory import MarkdownLongTermMemory, MemoryContextBuilder, SessionMemory
 from soca.tools import KnowledgeReadTool, KnowledgeSearchTool, LocalTimeTool, ToolRuntime
 
@@ -30,6 +32,7 @@ def default_text_llm_model_key() -> str:
 class TextRuntimeConfig:
     profile_key: str = DEFAULT_VOICE_RUNTIME_PROFILE_KEY
     llm_model: str = field(default_factory=default_text_llm_model_key)
+    llm_model_is_override: bool = False
     vault: Path = Path.home() / "KnowledgeVault"
     no_memory: bool = False
     no_llm: bool = False
@@ -75,6 +78,7 @@ def resolve_text_runtime_config(
     return TextRuntimeConfig(
         profile_key=profile_key,
         llm_model=llm_model or profile.llm_model,
+        llm_model_is_override=llm_model is not None,
         vault=Path(vault or Path.home() / "KnowledgeVault").expanduser().resolve(),
         no_memory=no_memory,
         no_llm=no_llm,
@@ -108,8 +112,19 @@ class LLMFactory(Protocol):
         model_key: str,
         n_threads: int = 8,
         n_gpu_layers: int = -1,
-    ) -> LLMEngine:
-        ...
+    ) -> LLMEngine: ...
+
+
+class LLMEngineFactory(Protocol):
+    def __call__(
+        self,
+        settings: LlmSettings,
+        secrets: SecretReader,
+        *,
+        local_factory: LLMFactory | None,
+        n_threads: int,
+        n_gpu_layers: int,
+    ) -> LLMEngine: ...
 
 
 def build_text_runtime(
@@ -117,6 +132,9 @@ def build_text_runtime(
     *,
     llm_factory: LLMFactory | None = None,
     session_memory: SessionMemory | None = None,
+    llm_settings: LlmSettings | None = None,
+    secret_store: SecretReader | None = None,
+    engine_factory: LLMEngineFactory = build_llm_engine,
 ) -> TextRuntimeBundle:
     """Build text-only AssistantRuntime without ASR or TTS.
 
@@ -186,13 +204,20 @@ def build_text_runtime(
         llm = None
         llm_status = "disabled"
     else:
-        factory = llm_factory or LocalLlamaCppLLM
-        llm = factory(
-            model_key=config.llm_model,
+        selected_settings = llm_settings or load_settings()
+        if selected_settings.backend == "local" and config.llm_model_is_override:
+            selected_settings = selected_settings.with_model(config.llm_model)
+        llm = engine_factory(
+            selected_settings,
+            secret_store or SecretStore(),
+            local_factory=llm_factory or LocalLlamaCppLLM,
             n_threads=config.llm_threads,
             n_gpu_layers=config.llm_gpu_layers,
         )
-        llm_status = f"enabled:{config.llm_model}"
+        if selected_settings.backend == "remote":
+            llm_status = f"enabled:{selected_settings.provider_key}:{selected_settings.model_id}"
+        else:
+            llm_status = f"enabled:{selected_settings.model_id}"
 
     runtime = AssistantRuntime(
         llm=llm,

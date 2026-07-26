@@ -1,6 +1,10 @@
-import type { EngineEvent } from "./protocol.js";
+import type {
+  EngineEvent,
+  LlmConfigEvent,
+  RemoteModelEvent,
+} from "./protocol.js";
 
-export type Mode = "chat" | "voice" | "status";
+export type Mode = "chat" | "voice" | "status" | "settings";
 export type VoiceState =
   "loading" | "idle" | "listening" | "processing" | "speaking" | "error";
 
@@ -16,6 +20,13 @@ export interface StatusProfile {
   llm: string;
   tts: string;
   voice: string | null;
+}
+
+export interface LlmProviderStatus {
+  key: string;
+  label: string;
+  has_key: boolean;
+  has_pricing_api: boolean;
 }
 
 // Live partial transcript while the user is still speaking: committed words are
@@ -42,6 +53,11 @@ export interface AppState {
   profiles: StatusProfile[];
   notice: string;
   caption: Caption | null;
+  llmProviders: LlmProviderStatus[];
+  llmCatalog: RemoteModelEvent[];
+  llmCatalogProvider: string;
+  llmConfig: LlmConfigEvent | null;
+  settingsNotice: string;
 }
 
 export const initialState: AppState = {
@@ -61,6 +77,11 @@ export const initialState: AppState = {
   profiles: [],
   notice: "",
   caption: null,
+  llmProviders: [],
+  llmCatalog: [],
+  llmCatalogProvider: "",
+  llmConfig: null,
+  settingsNotice: "",
 };
 
 export type Action =
@@ -261,9 +282,46 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
         timeline: push(state.timeline, { kind: "system", text }),
       };
     }
+    case "llm_providers":
+      return { ...state, llmProviders: event.providers, settingsNotice: "" };
+    case "llm_catalog":
+      return {
+        ...state,
+        llmCatalog: event.models,
+        llmCatalogProvider: event.provider,
+        settingsNotice: "",
+      };
+    case "llm_key_status": {
+      const llmProviders = state.llmProviders.map((provider) =>
+        provider.key === event.provider && event.ok
+          ? { ...provider, has_key: true }
+          : provider,
+      );
+      return {
+        ...state,
+        llmProviders,
+        settingsNotice: event.ok
+          ? `API key đã được xác thực${event.masked ? ` (${event.masked})` : ""}.`
+          : (event.message ?? "Không thể xác thực API key."),
+      };
+    }
+    case "llm_config":
+      return {
+        ...state,
+        llmConfig: event,
+        settingsNotice: "",
+        stack: {
+          ...state.stack,
+          llm:
+            event.backend === "remote"
+              ? `${event.provider}:${event.model}`
+              : event.model,
+        },
+      };
     case "engine_error":
       return {
         ...state,
+        settingsNotice: event.message,
         timeline: push(state.timeline, { kind: "error", text: event.message }),
       };
     case "bye":
