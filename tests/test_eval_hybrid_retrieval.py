@@ -123,7 +123,7 @@ def test_evaluate_source_and_summarize_report_by_slice() -> None:
     assert report["by_slice"]["study"]["mrr_at_10"] == 1.0
 
 
-def test_build_embedding_model_dispatches_all_four_backends(
+def test_build_embedding_model_dispatches_all_registered_backends(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
@@ -152,6 +152,7 @@ def test_build_embedding_model_dispatches_all_four_backends(
         "fastembed",
         "model2vec",
         "aiteamvn_bge_m3",
+        "aiteamvn_v2",
         "bkai_phobert_seg",
     ):
         assert evaluation.build_embedding_model(backend).name == backend
@@ -159,6 +160,7 @@ def test_build_embedding_model_dispatches_all_four_backends(
         "fastembed",
         "model2vec",
         "aiteamvn_bge_m3",
+        "aiteamvn_v2",
         "bkai_phobert_seg",
     ]
 
@@ -197,6 +199,19 @@ def test_run_benchmark_chunk_sparse_separates_cold_and_warm_metrics(
     assert report["warm"]["metrics"]["overall"]["mrr_at_10"] == 1.0
     assert report["encoding"] is None
     assert "retrieved_paths" not in json.dumps(report)
+
+
+def test_run_benchmark_rejects_invalid_encoding_repeats(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="encoding_repeats"):
+        evaluation.run_benchmark(
+            vault=tmp_path,
+            cases=(_case(),),
+            variant="chunk_sparse",
+            backend="fastembed",
+            rrf_k=60,
+            warm_repeats=1,
+            encoding_repeats=0,
+        )
 
 
 def test_main_writes_unavailable_report_and_exit_two(

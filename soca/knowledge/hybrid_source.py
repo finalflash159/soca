@@ -16,6 +16,7 @@ from soca.knowledge.markdown_vault import (
     DEFAULT_INCLUDE_GLOBS,
     MarkdownVaultKnowledgeSource,
     SearchScoringConfig,
+    prepare_lexical_snapshot,
 )
 from soca.knowledge.retriever import RankedHit
 from soca.knowledge.retrievers.dense import DenseIndex, DenseRetriever, EmbeddingModel
@@ -144,6 +145,9 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
             return RetrievalBatch((), None)
 
         vault_index, dense_index, sparse = self._refresh_indexes()
+        document_snapshot = prepare_lexical_snapshot(vault_index.documents)
+        if not self._search_lexical_snapshot(query, document_snapshot, limit=1):
+            return RetrievalBatch((), None)
         rank_lists: list[list[RankedHit]] = []
         retriever_limit = max(limit, self._config.per_retriever_limit)
         if sparse is not None:

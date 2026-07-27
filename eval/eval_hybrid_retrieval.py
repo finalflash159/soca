@@ -16,7 +16,7 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
-from eval.embedding_candidates import build_eval_candidate
+from eval.embedding_candidates import EVAL_CANDIDATES, build_eval_candidate
 from soca.knowledge.base import KnowledgeSource
 from soca.knowledge.cached_source import CachedMarkdownVaultKnowledgeSource
 from soca.knowledge.hybrid_source import (
@@ -298,9 +298,12 @@ def run_benchmark(
     backend: str,
     rrf_k: int,
     warm_repeats: int,
+    encoding_repeats: int = 5,
 ) -> dict[str, Any]:
     if warm_repeats < 1:
         raise ValueError("warm_repeats must be positive")
+    if encoding_repeats < 1:
+        raise ValueError("encoding_repeats must be positive")
     with tempfile.TemporaryDirectory(prefix="soca-rag-cold-") as cold_directory:
         cold_samples, cold_total_ms = _timed_evaluate(
             lambda: _build_source(
@@ -358,6 +361,7 @@ def run_benchmark(
             "backend": backend,
             "rrf_k": rrf_k,
             "warm_repeats": warm_repeats,
+            "encoding_repeats": encoding_repeats,
             "index_reuse": True,
             "data_manifest_sha256": _sha256_file(vault / "SOURCE_MANIFEST.json"),
             "packages": {
@@ -377,7 +381,9 @@ def run_benchmark(
             "metrics": summarize(warm_samples),
         },
         "encoding": (
-            _measure_query_encoding(backend, cases) if variant in {"dense", "hybrid"} else None
+            _measure_query_encoding(backend, cases, repeats=encoding_repeats)
+            if variant in {"dense", "hybrid"}
+            else None
         ),
     }
 
@@ -393,11 +399,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--backend",
-        choices=("fastembed", "model2vec", "aiteamvn_bge_m3", "bkai_phobert_seg"),
+        choices=("fastembed", "model2vec", *EVAL_CANDIDATES),
         default="fastembed",
     )
     parser.add_argument("--rrf-k", type=int, default=60)
     parser.add_argument("--warm-repeats", type=int, default=5)
+    parser.add_argument(
+        "--encoding-repeats",
+        type=int,
+        default=5,
+        help="number of full-case query-encoding passes for dense variants",
+    )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--slice", dest="slice_name", type=str, default=None)
     parser.add_argument("--output", type=Path, required=True)
@@ -414,6 +426,7 @@ def main() -> int:
             backend=args.backend,
             rrf_k=args.rrf_k,
             warm_repeats=args.warm_repeats,
+            encoding_repeats=args.encoding_repeats,
         )
         return_code = 0
     except DenseUnavailableError:

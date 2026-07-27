@@ -43,6 +43,20 @@ class SearchScoringConfig:
     path_bigram_weight: float = 2.0
     body_bigram_weight: float = 1.0
     max_term_frequency: int = 8
+    min_out_of_vault_score_ratio: float = 1.3
+    min_out_of_vault_query_coverage: float = 0.35
+
+    def __post_init__(self) -> None:
+        ratio = self.min_out_of_vault_score_ratio
+        if isinstance(ratio, bool) or not isinstance(ratio, (int, float)):
+            raise ValueError("min_out_of_vault_score_ratio must be a number")
+        if not math.isfinite(float(ratio)) or float(ratio) < 1.0:
+            raise ValueError("min_out_of_vault_score_ratio must be finite and at least 1")
+        coverage = self.min_out_of_vault_query_coverage
+        if isinstance(coverage, bool) or not isinstance(coverage, (int, float)):
+            raise ValueError("min_out_of_vault_query_coverage must be a number")
+        if not 0.0 <= float(coverage) <= 1.0:
+            raise ValueError("min_out_of_vault_query_coverage must be between 0 and 1")
 
 
 def fold_accents(text: str) -> str:
@@ -237,7 +251,82 @@ class MarkdownVaultKnowledgeSource:
             )
 
         hits.sort(key=lambda hit: (-hit.score, hit.document.path))
+        if not self._has_confident_query_match(query_terms, snapshot, hits):
+            return []
         return hits[:limit]
+
+    def _has_confident_query_match(
+        self,
+        query_terms: tuple[str, ...],
+        snapshot: LexicalSnapshot,
+        hits: list[KnowledgeHit],
+    ) -> bool:
+        """Reject weak matches when the query contains out-of-vault evidence.
+
+        The decision is derived from the current vault's document frequencies and
+        score distribution. It intentionally has no vocabulary-specific rules:
+        an unknown term is only meaningful because this vault cannot support it,
+        and a result is accepted when it clearly separates from its competitors.
+        """
+        if not hits:
+            return False
+
+        has_out_of_vault_term = any(
+            snapshot.document_frequencies.get(term, 0) == 0
+            for term in set(query_terms)
+        )
+        if not has_out_of_vault_term:
+            return True
+
+        best_by_document: dict[str, float] = {}
+        for hit in hits:
+            current = best_by_document.get(hit.document.path, 0.0)
+            best_by_document[hit.document.path] = max(current, hit.score)
+
+        query_term_set = set(query_terms)
+        document_count = len(snapshot.entries)
+        query_weights = {
+            term: math.log(
+                (document_count + 1.0)
+                / (snapshot.document_frequencies.get(term, 0) + 0.5)
+            )
+            + 1.0
+            for term in query_term_set
+        }
+        total_query_weight = sum(query_weights.values())
+        coverage_by_document: dict[str, float] = {}
+        if total_query_weight > 0.0:
+            for entry in snapshot.entries:
+                document_terms = set(
+                    chain(
+                        entry.title_terms,
+                        entry.tag_terms,
+                        entry.path_terms,
+                        entry.body_terms,
+                    )
+                )
+                coverage = sum(
+                    weight
+                    for term, weight in query_weights.items()
+                    if term in document_terms
+                ) / total_query_weight
+                current = coverage_by_document.get(entry.document.path, 0.0)
+                coverage_by_document[entry.document.path] = max(current, coverage)
+
+        best_path = max(best_by_document, key=best_by_document.__getitem__)
+        if (
+            coverage_by_document.get(best_path, 0.0)
+            < self.scoring.min_out_of_vault_query_coverage
+        ):
+            return False
+
+        scores = sorted(best_by_document.values(), reverse=True)
+        if len(scores) < 2:
+            return True
+
+        return (
+            scores[0] / scores[1] >= self.scoring.min_out_of_vault_score_ratio
+        )
 
     def _score_prepared(
         self,

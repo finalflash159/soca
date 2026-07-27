@@ -88,6 +88,23 @@ def test_search_matches_vietnamese_without_accents(tmp_path: Path):
     assert [hit.document.path for hit in hits] == ["breakfast.md"]
 
 
+def test_search_fails_closed_when_unknown_query_is_not_separated(tmp_path: Path):
+    (tmp_path / "nutrition.md").write_text(
+        "# Dinh Dưỡng Cân Bằng\n"
+        "Dinh dưỡng cân bằng giúp cơ thể đủ năng lượng và chất dinh dưỡng.",
+        encoding="utf-8",
+    )
+    (tmp_path / "safety.md").write_text(
+        "# Lưu Ý An Toàn\n"
+        "Nội dung tham khảo chung, không thay thế tư vấn chuyên môn.",
+        encoding="utf-8",
+    )
+
+    vault = MarkdownVaultKnowledgeSource(tmp_path)
+
+    assert vault.search("Ghi chú demo nói định lý Bayes thế nào?") == []
+
+
 def test_snippet_prefers_body_over_heading_and_tags(tmp_path: Path):
     (tmp_path / "meal.md").write_text(
         "# Bữa Sáng Lành Mạnh\n\n"
