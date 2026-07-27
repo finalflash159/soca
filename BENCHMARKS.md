@@ -1,6 +1,6 @@
 # SoCa — Benchmarks
 
-> Last updated: 2026-06-03. All measurements are from real local runs;
+> Last updated: 2026-07-27. All measurements are from real local runs;
 > raw output JSON lives under `eval/results/` (gitignored).
 
 ## Common hardware
@@ -1057,6 +1057,87 @@ over-rejection adds error.
 Matches the qualitative mitigation pattern from Barański et al. for
 Whisper-large-v3 on LibriSpeech-augmented, adapted for Vietnamese
 PhoWhisper-tiny.
+
+---
+
+## P2 — Hybrid RAG retrieval + tool router + retrieved memory
+
+**Purpose:** measure the P2 knowledge/memory stack — hybrid retrieval, the
+validated tool router, and query-aware retrieved memory — on real data, and
+record the numbers that the P2 acceptance gates refer to.
+
+Measured 2026-07-27 · macOS arm64 · Python 3.11.14 · `fastembed` 0.8.0 ·
+`sentence-transformers` 5.6.1. Retrieval index built once and reused
+(`index_reuse=true`).
+
+### P2.1 — Hybrid retrieval on real XQuAD-Vietnamese
+
+Corpus: `eval/fixtures/real_rag_vault` (48 Vietnamese Wikipedia articles from
+XQuAD, CC BY-SA 4.0, `SOURCE_MANIFEST.json` SHA-256 verified). Cases:
+`eval/prompts/real_rag_vi.jsonl` (1,193 questions). Provenance guarded by
+`tests/test_real_rag_fixture.py` (passing).
+
+```bash
+uv run --all-extras python eval/eval_hybrid_retrieval.py \
+  --vault eval/fixtures/real_rag_vault --cases eval/prompts/real_rag_vi.jsonl \
+  --variant chunk_sparse --warm-repeats 1 --output eval/results/real-rag-chunk-sparse.json
+uv run --all-extras python eval/eval_hybrid_retrieval.py \
+  --vault eval/fixtures/real_rag_vault --cases eval/prompts/real_rag_vi.jsonl \
+  --variant hybrid --backend fastembed --warm-repeats 1 --output eval/results/real-rag-hybrid.json
+```
+
+| Variant                    | Recall@5 | MRR@10 | nDCG@10 | p50 latency | p95 latency |
+| -------------------------- | -------- | ------ | ------- | ----------- | ----------- |
+| chunk_sparse (BM25)        | 0.979    | 0.919  | 0.937   | 36.5 ms     | 40.8 ms     |
+| hybrid (BM25 + dense, RRF) | 0.994    | 0.971  | 0.978   | 40.1 ms     | 44.6 ms     |
+
+Hybrid (RRF, `k=60`) beats sparse on every metric for ~4 ms extra p95. By slice,
+hybrid scores Recall@5 0.995 on the XQuAD Wikipedia slice (`learning_notes`) and
+0.667 on the small `life_vault_project` slice (3 cases).
+
+### P2.2 — Tool router (deterministic)
+
+Dataset: `eval/prompts/tool_router_vi.jsonl`. With no predictions file the eval
+runs the deterministic `DefaultRuntimeToolRouter` live.
+
+```bash
+uv run --all-extras python eval/eval_tool_router.py \
+  --dataset eval/prompts/tool_router_vi.jsonl --output eval/results/tool-router.json
+```
+
+Exact tool accuracy **1.00**, coverage 1.00, zero false tool calls (10-case
+smoke set). Note: this is a smoke set; the ≥100-case / 8-slice acceptance dataset
+in the plan is not yet built, and there is no CLI that scores the LLM/cascade
+router live against a remote provider — only the deterministic tier is measured
+here.
+
+### P2.3 — Retrieved memory
+
+Dataset: `eval/prompts/retrieved_memory_vi.jsonl` (62 cases across preference,
+project, code-switch, no-hit, adversarial). Vault: `eval/fixtures/memory_vault`.
+
+```bash
+uv run --all-extras python eval/eval_retrieved_memory.py --mode retrieval-only \
+  --vault eval/fixtures/memory_vault --cases eval/prompts/retrieved_memory_vi.jsonl \
+  --output eval/results/retrieved-memory.json
+```
+
+Retrieval-only: recall **0.629**, forbidden-leakage **0.0**, mean latency
+0.33 ms. The 10 `no_hit` cases carry an empty `expected_contains`, so they always
+score `hit=False` by construction, capping maximum recall at 0.839.
+
+Answer mode grounds a real LLM on the retrieved context. Run against OpenRouter
+`google/gemini-2.5-flash-lite`:
+
+| Variant                  | Answer accuracy | Forbidden leakage | Mean latency | Cost (12 cases) |
+| ------------------------ | --------------- | ----------------- | ------------ | --------------- |
+| blob (full profile)      | 0.75            | 0.0               | 1.49 s       | ~$0.0003        |
+| retrieved (chunk_sparse) | 0.42            | 0.0               | 1.20 s       | ~$0.0004        |
+
+Blob beats retrieved here because `memory_vault` is a 2-file fixture — dumping
+the whole profile gives more context than the top-3 chunks. On a large personal
+vault the retrieved variant is expected to win; this small fixture is for CI
+reproducibility, not a tuned benchmark.
 
 ---
 
