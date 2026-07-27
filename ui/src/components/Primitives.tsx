@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Box, Text, useStdout } from "ink";
-import { COLOR, SPINNER_FRAMES } from "../theme.js";
+import { COLOR, ROLE, SPINNER_FRAMES } from "../theme.js";
+import { animationsEnabled } from "../capabilities.js";
 
 export function Rule({ width }: { width: number }) {
   return <Text color={COLOR.border}>{"─".repeat(Math.max(1, width))}</Text>;
@@ -9,6 +10,7 @@ export function Rule({ width }: { width: number }) {
 export function Spinner({ label }: { label?: string }) {
   const [frame, setFrame] = useState(0);
   useEffect(() => {
+    if (!animationsEnabled()) return;
     const timer = setInterval(
       () => setFrame((f) => (f + 1) % SPINNER_FRAMES.length),
       80,
@@ -48,28 +50,35 @@ export function FooterHints({ hints }: { hints: Hint[] }) {
 /** Panel with the title embedded in the top border: `╭─ Title ────╮`. */
 export function Panel({
   title,
+  subtitle,
+  variant = "idle",
   width,
   focused = false,
   height,
   children,
 }: {
   title: string;
+  subtitle?: string;
+  variant?: "focus" | "idle" | "danger";
   width: number;
   focused?: boolean;
   height?: number;
   children: ReactNode;
 }) {
-  const color = focused ? COLOR.accent : COLOR.border;
-  const w = Math.max(10, width);
-  const fill = Math.max(0, w - 5 - title.length);
+  const active = focused || variant === "focus";
+  const color = variant === "danger" ? ROLE.danger : active ? ROLE.focus : ROLE.hairline;
+  const w = Math.max(12, width);
+  const fill = Math.max(0, w - title.length - (subtitle ? subtitle.length + 7 : 5));
   return (
     <Box flexDirection="column" width={w}>
       <Box>
         <Text color={color}>{"╭─ "}</Text>
-        <Text bold color={focused ? COLOR.accent : COLOR.muted}>
+        <Text bold color={active ? ROLE.focus : variant === "danger" ? ROLE.danger : COLOR.muted}>
           {title}
         </Text>
-        <Text color={color}>{` ${"─".repeat(fill)}╮`}</Text>
+        <Text color={color}>{` ${"─".repeat(fill)}`}</Text>
+        {subtitle ? <Text color={COLOR.muted}>{` ${subtitle} `}</Text> : <Text color={color}>{"─"}</Text>}
+        <Text color={color}>{"╮"}</Text>
       </Box>
       <Box
         width={w}

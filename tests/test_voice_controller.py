@@ -161,6 +161,30 @@ def test_voice_monitor_passive_silence_skips_asr_pipeline() -> None:
     assert "asr" not in event_types
 
 
+def test_voice_monitor_reports_microphone_level_for_nonempty_audio() -> None:
+    config = make_config()
+    pipeline = FakePipeline([StreamingEvent(type="asr", text="hello")])
+    bundle = make_bundle(config, pipeline, detector=FakeDetector(has_speech=True))
+
+    def runtime_builder(_config: ResolvedVoiceRuntimeConfig) -> VoiceRuntimeBundle:
+        return bundle
+
+    queue: Queue = Queue()
+    controller = VoiceMonitorController(
+        config,
+        runtime_builder=runtime_builder,
+        recorder=lambda *_args, **_kwargs: np.full(1600, 0.25, dtype=np.float32),
+        player=FakeAudioSink(),  # type: ignore[arg-type]
+        warmup=False,
+    )
+    controller.run_loop(queue, stop_event=Event(), max_turns=1)
+
+    events = _drain_voice_events(queue)
+    level = next(event for event in events if event.type == "voice_level")
+    assert level.metadata["source"] == "microphone"
+    assert level.metadata["rms"] == 0.25
+
+
 def test_voice_monitor_passive_silence_speaks_playful_call_out() -> None:
     config = make_config()
     pipeline = FakePipeline([StreamingEvent(type="asr", text="should not run")])

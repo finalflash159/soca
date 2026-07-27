@@ -132,6 +132,14 @@ class VoiceMonitorController:
                         metadata={"turn_index": turns},
                     )
                 )
+                if self._supports_barge_in:
+                    queue.put(
+                        VoiceMonitorEvent(
+                            "barge_in",
+                            "Barge-in armed",
+                            metadata={"phase": "armed"},
+                        )
+                    )
                 self._run_one_turn(bundle, queue, stop_event=stop_event)
                 if stop_event.is_set():
                     break
@@ -283,6 +291,15 @@ class VoiceMonitorController:
                 },
             )
         )
+        if len(audio):
+            rms = float(np.sqrt(np.mean(np.square(audio.astype(np.float32, copy=False)))))
+            queue.put(
+                VoiceMonitorEvent(
+                    "voice_level",
+                    "Voice level",
+                    metadata={"rms": min(1.0, rms), "source": "microphone"},
+                )
+            )
         if not self._audio_has_speech(bundle, audio):
             self._handle_passive_silence(bundle, queue, stop_event=stop_event)
             return
@@ -346,6 +363,13 @@ class VoiceMonitorController:
                     first_tts_meta = first_tts_meta or metadata
                 elif event.type == "done":
                     if metadata.get("interrupted") and self._supports_barge_in:
+                        queue.put(
+                            VoiceMonitorEvent(
+                                "barge_in",
+                                "Barge-in detected",
+                                metadata={"phase": "fired", "source": "duplex_aec"},
+                            )
+                        )
                         # Keep the (echo-cancelled) interrupting words for next turn.
                         self._pending_prefix = getattr(self.player, "captured", None)
                     usage = _build_voice_usage(

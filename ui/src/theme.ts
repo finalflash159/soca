@@ -16,6 +16,45 @@ export const COLOR = {
   bad: "#e08398",
 } as const;
 
+export const ROLE = {
+  focus: COLOR.accent,
+  idle: COLOR.muted,
+  ok: COLOR.good,
+  busy: COLOR.warn,
+  danger: COLOR.bad,
+  info: COLOR.alt,
+  hairline: COLOR.border,
+} as const;
+
+export type MemoryType = "working" | "semantic" | "episodic" | "procedural";
+export const MEMORY_STYLE: Record<MemoryType, { tag: string; color: string }> = {
+  working: { tag: "work", color: COLOR.alt },
+  semantic: { tag: "sem", color: COLOR.accent },
+  episodic: { tag: "epi", color: COLOR.accentBright },
+  procedural: { tag: "proc", color: COLOR.muted },
+};
+
+export type RetrievalSource = "bm25" | "dense" | "rrf";
+export const RETRIEVAL_STYLE: Record<RetrievalSource, { tag: string; color: string }> = {
+  bm25: { tag: "bm25", color: COLOR.alt },
+  dense: { tag: "dense", color: COLOR.accentBright },
+  rrf: { tag: "rrf", color: COLOR.accent },
+};
+
+export function styleOf<T extends string>(
+  map: Record<T, { tag: string; color: string }>,
+  id: T | undefined,
+): { tag: string; color: string } {
+  return (id && map[id]) || { tag: "·", color: COLOR.muted };
+}
+
+export function meterCells(value: number, width: number): { filled: number; frac: number } {
+  const clamped = Math.max(0, Math.min(1, value));
+  const exact = clamped * Math.max(0, width);
+  const filled = Math.floor(exact);
+  return { filled, frac: exact - filled };
+}
+
 // clack's unicodeOr pattern: fall back to ASCII when the terminal likely
 // lacks unicode glyph support (legacy Windows consoles).
 const isUnicodeSupported =

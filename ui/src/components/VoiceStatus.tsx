@@ -1,18 +1,24 @@
 import { useEffect, useState } from "react";
 import { Box, Text, useStdout } from "ink";
-import { COLOR, ICON, MUSIC_FRAMES } from "../theme.js";
+import { COLOR, ICON, MUSIC_FRAMES, ROLE, meterCells } from "../theme.js";
+import { animationsEnabled } from "../capabilities.js";
 import type { Caption, VoiceState } from "../store.js";
 
 const LOADING_FRAMES = ["◐", "◓", "◑", "◒"] as const;
 
 const STATE_VIEW: Record<VoiceState, { color: string; label: string }> = {
-  loading: { color: COLOR.warn, label: "khởi động" },
-  idle: { color: COLOR.muted, label: "chờ" },
-  listening: { color: COLOR.accent, label: "đang nghe" },
-  processing: { color: COLOR.warn, label: "đang nghĩ" },
-  speaking: { color: COLOR.good, label: "đang nói" },
-  error: { color: COLOR.bad, label: "lỗi" },
+  loading: { color: ROLE.busy, label: "starting" },
+  idle: { color: ROLE.idle, label: "idle" },
+  listening: { color: ROLE.focus, label: "listening" },
+  processing: { color: ROLE.busy, label: "thinking" },
+  speaking: { color: ROLE.ok, label: "speaking" },
+  error: { color: ROLE.danger, label: "error" },
 };
+
+function LevelMeter({ value, width = 10, color }: { value: number; width?: number; color: string }) {
+  const { filled } = meterCells(value, width);
+  return <Text><Text color={color}>{ICON.bar.repeat(filled)}</Text><Text color={COLOR.border}>{ICON.bar.repeat(Math.max(0, width - filled))}</Text></Text>;
+}
 
 export function VoiceStatus({
   state,
@@ -20,16 +26,20 @@ export function VoiceStatus({
   turnIndex,
   latencyMs,
   caption,
+  level = 0,
+  bargeIn = "off",
 }: {
   state: VoiceState;
   note: string;
   turnIndex: number | null;
   latencyMs: number | null;
   caption: Caption | null;
+  level?: number;
+  bargeIn?: "off" | "armed" | "fired";
 }) {
   const [frame, setFrame] = useState(0);
   const animated =
-    state === "speaking" || state === "loading" || state === "processing";
+    animationsEnabled() && (state === "speaking" || state === "loading" || state === "processing");
   useEffect(() => {
     if (!animated) return;
     const timer = setInterval(() => setFrame((f) => f + 1), 300);
@@ -59,10 +69,16 @@ export function VoiceStatus({
           <Text bold color={view.color}>
             {dot} {view.label}
           </Text>
+          {state === "listening" ? <Text>{`  `}<LevelMeter value={level} color={ROLE.focus} /></Text> : null}
           {state === "speaking" ? (
             <Text
               color={COLOR.good}
             >{`  ${MUSIC_FRAMES[frame % MUSIC_FRAMES.length]}`}</Text>
+          ) : null}
+          {bargeIn !== "off" ? (
+            <Text bold color={bargeIn === "fired" ? ROLE.ok : ROLE.busy}>
+              {`  ${ICON.pointer} ${bargeIn === "fired" ? "barge-in fired" : "barge-in armed"}`}
+            </Text>
           ) : null}
           {note ? (
             <Text

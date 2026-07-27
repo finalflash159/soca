@@ -58,7 +58,7 @@ from soca.llm.providers import (
     get_provider,
     search_models,
 )
-from soca.memory import SessionMemory
+from soca.memory import MemoryCommands, ProposalStore, SessionMemory
 from soca.tts import VALTEC_TTS_CONFIG
 
 PROTOCOL_VERSION = 1
@@ -201,6 +201,12 @@ class SocaEngine:
             self._cmd_status()
         elif cmd == "memory":
             self._cmd_memory()
+        elif cmd == "memory_proposals":
+            self._cmd_memory_proposals()
+        elif cmd == "memory_approve":
+            self._cmd_memory_action(command, "approve")
+        elif cmd == "memory_reject":
+            self._cmd_memory_action(command, "reject")
         elif cmd == "usage":
             self._cmd_usage()
         elif cmd == "llm_providers":
@@ -447,6 +453,71 @@ class SocaEngine:
         rendered = self.session_memory.render().strip()
         self.writer.emit({"event": "memory", "enabled": True, "text": rendered})
 
+    def _memory_commands(self) -> MemoryCommands | None:
+        vault = self.text_config.vault
+        if not vault.is_dir():
+            return None
+        return MemoryCommands(vault, ProposalStore(vault / "memory" / ".proposals"))
+
+    def _cmd_memory_proposals(self) -> None:
+        commands = self._memory_commands()
+        proposals = commands.list_pending() if commands is not None else ()
+        self.writer.emit(
+            {
+                "event": "memory_proposals",
+                "proposals": [
+                    {
+                        "id": proposal.id,
+                        "kind": proposal.kind,
+                        "statement": proposal.statement[:400],
+                        "confidence": proposal.confidence,
+                        "createdAt": proposal.created_at.isoformat(),
+                    }
+                    for proposal in proposals[:64]
+                ],
+            }
+        )
+
+    def _cmd_memory_action(self, command: dict[str, Any], action: str) -> None:
+        proposal_id = command.get("proposal_id")
+        if not isinstance(proposal_id, str):
+            self._error("proposal_id must be a string")
+            return
+        commands = self._memory_commands()
+        if commands is None:
+            self.writer.emit(
+                {
+                    "event": "memory_action",
+                    "proposal_id": proposal_id[:80],
+                    "action": "approved" if action == "approve" else "rejected",
+                    "ok": False,
+                    "error_code": "memory_unavailable",
+                }
+            )
+            return
+        try:
+            result = getattr(commands, action)(proposal_id)
+            self.writer.emit(
+                {
+                    "event": "memory_action",
+                    "proposal_id": proposal_id,
+                    "action": "approved" if action == "approve" else "rejected",
+                    "ok": result.status in {"approved", "rejected"},
+                    "error_code": None if result.status in {"approved", "rejected"} else result.status,
+                }
+            )
+        except (OSError, ValueError, KeyError) as exc:
+            LOGGER.warning("Memory command failed (%s)", type(exc).__name__)
+            self.writer.emit(
+                {
+                    "event": "memory_action",
+                    "proposal_id": proposal_id[:80],
+                    "action": "approved" if action == "approve" else "rejected",
+                    "ok": False,
+                    "error_code": "command_failed",
+                }
+            )
+
     def _cmd_usage(self) -> None:
         with self._usage_lock:
             usage = self.session_usage
@@ -506,6 +577,71 @@ class SocaEngine:
                     "usage": usage,
                 }
             )
+            trace = result.trace
+            if trace is not None:
+                commands = self._memory_commands()
+                try:
+                    pending_count = len(commands.list_pending()) if commands is not None else 0
+                except (OSError, ValueError):
+                    pending_count = 0
+                self.writer.emit(
+                    {
+                        "event": "router_trace",
+                        "tier": trace.tool_router_tier,
+                        "tool": trace.tool_calls[-1].name if trace.tool_calls else None,
+                        "latency_ms": trace.stage_latencies_ms.get("tool_router", 0.0),
+                    }
+                )
+                knowledge_hits = trace.knowledge_hits[:16]
+                if knowledge_hits:
+                    self.writer.emit(
+                        {
+                            "event": "retrieval_trace",
+                            "query": result.frame.text if result.frame is not None else "",
+                            "tier": trace.tool_router_tier
+                            if trace.tool_router_tier in {"deterministic", "semantic", "llm", "none"}
+                            else "none",
+                            "latency_ms": trace.stage_latencies_ms.get("knowledge", 0.0),
+                            "columns": [
+                                {
+                                    "source": "bm25",
+                                    "hits": [
+                                        {
+                                            "path": str(hit.document.path)[:240],
+                                            "score": float(hit.score),
+                                        }
+                                        for hit in knowledge_hits
+                                    ],
+                                }
+                            ],
+                            "fused": [
+                                {"path": str(hit.document.path)[:240], "picked": True}
+                                for hit in knowledge_hits
+                            ],
+                        }
+                    )
+                self.writer.emit(
+                    {
+                        "event": "memory_trace",
+                        "mode": "retrieved" if trace.memory_hits else "blob",
+                        "hits": [
+                            {
+                                "id": str(getattr(hit.document, "id", ""))[:120],
+                                "corpus": "profile",
+                                "relevance": float(getattr(getattr(hit, "score", None), "relevance", 0.0)),
+                                "recency": float(getattr(getattr(hit, "score", None), "recency", 0.0)),
+                                "importance": float(getattr(getattr(hit, "score", None), "importance", 0.0)),
+                                "total": float(getattr(getattr(hit, "score", None), "total", 0.0)),
+                            }
+                            for hit in trace.memory_hits[:16]
+                        ],
+                        "compacted_turn_count": 0,
+                        "recent_turn_count": len(self.session_memory.turns) if self.session_memory is not None else 0,
+                        "background_status": "idle",
+                        "episodic_enabled": False,
+                        "pending_proposal_count": pending_count,
+                    }
+                )
         except Exception as exc:  # noqa: BLE001 - protocol boundary must not crash
             self.writer.emit({"event": "chat", "type": "error", "text": str(exc)})
         finally:
@@ -601,6 +737,33 @@ class SocaEngine:
                     "usage": event.usage,
                 }
             )
+            if event.type == "runtime":
+                metadata = event.metadata
+                tier = metadata.get("router_tier", "none")
+                if tier not in {"deterministic", "semantic", "llm", "none"}:
+                    tier = "none"
+                self.writer.emit(
+                    {
+                        "event": "router_trace",
+                        "tier": tier,
+                        "tool": None,
+                        "latency_ms": float(metadata.get("router_latency_ms", 0.0)),
+                    }
+                )
+                self.writer.emit(
+                    {
+                        "event": "memory_trace",
+                        "mode": "retrieved" if metadata.get("memory_hit_count", 0) else "blob",
+                        "hits": [],
+                        "compacted_turn_count": 0,
+                        "recent_turn_count": len(self.session_memory.turns)
+                        if self.session_memory is not None
+                        else 0,
+                        "background_status": "idle",
+                        "episodic_enabled": False,
+                        "pending_proposal_count": 0,
+                    }
+                )
             self._track_usage(event.usage)
         if self.voice_stop_event is not None:
             self.voice_stop_event.set()
