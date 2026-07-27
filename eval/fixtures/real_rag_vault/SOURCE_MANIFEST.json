@@ -99,7 +99,7 @@
       "license": "CC BY-SA 4.0",
       "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
       "path": "wiki/xquad_vi/1973_oil_crisis.md",
-      "sha256": "811a79a7bf305f8dccc45d9d795e16b8a0c0b452ef60574f333b104bcc176720",
+      "sha256": "6bdec6561a6270df6e08824dc64816a8619fbc4cbd4a298785d997a736d19f82",
       "source": "https://raw.githubusercontent.com/google-deepmind/xquad/master/xquad.vi.json#1973_oil_crisis"
     },
     {
@@ -120,7 +120,7 @@
       "license": "CC BY-SA 4.0",
       "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
       "path": "wiki/xquad_vi/Amazon_rainforest.md",
-      "sha256": "c2f6385dccf4c09bf1455aa5431037fc6e5410fbe2beab8804ff6b5a58e42cb4",
+      "sha256": "cf4986d6b6f1c5cc4267957099344f018ef5deddbc675f4230e773889d5c8652",
       "source": "https://raw.githubusercontent.com/google-deepmind/xquad/master/xquad.vi.json#Amazon_rainforest"
     },
     {
@@ -246,7 +246,7 @@
       "license": "CC BY-SA 4.0",
       "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
       "path": "wiki/xquad_vi/Doctor_Who.md",
-      "sha256": "eca69f4639203dac4b3ad2be86d0ba14c18fbd7627ee0475c16f6e9af3b70fb0",
+      "sha256": "3fbcd2430fcef208b7b01ed8a2c7291a70d61e302801307d4c5cd280e6a42099",
       "source": "https://raw.githubusercontent.com/google-deepmind/xquad/master/xquad.vi.json#Doctor_Who"
     },
     {
@@ -330,14 +330,14 @@
       "license": "CC BY-SA 4.0",
       "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
       "path": "wiki/xquad_vi/French_and_Indian_War.md",
-      "sha256": "ed896eb76a3ca18b49c2faa010d9146991247fdb1ff791e4ebee789b8ca3848d",
+      "sha256": "5aaa2256d475a26cb18b55baa1f15caaa13214e16f5dffbbf16a5da9100bcf65",
       "source": "https://raw.githubusercontent.com/google-deepmind/xquad/master/xquad.vi.json#French_and_Indian_War"
     },
     {
       "license": "CC BY-SA 4.0",
       "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
       "path": "wiki/xquad_vi/Force.md",
-      "sha256": "db326105c69e993830c577152979e70e4f8a5be92db845606d5b0071da3ee8fa",
+      "sha256": "e9aafbf2ffcd49621c34dbc6dce6592fdf5599e4c208af0afe337d77c9557637",
       "source": "https://raw.githubusercontent.com/google-deepmind/xquad/master/xquad.vi.json#Force"
     },
     {

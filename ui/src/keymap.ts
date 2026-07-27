@@ -2,7 +2,18 @@ import type { Mode } from "./store.js";
 import type { Hint } from "./components/Primitives.js";
 
 export const COMMANDS = [
-  "/chat", "/voice", "/status", "/settings", "/listen", "/stop", "/memory", "/proposals", "/usage", "/inspect", "/help", "/quit",
+  "/chat",
+  "/voice",
+  "/status",
+  "/settings",
+  "/listen",
+  "/stop",
+  "/memory",
+  "/proposals",
+  "/usage",
+  "/inspect",
+  "/help",
+  "/quit",
 ] as const;
 export type Command = (typeof COMMANDS)[number];
 
@@ -17,6 +28,11 @@ export function footerHints(mode: Mode, voiceRunning: boolean): Hint[] {
     { keys: "^c", label: "exit" },
   ];
   return mode === "voice"
-    ? [voiceRunning ? { keys: "/stop", label: "stop listening" } : { keys: "/listen", label: "start listening" }, ...base]
+    ? [
+        voiceRunning
+          ? { keys: "/stop", label: "stop listening" }
+          : { keys: "/listen", label: "start listening" },
+        ...base,
+      ]
     : base;
 }

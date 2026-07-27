@@ -15,9 +15,24 @@ const STATE_VIEW: Record<VoiceState, { color: string; label: string }> = {
   error: { color: ROLE.danger, label: "error" },
 };
 
-function LevelMeter({ value, width = 10, color }: { value: number; width?: number; color: string }) {
+function LevelMeter({
+  value,
+  width = 10,
+  color,
+}: {
+  value: number;
+  width?: number;
+  color: string;
+}) {
   const { filled } = meterCells(value, width);
-  return <Text><Text color={color}>{ICON.bar.repeat(filled)}</Text><Text color={COLOR.border}>{ICON.bar.repeat(Math.max(0, width - filled))}</Text></Text>;
+  return (
+    <Text>
+      <Text color={color}>{ICON.bar.repeat(filled)}</Text>
+      <Text color={COLOR.border}>
+        {ICON.bar.repeat(Math.max(0, width - filled))}
+      </Text>
+    </Text>
+  );
 }
 
 export function VoiceStatus({
@@ -39,7 +54,8 @@ export function VoiceStatus({
 }) {
   const [frame, setFrame] = useState(0);
   const animated =
-    animationsEnabled() && (state === "speaking" || state === "loading" || state === "processing");
+    animationsEnabled() &&
+    (state === "speaking" || state === "loading" || state === "processing");
   useEffect(() => {
     if (!animated) return;
     const timer = setInterval(() => setFrame((f) => f + 1), 300);
@@ -69,7 +85,12 @@ export function VoiceStatus({
           <Text bold color={view.color}>
             {dot} {view.label}
           </Text>
-          {state === "listening" ? <Text>{`  `}<LevelMeter value={level} color={ROLE.focus} /></Text> : null}
+          {state === "listening" ? (
+            <Text>
+              {`  `}
+              <LevelMeter value={level} color={ROLE.focus} />
+            </Text>
+          ) : null}
           {state === "speaking" ? (
             <Text
               color={COLOR.good}

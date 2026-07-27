@@ -128,6 +128,7 @@ def test_llm_models_filters_catalog_by_query() -> None:
     event = next(item for item in capture.events() if item["event"] == "llm_catalog")
     assert event["provider"] == "groq"
     assert [model["id"] for model in event["models"]] == ["qwen/qwen3-32b"]
+    assert "supported_parameters" not in event["models"][0]
 
 
 def test_llm_models_converts_an_unexpected_catalog_failure_to_a_safe_error() -> None:

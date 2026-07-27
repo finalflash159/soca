@@ -1,12 +1,6 @@
 {
   "include": ["soca"],
-  "exclude": [
-    "eval",
-    "tests",
-    "scripts",
-    "external",
-    "data"
-  ],
+  "exclude": ["eval", "tests", "scripts", "external", "data"],
   "typeCheckingMode": "basic",
   "venvPath": ".",
   "venv": ".venv",

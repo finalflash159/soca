@@ -56,7 +56,14 @@ export interface MemoryTraceEvent {
   event: "memory_trace";
   mode: "blob" | "retrieved" | "degraded";
   degraded_reason?: string;
-  hits: Array<{ id: string; corpus: "profile" | "episode"; relevance: number; recency: number; importance: number; total: number }>;
+  hits: Array<{
+    id: string;
+    corpus: "profile" | "episode";
+    relevance: number;
+    recency: number;
+    importance: number;
+    total: number;
+  }>;
   compacted_turn_count: number;
   recent_turn_count: number;
   background_status: "idle" | "queued" | "running" | "failed";
@@ -66,7 +73,13 @@ export interface MemoryTraceEvent {
 
 export interface MemoryProposalEvent {
   event: "memory_proposals";
-  proposals: Array<{ id: string; kind: "preference" | "stable_fact" | "project" | "correction"; statement: string; confidence: number; createdAt: string }>;
+  proposals: Array<{
+    id: string;
+    kind: "preference" | "stable_fact" | "project" | "correction";
+    statement: string;
+    confidence: number;
+    createdAt: string;
+  }>;
 }
 
 export interface MemoryActionEvent {
@@ -82,7 +95,10 @@ export interface RetrievalTraceEvent {
   query: string;
   tier: "deterministic" | "semantic" | "llm" | "none";
   latency_ms: number;
-  columns: Array<{ source: "bm25" | "dense"; hits: Array<{ path: string; score: number }> }>;
+  columns: Array<{
+    source: "bm25" | "dense";
+    hits: Array<{ path: string; score: number }>;
+  }>;
   fused: Array<{ path: string; picked: boolean }>;
 }
 
@@ -181,6 +197,11 @@ export interface ByeEvent {
   event: "bye";
 }
 
+// Catalogs from providers such as OpenRouter contain hundreds of models. The
+// engine sends them as one NDJSON event, so the protocol limit must allow a
+// valid catalog while still rejecting unexpectedly huge child-process output.
+const MAX_PROTOCOL_LINE_LENGTH = 256_000;
+
 export type EngineEvent =
   | HelloEvent
   | VoiceEvent
@@ -202,7 +223,7 @@ export type EngineEvent =
 
 export function parseEngineEvent(line: string): EngineEvent | null {
   const trimmed = line.trim();
-  if (!trimmed || trimmed.length > 64_000) return null;
+  if (!trimmed || trimmed.length > MAX_PROTOCOL_LINE_LENGTH) return null;
   try {
     const parsed: unknown = JSON.parse(trimmed);
     const eventName =
@@ -210,8 +231,23 @@ export function parseEngineEvent(line: string): EngineEvent | null {
         ? (parsed as { event?: unknown }).event
         : null;
     const known = new Set([
-      "hello", "voice", "router_trace", "memory_trace", "memory_proposals", "memory_action", "retrieval_trace",
-      "chat", "status", "memory", "usage", "llm_providers", "llm_catalog", "llm_key_status", "llm_config", "engine_error", "bye",
+      "hello",
+      "voice",
+      "router_trace",
+      "memory_trace",
+      "memory_proposals",
+      "memory_action",
+      "retrieval_trace",
+      "chat",
+      "status",
+      "memory",
+      "usage",
+      "llm_providers",
+      "llm_catalog",
+      "llm_key_status",
+      "llm_config",
+      "engine_error",
+      "bye",
     ]);
     if (
       typeof parsed !== "object" ||

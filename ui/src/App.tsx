@@ -21,10 +21,7 @@ import { MemoryChips } from "./components/MemoryChips.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { MemoryProposalInbox } from "./components/MemoryProposalInbox.js";
 import { RetrievalInspector } from "./components/RetrievalInspector.js";
-import {
-  Panel,
-  Spinner,
-} from "./components/Primitives.js";
+import { Panel, Spinner } from "./components/Primitives.js";
 
 export interface AppProps {
   /** The mode the user picked on the splash / CLI. */
@@ -295,22 +292,35 @@ export function App({ target, profile, noModel = false }: AppProps) {
       ) : null}
 
       {state.mode === "chat" && state.timeline.length === 0 ? (
-        <Empty icon={ICON.bird} title="No messages yet." hint="Type a question or use /voice to speak." />
+        <Empty
+          icon={ICON.bird}
+          title="No messages yet."
+          hint="Type a question or use /voice to speak."
+        />
       ) : null}
 
       {state.proposals.length > 0 ? (
         <MemoryProposalInbox
           proposals={state.proposals}
           error={state.memoryActionError}
-          onApprove={(proposal_id) => engine?.send({ cmd: "memory_approve", proposal_id })}
-          onReject={(proposal_id) => engine?.send({ cmd: "memory_reject", proposal_id })}
+          onApprove={(proposal_id) =>
+            engine?.send({ cmd: "memory_approve", proposal_id })
+          }
+          onReject={(proposal_id) =>
+            engine?.send({ cmd: "memory_reject", proposal_id })
+          }
           onClose={() => dispatch({ type: "clear_proposals" })}
         />
       ) : null}
 
       {state.retrievalTrace ? (
         <Box paddingX={1} marginTop={1}>
-          <Panel title="retrieval" subtitle="inspect" width={cols - 2} variant="idle">
+          <Panel
+            title="retrieval"
+            subtitle="inspect"
+            width={cols - 2}
+            variant="idle"
+          >
             <RetrievalInspector trace={state.retrievalTrace} width={cols - 4} />
           </Panel>
         </Box>
@@ -318,13 +328,35 @@ export function App({ target, profile, noModel = false }: AppProps) {
 
       {state.mode !== "settings" && state.routerTier !== "none" ? (
         <Box paddingX={1} flexDirection="column">
-          <Text color={COLOR.muted}>{`router ${state.routerTier} · ${state.routerLatencyMs.toFixed(1)}ms`}</Text>
+          <Text
+            color={COLOR.muted}
+          >{`router ${state.routerTier} · ${state.routerLatencyMs.toFixed(1)}ms`}</Text>
           <MemoryChips
             chips={[
-              { type: "working", label: "working", detail: `${state.memoryHits} hits`, active: state.memoryHits > 0 },
-              { type: "semantic", label: "semantic", detail: state.memoryMode, active: state.memoryMode === "retrieved" },
-              { type: "episodic", label: "episodic", detail: "consent gated", active: false },
-              { type: "procedural", label: "procedural", detail: "approval gated", active: false },
+              {
+                type: "working",
+                label: "working",
+                detail: `${state.memoryHits} hits`,
+                active: state.memoryHits > 0,
+              },
+              {
+                type: "semantic",
+                label: "semantic",
+                detail: state.memoryMode,
+                active: state.memoryMode === "retrieved",
+              },
+              {
+                type: "episodic",
+                label: "episodic",
+                detail: "consent gated",
+                active: false,
+              },
+              {
+                type: "procedural",
+                label: "procedural",
+                detail: "approval gated",
+                active: false,
+              },
             ]}
           />
         </Box>
@@ -374,7 +406,14 @@ export function App({ target, profile, noModel = false }: AppProps) {
           </Panel>
         </Box>
       ) : null}
-      <StatusBar hints={hints} mode={state.mode} profile={state.profile} memoryOn={!noModel} llm={llm} remote={state.llmConfig?.backend === "remote"} />
+      <StatusBar
+        hints={hints}
+        mode={state.mode}
+        profile={state.profile}
+        memoryOn={!noModel}
+        llm={llm}
+        remote={state.llmConfig?.backend === "remote"}
+      />
     </Box>
   );
 }
