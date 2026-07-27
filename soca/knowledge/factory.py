@@ -13,6 +13,7 @@ from soca.knowledge.retrievers.dense import FastEmbedModel, Model2VecModel
 LOGGER = logging.getLogger(__name__)
 RetrievalMode = Literal["cached_sparse", "chunk_sparse", "hybrid"]
 DenseBackend = Literal["fastembed", "model2vec"]
+IndexLifecycle = Literal["legacy", "v2"]
 
 
 @dataclass(frozen=True)
@@ -21,12 +22,15 @@ class RetrievalConfig:
     dense_backend: DenseBackend = "fastembed"
     rrf_k: int = 60
     per_retriever_limit: int = 12
+    lifecycle: IndexLifecycle = "v2"
 
     def __post_init__(self) -> None:
         if self.mode not in {"cached_sparse", "chunk_sparse", "hybrid"}:
             raise ValueError("unknown retrieval mode")
         if self.dense_backend not in {"fastembed", "model2vec"}:
             raise ValueError("unknown dense backend")
+        if self.lifecycle not in {"legacy", "v2"}:
+            raise ValueError("unknown index lifecycle")
         if (
             isinstance(self.rrf_k, bool)
             or not isinstance(self.rrf_k, int)
@@ -50,9 +54,12 @@ def build_retrieval_source(
     index_home: Path | None = None,
 ) -> KnowledgeSource:
     resolved = config or RetrievalConfig()
+    corpus_kind = "memory" if include_globs == ("memory/**/*.md",) else "knowledge"
     common = {
         "index_home": index_home,
         "include_globs": include_globs,
+        "lifecycle": resolved.lifecycle,
+        "corpus_kind": corpus_kind,
     }
     if resolved.mode == "cached_sparse":
         return CachedMarkdownVaultKnowledgeSource(vault, **common)

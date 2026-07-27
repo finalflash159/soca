@@ -103,6 +103,42 @@ negative scores to lexical candidates for Bayes/ONNX/RAG questions (roughly
 threshold, but these numbers were measured on a small diagnostic set and are
 not yet a production threshold.
 
+## Vector-search backend probe
+
+Embedding-model selection and vector-search backend selection are independent:
+
+- the embedding model determines vector geometry and retrieval quality;
+- the search backend determines how an existing vector matrix is ranked;
+- changing NumPy exact search to FAISS Flat must not re-embed documents;
+- ANN introduces an additional recall trade-off that must be measured against
+  an exact oracle.
+
+The tracked `eval/eval_vector_backend.py` probe measured normalized random
+`float32` vectors on the same MacBook M4 Pro. At 50,000 rows × 384 dimensions:
+
+| Backend | p95/query | Recall@10 vs exact | Build |
+| --- | ---: | ---: | ---: |
+| Current matrix multiply + Python full sort | 13.914 ms | 1.0000 | — |
+| Deterministic NumPy partition exact | 0.814 ms | 1.0000 | — |
+| FAISS Flat exact | **0.474 ms** | **1.0000** | 4.69 ms |
+| FAISS HNSW M32, `efSearch=512` | 3.038 ms | 0.8825 | 6.43 s |
+| FAISS HNSW M32, `efSearch=1024` | 4.766 ms | 0.9700 | 6.43 s |
+| USearch M32, `expansion_search=1024` | 10.773 ms | 0.9375 | 23.21 s |
+
+At 50,000 rows × 1024 dimensions, NumPy exact measured `1.729 ms` p95 and
+FAISS Flat measured `1.475 ms`, both with Recall@10 `1.0`.
+
+This exploratory result supports replacing the current Python sort, but it does
+not select an ANN implementation. Random Gaussian vectors and 40 queries do not
+represent the geometry of E5 or Vietnamese_Embedding_v2. The ANN gate requires
+at least 1,000 real queries, exact Recall@1/5/10, end-to-end RAG metrics, cold
+load, build time, peak RSS, and disk size.
+
+Full setup, commands, script hash, scale tables, and decision thresholds are in
+[`BENCHMARKS.md`](../BENCHMARKS.md#p212--vector-search-backend-probe).
+The backend research and primary-source comparison are in
+[`notes/vector_backend_research.md`](../notes/vector_backend_research.md).
+
 ## Decision
 
 1. Keep lexical retrieval and dense retrieval as complementary stages. The
@@ -118,6 +154,13 @@ not yet a production threshold.
 4. Treat `Vietnamese_Reranker` as an optional second-stage component. Before
    enabling it, measure rank quality, no-answer precision, CPU latency, and
    score calibration on positive and deliberately unsupported queries.
+5. Keep normalized `.npy` vectors as the canonical dense generation. Search
+   backend artifacts are derived caches and cannot define embedding identity.
+6. Replace the current full Python score sort with deterministic NumPy
+   partition top-k before adding a vector-index dependency.
+7. Keep FAISS Flat as the primary optional exact candidate. Do not enable HNSW
+   until it reaches Recall@10 `>=0.99`, end-to-end nDCG regression `<=0.005`,
+   and at least 2× p95 speedup over the winning exact backend.
 
 ## Sources
 
@@ -126,9 +169,13 @@ not yet a production threshold.
 - [BGE-M3 model card](https://huggingface.co/BAAI/bge-m3)
 - [Vietnamese IR study, Findings of EACL 2026](https://aclanthology.org/2026.findings-eacl.110/)
 - [Vietnamese IR study PDF with model tables](https://aclanthology.org/2026.findings-eacl.110.pdf)
+- [FAISS index catalog](https://github.com/facebookresearch/faiss/wiki/Faiss-indexes)
+- [FAISS index-selection guide](https://github.com/facebookresearch/faiss/wiki/Guidelines-to-choose-an-index)
+- [FAISS index-I/O security warning](https://github.com/facebookresearch/faiss/wiki/Index-IO%2C-cloning-and-hyper-parameter-tuning)
 
-The reproducible JSON report is intentionally kept out of git because eval
-results are machine-specific. Re-run it with:
+The reproducible hybrid-retrieval JSON report is intentionally kept out of git
+because eval results are machine-specific. Re-run the model-quality benchmark
+with:
 
 ```bash
 uv run python eval/eval_hybrid_retrieval.py \

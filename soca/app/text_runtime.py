@@ -263,8 +263,13 @@ def build_text_runtime(
         llm_status = "disabled"
     else:
         selected_settings = llm_settings or load_settings()
-        if selected_settings.backend == "local" and config.llm_model_is_override:
-            selected_settings = selected_settings.with_model(config.llm_model)
+        if config.llm_model_is_override:
+            # An explicit CLI model key is a local runtime override. This
+            # prevents a persisted remote UI selection from silently turning
+            # `soca ask --llm-model ...` (and its tests) into a paid network call.
+            selected_settings = (
+                selected_settings.with_backend("local").with_model(config.llm_model)
+            )
         llm = engine_factory(
             selected_settings,
             secret_store or SecretStore(),

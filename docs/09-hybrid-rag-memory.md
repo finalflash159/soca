@@ -5,7 +5,7 @@ answers. Three cooperating pieces sit behind the `AssistantRuntime` (see
 [05 — assistant-runtime](./05-assistant-runtime.md)):
 
 1. **Hybrid retrieval** — sparse (BM25) and dense (ONNX embeddings) fused with
-   Reciprocal Rank Fusion, over a cached vault index.
+   Reciprocal Rank Fusion, over a transactional v2 vault index.
 2. **Tool router** — a deterministic → semantic → LLM cascade that decides
    whether a turn calls a tool, always validated before execution.
 3. **Retrieved memory** — query-aware long-term memory ranked by relevance,
@@ -52,11 +52,17 @@ The retriever stack lives in `soca/knowledge/`:
 | Factory + config     | `factory.py` (`build_retrieval_source`)  |
 
 `build_retrieval_source(vault, include_globs, config=RetrievalConfig(mode=...))`
-selects a variant: `cached_sparse`, `chunk_sparse`, `dense`, or `hybrid`. The
-vault index is built once and reused across queries (invalidated on file
-mtime/size change), which removes the re-read-every-query cost of the naive
-Markdown vault reader. Chunks are line-anchored, so `KnowledgeCitation` carries
-`line_start`/`line_end` back to the UI.
+selects `cached_sparse`, `chunk_sparse`, or `hybrid`; the `RetrievalConfig`
+default uses the v2 lifecycle. There is no standalone `dense` mode. Sparse
+sync is transactional and dense document embedding is an explicit index-build
+operation, never part of `search()`/`retrieve()`. A query loads only a READY
+generation whose corpus revision and embedding fingerprint match exactly;
+otherwise it serves sparse-only and exposes the stale/missing state. Chunks
+are line-anchored, so `KnowledgeCitation` carries `line_start`/`line_end` back
+to the UI.
+
+The lifecycle/operations details are in
+[11 — index lifecycle](./11-index-lifecycle.md).
 
 **RRF** scores a document as `Σ 1/(k + rank)` across the sparse and dense rank
 lists (`k=60`). When the embedding model is unavailable the source degrades to
@@ -142,19 +148,19 @@ Invariants worth remembering:
 Long-term memory is a **client of the same retriever**, not a second database.
 The stack is in `soca/memory/`:
 
-| Concern                 | Module                                      |
-| ----------------------- | ------------------------------------------- |
-| Query-aware retrieval   | `retrieved.py` (`RetrievedMemory`)          |
-| Search tool             | `tools/memory_tools.py` (`memory.search`)   |
-| Ranking signals         | `scoring.py` (relevance/recency/importance) |
-| Blob fallback + profile | `longterm.py` (`MarkdownLongTermMemory`)    |
-| Profile + episode merge | `composite.py`                              |
-| Working-memory summary  | `compaction.py`                             |
-| Episodic store          | `episodes.py`                               |
-| Proposals + approval    | `proposals.py`, `commands.py`               |
-| Background reflection   | `reflection.py`                             |
-| Safe frontmatter parse  | `frontmatter.py`                            |
-| Setup + wiring          | `core/memory_setup.py`                      |
+| Concern              | Module                                      |
+| -------------------- | ------------------------------------------- |
+| Query-aware retrieval | `retrieved.py` (`RetrievedMemory`)          |
+| Search tool          | `tools/memory_tools.py` (`memory.search`)   |
+| Ranking signals      | `scoring.py` (relevance/recency/importance) |
+| Blob fallback + profile | `longterm.py` (`MarkdownLongTermMemory`)  |
+| Profile + episode merge | `composite.py`                            |
+| Working-memory summary | `compaction.py`                           |
+| Episodic store       | `episodes.py`                               |
+| Proposals + approval  | `proposals.py`, `commands.py`              |
+| Background reflection | `reflection.py`                            |
+| Safe frontmatter parse | `frontmatter.py`                          |
+| Setup + wiring       | `core/memory_setup.py`                      |
 
 Instead of dumping the whole `profile.md` into every prompt,
 `RetrievedMemory.retrieve_profile(query)` retrieves the top-k relevant chunks and

@@ -10,6 +10,9 @@ from soca.knowledge.base import KnowledgeDocument, KnowledgeHit
 from soca.knowledge.index.dense_persistence import DenseIndexStore
 from soca.knowledge.index.models import VaultIndex
 from soca.knowledge.index.vault_index import VaultIndexer, VaultIndexStore
+from soca.knowledge.indexing.coordinator import IndexCoordinator
+from soca.knowledge.indexing.identity import CorpusSpec
+from soca.knowledge.indexing.status import DenseState, IndexStatus
 from soca.knowledge.markdown_vault import (
     DEFAULT_EXCLUDE_DIRS,
     DEFAULT_EXCLUDE_FILES,
@@ -74,6 +77,8 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
         include_globs: tuple[str, ...] = DEFAULT_INCLUDE_GLOBS,
         max_file_bytes: int = 256 * 1024,
         scoring: SearchScoringConfig | None = None,
+        lifecycle: Literal["legacy", "v2"] = "legacy",
+        corpus_kind: Literal["knowledge", "memory"] = "knowledge",
     ) -> None:
         super().__init__(
             root,
@@ -93,6 +98,26 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
         self._sparse_index: VaultIndex | None = None
         self._sparse: SparseChunkRetriever | None = None
         self._index_lock = RLock()
+        if lifecycle not in {"legacy", "v2"}:
+            raise ValueError("unknown index lifecycle")
+        self._lifecycle = lifecycle
+        self._coordinator = (
+            IndexCoordinator(
+                self,
+                spec=CorpusSpec(
+                    vault_path=self.root,
+                    kind=corpus_kind,
+                    include_globs=include_globs,
+                    exclude_dirs=exclude_dirs,
+                    exclude_files=exclude_files,
+                    max_file_bytes=max_file_bytes,
+                ),
+                index_home=vault_store.index_home,
+                model=model,
+            )
+            if lifecycle == "v2"
+            else None
+        )
 
     def _refresh_indexes(
         self,
@@ -144,6 +169,9 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
         if not query.strip():
             return RetrievalBatch((), None)
 
+        if self._lifecycle == "v2":
+            return self._retrieve_v2(query, limit=limit)
+
         vault_index, dense_index, sparse = self._refresh_indexes()
         document_snapshot = prepare_lexical_snapshot(vault_index.documents)
         if not self._search_lexical_snapshot(query, document_snapshot, limit=1):
@@ -173,6 +201,56 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
             reciprocal_rank_fusion(rank_lists, k=self._config.rrf_k)[:limit],
             max_dense_score,
         )
+
+    def _retrieve_v2(self, query: str, *, limit: int) -> RetrievalBatch:
+        assert self._coordinator is not None
+        snapshot = self._coordinator.snapshot()
+        vault_index = snapshot.sparse_index
+        document_snapshot = prepare_lexical_snapshot(vault_index.documents)
+        if not self._search_lexical_snapshot(query, document_snapshot, limit=1):
+            return RetrievalBatch((), None)
+        rank_lists: list[list[RankedHit]] = []
+        retriever_limit = max(limit, self._config.per_retriever_limit)
+        if self._config.sparse_enabled:
+            rank_lists.append(
+                SparseChunkRetriever(vault_index.chunks, self.scoring).rank(
+                    query,
+                    limit=retriever_limit,
+                )
+            )
+        max_dense_score: float | None = None
+        if (
+            self._config.dense_enabled
+            and snapshot.dense_state == DenseState.READY
+            and snapshot.dense_index is not None
+            and self._model is not None
+        ):
+            try:
+                dense_ranking = DenseRetriever(snapshot.dense_index, self._model).rank_with_score(
+                    query,
+                    limit=retriever_limit,
+                )
+            except (OSError, RuntimeError, ValueError) as exc:
+                if self._dense_must_raise:
+                    raise DenseUnavailableError("dense-only query failed") from exc
+                LOGGER.warning("Dense query failed; using sparse retrieval", exc_info=True)
+            else:
+                rank_lists.append(list(dense_ranking.hits))
+                max_dense_score = dense_ranking.max_score
+        return self._build_batch(
+            vault_index,
+            reciprocal_rank_fusion(rank_lists, k=self._config.rrf_k)[:limit],
+            max_dense_score,
+        )
+
+    @property
+    def index_status(self) -> IndexStatus | None:
+        return self._coordinator.status() if self._coordinator is not None else None
+
+    def build_index(self, *, dense: bool = True) -> object:
+        if self._coordinator is None:
+            raise RuntimeError("index lifecycle v2 is required for explicit builds")
+        return self._coordinator.build_blocking(dense=dense)
 
     def _build_batch(
         self,

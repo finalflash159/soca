@@ -8,6 +8,8 @@ from typing import Protocol
 
 import numpy as np
 
+from soca.knowledge.indexing.identity import EmbeddingFingerprint
+from soca.knowledge.indexing.vector import stable_exact_top_k
 from soca.knowledge.retriever import RankedHit
 
 FASTEMBED_E5_MODEL = "intfloat/multilingual-e5-small"
@@ -107,6 +109,20 @@ class FastEmbedModel:
     def model_id(self) -> str:
         return f"fastembed:{self._model_name}"
 
+    @property
+    def embedding_fingerprint(self) -> EmbeddingFingerprint:
+        return EmbeddingFingerprint(
+            adapter="fastembed",
+            adapter_version="runtime-v1",
+            model_id=self._model_name,
+            dimension=384 if self._model_name == FASTEMBED_E5_MODEL else 0,
+            query_prefix=E5_QUERY_PREFIX if self._custom_e5 else "",
+            passage_prefix=E5_PASSAGE_PREFIX if self._custom_e5 else "",
+            pooling="mean",
+            normalize=True,
+            max_length=512,
+        )
+
     def embed_documents(self, texts: tuple[str, ...]) -> np.ndarray:
         if not texts:
             return np.empty((0, 0), dtype=np.float32)
@@ -160,6 +176,18 @@ class Model2VecModel:
     @property
     def model_id(self) -> str:
         return f"model2vec:{self._model_name}"
+
+    @property
+    def embedding_fingerprint(self) -> EmbeddingFingerprint:
+        dimension = getattr(self._model, "dim", 0)
+        return EmbeddingFingerprint(
+            adapter="model2vec",
+            adapter_version="runtime-v1",
+            model_id=self._model_name,
+            dimension=int(dimension) if isinstance(dimension, int) else 0,
+            pooling="static",
+            normalize=True,
+        )
 
     def embed_documents(self, texts: tuple[str, ...]) -> np.ndarray:
         if not texts:
@@ -234,10 +262,7 @@ class DenseRetriever:
         if query_vector.shape[0] != self.index.dimension:
             raise ValueError("query embedding dimension does not match dense index")
         scores = self.index.vectors @ query_vector
-        order = sorted(
-            range(len(scores)),
-            key=lambda index: (-float(scores[index]), self.index.chunk_ids[index]),
-        )[:limit]
+        order = stable_exact_top_k(scores, self.index.chunk_ids, limit=limit)
         hits = tuple(
             RankedHit(
                 chunk_id=self.index.chunk_ids[index],

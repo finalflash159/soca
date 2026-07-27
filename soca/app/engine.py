@@ -274,6 +274,9 @@ class SocaEngine:
 
     def _cmd_status(self) -> None:
         from soca.app.profiles import collect_runtime_profile_readiness
+        from soca.knowledge.index.persistence import default_index_home
+        from soca.knowledge.indexing.catalog import IndexCatalog
+        from soca.knowledge.indexing.identity import CorpusSpec
 
         profiles = [
             {
@@ -286,7 +289,20 @@ class SocaEngine:
             }
             for item in collect_runtime_profile_readiness()
         ]
-        self.writer.emit({"event": "status", "profiles": profiles})
+        knowledge_index: dict[str, Any] | None = None
+        try:
+            knowledge_index = IndexCatalog(default_index_home()).status(
+                CorpusSpec(vault_path=self.text_config.vault),
+            ).as_dict()
+        except (OSError, RuntimeError, ValueError) as exc:
+            LOGGER.debug("Could not inspect knowledge index status: %s", exc)
+        self.writer.emit(
+            {
+                "event": "status",
+                "profiles": profiles,
+                "knowledge_index": knowledge_index,
+            }
+        )
 
     # --- remote LLM configuration ---------------------------------------------
 

@@ -23,6 +23,8 @@ folder tree or TUI layout is easier to read that way.
 | 07  | [tui.md](./07-tui.md)                                         | TUI architecture, modes, threading, and event flow           |
 | 08  | [registries-profiles-cli.md](./08-registries-profiles-cli.md) | ASR/LLM/TTS registries, runtime profiles, CLI, optional deps |
 | 09  | [hybrid-rag-memory.md](./09-hybrid-rag-memory.md)             | Hybrid RAG retrieval, tool router cascade, retrieved memory  |
+| 10  | [vietnamese-rag-model-selection.md](./10-vietnamese-rag-model-selection.md) | Vietnamese embedding, reranker, and vector-backend evidence |
+| 11  | [index-lifecycle.md](./11-index-lifecycle.md)                 | Transactional sparse/dense index lifecycle and operations    |
 
 ## SoCa in One Diagram
 

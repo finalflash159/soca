@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -19,6 +21,12 @@ from soca.core import (
     VOICE_RUNTIME_PROFILES,
     resolve_voice_runtime_config,
 )
+from soca.knowledge.index.persistence import default_index_home
+from soca.knowledge.indexing.coordinator import IndexCoordinator
+from soca.knowledge.indexing.identity import CorpusSpec
+from soca.knowledge.indexing.models import MODEL_REGISTRY, load_model, model_spec, model_status
+from soca.knowledge.markdown_vault import MarkdownVaultKnowledgeSource
+from soca.knowledge.retrievers.dense import default_model_home
 from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
 
 console = Console()
@@ -41,6 +49,243 @@ def run_script(script: str, *args: str) -> None:
 @click.version_option(package_name="soca")
 def main() -> None:
     """SoCa local Vietnamese voice assistant toolkit."""
+
+
+def _index_context(
+    vault: Path,
+    corpus: str,
+    *,
+    index_home: Path | None,
+    model_key: str | None = None,
+) -> IndexCoordinator:
+    include_globs = ("wiki/**/*.md",) if corpus == "knowledge" else ("memory/**/*.md",)
+    spec = CorpusSpec(vault_path=vault, kind=corpus, include_globs=include_globs)  # type: ignore[arg-type]
+    reader = MarkdownVaultKnowledgeSource(vault, include_globs=include_globs)
+    model = None
+    if model_key is not None:
+        try:
+            model = load_model(model_key, allow_download=False)
+        except (ImportError, FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+            raise click.ClickException(
+                f"Embedding model chưa được provision: {model_key}. "
+                f"Chạy `soca knowledge model install {model_key}`. Chi tiết: {exc}"
+            ) from exc
+    return IndexCoordinator(
+        reader,
+        spec=spec,
+        index_home=index_home or default_index_home(),
+        model=model,
+    )
+
+
+@main.group("knowledge")
+def knowledge_group() -> None:
+    """Manage local knowledge/memory indexes and models."""
+
+
+@knowledge_group.group("index")
+def knowledge_index_group() -> None:
+    """Inspect and build the transactional index."""
+
+
+@knowledge_index_group.command("status")
+@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
+@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option("--index-home", type=click.Path(path_type=Path), default=None)
+@click.option("--model", "model_key", type=click.Choice([item.key for item in MODEL_REGISTRY]), default="fastembed-e5-small", show_default=True)
+@click.option("--json", "as_json", is_flag=True, help="Print machine-readable status.")
+def knowledge_index_status(vault: Path, corpus: str, index_home: Path | None, model_key: str, as_json: bool) -> None:
+    """Show sparse/dense/model state without downloading or embedding."""
+    try:
+        coordinator = _index_context(vault, corpus, index_home=index_home, model_key=model_key)
+    except click.ClickException:
+        coordinator = _index_context(vault, corpus, index_home=index_home)
+    payload = coordinator.status().as_dict()
+    payload["model"] = model_status(model_key)
+    if as_json:
+        click.echo(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+        return
+    table = Table(title=f"SoCa index · {corpus}")
+    table.add_column("Field")
+    table.add_column("Value")
+    for key, value in payload.items():
+        table.add_row(key, "" if value is None else str(value))
+    console.print(table)
+
+
+@knowledge_index_group.command("build")
+@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
+@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option("--index-home", type=click.Path(path_type=Path), default=None)
+@click.option("--dense/--sparse-only", default=False, show_default=True)
+@click.option("--verify-content", is_flag=True, help="Read all files even when stat metadata is unchanged.")
+def knowledge_index_build(vault: Path, corpus: str, index_home: Path | None, dense: bool, verify_content: bool) -> None:
+    """Synchronize sparse and optionally build a dense generation."""
+    _run_index_build(
+        vault,
+        corpus,
+        index_home=index_home,
+        dense=dense,
+        verify_content=verify_content,
+        force_dense=False,
+    )
+
+
+def _run_index_build(
+    vault: Path,
+    corpus: str,
+    *,
+    index_home: Path | None,
+    dense: bool,
+    verify_content: bool,
+    force_dense: bool,
+) -> None:
+    coordinator = _index_context(
+        vault,
+        corpus,
+        index_home=index_home,
+        model_key="fastembed-e5-small" if dense else None,
+    )
+    try:
+        report = coordinator.build_blocking(
+            dense=dense,
+            verify_content=verify_content,
+            force_dense=force_dense,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    payload = coordinator.status().as_dict()
+    payload.update(
+        {
+            "sparse_changed": report.sparse.changed,
+            "documents_added": report.sparse.added,
+            "documents_removed": report.sparse.removed,
+            "metadata_only": report.sparse.metadata_only,
+            "dense_built": report.dense is not None,
+        }
+    )
+    click.echo(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+
+
+@knowledge_index_group.command("rebuild")
+@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
+@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option("--index-home", type=click.Path(path_type=Path), default=None)
+def knowledge_index_rebuild(vault: Path, corpus: str, index_home: Path | None) -> None:
+    """Reconcile the vault and build the current dense generation."""
+    _run_index_build(
+        vault,
+        corpus,
+        index_home=index_home,
+        dense=True,
+        verify_content=True,
+        force_dense=True,
+    )
+
+
+@knowledge_index_group.command("verify")
+@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
+@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option("--index-home", type=click.Path(path_type=Path), default=None)
+@click.option("--json", "as_json", is_flag=True)
+def knowledge_index_verify(vault: Path, corpus: str, index_home: Path | None, as_json: bool) -> None:
+    """Verify SQLite integrity and generation file ownership."""
+    coordinator = _index_context(vault, corpus, index_home=index_home)
+    errors = coordinator.verify()
+    if as_json:
+        click.echo(json.dumps({"ok": not errors, "errors": list(errors)}, ensure_ascii=False))
+    elif errors:
+        raise click.ClickException("; ".join(errors))
+    else:
+        click.echo("index ok")
+    if errors:
+        raise click.exceptions.Exit(1)
+
+
+@knowledge_index_group.command("gc")
+@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
+@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option("--index-home", type=click.Path(path_type=Path), default=None)
+@click.option("--apply", is_flag=True, help="Actually delete candidates; default is dry-run.")
+def knowledge_index_gc(vault: Path, corpus: str, index_home: Path | None, apply: bool) -> None:
+    """List or remove failed/superseded derived generations."""
+    coordinator = _index_context(vault, corpus, index_home=index_home)
+    candidates = coordinator.gc(apply=apply)
+    for candidate in candidates:
+        click.echo(("deleted " if apply else "candidate ") + candidate)
+
+
+@knowledge_group.group("model")
+def knowledge_model_group() -> None:
+    """Provision and verify embedding model artifacts explicitly."""
+
+
+@knowledge_model_group.command("list")
+@click.option("--json", "as_json", is_flag=True)
+def knowledge_model_list(as_json: bool) -> None:
+    values = [
+        {"key": item.key, "adapter": item.adapter, "model_id": item.model_id, "dimension": item.dimension, "source": item.source}
+        for item in MODEL_REGISTRY
+    ]
+    if as_json:
+        click.echo(json.dumps(values, ensure_ascii=False, sort_keys=True))
+        return
+    for value in values:
+        click.echo(f"{value['key']} · {value['model_id']} · {value['dimension']}D")
+
+
+@knowledge_model_group.command("status")
+@click.argument("key", required=False, default="fastembed-e5-small")
+@click.option("--json", "as_json", is_flag=True)
+def knowledge_model_status(key: str, as_json: bool) -> None:
+    try:
+        payload = model_status(key)
+    except KeyError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if as_json:
+        click.echo(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    else:
+        for field, value in payload.items():
+            click.echo(f"{field}: {value}")
+
+
+@knowledge_model_group.command("install")
+@click.argument("key", required=False, default="fastembed-e5-small")
+def knowledge_model_install(key: str) -> None:
+    """Download a declared model; this is the only command with network intent."""
+    try:
+        load_model(key, allow_download=True)
+    except (ImportError, FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"installed {key}")
+
+
+@knowledge_model_group.command("verify")
+@click.argument("key", required=False, default="fastembed-e5-small")
+def knowledge_model_verify(key: str) -> None:
+    payload = model_status(key)
+    if payload.get("state") != "installed":
+        raise click.ClickException(f"model is not ready: {payload.get('error', payload.get('state'))}")
+    click.echo(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+
+
+@knowledge_model_group.command("remove")
+@click.argument("key", required=False, default="fastembed-e5-small")
+@click.option("--apply", is_flag=True, help="Actually remove only the exact model cache candidates.")
+def knowledge_model_remove(key: str, apply: bool) -> None:
+    try:
+        spec = model_spec(key)
+    except KeyError as exc:
+        raise click.ClickException(str(exc)) from exc
+    cache = (default_model_home() / spec.cache_subdirectory).resolve()
+    candidates = tuple(path for path in cache.glob("*") if spec.model_id.replace("/", "--") in path.name)
+    for path in candidates:
+        if apply:
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            else:
+                path.unlink(missing_ok=True)
+        click.echo(("deleted " if apply else "candidate ") + str(path))
 
 
 @main.command()

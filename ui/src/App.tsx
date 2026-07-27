@@ -276,6 +276,11 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
               </Box>
             ))
           )}
+          {state.knowledgeIndex ? (
+            <Text color={COLOR.muted}>
+              knowledge · {state.knowledgeIndex.sparse_state} · dense {state.knowledgeIndex.dense_state} · {state.knowledgeIndex.documents} docs / {state.knowledgeIndex.chunks} chunks
+            </Text>
+          ) : null}
         </Box>
       ) : null}
 

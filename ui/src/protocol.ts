@@ -124,6 +124,13 @@ export interface StatusEvent {
     tts: string;
     voice: string | null;
   }>;
+  knowledge_index?: {
+    sparse_state: string;
+    dense_state: string;
+    revision: number;
+    documents: number;
+    chunks: number;
+  } | null;
 }
 
 export interface MemoryEvent {

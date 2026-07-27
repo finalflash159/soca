@@ -1,6 +1,6 @@
 # SoCa — Benchmarks
 
-> Last updated: 2026-07-27. All measurements are from real local runs;
+> Last updated: 2026-07-28. All measurements are from real local runs;
 > raw output JSON lives under `eval/results/` (gitignored).
 
 ## Common hardware
@@ -1140,6 +1140,92 @@ nDCG@10 `0.964086`; `life_vault_project` Recall@5 `1.000000`, MRR@10
 127.92 ms`; isolated query encoding mean/p95 were `16.83 / 24.36 ms`. The
 machine-specific JSON is ignored by git; the exact command and model-source
 notes are in [`docs/10-vietnamese-rag-model-selection.md`](docs/10-vietnamese-rag-model-selection.md).
+
+
+### P2.1.2 — Vector-search backend probe
+
+This is a backend microbenchmark, not a Vietnamese retrieval-quality benchmark.
+It uses normalized random float32 vectors, 40 singleton queries, and a stable
+score-descending / row-ID-ascending exact oracle.
+
+**Setup**
+
+| Field | Value |
+| --- | --- |
+| Harness | `eval/eval_vector_backend.py` |
+| Script SHA-256 | `af8eb272b9262313babb83a19cc9b04556f840feec01a900fcd67855204e3327` |
+| Baseline commit | `acd94b7339a22df7ecbbabe93d756ce9ec6d3f76` |
+| Machine | macOS 15.7.4 ARM64 |
+| Python / NumPy | 3.11.14 / 2.4.4 |
+| Optional backends | faiss-cpu 1.14.3; usearch 2.25.2 |
+| Query workload | 40 singleton queries, k=10 |
+
+**50,000 rows × 384 dimensions**
+
+| Backend/config | p95/query | Recall@10 vs exact | Build | Serialized/raw bytes |
+| --- | ---: | ---: | ---: | ---: |
+| Current Python full sort | 13.914 ms | 1.0000 | — | 76.8 MB |
+| NumPy stable partition exact | 0.814 ms | 1.0000 | — | 76.8 MB |
+| FAISS Flat exact | **0.474 ms** | **1.0000** | 4.69 ms | 76.8 MB |
+| FAISS HNSW M32, ef=128 | 0.866 ms | 0.4275 | 6.43 s | 90.4 MB |
+| FAISS HNSW M32, ef=512 | 3.038 ms | 0.8825 | 6.43 s | 90.4 MB |
+| FAISS HNSW M32, ef=1024 | 4.766 ms | 0.9700 | 6.43 s | 90.4 MB |
+| USearch M32, expansion=128 | 2.302 ms | 0.4200 | 23.21 s | 90.6 MB |
+| USearch M32, expansion=1024 | 10.773 ms | 0.9375 | 23.21 s | 90.6 MB |
+
+At 50,000 rows × 1024 dimensions, NumPy exact measured 1.729 ms p95 and
+FAISS Flat measured 1.475 ms p95; both retained Recall@10 = 1.0.
+
+**Decision**
+
+Keep normalized `.npy` as the canonical vector generation and make deterministic
+NumPy exact search the production default after replacing the current Python
+full sort. Keep FAISS Flat as an optional exact candidate; do not add HNSW or
+USearch to the runtime until real Vietnamese vectors and at least 1,000 queries
+pass the quality, memory, platform, crash, and ≥2× p95 speedup gates.
+
+Reproduce:
+
+```bash
+uv run python eval/eval_vector_backend.py --help
+uv run pytest -q tests/test_eval_vector_backend.py
+```
+
+Raw machine-specific JSON remains under `eval/results/` (gitignored); the
+script, hash, summary numbers, and decision are tracked here and in
+`docs/10-vietnamese-rag-model-selection.md`.
+
+### P2.1.3 — Transactional index lifecycle probe
+
+This probe validates lifecycle mechanics, not Vietnamese answer quality. It uses
+a deterministic 16-dimensional fake embedder: build a synthetic vault, warm-load
+a READY generation, edit one note, then rename one note.
+
+| Field | Value |
+| --- | --- |
+| Harness | `eval/eval_index_lifecycle.py` |
+| Fixture | 24 synthetic Markdown documents / 24 chunks |
+| Machine | macOS 15.7.4 ARM64 |
+| Python / NumPy | 3.11.14 / 2.4.4 |
+| Full build | 15.695 ms |
+| Warm snapshot | 12.540 ms |
+| One-note edit | 17.871 ms; 1 row embedded |
+| One-note rename | 20.011 ms; 24 rows reused |
+| Model document rows | 25 total across all builds |
+
+Query-time `snapshot()` reported `ready` without calling
+`embed_documents`; an edit made dense `stale` while sparse remained usable;
+a rename reused vectors by embedding-input hash.
+
+Reproduce:
+
+```bash
+uv run python eval/eval_index_lifecycle.py --documents 24
+uv run pytest -q tests/test_indexing_v2.py tests/test_eval_index_lifecycle.py
+```
+
+This probe does not authorize changing the embedding model or adopting ANN;
+those decisions remain governed by P2.1.2 and the model-quality gates.
 
 ### P2.2 — Tool router (v2, offline)
 

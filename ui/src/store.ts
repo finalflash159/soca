@@ -50,6 +50,14 @@ export interface LlmProviderStatus {
   has_pricing_api: boolean;
 }
 
+export interface KnowledgeIndexStatus {
+  sparse_state: string;
+  dense_state: string;
+  revision: number;
+  documents: number;
+  chunks: number;
+}
+
 // Live partial transcript while the user is still speaking: committed words are
 // stable (LocalAgreement), tentative words may still change on the next decode.
 export interface Caption {
@@ -88,6 +96,7 @@ export interface AppState {
   llmCatalogProvider: string;
   llmConfig: LlmConfigEvent | null;
   settingsNotice: string;
+  knowledgeIndex: KnowledgeIndexStatus | null;
 }
 
 export const initialState: AppState = {
@@ -121,6 +130,7 @@ export const initialState: AppState = {
   llmCatalogProvider: "",
   llmConfig: null,
   settingsNotice: "",
+  knowledgeIndex: null,
 };
 
 export type Action =
@@ -320,7 +330,11 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
           return state;
       }
     case "status":
-      return { ...state, profiles: event.profiles };
+      return {
+        ...state,
+        profiles: event.profiles,
+        knowledgeIndex: event.knowledge_index ?? null,
+      };
     case "memory": {
       const text = event.enabled
         ? event.text
