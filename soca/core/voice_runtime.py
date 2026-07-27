@@ -10,20 +10,22 @@ import numpy as np
 from soca.asr import ASR_MODEL_REGISTRY, SpeechDetector
 from soca.asr.robust_asr import RobustASR, load_confidence_guard_calibration
 from soca.asr.whisper_onnx import VietnameseASR
-from soca.core.knowledge_setup import build_knowledge_runtime_setup
 from soca.core.pipeline import VoicePipeline
 from soca.core.profiles import get_voice_runtime_profile
 from soca.core.repair import default_repair_catalog
 from soca.core.runtime import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
 from soca.core.smart_turn import SmartTurnDetector
 from soca.core.turn_taking import partial_interval_from_cost
-from soca.knowledge.factory import RetrievalConfig
-from soca.knowledge.hybrid_source import HybridKnowledgeSource
-from soca.knowledge.intent_gate import RetrievalIntentGate
+from soca.knowledge import KnowledgeContextBuilder, MarkdownVaultKnowledgeSource
 from soca.llm import LocalLlamaCppLLM
 from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.memory import MarkdownLongTermMemory, MemoryContextBuilder, SessionMemory
-from soca.tools import LocalTimeTool, ToolRuntime
+from soca.tools import (
+    KnowledgeReadTool,
+    KnowledgeSearchTool,
+    LocalTimeTool,
+    ToolRuntime,
+)
 from soca.tts import VALTEC_TTS_CONFIG, create_tts_engine
 
 
@@ -54,11 +56,6 @@ class ResolvedVoiceRuntimeConfig:
     turn_chars: int = 500
     llm_threads: int = 8
     llm_gpu_layers: int = -1
-    knowledge_limit: int = 3
-    knowledge_retrieval_mode: str = "cached_sparse"
-    knowledge_dense_backend: str = "fastembed"
-    voice_knowledge_mode: str = "off"
-    knowledge_intent_threshold: float | None = None
 
 
 @dataclass
@@ -112,11 +109,6 @@ def resolve_voice_runtime_config(
     turn_chars: int = 500,
     llm_threads: int = 8,
     llm_gpu_layers: int = -1,
-    knowledge_limit: int | None = None,
-    knowledge_retrieval_mode: str | None = None,
-    knowledge_dense_backend: str | None = None,
-    voice_knowledge_mode: str | None = None,
-    knowledge_intent_threshold: float | None = None,
 ) -> ResolvedVoiceRuntimeConfig:
     profile = get_voice_runtime_profile(profile_key)
 
@@ -134,34 +126,6 @@ def resolve_voice_runtime_config(
     if resolved_tts_voice not in VALTEC_TTS_CONFIG.voices:
         valid = ", ".join(VALTEC_TTS_CONFIG.voices)
         raise ValueError(f"Unknown Valtec voice: {resolved_tts_voice!r}. Valid voices: {valid}")
-
-    resolved_limit = knowledge_limit if knowledge_limit is not None else profile.knowledge_limit
-    resolved_retrieval = knowledge_retrieval_mode or profile.knowledge_retrieval_mode
-    resolved_backend = knowledge_dense_backend or profile.knowledge_dense_backend
-    resolved_voice_mode = voice_knowledge_mode or profile.voice_knowledge_mode
-    resolved_threshold = (
-        knowledge_intent_threshold
-        if knowledge_intent_threshold is not None
-        else profile.knowledge_intent_threshold
-    )
-    if (
-        isinstance(resolved_limit, bool)
-        or not isinstance(resolved_limit, int)
-        or resolved_limit < 1
-    ):
-        raise ValueError("knowledge_limit must be positive")
-    if resolved_retrieval not in {"cached_sparse", "hybrid"}:
-        raise ValueError("unknown knowledge retrieval mode")
-    if resolved_backend not in {"fastembed", "model2vec"}:
-        raise ValueError("unknown knowledge dense backend")
-    if resolved_voice_mode not in {"off", "intent", "always"}:
-        raise ValueError("unknown voice knowledge mode")
-    if resolved_threshold is not None and not 0 <= resolved_threshold <= 1:
-        raise ValueError("knowledge_intent_threshold must be between 0 and 1")
-    if resolved_voice_mode == "intent" and resolved_threshold is None:
-        raise ValueError("intent mode requires knowledge_intent_threshold")
-    if resolved_voice_mode == "intent" and resolved_retrieval != "hybrid":
-        raise ValueError("intent mode requires hybrid retrieval")
 
     return ResolvedVoiceRuntimeConfig(
         profile_key=profile_key,
@@ -197,11 +161,6 @@ def resolve_voice_runtime_config(
         turn_chars=turn_chars,
         llm_threads=llm_threads,
         llm_gpu_layers=llm_gpu_layers,
-        knowledge_limit=resolved_limit,
-        knowledge_retrieval_mode=resolved_retrieval,
-        knowledge_dense_backend=resolved_backend,
-        voice_knowledge_mode=resolved_voice_mode,
-        knowledge_intent_threshold=resolved_threshold,
     )
 
 
@@ -238,38 +197,18 @@ def build_voice_runtime(
     )
 
     memory_status = "disabled"
-    knowledge_limit = config.knowledge_limit
-    knowledge_status = "disabled:not_found"
+    knowledge_status = "disabled"
     memory_builder = None
     knowledge_builder = None
     tools = [LocalTimeTool()]
 
-    knowledge_intent_gate = None
-    effective_voice_mode = config.voice_knowledge_mode
     if config.vault.is_dir():
-        knowledge = build_knowledge_runtime_setup(
-            config.vault,
-            knowledge_limit=knowledge_limit,
-            retrieval_config=RetrievalConfig(
-                mode=config.knowledge_retrieval_mode,
-                dense_backend=config.knowledge_dense_backend,
-            ),
-        )
-        knowledge_builder = knowledge.builder
-        tools.extend([knowledge.search_tool, knowledge.read_tool])
-        knowledge_status = knowledge.status
-        if (
-            effective_voice_mode == "intent"
-            and isinstance(knowledge.source, HybridKnowledgeSource)
-            and config.knowledge_intent_threshold is not None
-        ):
-            knowledge_intent_gate = RetrievalIntentGate(
-                knowledge.source,
-                threshold=config.knowledge_intent_threshold,
-            )
-        elif effective_voice_mode == "intent":
-            effective_voice_mode = "off"
+        source = MarkdownVaultKnowledgeSource(config.vault, include_globs=("wiki/**/*.md",))
+        knowledge_builder = KnowledgeContextBuilder(source)
+        tools.extend([KnowledgeSearchTool(source), KnowledgeReadTool(source)])
+        knowledge_status = f"enabled:{config.vault / 'wiki'}"
     else:
+        knowledge_status = f"disabled:not_found:{config.vault}"
         if not config.no_memory:
             memory_status = f"disabled:not_found:{config.vault}"
 
@@ -308,10 +247,7 @@ def build_voice_runtime(
             max_tokens=config.max_tokens,
             temperature=config.temperature,
             top_p=config.top_p,
-            knowledge_limit=knowledge_limit,
-            voice_knowledge_mode=effective_voice_mode,
         ),
-        knowledge_intent_gate=knowledge_intent_gate,
     )
 
     tts = create_tts_engine(voice=config.tts_voice)

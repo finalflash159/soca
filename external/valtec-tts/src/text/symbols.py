@@ -229,7 +229,7 @@ es_symbols = [
     ]
 num_es_tones = 1
 
-# French
+# French 
 fr_symbols = [
     "\u0303",
     "œ",
@@ -242,14 +242,14 @@ fr_symbols = [
 ]
 num_fr_tones = 1
 
-# German
+# German 
 de_symbols = [
     "ʏ",
     "̩"
   ]
 num_de_tones = 1
 
-# Russian
+# Russian 
 ru_symbols = [
     "ɭ",
     "ʲ",
@@ -301,7 +301,7 @@ vi_symbols = [
     "ɜ",   # open-mid central
     # Long vowels (from VieNeu-TTS dataset)
     "əː",  # schwa long
-    "aː",  # a long
+    "aː",  # a long  
     "ɜː",  # open-mid central long
     "ɑː",  # open back long
     "ɔː",  # open-mid back long
@@ -336,7 +336,7 @@ vi_symbols = [
     "ð",   # voiced dental fricative
     "æ",   # near-open front unrounded
     "ɪ",   # near-close front unrounded
-    "ʊ",   # near-close back rounded
+    "ʊ",   # near-close back rounded 
     # Vietnamese fallback characters (when viphoneme fails to parse)
     "ẩ", "ò", "à", "á", "ủ", "ờ", "ộ", "ả", "ó", "é", "ê",
     "ồ", "ấ", "ú", "ế", "ớ", "ì", "ọ", "ố", "ư", "ữ",

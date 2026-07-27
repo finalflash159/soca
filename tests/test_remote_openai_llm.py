@@ -34,7 +34,7 @@ def _make_usage_only(prompt_tokens: int, completion_tokens: int):
 
 
 class FakeChatCompletions:
-    def __init__(self, owner: FakeClient) -> None:
+    def __init__(self, owner: "FakeClient") -> None:
         self._owner = owner
 
     def create(self, **kwargs):

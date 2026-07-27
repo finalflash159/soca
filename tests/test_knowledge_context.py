@@ -17,15 +17,7 @@ class FakeKnowledgeSource:
         raise NotImplementedError
 
 
-def make_hit(
-    path: str,
-    title: str,
-    snippet: str,
-    score: float = 1.0,
-    *,
-    line_start: int | None = None,
-    line_end: int | None = None,
-):
+def make_hit(path: str, title: str, snippet: str, score: float = 1.0):
     return KnowledgeHit(
         document=KnowledgeDocument(
             id=path,
@@ -36,8 +28,6 @@ def make_hit(
         ),
         score=score,
         snippet=snippet,
-        line_start=line_start,
-        line_end=line_end,
     )
 
 
@@ -107,21 +97,3 @@ def test_empty_query_result_returns_warning_only():
     assert context.hits == ()
     assert context.citations == ()
     assert "No local knowledge notes found." in context.prompt_text
-
-
-def test_build_from_hits_preserves_line_range_in_citations() -> None:
-    source = FakeKnowledgeSource([])
-    builder = KnowledgeContextBuilder(source, max_hits=3, max_chars=1000)
-    hit = make_hit(
-        "wiki/a.md",
-        "A",
-        "alpha",
-        line_start=7,
-        line_end=11,
-    )
-
-    context = builder.build_from_hits("alpha", (hit,))
-
-    assert context.hits == (hit,)
-    assert context.citations[0].line_start == 7
-    assert context.citations[0].line_end == 11

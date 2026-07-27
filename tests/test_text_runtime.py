@@ -2,37 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from soca.app.text_runtime import (
     TextRuntimeConfig,
     build_text_runtime,
     normalize_text_turn,
 )
 from soca.config.llm_settings import LlmSettings
-from soca.knowledge.cached_source import CachedMarkdownVaultKnowledgeSource
-from soca.llm import LLMResult
 from soca.memory import SessionMemory
-
-
-class FakeKnowledgeLLM:
-    def generate(
-        self,
-        user_msg: str,
-        max_tokens: int = 128,
-        temperature: float = 0.7,
-        top_p: float = 0.95,
-        inject_persona: bool = True,
-    ) -> LLMResult:
-        return LLMResult(
-            text="Protein hỗ trợ duy trì cơ bắp.",
-            prompt=user_msg,
-            n_prompt_tokens=10,
-            n_completion_tokens=6,
-            ttft_ms=1.0,
-            total_latency_ms=2.0,
-            tokens_per_second=100.0,
-        )
 
 
 def _config(vault: Path, **overrides) -> TextRuntimeConfig:
@@ -67,41 +43,6 @@ def test_no_memory_disables_session_even_with_vault(tmp_path: Path) -> None:
 
     assert bundle.session_memory is None
     assert bundle.memory_status == "disabled"
-
-
-def test_text_runtime_uses_shared_cached_source_and_k_query_returns_citation(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
-    wiki = tmp_path / "wiki"
-    wiki.mkdir()
-    (wiki / "protein.md").write_text(
-        "# Chất đạm\n\nProtein hỗ trợ duy trì cơ bắp và cảm giác no.",
-        encoding="utf-8",
-    )
-    bundle = build_text_runtime(
-        _config(tmp_path, no_llm=False, no_memory=True, knowledge_limit=2),
-        secret_store=object(),
-        engine_factory=lambda *args, **kwargs: FakeKnowledgeLLM(),
-    )
-
-    source = bundle.runtime.knowledge_builder.source
-    search_tool = bundle.runtime.tool_runtime.get("knowledge.search")
-    read_tool = bundle.runtime.tool_runtime.get("knowledge.read")
-    user_text, metadata = normalize_text_turn("/k chất đạm")
-    result = bundle.runtime.run_text_turn(
-        user_text,
-        source="test",
-        metadata=metadata,
-    )
-
-    assert bundle.knowledge_status == "enabled"
-    assert isinstance(source, CachedMarkdownVaultKnowledgeSource)
-    assert search_tool is not None and search_tool.source is source
-    assert read_tool is not None and read_tool.source is source
-    assert bundle.runtime.options.knowledge_limit == 2
-    assert [citation.path for citation in result.citations] == ["wiki/protein.md"]
 
 
 def test_session_memory_records_turn_without_vault(tmp_path: Path) -> None:

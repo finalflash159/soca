@@ -2,7 +2,7 @@
 Neural network components package
 """
 
-from .attentions import *
 from .commons import *
+from .attentions import *
 from .modules import *
 from .transforms import *

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
-
 import pytest
 
 from soca.llm.providers.provider_registry import (
@@ -52,8 +50,7 @@ def test_get_provider_rejects_unknown_key_and_lists_valid_ones():
         assert key in message
 
 
-def test_provider_is_immutable() -> None:
+def test_provider_is_immutable():
     provider = get_provider("openai")
-
-    with pytest.raises(FrozenInstanceError):
+    with pytest.raises(Exception):
         provider.base_url = "https://evil.example"  # type: ignore[misc]

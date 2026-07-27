@@ -1,5 +1,5 @@
 # Validate Dockerfile syntax
-with open('Dockerfile') as f:
+with open('Dockerfile', 'r') as f:
     content = f.read()
 
 checks = [

@@ -1,19 +1,17 @@
 """Generate 5-speaker example audio files."""
 import sys
-
 sys.path.insert(0, '.')
 
-import json
-
-import soundfile as sf
-import torch
+from src.vietnamese.text_processor import process_vietnamese_text
+from src.vietnamese.phonemizer import text_to_phonemes
 from src.models.synthesizer import SynthesizerTrn
 from src.text.symbols import symbols
-from src.vietnamese.phonemizer import text_to_phonemes
-from src.vietnamese.text_processor import process_vietnamese_text
+import torch
+import soundfile as sf
+import json
 
 # Load config
-with open('pretrained/config.json', encoding='utf-8') as f:
+with open('pretrained/config.json', 'r', encoding='utf-8') as f:
     config = json.load(f)
 
 # Load model
@@ -43,20 +41,20 @@ print(f"Generating examples for {len(speakers)} speakers...")
 # Generate audio
 for speaker_name, speaker_id in speakers:
     print(f"\nGenerating {speaker_name}...")
-
+    
     # Prepare inputs
-    from src.nn import commons
     from src.text import cleaned_text_to_sequence
-
+    from src.nn import commons
+    
     normalized_text = process_vietnamese_text(text)
     phones, tones, word2ph = text_to_phonemes(normalized_text, use_viphoneme=True)
     phone_ids, tone_ids, lang_ids = cleaned_text_to_sequence(phones, tones, "VI")
-
+    
     # Add blanks
     phone_ids = commons.intersperse(phone_ids, 0)
     tone_ids = commons.intersperse(tone_ids, 0)
     lang_ids = commons.intersperse(lang_ids, 0)
-
+    
     # Create tensors
     x = torch.LongTensor(phone_ids).unsqueeze(0).to(device)
     x_lengths = torch.LongTensor([len(phone_ids)]).to(device)
@@ -65,7 +63,7 @@ for speaker_name, speaker_id in speakers:
     sid = torch.LongTensor([speaker_id]).to(device)
     bert = torch.zeros(1, 1024, len(phone_ids)).to(device)
     ja_bert = torch.zeros(1, 768, len(phone_ids)).to(device)
-
+    
     # Synthesize
     with torch.no_grad():
         audio, _, *_ = model.infer(
@@ -75,9 +73,9 @@ for speaker_name, speaker_id in speakers:
             noise_scale_w=0.8,
             length_scale=1.0,
         )
-
+    
     audio = audio[0, 0].cpu().numpy()
-
+    
     # Save
     output_path = f'examples/example_{speaker_name}.wav'
     sf.write(output_path, audio, config['data']['sampling_rate'])

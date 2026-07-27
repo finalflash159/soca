@@ -2,10 +2,10 @@
 TTS Models package
 """
 
-from .adain import AdaIN1d
-from .encoders import ProsodyPredictor, SpeakerEncoder, StyleEncoder
-from .synthesizer import Generator, MultiPeriodDiscriminator, SynthesizerTrn
+from .synthesizer import SynthesizerTrn, Generator, MultiPeriodDiscriminator
 from .synthesizer_zeroshot import SynthesizerZeroShot
+from .encoders import SpeakerEncoder, StyleEncoder, ProsodyPredictor
+from .adain import AdaIN1d
 
 __all__ = [
     'SynthesizerTrn',
