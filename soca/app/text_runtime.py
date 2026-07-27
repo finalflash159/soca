@@ -13,14 +13,14 @@ from soca.app.style.palette import ACCENT, ALT, BAD, BORDER, ICON, MUTED, TEXT, 
 from soca.app.usage_view import print_turn_usage
 from soca.config import LlmSettings, SecretStore, load_settings
 from soca.core import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
+from soca.core.knowledge_setup import build_knowledge_runtime_setup
 from soca.core.profiles import DEFAULT_VOICE_RUNTIME_PROFILE_KEY, get_voice_runtime_profile
 from soca.core.turn import RuntimeResult
 from soca.core.usage import TurnUsage
-from soca.knowledge import KnowledgeContextBuilder, MarkdownVaultKnowledgeSource
 from soca.llm import LLMEngine, LocalLlamaCppLLM
 from soca.llm.factory import SecretReader, build_llm_engine
 from soca.memory import MarkdownLongTermMemory, MemoryContextBuilder, SessionMemory
-from soca.tools import KnowledgeReadTool, KnowledgeSearchTool, LocalTimeTool, ToolRuntime
+from soca.tools import LocalTimeTool, ToolRuntime
 
 
 def default_text_llm_model_key() -> str:
@@ -144,29 +144,18 @@ def build_text_runtime(
     deterministic tools are only selected for clear commands such as `wiki:`.
     """
     vault = config.vault.expanduser()
-    knowledge_source = None
     knowledge_builder = None
-    knowledge_status = f"disabled:vault_missing:{vault}"
+    knowledge_status = "disabled:not_found"
+    tools = [LocalTimeTool()]
 
     if vault.is_dir():
-        knowledge_source = MarkdownVaultKnowledgeSource(
+        knowledge = build_knowledge_runtime_setup(
             vault,
-            include_globs=("wiki/**/*.md",),
+            knowledge_limit=config.knowledge_limit,
         )
-        knowledge_builder = KnowledgeContextBuilder(
-            knowledge_source,
-            max_hits=config.knowledge_limit,
-        )
-        knowledge_status = f"enabled:{vault / 'wiki'}"
-
-    tools = [LocalTimeTool()]
-    if knowledge_source is not None:
-        tools.extend(
-            [
-                KnowledgeSearchTool(knowledge_source, max_limit=config.knowledge_limit),
-                KnowledgeReadTool(knowledge_source),
-            ]
-        )
+        knowledge_builder = knowledge.builder
+        tools.extend([knowledge.search_tool, knowledge.read_tool])
+        knowledge_status = knowledge.status
 
     runtime_session_memory = None
     memory_builder = None

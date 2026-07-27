@@ -19,7 +19,6 @@ Usage:
 import os
 import sys
 from pathlib import Path
-from typing import Optional, Tuple
 
 import numpy as np
 
@@ -58,8 +57,8 @@ class ZeroShotTTS:
 
     def __init__(
         self,
-        checkpoint_path: Optional[str] = None,
-        config_path: Optional[str] = None,
+        checkpoint_path: str | None = None,
+        config_path: str | None = None,
         device: str = "auto",
     ):
         """
@@ -142,6 +141,7 @@ class ZeroShotTTS:
     def _load_model(self):
         """Load all model components."""
         import json
+
         import torch
         from torch import nn
 
@@ -149,10 +149,7 @@ class ZeroShotTTS:
         if str(package_root) not in sys.path:
             sys.path.insert(0, str(package_root))
 
-        from src.models import (
-            SynthesizerZeroShot, SpeakerEncoder,
-            StyleEncoder, ProsodyPredictor
-        )
+        from src.models import ProsodyPredictor, SpeakerEncoder, StyleEncoder, SynthesizerZeroShot
         from src.text.symbols import symbols
 
         with open(self.config_path, encoding='utf-8') as f:
@@ -238,8 +235,8 @@ class ZeroShotTTS:
 
     def extract_embeddings(self, audio_path: str):
         """Extract speaker and prosody embeddings from reference audio."""
-        import torch
         import librosa
+        import torch
         from src.nn.mel_processing import mel_spectrogram_torch
 
         ref_audio, ref_sr = librosa.load(audio_path, sr=None)
@@ -268,7 +265,7 @@ class ZeroShotTTS:
         noise_scale: float = 0.667,
         noise_scale_w: float = 0.8,
         length_scale: float = 1.0,
-    ) -> Tuple[np.ndarray, int]:
+    ) -> tuple[np.ndarray, int]:
         """
         Synthesize speech cloning a reference voice.
 
@@ -283,10 +280,10 @@ class ZeroShotTTS:
             Tuple of (audio_array, sample_rate)
         """
         import torch
-        from src.text import cleaned_text_to_sequence
-        from src.vietnamese.text_processor import process_vietnamese_text
-        from src.vietnamese.phonemizer import text_to_phonemes
         from src.nn import commons
+        from src.text import cleaned_text_to_sequence
+        from src.vietnamese.phonemizer import text_to_phonemes
+        from src.vietnamese.text_processor import process_vietnamese_text
 
         speaker_emb, prosody_emb = self.extract_embeddings(reference_audio)
 

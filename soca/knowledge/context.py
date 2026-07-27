@@ -40,8 +40,17 @@ class KnowledgeContextBuilder:
         self.snippet_chars = snippet_chars
 
     def build(self, query: str) -> KnowledgeContext:
-        hits = self.source.search(query, limit=self.max_hits)
+        return self.build_from_hits(
+            query,
+            tuple(self.source.search(query, limit=self.max_hits)),
+        )
 
+    def build_from_hits(
+        self,
+        query: str,
+        hits: tuple[KnowledgeHit, ...],
+    ) -> KnowledgeContext:
+        hits = hits[: self.max_hits]
         prompt_parts = [UNTRUSTED_KNOWLEDGE_WARNING.strip()]
         selected_hits: list[KnowledgeHit] = []
         citations: list[KnowledgeCitation] = []
@@ -73,6 +82,8 @@ class KnowledgeContextBuilder:
                 KnowledgeCitation(
                     path=hit.document.path,
                     title=hit.document.title,
+                    line_start=hit.line_start,
+                    line_end=hit.line_end,
                 )
             )
 

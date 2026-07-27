@@ -56,17 +56,17 @@ class KnowledgeSearchTool:
         lines: list[str] = []
         data_hits: list[dict[str, Any]] = []
         for index, hit in enumerate(hits, start=1):
-            lines.append(
-                f"[K{index}] {hit.document.title} ({hit.document.path})\n{hit.snippet}"
-            )
-            data_hits.append(
-                {
-                    "path": hit.document.path,
-                    "title": hit.document.title,
-                    "score": hit.score,
-                    "snippet": hit.snippet,
-                }
-            )
+            lines.append(f"[K{index}] {hit.document.title} ({hit.document.path})\n{hit.snippet}")
+            data_hit: dict[str, Any] = {
+                "path": hit.document.path,
+                "title": hit.document.title,
+                "score": hit.score,
+                "snippet": hit.snippet,
+            }
+            if hit.line_start is not None:
+                data_hit["line_start"] = hit.line_start
+                data_hit["line_end"] = hit.line_end
+            data_hits.append(data_hit)
 
         return ToolResult(
             name=self.spec.name,

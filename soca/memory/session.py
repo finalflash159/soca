@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Iterable
 
+from soca.core.text_budget import truncate
 from soca.memory.base import MemoryRole, MemoryTurn
 
 RECENT_CONVERSATION_HEADER = "Recent conversation:"
@@ -11,16 +12,6 @@ VALID_ROLES = {"user", "assistant"}
 
 def _normalize_text(text: str) -> str:
     return " ".join(text.strip().split())
-
-
-def _truncate(text: str, max_chars: int) -> str:
-    if max_chars <= 0:
-        return ""
-    if len(text) <= max_chars:
-        return text
-    if max_chars <= 3:
-        return text[:max_chars]
-    return text[: max_chars - 3].rstrip() + "..."
 
 
 class SessionMemory:
@@ -64,7 +55,7 @@ class SessionMemory:
         self._turns.append(
             MemoryTurn(
                 role=role,
-                text=_truncate(normalized, self.max_turn_chars),
+                text=truncate(normalized, self.max_turn_chars),
             )
         )
         self._trim_turn_count()
@@ -88,7 +79,7 @@ class SessionMemory:
                 if selected_lines:
                     continue
 
-                truncated = _truncate(line, max(0, remaining))
+                truncated = truncate(line, max(0, remaining))
                 if truncated:
                     selected_lines.append(truncated)
                     used_chars += len(truncated) + 1

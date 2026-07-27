@@ -1,6 +1,7 @@
-from huggingface_hub import snapshot_download
 import tarfile
 from pathlib import Path
+
+from huggingface_hub import snapshot_download
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
