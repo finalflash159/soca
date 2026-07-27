@@ -3,10 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import pytest
-from soca.knowledge.retrievers.sparse_document import SparseDocumentRetriever
 
 from soca.knowledge.base import KnowledgeDocument
 from soca.knowledge.markdown_vault import SearchScoringConfig
+from soca.knowledge.retrievers.sparse_document import SparseDocumentRetriever
 
 
 def _chunk_document(chunk_id: str, text: str) -> KnowledgeDocument:

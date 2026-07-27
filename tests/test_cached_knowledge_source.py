@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from soca.knowledge.cached_source import CachedMarkdownVaultKnowledgeSource
 
+from soca.knowledge.cached_source import CachedMarkdownVaultKnowledgeSource
 from soca.knowledge.markdown_vault import (
     MarkdownVaultKnowledgeSource,
     SearchScoringConfig,

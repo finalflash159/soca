@@ -119,7 +119,11 @@ class VaultIndexer:
 
         records: list[IndexedFile] = []
         for relative_path in self.reader.iter_paths():
-            probe = _probe_file(self.reader, relative_path)
+            try:
+                probe = _probe_file(self.reader, relative_path)
+            except OSError as exc:
+                LOGGER.debug("Skipping unavailable knowledge path %s: %s", relative_path, exc)
+                continue
             old_record = cached_by_path.get(probe.path)
             if (
                 old_record is not None
@@ -129,8 +133,13 @@ class VaultIndexer:
                 records.append(old_record)
                 continue
 
-            document = self.reader.read(probe.path)
-            fingerprint = probe.fingerprint(document)
+            try:
+                document = self.reader.read(probe.path)
+                fingerprint = probe.fingerprint(document)
+                chunks = chunk_markdown(document)
+            except (OSError, ValueError) as exc:
+                LOGGER.debug("Skipping unreadable knowledge path %s: %s", probe.path, exc)
+                continue
             if (
                 old_record is not None
                 and old_record.fingerprint.content_sha256 == fingerprint.content_sha256
@@ -149,7 +158,7 @@ class VaultIndexer:
                 IndexedFile(
                     fingerprint=fingerprint,
                     document=document,
-                    chunks=chunk_markdown(document),
+                    chunks=chunks,
                 )
             )
 

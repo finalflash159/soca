@@ -176,6 +176,48 @@ def test_refresh_drops_deleted_file_without_rereading_unchanged_files(
     assert [document.path for document in second.documents] == ["wiki/a.md"]
 
 
+def test_refresh_skips_file_deleted_during_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from soca.knowledge.index import vault_index as vault_index_module
+
+    reader = CountingVaultSource(_make_vault(tmp_path))
+    indexer = VaultIndexer(reader, VaultIndexStore(index_home=tmp_path / "index-home"))
+    original_probe = vault_index_module._probe_file
+
+    def race_probe(reader_arg, relative_path: str):
+        if relative_path == "wiki/b.md":
+            raise FileNotFoundError(relative_path)
+        return original_probe(reader_arg, relative_path)
+
+    monkeypatch.setattr(vault_index_module, "_probe_file", race_probe)
+
+    index = indexer.refresh()
+
+    assert [document.path for document in index.documents] == ["wiki/a.md"]
+
+
+def test_refresh_skips_file_that_becomes_unreadable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reader = CountingVaultSource(_make_vault(tmp_path))
+    indexer = VaultIndexer(reader, VaultIndexStore(index_home=tmp_path / "index-home"))
+    original_read = reader.read
+
+    def race_read(path: str) -> KnowledgeDocument:
+        if path == "wiki/b.md":
+            raise PermissionError(path)
+        return original_read(path)
+
+    monkeypatch.setattr(reader, "read", race_read)
+
+    index = indexer.refresh()
+
+    assert [document.path for document in index.documents] == ["wiki/a.md"]
+
+
 def test_persist_failure_returns_and_reuses_new_in_memory_index(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

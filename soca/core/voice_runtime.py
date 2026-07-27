@@ -156,8 +156,12 @@ def resolve_voice_runtime_config(
         raise ValueError("unknown knowledge dense backend")
     if resolved_voice_mode not in {"off", "intent", "always"}:
         raise ValueError("unknown voice knowledge mode")
-    if resolved_threshold is not None and not 0 <= resolved_threshold <= 1:
-        raise ValueError("knowledge_intent_threshold must be between 0 and 1")
+    if resolved_threshold is not None and (
+        isinstance(resolved_threshold, bool)
+        or not isinstance(resolved_threshold, (int, float))
+        or not 0 <= resolved_threshold <= 1
+    ):
+        raise ValueError("knowledge_intent_threshold must be a number between 0 and 1")
     if resolved_voice_mode == "intent" and resolved_threshold is None:
         raise ValueError("intent mode requires knowledge_intent_threshold")
     if resolved_voice_mode == "intent" and resolved_retrieval != "hybrid":

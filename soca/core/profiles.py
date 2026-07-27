@@ -84,11 +84,12 @@ def validate_voice_runtime_profiles() -> list[str]:
             errors.append(f"{key}: unknown knowledge dense backend")
         if profile.voice_knowledge_mode not in {"off", "intent", "always"}:
             errors.append(f"{key}: unknown voice knowledge mode")
-        if (
-            profile.knowledge_intent_threshold is not None
-            and not 0 <= profile.knowledge_intent_threshold <= 1
+        if profile.knowledge_intent_threshold is not None and (
+            isinstance(profile.knowledge_intent_threshold, bool)
+            or not isinstance(profile.knowledge_intent_threshold, (int, float))
+            or not 0 <= profile.knowledge_intent_threshold <= 1
         ):
-            errors.append(f"{key}: knowledge_intent_threshold must be between 0 and 1")
+            errors.append(f"{key}: knowledge_intent_threshold must be a number between 0 and 1")
         if profile.voice_knowledge_mode == "intent" and profile.knowledge_intent_threshold is None:
             errors.append(f"{key}: intent mode requires knowledge_intent_threshold")
         if (

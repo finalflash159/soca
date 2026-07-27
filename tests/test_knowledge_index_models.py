@@ -223,6 +223,20 @@ def test_content_digest_is_stable_and_tracks_searchable_content() -> None:
     int(original.content_digest, 16)
 
 
+def test_content_digest_tracks_chunk_id_changes_without_rehashing_document_text() -> None:
+    original = VaultIndex(vault_path="/vault", records=(_record(),))
+    changed_chunk = replace(
+        original.records[0].chunks[0],
+        chunk_id="wiki/a.md#1-2:changed",
+    )
+    changed = VaultIndex(
+        vault_path="/vault",
+        records=(replace(original.records[0], chunks=(changed_chunk,)),),
+    )
+
+    assert original.content_digest != changed.content_digest
+
+
 def test_vault_index_exposes_documents_chunks_and_lookups() -> None:
     record = _record()
     index = VaultIndex(vault_path="/vault", records=(record,))
@@ -233,6 +247,7 @@ def test_vault_index_exposes_documents_chunks_and_lookups() -> None:
     assert index.document_by_path("wiki/missing.md") is None
     assert index.chunk_by_id(record.chunks[0].chunk_id) is record.chunks[0]
     assert index.chunk_by_id("missing") is None
+    assert index.chunks is index.chunks
 
 
 def test_document_id_must_equal_path_inside_cached_record() -> None:

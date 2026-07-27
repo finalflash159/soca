@@ -77,6 +77,16 @@ def test_unknown_valtec_voice_is_rejected(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.parametrize("threshold", [True, False])
+def test_boolean_intent_threshold_is_rejected(tmp_path: Path, threshold: bool) -> None:
+    with pytest.raises(ValueError, match="threshold"):
+        resolve_voice_runtime_config(
+            profile_key="baseline",
+            vault=tmp_path,
+            knowledge_intent_threshold=threshold,
+        )
+
+
 def test_voice_runtime_uses_shared_knowledge_setup(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from types import MappingProxyType
 
 from soca.knowledge.base import KnowledgeDocument
 
@@ -120,6 +122,9 @@ class VaultIndex:
     vault_path: str
     records: tuple[IndexedFile, ...]
     index_version: int = INDEX_VERSION
+    _all_chunks: tuple[MarkdownChunk, ...] = field(init=False, repr=False, compare=False)
+    _chunk_lookup: Mapping[str, MarkdownChunk] = field(init=False, repr=False, compare=False)
+    _content_digest: str = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not self.vault_path:
@@ -129,6 +134,22 @@ class VaultIndex:
         paths = [record.document.path for record in self.records]
         if paths != sorted(paths) or len(paths) != len(set(paths)):
             raise ValueError("index records must have unique sorted paths")
+        all_chunks = tuple(chunk for record in self.records for chunk in record.chunks)
+        chunk_lookup = {chunk.chunk_id: chunk for chunk in all_chunks}
+        if len(chunk_lookup) != len(all_chunks):
+            raise ValueError("index chunk ids must be unique")
+        digest = hashlib.sha256()
+        for record in self.records:
+            digest.update(record.document.path.encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(record.fingerprint.content_sha256.encode("ascii"))
+            digest.update(b"\0")
+            for chunk in record.chunks:
+                digest.update(chunk.chunk_id.encode("utf-8"))
+                digest.update(b"\0")
+        object.__setattr__(self, "_all_chunks", all_chunks)
+        object.__setattr__(self, "_chunk_lookup", MappingProxyType(chunk_lookup))
+        object.__setattr__(self, "_content_digest", digest.hexdigest())
 
     @property
     def documents(self) -> tuple[KnowledgeDocument, ...]:
@@ -136,20 +157,11 @@ class VaultIndex:
 
     @property
     def chunks(self) -> tuple[MarkdownChunk, ...]:
-        return tuple(chunk for record in self.records for chunk in record.chunks)
+        return self._all_chunks
 
     @property
     def content_digest(self) -> str:
-        digest = hashlib.sha256()
-        for record in self.records:
-            digest.update(record.document.path.encode("utf-8"))
-            digest.update(b"\0")
-            digest.update(record.document.text.encode("utf-8"))
-            digest.update(b"\0")
-            for chunk in record.chunks:
-                digest.update(chunk.chunk_id.encode("utf-8"))
-                digest.update(b"\0")
-        return digest.hexdigest()
+        return self._content_digest
 
     def document_by_path(self, path: str) -> KnowledgeDocument | None:
         return next(
@@ -158,4 +170,4 @@ class VaultIndex:
         )
 
     def chunk_by_id(self, chunk_id: str) -> MarkdownChunk | None:
-        return next((chunk for chunk in self.chunks if chunk.chunk_id == chunk_id), None)
+        return self._chunk_lookup.get(chunk_id)
