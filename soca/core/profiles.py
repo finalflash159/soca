@@ -26,6 +26,11 @@ class VoiceRuntimeProfile:
     first_clause_max_scan_chars: int = 80
     pcm_crossfade_enabled: bool = True
     pcm_crossfade_ms: float = 12.0
+    knowledge_limit: int = 3
+    knowledge_retrieval_mode: str = "cached_sparse"
+    knowledge_dense_backend: str = "fastembed"
+    voice_knowledge_mode: str = "off"
+    knowledge_intent_threshold: float | None = None
 
 
 DEFAULT_VOICE_RUNTIME_PROFILE_KEY = "baseline"
@@ -71,5 +76,25 @@ def validate_voice_runtime_profiles() -> list[str]:
         if profile.tts_voice not in VALTEC_TTS_CONFIG.voices:
             valid = ", ".join(VALTEC_TTS_CONFIG.voices)
             errors.append(f"{key}: unknown Valtec voice {profile.tts_voice!r}; valid: {valid}")
+        if isinstance(profile.knowledge_limit, bool) or profile.knowledge_limit < 1:
+            errors.append(f"{key}: knowledge_limit must be positive")
+        if profile.knowledge_retrieval_mode not in {"cached_sparse", "hybrid"}:
+            errors.append(f"{key}: unknown knowledge retrieval mode")
+        if profile.knowledge_dense_backend not in {"fastembed", "model2vec"}:
+            errors.append(f"{key}: unknown knowledge dense backend")
+        if profile.voice_knowledge_mode not in {"off", "intent", "always"}:
+            errors.append(f"{key}: unknown voice knowledge mode")
+        if (
+            profile.knowledge_intent_threshold is not None
+            and not 0 <= profile.knowledge_intent_threshold <= 1
+        ):
+            errors.append(f"{key}: knowledge_intent_threshold must be between 0 and 1")
+        if profile.voice_knowledge_mode == "intent" and profile.knowledge_intent_threshold is None:
+            errors.append(f"{key}: intent mode requires knowledge_intent_threshold")
+        if (
+            profile.voice_knowledge_mode == "intent"
+            and profile.knowledge_retrieval_mode != "hybrid"
+        ):
+            errors.append(f"{key}: intent mode requires hybrid retrieval")
 
     return errors

@@ -5,7 +5,6 @@ Used for mel spectrogram extraction in zero-shot voice cloning.
 
 import torch
 import torch.utils.data
-import librosa
 from librosa.filters import mel as librosa_mel_fn
 
 MAX_WAV_VALUE = 32768.0

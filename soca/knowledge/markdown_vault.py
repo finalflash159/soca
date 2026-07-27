@@ -4,8 +4,11 @@ import math
 import re
 import unicodedata
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
+from itertools import chain
 from pathlib import Path
+from types import MappingProxyType
 
 from soca.knowledge.base import KnowledgeDocument, KnowledgeHit
 
@@ -13,6 +16,15 @@ TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 DEFAULT_EXCLUDE_DIRS = (".obsidian", ".trash", "private")
 DEFAULT_EXCLUDE_FILES = ("index.md", "log.md")
 DEFAULT_INCLUDE_GLOBS = ("**/*.md",)
+
+
+def _validate_include_globs(patterns: tuple[str, ...]) -> None:
+    for pattern in patterns:
+        if not isinstance(pattern, str) or not pattern or "\\" in pattern:
+            raise ValueError("include globs must be non-empty POSIX strings")
+        parts = Path(pattern).parts
+        if Path(pattern).is_absolute() or ".." in parts:
+            raise ValueError("include globs must stay relative to the vault")
 
 
 @dataclass(frozen=True)
@@ -75,6 +87,7 @@ class MarkdownVaultKnowledgeSource:
         self.exclude_dirs = exclude_dirs
         self.exclude_files = exclude_files
         self.include_globs = include_globs
+        _validate_include_globs(self.include_globs)
         self.max_file_bytes = max_file_bytes
         self.scoring = scoring or SearchScoringConfig()
 
@@ -124,136 +137,183 @@ class MarkdownVaultKnowledgeSource:
         tags = re.findall(r"(?<!\w)#([\w/-]+)", text)
         return tuple(sorted(set(tags)))
 
+    def iter_paths(self) -> tuple[str, ...]:
+        return tuple(path.relative_to(self.root).as_posix() for path in self._iter_markdown_files())
+
+    def _has_symlink_component(self, candidate: Path) -> bool:
+        current = self.root
+        for part in candidate.relative_to(self.root).parts:
+            current = current / part
+            if current.is_symlink():
+                return True
+        return False
+
     def _iter_markdown_files(self) -> list[Path]:
-        files: list[Path] = []
+        files_by_path: dict[str, Path] = {}
 
         for pattern in self.include_globs:
-            for path in self.root.glob(pattern):
+            for candidate in self.root.glob(pattern):
+                try:
+                    candidate.relative_to(self.root)
+                    if self._has_symlink_component(candidate):
+                        continue
+                    path = candidate.resolve(strict=True)
+                    path.relative_to(self.root)
+                except (FileNotFoundError, OSError, ValueError):
+                    continue
+
                 if not path.is_file():
                     continue
                 if path.name in self.exclude_files:
                     continue
                 if self._is_excluded(path):
                     continue
-                if path.stat().st_size > self.max_file_bytes:
-                    continue
                 if path.suffix.lower() != ".md":
                     continue
+                try:
+                    if path.stat().st_size > self.max_file_bytes:
+                        continue
+                except OSError:
+                    continue
 
-                files.append(path)
-        return sorted(files)
+                relative = path.relative_to(self.root).as_posix()
+                files_by_path[relative] = path
+
+        return [files_by_path[path] for path in sorted(files_by_path)]
 
     def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
+        documents = tuple(self.read(path) for path in self.iter_paths())
+        return self._search_documents(query, documents, limit=limit)
+
+    def _search_documents(
+        self,
+        query: str,
+        documents: tuple[KnowledgeDocument, ...],
+        *,
+        limit: int,
+    ) -> list[KnowledgeHit]:
+        return self._search_lexical_snapshot(
+            query,
+            prepare_lexical_snapshot(documents),
+            limit=limit,
+        )
+
+    def _search_lexical_snapshot(
+        self,
+        query: str,
+        snapshot: LexicalSnapshot,
+        *,
+        limit: int,
+    ) -> list[KnowledgeHit]:
         query_terms = tokenize_terms(query)
         query_term_set = set(query_terms)
         if not query_term_set:
             return []
 
-        docs: list[KnowledgeDocument] = []
-        for path in self._iter_markdown_files():
-            docs.append(self.read(path.relative_to(self.root).as_posix()))
-
-        document_frequencies = self._document_frequencies(docs)
         query_phrase = " ".join(query_terms)
         query_bigrams = set(zip(query_terms, query_terms[1:], strict=False))
         hits: list[KnowledgeHit] = []
 
-        for doc in docs:
-            score = self._score(
+        for entry in snapshot.entries:
+            score = self._score_prepared(
                 query_term_set=query_term_set,
                 query_phrase=query_phrase,
                 query_bigrams=query_bigrams,
-                document_frequencies=document_frequencies,
-                document_count=len(docs),
-                doc=doc,
+                document_frequencies=snapshot.document_frequencies,
+                document_count=len(snapshot.entries),
+                entry=entry,
             )
             if score <= 0:
                 continue
-
             hits.append(
                 KnowledgeHit(
-                    document=doc,
+                    document=entry.document,
                     score=score,
-                    snippet=self._make_snippet(doc.text, query_term_set),
+                    snippet=self._make_snippet(
+                        entry.document.text,
+                        query_term_set,
+                    ),
                 )
             )
 
         hits.sort(key=lambda hit: (-hit.score, hit.document.path))
         return hits[:limit]
 
-    def _document_frequencies(self, docs: list[KnowledgeDocument]) -> Counter[str]:
-        frequencies: Counter[str] = Counter()
-        for doc in docs:
-            frequencies.update(set(self._document_terms(doc)))
-        return frequencies
-
-    def _document_terms(self, doc: KnowledgeDocument) -> tuple[str, ...]:
-        tag_text = " ".join(doc.tags)
-        path_text = doc.path.replace("/", " ").replace("-", " ")
-        return tokenize_terms(f"{doc.title} {path_text} {tag_text} {doc.text}")
-
-    def _score(
+    def _score_prepared(
         self,
         *,
         query_term_set: set[str],
         query_phrase: str,
         query_bigrams: set[tuple[str, str]],
-        document_frequencies: Counter[str],
+        document_frequencies: Mapping[str, int],
         document_count: int,
-        doc: KnowledgeDocument,
+        entry: PreparedLexicalDocument,
     ) -> float:
-        title_terms = tokenize_terms(doc.title)
-        path_terms = tokenize_terms(doc.path.replace("/", " ").replace("-", " "))
-        tag_terms = tokenize_terms(" ".join(doc.tags))
-        body_terms = tokenize_terms(doc.text)
-
-        title_counter = Counter(title_terms)
-        path_counter = Counter(path_terms)
-        tag_counter = Counter(tag_terms)
-        body_counter = Counter(body_terms)
         scoring = self.scoring
-
         return (
             self._field_score(
                 query_term_set,
-                title_counter,
+                entry.title_counter,
                 document_frequencies,
                 document_count,
                 weight=scoring.title_weight,
             )
             + self._field_score(
                 query_term_set,
-                tag_counter,
+                entry.tag_counter,
                 document_frequencies,
                 document_count,
                 weight=scoring.tag_weight,
             )
             + self._field_score(
                 query_term_set,
-                path_counter,
+                entry.path_counter,
                 document_frequencies,
                 document_count,
                 weight=scoring.path_weight,
             )
             + self._field_score(
                 query_term_set,
-                body_counter,
+                entry.body_counter,
                 document_frequencies,
                 document_count,
                 weight=scoring.body_weight,
             )
-            + self._phrase_score(query_phrase, doc, title_terms, tag_terms, path_terms, body_terms)
-            + self._bigram_score(query_bigrams, title_terms, weight=scoring.title_bigram_weight)
-            + self._bigram_score(query_bigrams, tag_terms, weight=scoring.tag_bigram_weight)
-            + self._bigram_score(query_bigrams, path_terms, weight=scoring.path_bigram_weight)
-            + self._bigram_score(query_bigrams, body_terms, weight=scoring.body_bigram_weight)
+            + self._phrase_score(
+                query_phrase,
+                entry.document,
+                entry.title_terms,
+                entry.tag_terms,
+                entry.path_terms,
+                entry.body_terms,
+            )
+            + self._bigram_score(
+                query_bigrams,
+                entry.title_terms,
+                weight=scoring.title_bigram_weight,
+            )
+            + self._bigram_score(
+                query_bigrams,
+                entry.tag_terms,
+                weight=scoring.tag_bigram_weight,
+            )
+            + self._bigram_score(
+                query_bigrams,
+                entry.path_terms,
+                weight=scoring.path_bigram_weight,
+            )
+            + self._bigram_score(
+                query_bigrams,
+                entry.body_terms,
+                weight=scoring.body_bigram_weight,
+            )
         )
 
     def _field_score(
         self,
         query_terms: set[str],
-        field_counter: Counter[str],
-        document_frequencies: Counter[str],
+        field_counter: Mapping[str, int],
+        document_frequencies: Mapping[str, int],
         document_count: int,
         *,
         weight: float,
@@ -302,7 +362,9 @@ class MarkdownVaultKnowledgeSource:
                 score += self.scoring.wiki_link_phrase_weight
         return score
 
-    def _bigram_score(self, query_bigrams: set[tuple[str, str]], field_terms: tuple[str, ...], *, weight: float) -> float:
+    def _bigram_score(
+        self, query_bigrams: set[tuple[str, str]], field_terms: tuple[str, ...], *, weight: float
+    ) -> float:
         if not query_bigrams or len(field_terms) < 2:
             return 0.0
         field_bigrams = set(zip(field_terms, field_terms[1:], strict=False))
@@ -327,7 +389,9 @@ class MarkdownVaultKnowledgeSource:
             start = max(0, best_index - 2)
             end = min(len(lines), best_index + 5)
             snippet = "\n".join(
-                candidate for candidate in lines[start:end] if not is_low_value_snippet_line(candidate)
+                candidate
+                for candidate in lines[start:end]
+                if not is_low_value_snippet_line(candidate)
             )
             return snippet if len(snippet) <= max_chars else snippet[:max_chars] + "..."
 
@@ -337,3 +401,69 @@ class MarkdownVaultKnowledgeSource:
                 return snippet if len(snippet) <= max_chars else snippet[:max_chars] + "..."
 
         return ""
+
+
+@dataclass(frozen=True)
+class PreparedLexicalDocument:
+    document: KnowledgeDocument
+    title_terms: tuple[str, ...]
+    tag_terms: tuple[str, ...]
+    path_terms: tuple[str, ...]
+    body_terms: tuple[str, ...]
+    title_counter: Mapping[str, int]
+    tag_counter: Mapping[str, int]
+    path_counter: Mapping[str, int]
+    body_counter: Mapping[str, int]
+
+    def __post_init__(self) -> None:
+        for name in (
+            "title_counter",
+            "tag_counter",
+            "path_counter",
+            "body_counter",
+        ):
+            object.__setattr__(
+                self,
+                name,
+                MappingProxyType(dict(getattr(self, name))),
+            )
+
+
+@dataclass(frozen=True)
+class LexicalSnapshot:
+    entries: tuple[PreparedLexicalDocument, ...]
+    document_frequencies: Mapping[str, int]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "document_frequencies",
+            MappingProxyType(dict(self.document_frequencies)),
+        )
+
+
+def prepare_lexical_snapshot(
+    documents: tuple[KnowledgeDocument, ...],
+) -> LexicalSnapshot:
+    entries: list[PreparedLexicalDocument] = []
+    frequencies: Counter[str] = Counter()
+    for document in documents:
+        title_terms = tokenize_terms(document.title)
+        tag_terms = tokenize_terms(" ".join(document.tags))
+        path_terms = tokenize_terms(document.path.replace("/", " ").replace("-", " "))
+        body_terms = tokenize_terms(document.text)
+        frequencies.update(set(chain(title_terms, tag_terms, path_terms, body_terms)))
+        entries.append(
+            PreparedLexicalDocument(
+                document=document,
+                title_terms=title_terms,
+                tag_terms=tag_terms,
+                path_terms=path_terms,
+                body_terms=body_terms,
+                title_counter=Counter(title_terms),
+                tag_counter=Counter(tag_terms),
+                path_counter=Counter(path_terms),
+                body_counter=Counter(body_terms),
+            )
+        )
+    return LexicalSnapshot(tuple(entries), frequencies)

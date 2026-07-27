@@ -3,7 +3,7 @@ Monotonic alignment package
 """
 
 import numba
-from numpy import zeros, int32, float32
+from numpy import float32, int32, zeros
 from torch import from_numpy
 
 
