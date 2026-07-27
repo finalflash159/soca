@@ -1,19 +1,17 @@
-import argparse
-import glob
-import json
-import logging
 import os
+import glob
+import argparse
+import logging
+import json
 import subprocess
-
-import librosa
 import numpy as np
+from scipy.io.wavfile import read
 import torch
 import torchaudio
-from scipy.io.wavfile import read
-
-from src.nn import commons
+import librosa
 from src.text import cleaned_text_to_sequence
 from src.text.cleaner import clean_text
+from src.nn import commons
 
 MATPLOTLIB_FLAG = False
 
@@ -112,7 +110,7 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, skip_optimizer=False
         model.load_state_dict(new_state_dict, strict=False)
 
     logger.info(
-        f"Loaded checkpoint '{checkpoint_path}' (iteration {iteration})"
+        "Loaded checkpoint '{}' (iteration {})".format(checkpoint_path, iteration)
     )
 
     return model, optimizer, learning_rate, iteration
@@ -120,7 +118,9 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, skip_optimizer=False
 
 def save_checkpoint(model, optimizer, learning_rate, iteration, checkpoint_path):
     logger.info(
-        f"Saving model and optimizer state at iteration {iteration} to {checkpoint_path}"
+        "Saving model and optimizer state at iteration {} to {}".format(
+            iteration, checkpoint_path
+        )
     )
     if hasattr(model, "module"):
         state_dict = model.module.state_dict()
@@ -297,12 +297,12 @@ def get_hparams(init=True):
     config_path = args.config
     config_save_path = os.path.join(model_dir, "config.json")
     if init:
-        with open(config_path) as f:
+        with open(config_path, "r") as f:
             data = f.read()
         with open(config_save_path, "w") as f:
             f.write(data)
     else:
-        with open(config_save_path) as f:
+        with open(config_save_path, "r") as f:
             data = f.read()
     config = json.loads(data)
 
@@ -362,7 +362,7 @@ def clean_checkpoints(path_to_models="logs/44k/", n_ckpts_to_keep=2, sort_by_tim
 
 def get_hparams_from_dir(model_dir):
     config_save_path = os.path.join(model_dir, "config.json")
-    with open(config_save_path, encoding="utf-8") as f:
+    with open(config_save_path, "r", encoding="utf-8") as f:
         data = f.read()
     config = json.loads(data)
 
@@ -372,7 +372,7 @@ def get_hparams_from_dir(model_dir):
 
 
 def get_hparams_from_file(config_path):
-    with open(config_path, encoding="utf-8") as f:
+    with open(config_path, "r", encoding="utf-8") as f:
         data = f.read()
     config = json.loads(data)
 
@@ -384,7 +384,9 @@ def check_git_hash(model_dir):
     source_dir = os.path.dirname(os.path.realpath(__file__))
     if not os.path.exists(os.path.join(source_dir, ".git")):
         logger.warn(
-            f"{source_dir} is not a git repository, therefore hash value comparison will be ignored."
+            "{} is not a git repository, therefore hash value comparison will be ignored.".format(
+                source_dir
+            )
         )
         return
 
@@ -395,7 +397,9 @@ def check_git_hash(model_dir):
         saved_hash = open(path).read()
         if saved_hash != cur_hash:
             logger.warn(
-                f"git hash values are different. {saved_hash[:8]}(saved) != {cur_hash[:8]}(current)"
+                "git hash values are different. {}(saved) != {}(current)".format(
+                    saved_hash[:8], cur_hash[:8]
+                )
             )
     else:
         open(path, "w").write(cur_hash)

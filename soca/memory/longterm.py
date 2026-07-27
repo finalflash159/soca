@@ -2,12 +2,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from soca.core.text_budget import truncate
-
 DEFAULT_PROFILE_PATH = Path("memory/profile.md")
 
 
+def _truncate(text: str, max_chars: int) -> str:
+    text = text.strip()
+    if max_chars <= 0:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 3:
+        return text[:max_chars]
+    return text[: max_chars - 3].rstrip() + "..."
+
+
 class MarkdownLongTermMemory:
+    """Read-only long-term profile memory from a local Markdown vault."""
+
     def __init__(
         self,
         vault_root: str | Path,
@@ -35,7 +46,7 @@ class MarkdownLongTermMemory:
         if not path.is_file():
             return ""
 
-        return truncate(path.read_text(encoding="utf-8"), self.max_chars)
+        return _truncate(path.read_text(encoding="utf-8"), self.max_chars)
 
     def _resolve_profile_path(self) -> Path:
         candidate = (self.root / self.profile_path).resolve()

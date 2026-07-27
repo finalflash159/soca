@@ -134,17 +134,6 @@ def test_knowledge_search_tool_returns_hits(tmp_path: Path) -> None:
     assert result.data["hits"][0]["path"] == "wiki/nutrition.md"
 
 
-def test_knowledge_search_tool_omits_line_range_when_source_has_none(
-    tmp_path: Path,
-) -> None:
-    source = make_vault(tmp_path)
-    result = KnowledgeSearchTool(source).run({"query": "ăn rau xanh", "limit": 2})
-
-    hit = result.data["hits"][0]
-    assert "line_start" not in hit
-    assert "line_end" not in hit
-
-
 def test_knowledge_read_tool_reads_relative_markdown_path(tmp_path: Path) -> None:
     source = make_vault(tmp_path)
     tool = KnowledgeReadTool(source)

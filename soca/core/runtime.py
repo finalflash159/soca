@@ -31,7 +31,6 @@ from soca.core.turn import (
 )
 from soca.core.usage import LLMUsage
 from soca.knowledge import KnowledgeCitation, KnowledgeContext, KnowledgeContextBuilder
-from soca.knowledge.intent_gate import IntentDecision, VoiceKnowledgeMode
 from soca.llm import LLMEngine
 from soca.memory import MemoryContext, MemoryContextBuilder
 from soca.prompts import build_runtime_prompt
@@ -44,15 +43,6 @@ class RuntimeOptions:
     temperature: float = 0.2
     top_p: float = 0.95
     knowledge_limit: int = 3
-    voice_knowledge_mode: VoiceKnowledgeMode = "off"
-
-    def __post_init__(self) -> None:
-        if self.voice_knowledge_mode not in {"off", "intent", "always"}:
-            raise ValueError("voice_knowledge_mode must be off, intent, or always")
-
-
-class KnowledgeIntentGate(Protocol):
-    def evaluate(self, query: str, *, limit: int) -> IntentDecision: ...
 
 
 class RuntimeToolRouter(Protocol):
@@ -134,7 +124,6 @@ class AssistantRuntime:
         tool_runtime: ToolRuntime | None = None,
         tool_router: RuntimeToolRouter | None = None,
         knowledge_builder: KnowledgeContextBuilder | None = None,
-        knowledge_intent_gate: KnowledgeIntentGate | None = None,
         memory_builder: MemoryContextBuilder | None = None,
         guardrail_policy: GuardrailPolicy = DEFAULT_POLICY,
         options: RuntimeOptions | None = None,
@@ -143,7 +132,6 @@ class AssistantRuntime:
         self.tool_runtime = tool_runtime or ToolRuntime()
         self.tool_router = tool_router or DefaultRuntimeToolRouter()
         self.knowledge_builder = knowledge_builder
-        self.knowledge_intent_gate = knowledge_intent_gate
         self.memory_builder = memory_builder
         self.guardrail_policy = guardrail_policy
         self.options = options or RuntimeOptions()
@@ -640,30 +628,12 @@ class AssistantRuntime:
     ) -> KnowledgeContext | None:
         if self.knowledge_builder is None:
             return None
+        if not self._should_build_knowledge_context(frame):
+            return None
+
         query = str(frame.metadata.get("knowledge_query") or frame.text)
-        explicit = self._should_build_knowledge_context(frame)
-        hits = None
-        if not explicit:
-            if frame.source != "asr" or self.options.voice_knowledge_mode == "off":
-                return None
-            if self.options.voice_knowledge_mode == "always":
-                pass
-            elif self.knowledge_intent_gate is not None:
-                with self._stage(draft, "knowledge_intent"):
-                    decision = self.knowledge_intent_gate.evaluate(
-                        query, limit=self.options.knowledge_limit
-                    )
-                if not decision.use_knowledge:
-                    return None
-                hits = decision.hits
-            else:
-                return None
         with self._stage(draft, "knowledge_context"):
-            context = (
-                self.knowledge_builder.build_from_hits(query, hits)
-                if hits is not None
-                else self.knowledge_builder.build(query)
-            )
+            context = self.knowledge_builder.build(query)
 
         draft.knowledge_hits.extend(context.hits)
         draft.citations.extend(context.citations)
@@ -773,14 +743,7 @@ class AssistantRuntime:
                 path = str(hit.get("path", ""))
                 title = str(hit.get("title", path))
                 if path:
-                    citations.append(
-                        KnowledgeCitation(
-                            path=path,
-                            title=title,
-                            line_start=hit.get("line_start"),
-                            line_end=hit.get("line_end"),
-                        )
-                    )
+                    citations.append(KnowledgeCitation(path=path, title=title))
             return tuple(citations)
 
         path = str(result.data.get("path", ""))

@@ -1,14 +1,16 @@
-import os
-import queue
-import re
 import sys
+import os
 import threading
+import queue
 import time
-from concurrent.futures import ThreadPoolExecutor
+import tkinter as tk
 from tkinter import filedialog, messagebox
-
-import customtkinter as ctk
+import re
+import numpy as np
 import soundfile as sf
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+import customtkinter as ctk
 
 # Cấu hình CustomTkinter - Modern Theme
 ctk.set_appearance_mode("System")  # Modes: "System", "Dark", "Light"
@@ -92,30 +94,30 @@ class IconButton(ctk.CTkButton):
 class ValtecTTSApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-
+        
         self.title("Valtec TTS - Tiếng Việt")
         self.geometry("1200x800")
         self.minsize(1000, 700)
-
+        
         # Cấu hình grid chính
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(0, weight=1)
-
+        
         # Variables
         self.tts = None
         self.speakers = []
         self.audio_results = {}
         self.task_counter = 0
-
+        
         # Thread pool - increased for multi-line processing
         self.executor = ThreadPoolExecutor(max_workers=4)
         self.pending_tasks = 0
         self.log_queue = queue.Queue()
-
+        
         # Setup UI
         self.setup_header()
         self.setup_main_layout()
-
+        
         # Bắt đầu theo dõi hàng đợi log
         self.after(100, self.process_log_queue)
 
@@ -134,18 +136,18 @@ class ValtecTTSApp(ctk.CTk):
         self.header = ctk.CTkFrame(self, height=60, corner_radius=0, fg_color=COLORS["bg_card"])
         self.header.grid(row=0, column=0, sticky="ew")
         self.header.grid_columnconfigure(1, weight=1)
-
+        
         # Logo và tiêu đề
         logo_frame = ctk.CTkFrame(self.header, fg_color="transparent")
         logo_frame.grid(row=0, column=0, padx=20, pady=10)
-
+        
         logo_icon = ctk.CTkLabel(
-            logo_frame,
-            text="🔊",
+            logo_frame, 
+            text="🔊", 
             font=ctk.CTkFont(size=24)
         )
         logo_icon.pack(side="left", padx=(0, 10))
-
+        
         logo_text = ctk.CTkLabel(
             logo_frame,
             text="Valtec TTS",
@@ -153,7 +155,7 @@ class ValtecTTSApp(ctk.CTk):
             text_color=COLORS["text_primary"]
         )
         logo_text.pack(side="left")
-
+        
         version_label = ctk.CTkLabel(
             logo_frame,
             text="v1.0.5",
@@ -164,11 +166,11 @@ class ValtecTTSApp(ctk.CTk):
             width=40
         )
         version_label.pack(side="left", padx=(10, 0))
-
+        
         # Status indicator
         self.status_frame = ctk.CTkFrame(self.header, fg_color="transparent")
         self.status_frame.grid(row=0, column=2, padx=20, pady=10)
-
+        
         self.status_dot = ctk.CTkLabel(
             self.status_frame,
             text="●",
@@ -176,7 +178,7 @@ class ValtecTTSApp(ctk.CTk):
             text_color=COLORS["warning"]
         )
         self.status_dot.pack(side="left", padx=(0, 5))
-
+        
         self.status_text = ctk.CTkLabel(
             self.status_frame,
             text="Đang khởi tạo...",
@@ -191,30 +193,30 @@ class ValtecTTSApp(ctk.CTk):
         self.main_container.grid(row=1, column=0, sticky="nsew")
         self.main_container.grid_columnconfigure(1, weight=1)
         self.main_container.grid_rowconfigure(0, weight=1)
-
+        
         # Sidebar
         self.setup_sidebar()
-
+        
         # Content area
         self.setup_content_area()
 
     def setup_sidebar(self):
         """Setup modern sidebar"""
         self.sidebar = ctk.CTkFrame(
-            self.main_container,
-            width=280,
+            self.main_container, 
+            width=280, 
             corner_radius=0,
             fg_color=COLORS["bg_card"]
         )
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_rowconfigure(3, weight=1)
-
+        
         # Section: Voice Settings
         self.create_section_header(self.sidebar, "⚙️ Cài đặt Giọng đọc", 0)
-
+        
         voice_card = ModernCard(self.sidebar)
         voice_card.grid(row=1, column=0, padx=15, pady=(0, 15), sticky="ew")
-
+        
         # Speaker selection
         speaker_label = ctk.CTkLabel(
             voice_card,
@@ -223,7 +225,7 @@ class ValtecTTSApp(ctk.CTk):
             text_color=COLORS["text_secondary"]
         )
         speaker_label.pack(anchor="w", padx=15, pady=(15, 5))
-
+        
         self.speaker_combo = ctk.CTkComboBox(
             voice_card,
             values=["Đang tải..."],
@@ -236,11 +238,11 @@ class ValtecTTSApp(ctk.CTk):
             button_hover_color=COLORS["primary_hover"]
         )
         self.speaker_combo.pack(fill="x", padx=15, pady=(0, 15))
-
+        
         # Speed control
         speed_header = ctk.CTkFrame(voice_card, fg_color="transparent")
         speed_header.pack(fill="x", padx=15, pady=(0, 5))
-
+        
         speed_label = ctk.CTkLabel(
             speed_header,
             text="⚡ Tốc độ",
@@ -248,7 +250,7 @@ class ValtecTTSApp(ctk.CTk):
             text_color=COLORS["text_secondary"]
         )
         speed_label.pack(side="left")
-
+        
         self.speed_value_label = ctk.CTkLabel(
             speed_header,
             text="1.00x",
@@ -256,7 +258,7 @@ class ValtecTTSApp(ctk.CTk):
             text_color=COLORS["primary_light"]
         )
         self.speed_value_label.pack(side="right")
-
+        
         self.speed_slider = ctk.CTkSlider(
             voice_card,
             from_=0.5,
@@ -269,13 +271,13 @@ class ValtecTTSApp(ctk.CTk):
         )
         self.speed_slider.set(1.0)
         self.speed_slider.pack(fill="x", padx=15, pady=(0, 15))
-
+        
         # Section: Tools
         self.create_section_header(self.sidebar, "🛠️ Công cụ", 2)
-
+        
         tools_card = ModernCard(self.sidebar)
         tools_card.grid(row=3, column=0, padx=15, pady=(0, 15), sticky="new")
-
+        
         self.load_btn = ModernButton(
             tools_card,
             text="📁  Mở File (.txt/.srt)",
@@ -283,7 +285,7 @@ class ValtecTTSApp(ctk.CTk):
             height=44
         )
         self.load_btn.pack(fill="x", padx=15, pady=(15, 10))
-
+        
         self.clear_btn = ctk.CTkButton(
             tools_card,
             text="🗑️  Xoá Nội Dung",
@@ -298,11 +300,11 @@ class ValtecTTSApp(ctk.CTk):
             font=ctk.CTkFont(size=13, weight="bold")
         )
         self.clear_btn.pack(fill="x", padx=15, pady=(0, 15))
-
+        
         # Multi-line mode toggle
         multiline_frame = ctk.CTkFrame(voice_card, fg_color="transparent")
         multiline_frame.pack(fill="x", padx=15, pady=(0, 15))
-
+        
         self.multiline_var = ctk.BooleanVar(value=False)
         self.multiline_switch = ctk.CTkSwitch(
             multiline_frame,
@@ -315,15 +317,15 @@ class ValtecTTSApp(ctk.CTk):
             button_hover_color=COLORS["primary_hover"]
         )
         self.multiline_switch.pack(anchor="w")
-
+        
         # Separator line
         separator = ctk.CTkFrame(voice_card, height=1, fg_color=COLORS["border"])
         separator.pack(fill="x", padx=15, pady=(0, 15))
-
+        
         # Stats at bottom
         stats_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         stats_frame.grid(row=4, column=0, padx=15, pady=15, sticky="ew")
-
+        
         self.stats_label = ctk.CTkLabel(
             stats_frame,
             text="📊 0 Audio đã tạo",
@@ -349,17 +351,17 @@ class ValtecTTSApp(ctk.CTk):
         self.content.grid_columnconfigure(0, weight=1)
         self.content.grid_rowconfigure(1, weight=2)
         self.content.grid_rowconfigure(2, weight=3)
-
+        
         # Input Card
         input_card = ModernCard(self.content)
         input_card.grid(row=1, column=0, sticky="nsew", pady=(0, 15))
         input_card.grid_columnconfigure(0, weight=1)
         input_card.grid_rowconfigure(1, weight=1)
-
+        
         # Input header
         input_header = ctk.CTkFrame(input_card, fg_color="transparent", height=50)
         input_header.grid(row=0, column=0, sticky="ew", padx=20, pady=(10, 0))
-
+        
         input_title = ctk.CTkLabel(
             input_header,
             text="📝 Nhập văn bản",
@@ -367,7 +369,7 @@ class ValtecTTSApp(ctk.CTk):
             text_color=COLORS["text_primary"]
         )
         input_title.pack(side="left")
-
+        
         char_count = ctk.CTkLabel(
             input_header,
             text="0 ký tự",
@@ -376,7 +378,7 @@ class ValtecTTSApp(ctk.CTk):
         )
         char_count.pack(side="right")
         self.char_count_label = char_count
-
+        
         # Text input
         self.text_input = ctk.CTkTextbox(
             input_card,
@@ -387,14 +389,14 @@ class ValtecTTSApp(ctk.CTk):
         )
         self.text_input.grid(row=1, column=0, padx=20, pady=10, sticky="nsew")
         self.text_input.insert("0.0", "Nhập văn bản tiếng Việt vào đây...\n\n💡 Mẹo: Bật 'Xử lý từng dòng riêng biệt' để tạo nhiều audio từ nhiều dòng văn bản cùng lúc")
-
+        
         # Bind text change
         self.text_input.bind("<KeyRelease>", lambda e: self._update_char_count())
-
+        
         # Generate button bar
         btn_frame = ctk.CTkFrame(input_card, fg_color="transparent")
         btn_frame.grid(row=2, column=0, sticky="ew", padx=20, pady=(0, 15))
-
+        
         self.generate_btn = ModernButton(
             btn_frame,
             text="🚀 Tạo Audio",
@@ -404,13 +406,13 @@ class ValtecTTSApp(ctk.CTk):
             font=ctk.CTkFont(size=15, weight="bold")
         )
         self.generate_btn.pack(fill="x")
-
+        
         # Results & Log Tabs
         results_card = ModernCard(self.content)
         results_card.grid(row=2, column=0, sticky="nsew")
         results_card.grid_columnconfigure(0, weight=1)
         results_card.grid_rowconfigure(0, weight=1)
-
+        
         self.tabview = ctk.CTkTabview(
             results_card,
             corner_radius=8,
@@ -421,13 +423,13 @@ class ValtecTTSApp(ctk.CTk):
             text_color=COLORS["text_secondary"]
         )
         self.tabview.grid(row=0, column=0, padx=15, pady=15, sticky="nsew")
-
+        
         # Audio List Tab
         self.tabview.add("🎵 Danh sách Audio")
         audio_tab = self.tabview.tab("🎵 Danh sách Audio")
         audio_tab.grid_columnconfigure(0, weight=1)
         audio_tab.grid_rowconfigure(0, weight=1)
-
+        
         # Scrollable frame for audio items
         self.audio_list_frame = ctk.CTkScrollableFrame(
             audio_tab,
@@ -435,18 +437,18 @@ class ValtecTTSApp(ctk.CTk):
             corner_radius=0
         )
         self.audio_list_frame.grid(row=0, column=0, sticky="nsew")
-
+        
         # Empty state
         self.empty_state = ctk.CTkFrame(self.audio_list_frame, fg_color="transparent")
         self.empty_state.pack(expand=True, pady=50)
-
+        
         empty_icon = ctk.CTkLabel(
             self.empty_state,
             text="🎧",
             font=ctk.CTkFont(size=48)
         )
         empty_icon.pack()
-
+        
         empty_text = ctk.CTkLabel(
             self.empty_state,
             text="Chưa có audio nào được tạo",
@@ -454,13 +456,13 @@ class ValtecTTSApp(ctk.CTk):
             text_color=COLORS["text_secondary"]
         )
         empty_text.pack(pady=(10, 0))
-
+        
         # Log Tab
         self.tabview.add("📋 Log Hệ thống")
         log_tab = self.tabview.tab("📋 Log Hệ thống")
         log_tab.grid_columnconfigure(0, weight=1)
         log_tab.grid_rowconfigure(0, weight=1)
-
+        
         self.log_textbox = ctk.CTkTextbox(
             log_tab,
             font=ctk.CTkFont(family="Consolas", size=12),
@@ -489,7 +491,7 @@ class ValtecTTSApp(ctk.CTk):
             while True:
                 msg = self.log_queue.get_nowait()
                 self.log_textbox.configure(state="normal")
-
+                
                 # Color coding for different message types
                 if "✅" in msg or "Hoàn thành" in msg:
                     color = COLORS["success"]
@@ -499,7 +501,7 @@ class ValtecTTSApp(ctk.CTk):
                     color = COLORS["warning"]
                 else:
                     color = COLORS["text_primary"]
-
+                
                 self.log_textbox.insert("end", msg)
                 self.log_textbox.see("end")
                 self.log_textbox.configure(state="disabled")
@@ -534,14 +536,14 @@ class ValtecTTSApp(ctk.CTk):
         )
         if not filepath:
             return
-
+            
         try:
-            with open(filepath, encoding='utf-8') as f:
+            with open(filepath, 'r', encoding='utf-8') as f:
                 content = f.read()
-
+                
             if filepath.lower().endswith('.srt'):
                 content = self._parse_srt(content)
-
+                
             self.text_input.delete("0.0", "end")
             self.text_input.insert("0.0", content)
             self._update_char_count()
@@ -576,16 +578,16 @@ class ValtecTTSApp(ctk.CTk):
             self.speaker_combo.set("NF")
         elif self.speakers:
             self.speaker_combo.set(self.speakers[0])
-
+            
         self.generate_btn.configure(state="normal")
-
+        
         # Update status
         self.status_dot.configure(text_color=COLORS["success"])
         self.status_text.configure(
             text="Sẵn sàng",
             text_color=COLORS["success"]
         )
-
+        
         self.log("✅ Hệ thống đã sẵn sàng!")
 
     def _on_model_error(self, err_msg):
@@ -602,52 +604,52 @@ class ValtecTTSApp(ctk.CTk):
         if not full_text:
             messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập văn bản cần đọc!")
             return
-
+        
         speaker = self.speaker_combo.get()
         speed = self.speed_slider.get()
         is_multiline = self.multiline_var.get()
-
+        
         # Hide empty state
         self.empty_state.pack_forget()
-
+        
         if is_multiline:
             # Split by lines and process each non-empty line as separate task
             lines = [line.strip() for line in full_text.split('\n') if line.strip()]
             if not lines:
                 messagebox.showwarning("Thiếu thông tin", "Vui lòng nhập ít nhất một dòng văn bản!")
                 return
-
+            
             self.log(f"📋 Phát hiện {len(lines)} dòng văn bản để xử lý")
-
+            
             self.pending_tasks += len(lines)
             for line in lines:
                 task_id = self.task_counter
                 self.task_counter += 1
-
+                
                 # Tạo UI item cho Task mới
                 self._add_audio_item_ui(task_id, line, speaker)
                 self.log(f"🔄 Bắt đầu tác vụ #{task_id}: {line[:30]}...")
-
+                
                 # Submit task
                 self.executor.submit(self._do_generate, task_id, line, speaker, speed)
-
+            
             self.log(f"✅ Đã thêm {len(lines)} tác vụ vào hàng đợi")
         else:
             # Process as single text
             task_id = self.task_counter
             self.task_counter += 1
             self.pending_tasks += 1
-
+            
             # Tạo UI item cho Task mới
             self._add_audio_item_ui(task_id, full_text, speaker)
             self.log(f"🔄 Bắt đầu tác vụ #{task_id}: {full_text[:30]}...")
-
+            
             # Submit task
             self.executor.submit(self._do_generate, task_id, full_text, speaker, speed)
-
+        
         # Update stats
         self._update_stats()
-
+        
     def _do_generate(self, task_id, text, speaker, speed):
         start_time = time.time()
         try:
@@ -673,11 +675,11 @@ class ValtecTTSApp(ctk.CTk):
         """Thêm card hiển thị cho audio đang xử lý"""
         item_card = ModernCard(self.audio_list_frame)
         item_card.pack(fill="x", padx=5, pady=8)
-
+        
         # Header with speaker badge
         header = ctk.CTkFrame(item_card, fg_color="transparent")
         header.pack(fill="x", padx=15, pady=(15, 10))
-
+        
         speaker_badge = ctk.CTkLabel(
             header,
             text=f"🎙️ {speaker}",
@@ -697,7 +699,7 @@ class ValtecTTSApp(ctk.CTk):
             text_color=COLORS["warning"]
         )
         status_label.pack(side="right")
-
+        
         # Preview text
         preview_text = text[:60] + ("..." if len(text) > 60 else "")
         info_label = ctk.CTkLabel(
@@ -744,17 +746,17 @@ class ValtecTTSApp(ctk.CTk):
         status_label = ui_elements["status_label"]
         action_frame = ui_elements["action_frame"]
         progress_bar = ui_elements["progress_bar"]
-
+        
         # Stop and hide progress bar
         progress_bar.stop()
         progress_bar.pack_forget()
-
+        
         if success:
             status_label.configure(
                 text=f"✅ Hoàn thành ({data:.1f}s)",
                 text_color=COLORS["success"]
             )
-
+            
             # Add action buttons
             play_btn = ctk.CTkButton(
                 action_frame,
@@ -768,7 +770,7 @@ class ValtecTTSApp(ctk.CTk):
                 command=lambda: self.play_audio(task_id)
             )
             play_btn.pack(side="left", padx=(0, 10))
-
+            
             save_btn = ctk.CTkButton(
                 action_frame,
                 text="💾  Lưu",
@@ -781,13 +783,13 @@ class ValtecTTSApp(ctk.CTk):
                 command=lambda: self.save_audio(task_id)
             )
             save_btn.pack(side="left")
-
+            
         else:
             status_label.configure(
                 text="❌ Thất bại",
                 text_color=COLORS["error"]
             )
-
+            
             error_btn = ctk.CTkButton(
                 action_frame,
                 text="Xem lỗi",
@@ -817,12 +819,12 @@ class ValtecTTSApp(ctk.CTk):
     def save_audio(self, task_id):
         if task_id not in self.audio_results:
             return
-
+        
         audio_data, sample_rate, text, speaker = self.audio_results[task_id]
-
+        
         safe_text = re.sub(r'[\\/*?:"<>|]', "", text[:20]).strip().replace(" ", "_")
         default_filename = f"{speaker}_{safe_text}.wav"
-
+        
         filepath = filedialog.asksaveasfilename(
             defaultextension=".wav",
             filetypes=(("WAV Audio", "*.wav"), ("All files", "*.*")),
@@ -831,7 +833,7 @@ class ValtecTTSApp(ctk.CTk):
         )
         if not filepath:
             return
-
+            
         try:
             sf.write(filepath, audio_data, sample_rate)
             msg = f"💾 Đã lưu: {os.path.basename(filepath)}"
@@ -839,7 +841,7 @@ class ValtecTTSApp(ctk.CTk):
             messagebox.showinfo("Thành công", msg)
         except Exception as e:
             messagebox.showerror("Lỗi Lưu", f"Không thể lưu file: {e}")
-
+            
     def destroy(self):
         """Dừng luồng trước khi thoát"""
         self.executor.shutdown(wait=False)

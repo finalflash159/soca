@@ -1,4 +1,0 @@
-{"id":"greeting_train","split":"train","text":"xin chào","expected":false}
-{"id":"question_train","split":"train","text":"Bayes là gì?","expected":true}
-{"id":"greeting_validation","split":"validation","text":"cảm ơn bạn","expected":false}
-{"id":"question_validation","split":"validation","text":"xác suất có điều kiện là gì?","expected":true}

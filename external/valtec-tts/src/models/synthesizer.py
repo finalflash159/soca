@@ -1,14 +1,17 @@
 import math
-
 import torch
 from torch import nn
-from torch.nn import Conv1d, Conv2d, ConvTranspose1d
 from torch.nn import functional as F
-from torch.nn.utils import remove_weight_norm, spectral_norm, weight_norm
 
+from src.nn import commons
+from src.nn import modules
+from src.nn import attentions
+
+from torch.nn import Conv1d, ConvTranspose1d, Conv2d
+from torch.nn.utils import weight_norm, remove_weight_norm, spectral_norm
+
+from src.nn.commons import init_weights, get_padding
 from src import alignment as monotonic_align
-from src.nn import attentions, commons, modules
-from src.nn.commons import get_padding, init_weights
 
 
 class DurationDiscriminator(nn.Module):  # vits2
@@ -477,7 +480,7 @@ class Generator(torch.nn.Module):
         upsample_kernel_sizes,
         gin_channels=0,
     ):
-        super().__init__()
+        super(Generator, self).__init__()
         self.num_kernels = len(resblock_kernel_sizes)
         self.num_upsamples = len(upsample_rates)
         self.conv_pre = Conv1d(
@@ -544,7 +547,7 @@ class Generator(torch.nn.Module):
 
 class DiscriminatorP(torch.nn.Module):
     def __init__(self, period, kernel_size=5, stride=3, use_spectral_norm=False):
-        super().__init__()
+        super(DiscriminatorP, self).__init__()
         self.period = period
         self.use_spectral_norm = use_spectral_norm
         norm_f = weight_norm if use_spectral_norm is False else spectral_norm
@@ -623,7 +626,7 @@ class DiscriminatorP(torch.nn.Module):
 
 class DiscriminatorS(torch.nn.Module):
     def __init__(self, use_spectral_norm=False):
-        super().__init__()
+        super(DiscriminatorS, self).__init__()
         norm_f = weight_norm if use_spectral_norm is False else spectral_norm
         self.convs = nn.ModuleList(
             [
@@ -653,7 +656,7 @@ class DiscriminatorS(torch.nn.Module):
 
 class MultiPeriodDiscriminator(torch.nn.Module):
     def __init__(self, use_spectral_norm=False):
-        super().__init__()
+        super(MultiPeriodDiscriminator, self).__init__()
         periods = [2, 3, 5, 7, 11]
 
         discs = [DiscriminatorS(use_spectral_norm=use_spectral_norm)]
@@ -995,7 +998,7 @@ class SynthesizerTrn(nn.Module):
             sdp_ratio
         ) + self.dp(x, x_mask, g=g) * (1 - sdp_ratio)
         w = torch.exp(logw) * x_mask * length_scale
-
+        
         w_ceil = torch.ceil(w)
         y_lengths = torch.clamp_min(torch.sum(w_ceil, [1, 2]), 1).long()
         y_mask = torch.unsqueeze(commons.sequence_mask(y_lengths, None), 1).to(
@@ -1017,7 +1020,7 @@ class SynthesizerTrn(nn.Module):
         # print('max/min of o:', o.max(), o.min())
         return o, attn, y_mask, (z, z_p, m_p, logs_p)
 
-    def voice_conversion(self, y, y_lengths, sid_src, sid_tgt, tau=1.0):
+    def voice_conversion(self, y, y_lengths, sid_src, sid_tgt, tau=1.0):        
         g_src = sid_src
         g_tgt = sid_tgt
         z, m_q, logs_q, y_mask = self.enc_q(y, y_lengths, g=g_src, tau=tau)
