@@ -13,6 +13,7 @@ from soca.core.guardrails import (
     GuardrailStage,
     check_final_output,
     check_input_text,
+    check_knowledge_read_path,
     check_tool_call,
     check_tool_result,
     check_untrusted_text,
@@ -99,9 +100,13 @@ class DefaultRuntimeToolRouter:
         if self.enable_markdown_read:
             path = self._first_markdown_path(text)
             if path is not None:
-                if not path.startswith("wiki/"):
+                path_event = check_knowledge_read_path(path)
+                if path_event.blocked:
                     return self._none("unsafe_read_path")
-                return self._call("knowledge.read", {"path": path})
+                normalized_path = path_event.metadata.get("normalized_path")
+                if not isinstance(normalized_path, str) or not normalized_path:
+                    return self._none("unsafe_read_path")
+                return self._call("knowledge.read", {"path": normalized_path})
 
         if self.enable_time:
             timezone = self._parse_explicit_prefix(text, self.time_prefixes)

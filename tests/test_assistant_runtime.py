@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from soca.core import AssistantRuntime, RuntimeRoute
 from soca.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
 from soca.llm import LLMResult
@@ -185,6 +187,25 @@ def test_markdown_path_uses_knowledge_read_tool() -> None:
 
     assert result.route == RuntimeRoute.KNOWLEDGE_DIRECT
     assert result.citations[0].path == "wiki/dinh-duong/chat-dam.md"
+    assert source.read_calls == ["wiki/dinh-duong/chat-dam.md"]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "./wiki/dinh-duong/chat-dam.md",
+        r"wiki\dinh-duong\chat-dam.md",
+    ],
+)
+def test_markdown_read_normalizes_equivalent_public_paths(path: str) -> None:
+    source = FakeKnowledgeSource()
+    tool_runtime = ToolRuntime([KnowledgeReadTool(source)])
+    runtime = AssistantRuntime(tool_runtime=tool_runtime)
+
+    result = runtime.run_text_turn(f"đọc {path}")
+
+    assert result.route == RuntimeRoute.KNOWLEDGE_DIRECT
+    assert result.blocked is False
     assert source.read_calls == ["wiki/dinh-duong/chat-dam.md"]
 
 
