@@ -24,6 +24,7 @@ dependencies = [
     "pyahocorasick>=2.3.1",
     "pywebrtc-audio>=0.1.0",
     "eng-to-ipa>=0.0.2",
+    "PyYAML>=6.0.3,<7",
 ]
 
 [project.optional-dependencies]

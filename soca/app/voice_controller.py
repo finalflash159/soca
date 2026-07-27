@@ -48,7 +48,7 @@ class VoiceMonitorEvent:
     usage: TurnUsage | None = None
 
 
-VoiceRuntimeBuilder = Callable[[ResolvedVoiceRuntimeConfig], VoiceRuntimeBundle]
+VoiceRuntimeBuilder = Callable[..., VoiceRuntimeBundle]
 VoiceRecorder = Callable[..., np.ndarray]
 VoiceEventQueue = Queue[VoiceMonitorEvent | None]
 
@@ -132,6 +132,14 @@ class VoiceMonitorController:
                         metadata={"turn_index": turns},
                     )
                 )
+                if self._supports_barge_in:
+                    queue.put(
+                        VoiceMonitorEvent(
+                            "barge_in",
+                            "Barge-in armed",
+                            metadata={"phase": "armed"},
+                        )
+                    )
                 self._run_one_turn(bundle, queue, stop_event=stop_event)
                 if stop_event.is_set():
                     break
@@ -242,7 +250,7 @@ class VoiceMonitorController:
         endpoint_config = EndpointConfig(
             endpoint_silence_ms=self.config.endpoint_silence_ms,
             max_record_ms=self.config.max_record_ms,
-            partial_interval_ms=self.bundle.partial_interval_ms,  # seed from warmup
+            partial_interval_ms=bundle.partial_interval_ms,  # seed from warmup
             adaptive=self.config.adaptive_endpoint,
         )
         queue.put(VoiceMonitorEvent("recording", "Listening"))
@@ -259,7 +267,7 @@ class VoiceMonitorController:
         if self._pending_prefix is not None:
             record_kwargs["prefix"] = self._pending_prefix
             self._pending_prefix = None
-        if self.bundle.partial_enabled and self._recorder_accepts("on_partial"):
+        if bundle.partial_enabled and self._recorder_accepts("on_partial"):
             record_kwargs["on_partial"] = lambda committed, tentative: queue.put(
                 VoiceMonitorEvent(
                     "asr_partial",
@@ -283,6 +291,15 @@ class VoiceMonitorController:
                 },
             )
         )
+        if len(audio):
+            rms = float(np.sqrt(np.mean(np.square(audio.astype(np.float32, copy=False)))))
+            queue.put(
+                VoiceMonitorEvent(
+                    "voice_level",
+                    "Voice level",
+                    metadata={"rms": min(1.0, rms), "source": "microphone"},
+                )
+            )
         if not self._audio_has_speech(bundle, audio):
             self._handle_passive_silence(bundle, queue, stop_event=stop_event)
             return
@@ -346,6 +363,13 @@ class VoiceMonitorController:
                     first_tts_meta = first_tts_meta or metadata
                 elif event.type == "done":
                     if metadata.get("interrupted") and self._supports_barge_in:
+                        queue.put(
+                            VoiceMonitorEvent(
+                                "barge_in",
+                                "Barge-in detected",
+                                metadata={"phase": "fired", "source": "duplex_aec"},
+                            )
+                        )
                         # Keep the (echo-cancelled) interrupting words for next turn.
                         self._pending_prefix = getattr(self.player, "captured", None)
                     usage = _build_voice_usage(
@@ -548,9 +572,9 @@ def _coerce_llm_usage(value: Any) -> LLMUsage | None:
         return LLMUsage(
             prompt_tokens=int(value.get("prompt_tokens") or 0),
             completion_tokens=int(value.get("completion_tokens") or 0),
-            ttft_ms=_maybe_float(value.get("ttft_ms")),
-            total_latency_ms=_maybe_float(value.get("total_latency_ms")),
-            tokens_per_second=_maybe_float(value.get("tokens_per_second")),
+            ttft_ms=_maybe_float(value.get("ttft_ms")) or 0.0,
+            total_latency_ms=_maybe_float(value.get("total_latency_ms")) or 0.0,
+            tokens_per_second=_maybe_float(value.get("tokens_per_second")) or 0.0,
         )
     return None
 

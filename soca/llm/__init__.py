@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .base import LLMEngine, LLMResult
-from .memory_aware import MemoryAwareLLM, build_memory_prompt
+from .base import LLMEngine, LLMResult, StructuredLLMEngine
 
 if TYPE_CHECKING:
     from .llamacpp_runner import LocalLlamaCppLLM
+    from .memory_aware import MemoryAwareLLM, build_memory_prompt
 
 __all__ = [
     "LLMEngine",
     "LLMResult",
+    "StructuredLLMEngine",
     "LocalLlamaCppLLM",
     "MemoryAwareLLM",
     "build_memory_prompt",
@@ -25,4 +26,12 @@ def __getattr__(name: str):
         from .llamacpp_runner import LocalLlamaCppLLM
 
         return LocalLlamaCppLLM
+    if name == "MemoryAwareLLM":
+        from .memory_aware import MemoryAwareLLM
+
+        return MemoryAwareLLM
+    if name == "build_memory_prompt":
+        from .memory_aware import build_memory_prompt
+
+        return build_memory_prompt
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

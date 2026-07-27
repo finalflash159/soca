@@ -34,11 +34,15 @@ class RuntimeTrace:
     tool_calls: tuple[ToolCall, ...] = ()
     tool_results: tuple[ToolResult, ...] = ()
     knowledge_hits: tuple[Any, ...] = ()
+    memory_hits: tuple[Any, ...] = ()
+    memory_mode: str = "blob"
+    memory_degraded_reason: str = ""
     citations: tuple[KnowledgeCitation, ...] = ()
     used_tool: bool = False
     used_llm: bool = False
     blocked: bool = False
     stage_latencies_ms: dict[str, float] = field(default_factory=dict)
+    tool_router_tier: str = "none"
 
 
 @dataclass(frozen=True)

@@ -3,7 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from soca.core.text_budget import truncate
-from soca.memory.base import LongTermMemorySource, SessionMemorySource
+from soca.memory.base import (
+    LongTermMemorySource,
+    MemoryProfileResult,
+    QueryAwareLongTermMemorySource,
+    SessionMemorySource,
+)
 
 
 @dataclass(frozen=True)
@@ -11,6 +16,9 @@ class MemoryContext:
     profile_text: str
     session_text: str
     prompt_text: str
+    hits: tuple[object, ...] = ()
+    mode: str = "blob"
+    degraded_reason: str = ""
 
 
 class MemoryContextBuilder:
@@ -31,15 +39,21 @@ class MemoryContextBuilder:
         self.max_chars = max_chars
         self.profile_chars = profile_chars
 
-    def build(self) -> MemoryContext:
-        profile_text = ""
+    def build(self, query: str | None = None) -> MemoryContext:
+        profile = MemoryProfileResult(text="")
         session_text = ""
         parts: list[str] = []
 
         if self.long_term is not None:
-            profile_text = truncate(self.long_term.read_profile(), self.profile_chars)
+            if query is not None and isinstance(self.long_term, QueryAwareLongTermMemorySource):
+                profile = self.long_term.retrieve_profile(query)
+            else:
+                profile = MemoryProfileResult(text=self.long_term.read_profile())
+            profile_text = truncate(profile.text, self.profile_chars)
             if profile_text:
                 parts.append(f"Long-term memory:\n{profile_text}")
+        else:
+            profile_text = ""
 
         if self.session is not None:
             session_text = self.session.render().strip()
@@ -51,4 +65,7 @@ class MemoryContextBuilder:
             profile_text=profile_text,
             session_text=session_text,
             prompt_text=prompt_text,
+            hits=profile.hits,
+            mode=profile.mode,
+            degraded_reason=profile.degraded_reason,
         )

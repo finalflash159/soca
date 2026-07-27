@@ -13,6 +13,10 @@ export interface EngineCommand {
     | "llm_set_key"
     | "llm_select"
     | "llm_config"
+    | "memory_proposals"
+    | "memory_approve"
+    | "memory_reject"
+    | "inspect"
     | "quit";
   text?: string;
   max_turns?: number | null;
@@ -21,6 +25,7 @@ export interface EngineCommand {
   key?: string;
   backend?: "local" | "remote";
   model?: string;
+  proposal_id?: string;
 }
 
 export interface HelloEvent {
@@ -38,6 +43,47 @@ export interface VoiceEvent {
   latency_ms: number | null;
   metadata: Record<string, unknown>;
   usage: Record<string, unknown> | null;
+}
+
+export interface RouterTraceEvent {
+  event: "router_trace";
+  tier: "deterministic" | "semantic" | "llm" | "none";
+  tool: string | null;
+  latency_ms: number;
+}
+
+export interface MemoryTraceEvent {
+  event: "memory_trace";
+  mode: "blob" | "retrieved" | "degraded";
+  degraded_reason?: string;
+  hits: Array<{ id: string; corpus: "profile" | "episode"; relevance: number; recency: number; importance: number; total: number }>;
+  compacted_turn_count: number;
+  recent_turn_count: number;
+  background_status: "idle" | "queued" | "running" | "failed";
+  episodic_enabled: boolean;
+  pending_proposal_count: number;
+}
+
+export interface MemoryProposalEvent {
+  event: "memory_proposals";
+  proposals: Array<{ id: string; kind: "preference" | "stable_fact" | "project" | "correction"; statement: string; confidence: number; createdAt: string }>;
+}
+
+export interface MemoryActionEvent {
+  event: "memory_action";
+  proposal_id: string;
+  action: "approved" | "rejected";
+  ok: boolean;
+  error_code?: string;
+}
+
+export interface RetrievalTraceEvent {
+  event: "retrieval_trace";
+  query: string;
+  tier: "deterministic" | "semantic" | "llm" | "none";
+  latency_ms: number;
+  columns: Array<{ source: "bm25" | "dense"; hits: Array<{ path: string; score: number }> }>;
+  fused: Array<{ path: string; picked: boolean }>;
 }
 
 export interface ChatEvent {
@@ -138,6 +184,11 @@ export interface ByeEvent {
 export type EngineEvent =
   | HelloEvent
   | VoiceEvent
+  | RouterTraceEvent
+  | MemoryTraceEvent
+  | MemoryProposalEvent
+  | MemoryActionEvent
+  | RetrievalTraceEvent
   | ChatEvent
   | StatusEvent
   | MemoryEvent
@@ -151,13 +202,22 @@ export type EngineEvent =
 
 export function parseEngineEvent(line: string): EngineEvent | null {
   const trimmed = line.trim();
-  if (!trimmed) return null;
+  if (!trimmed || trimmed.length > 64_000) return null;
   try {
     const parsed: unknown = JSON.parse(trimmed);
+    const eventName =
+      typeof parsed === "object" && parsed !== null
+        ? (parsed as { event?: unknown }).event
+        : null;
+    const known = new Set([
+      "hello", "voice", "router_trace", "memory_trace", "memory_proposals", "memory_action", "retrieval_trace",
+      "chat", "status", "memory", "usage", "llm_providers", "llm_catalog", "llm_key_status", "llm_config", "engine_error", "bye",
+    ]);
     if (
       typeof parsed !== "object" ||
       parsed === null ||
-      typeof (parsed as { event?: unknown }).event !== "string"
+      typeof eventName !== "string" ||
+      !known.has(eventName)
     )
       return null;
     return parsed as EngineEvent;

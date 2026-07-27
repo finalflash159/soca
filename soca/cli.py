@@ -100,6 +100,16 @@ def profiles_command(show_paths: bool) -> None:
 @click.option("--session-chars", type=int, default=1300, show_default=True)
 @click.option("--session-turns", type=int, default=6, show_default=True)
 @click.option("--turn-chars", type=int, default=500, show_default=True)
+@click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="deterministic", show_default=True)
+@click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", show_default=True)
+@click.option("--semantic-router/--no-semantic-router", default=False, show_default=True)
+@click.option("--semantic-router-threshold", type=float, default=0.0, show_default=True)
+@click.option("--semantic-router-margin", type=float, default=0.0, show_default=True)
+@click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None)
+@click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", show_default=True)
+@click.option("--memory-limit", type=int, default=3, show_default=True)
+@click.option("--memory-retrieval", type=click.Choice(["chunk_sparse", "hybrid"]), default="chunk_sparse", show_default=True)
+@click.option("--memory-dense-backend", type=click.Choice(["fastembed", "model2vec"]), default="fastembed", show_default=True)
 @click.option("--trace/--no-trace", default=False, show_default=True)
 @click.option("--usage", is_flag=True, help="Show LLM token/latency usage after the turn.")
 def ask(
@@ -118,6 +128,16 @@ def ask(
     session_chars: int,
     session_turns: int,
     turn_chars: int,
+    tool_router: str,
+    router_response: str,
+    semantic_router: bool,
+    semantic_router_threshold: float,
+    semantic_router_margin: float,
+    semantic_router_examples: Path | None,
+    memory_mode: str,
+    memory_limit: int,
+    memory_retrieval: str,
+    memory_dense_backend: str,
     trace: bool,
     usage: bool,
 ) -> None:
@@ -137,6 +157,16 @@ def ask(
         session_chars=session_chars,
         session_turns=session_turns,
         turn_chars=turn_chars,
+        tool_router_mode=tool_router,
+        tool_router_response_mode=router_response,
+        semantic_router_enabled=semantic_router,
+        semantic_router_threshold=semantic_router_threshold,
+        semantic_router_margin=semantic_router_margin,
+        semantic_router_examples=semantic_router_examples,
+        memory_mode=memory_mode,
+        memory_limit=memory_limit,
+        memory_retrieval_mode=memory_retrieval,
+        memory_dense_backend=memory_dense_backend,
     )
     run_text_ask(" ".join(text), config, console=console, show_trace=trace, show_usage=usage)
 
@@ -173,6 +203,16 @@ def ask(
 @click.option("--session-chars", type=int, default=1300, show_default=True)
 @click.option("--session-turns", type=int, default=6, show_default=True)
 @click.option("--turn-chars", type=int, default=500, show_default=True)
+@click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="deterministic", show_default=True)
+@click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", show_default=True)
+@click.option("--semantic-router/--no-semantic-router", default=False, show_default=True)
+@click.option("--semantic-router-threshold", type=float, default=0.0, show_default=True)
+@click.option("--semantic-router-margin", type=float, default=0.0, show_default=True)
+@click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None)
+@click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", show_default=True)
+@click.option("--memory-limit", type=int, default=3, show_default=True)
+@click.option("--memory-retrieval", type=click.Choice(["chunk_sparse", "hybrid"]), default="chunk_sparse", show_default=True)
+@click.option("--memory-dense-backend", type=click.Choice(["fastembed", "model2vec"]), default="fastembed", show_default=True)
 @click.option("--trace/--no-trace", default=False, show_default=True)
 @click.option(
     "--usage", is_flag=True, help="Show per-turn usage line; /usage shows session totals."
@@ -194,6 +234,16 @@ def chat(
     session_chars: int,
     session_turns: int,
     turn_chars: int,
+    tool_router: str,
+    router_response: str,
+    semantic_router: bool,
+    semantic_router_threshold: float,
+    semantic_router_margin: float,
+    semantic_router_examples: Path | None,
+    memory_mode: str,
+    memory_limit: int,
+    memory_retrieval: str,
+    memory_dense_backend: str,
     trace: bool,
     usage: bool,
 ) -> None:
@@ -213,6 +263,16 @@ def chat(
         session_chars=session_chars,
         session_turns=session_turns,
         turn_chars=turn_chars,
+        tool_router_mode=tool_router,
+        tool_router_response_mode=router_response,
+        semantic_router_enabled=semantic_router,
+        semantic_router_threshold=semantic_router_threshold,
+        semantic_router_margin=semantic_router_margin,
+        semantic_router_examples=semantic_router_examples,
+        memory_mode=memory_mode,
+        memory_limit=memory_limit,
+        memory_retrieval_mode=memory_retrieval,
+        memory_dense_backend=memory_dense_backend,
     )
     ctx.exit(run_text_chat(config, console=console, show_trace=trace, show_usage=usage))
 
@@ -272,6 +332,16 @@ def build_text_runtime_config(
     session_chars: int,
     session_turns: int,
     turn_chars: int,
+    tool_router_mode: str = "deterministic",
+    tool_router_response_mode: str = "prompt_json",
+    semantic_router_enabled: bool = False,
+    semantic_router_threshold: float = 0.0,
+    semantic_router_margin: float = 0.0,
+    semantic_router_examples: Path | None = None,
+    memory_mode: str = "retrieved",
+    memory_limit: int = 3,
+    memory_retrieval_mode: str = "chunk_sparse",
+    memory_dense_backend: str = "fastembed",
 ) -> TextRuntimeConfig:
     try:
         return resolve_text_runtime_config(
@@ -289,6 +359,16 @@ def build_text_runtime_config(
             session_chars=session_chars,
             session_turns=session_turns,
             turn_chars=turn_chars,
+            tool_router_mode=tool_router_mode,
+            tool_router_response_mode=tool_router_response_mode,
+            semantic_router_enabled=semantic_router_enabled,
+            semantic_router_threshold=semantic_router_threshold,
+            semantic_router_margin=semantic_router_margin,
+            semantic_router_examples=semantic_router_examples,
+            memory_mode=memory_mode,
+            memory_limit=memory_limit,
+            memory_retrieval_mode=memory_retrieval_mode,
+            memory_dense_backend=memory_dense_backend,
         )
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
@@ -444,6 +524,18 @@ def engine(
 @click.option("--session-chars", type=int, default=1300, hidden=True)
 @click.option("--session-turns", type=int, default=6, hidden=True)
 @click.option("--turn-chars", type=int, default=500, hidden=True)
+@click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="deterministic", hidden=True)
+@click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", hidden=True)
+@click.option("--llm-router-in-voice/--no-llm-router-in-voice", default=False, hidden=True)
+@click.option("--semantic-router/--no-semantic-router", default=False, hidden=True)
+@click.option("--semantic-router-in-voice/--no-semantic-router-in-voice", default=False, hidden=True)
+@click.option("--semantic-router-threshold", type=float, default=0.0, hidden=True)
+@click.option("--semantic-router-margin", type=float, default=0.0, hidden=True)
+@click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None, hidden=True)
+@click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", hidden=True)
+@click.option("--memory-limit", type=int, default=3, hidden=True)
+@click.option("--memory-retrieval", type=click.Choice(["chunk_sparse", "hybrid"]), default="chunk_sparse", hidden=True)
+@click.option("--memory-dense-backend", type=click.Choice(["fastembed", "model2vec"]), default="fastembed", hidden=True)
 @click.option("--max-tokens", type=int, default=None, hidden=True)
 @click.option("--temperature", type=float, default=None, hidden=True)
 @click.option("--top-p", type=float, default=None, hidden=True)
@@ -500,6 +592,18 @@ def voice(
     session_chars: int,
     session_turns: int,
     turn_chars: int,
+    tool_router: str,
+    router_response: str,
+    llm_router_in_voice: bool,
+    semantic_router: bool,
+    semantic_router_in_voice: bool,
+    semantic_router_threshold: float,
+    semantic_router_margin: float,
+    semantic_router_examples: Path | None,
+    memory_mode: str,
+    memory_limit: int,
+    memory_retrieval: str,
+    memory_dense_backend: str,
     max_tokens: int | None,
     temperature: float | None,
     top_p: float | None,
@@ -534,6 +638,18 @@ def voice(
             session_chars=session_chars,
             session_turns=session_turns,
             turn_chars=turn_chars,
+            tool_router_mode=tool_router,
+            tool_router_response_mode=router_response,
+            llm_router_in_voice=llm_router_in_voice,
+            semantic_router_enabled=semantic_router,
+            semantic_router_in_voice=semantic_router_in_voice,
+            semantic_router_threshold=semantic_router_threshold,
+            semantic_router_margin=semantic_router_margin,
+            semantic_router_examples=semantic_router_examples,
+            memory_mode=memory_mode,
+            memory_limit=memory_limit,
+            memory_retrieval_mode=memory_retrieval,
+            memory_dense_backend=memory_dense_backend,
         )
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc

@@ -9,16 +9,21 @@ import {
   type TimelineEntry,
 } from "./store.js";
 import { COLOR, ICON } from "./theme.js";
+import { footerHints as buildFooterHints } from "./keymap.js";
+import { useResize } from "./hooks/useResize.js";
 import { TimelineLine } from "./components/Timeline.js";
 import { VoiceStatus } from "./components/VoiceStatus.js";
 import { HelpOverlay } from "./components/HelpOverlay.js";
 import { SettingsScreen } from "./components/SettingsScreen.js";
 import { Bird, Wordmark } from "./components/Logo.js";
+import { Empty } from "./components/Empty.js";
+import { MemoryChips } from "./components/MemoryChips.js";
+import { StatusBar } from "./components/StatusBar.js";
+import { MemoryProposalInbox } from "./components/MemoryProposalInbox.js";
+import { RetrievalInspector } from "./components/RetrievalInspector.js";
 import {
-  FooterHints,
   Panel,
   Spinner,
-  type Hint,
 } from "./components/Primitives.js";
 
 export interface AppProps {
@@ -33,23 +38,6 @@ export interface AppProps {
 // only the live controls below re-render.
 type StaticItem =
   { kind: "brand" } | { kind: "entry"; entry: TimelineEntry; index: number };
-
-function footerHints(mode: Mode, voiceRunning: boolean): Hint[] {
-  const base: Hint[] = [
-    { keys: "/chat /voice /status /settings", label: "chế độ" },
-    { keys: "?", label: "phím" },
-    { keys: "^c", label: "thoát" },
-  ];
-  if (mode === "voice") {
-    return [
-      voiceRunning
-        ? { keys: "/stop", label: "dừng nghe" }
-        : { keys: "/listen", label: "bắt đầu nghe" },
-      ...base,
-    ];
-  }
-  return base;
-}
 
 function Brand({ profile }: { profile: string }) {
   // No LLM model name here: this renders inside <Static> (painted once), so a
@@ -78,7 +66,6 @@ function Brand({ profile }: { profile: string }) {
 
 export function App({ target, profile, noModel = false }: AppProps) {
   const { exit } = useApp();
-  const { stdout } = useStdout();
   const rawInput = Boolean(useStdin().isRawModeSupported);
   // Choosing chat/voice routes through Settings first so the user picks the LLM
   // for this session; leaving Settings (Esc or picking a model) continues into
@@ -94,7 +81,7 @@ export function App({ target, profile, noModel = false }: AppProps) {
   const [showHelp, setShowHelp] = useState(false);
   const engineRef = useRef<EngineClient | null>(null);
 
-  const cols = stdout?.columns ?? 80;
+  const { cols } = useResize();
 
   useEffect(() => {
     const engine = new EngineClient();
@@ -180,6 +167,8 @@ export function App({ target, profile, noModel = false }: AppProps) {
         engine?.send({ cmd: "voice_stop" });
       } else if (cmd === "/memory") {
         engine?.send({ cmd: "memory" });
+      } else if (cmd === "/proposals") {
+        engine?.send({ cmd: "memory_proposals" });
       } else if (cmd === "/usage") {
         engine?.send({ cmd: "usage" });
       } else if (cmd === "/help") {
@@ -209,7 +198,7 @@ export function App({ target, profile, noModel = false }: AppProps) {
       : state.llmConfig.model
     : String(state.stack["llm"] ?? "");
   const hints = useMemo(
-    () => footerHints(state.mode, state.voiceRunning),
+    () => buildFooterHints(state.mode, state.voiceRunning),
     [state.mode, state.voiceRunning],
   );
   const staticItems = useMemo<StaticItem[]>(
@@ -300,7 +289,45 @@ export function App({ target, profile, noModel = false }: AppProps) {
           turnIndex={state.turnIndex}
           latencyMs={state.lastLatencyMs}
           caption={state.caption}
+          level={state.voiceLevel}
+          bargeIn={state.bargeIn}
         />
+      ) : null}
+
+      {state.mode === "chat" && state.timeline.length === 0 ? (
+        <Empty icon={ICON.bird} title="No messages yet." hint="Type a question or use /voice to speak." />
+      ) : null}
+
+      {state.proposals.length > 0 ? (
+        <MemoryProposalInbox
+          proposals={state.proposals}
+          error={state.memoryActionError}
+          onApprove={(proposal_id) => engine?.send({ cmd: "memory_approve", proposal_id })}
+          onReject={(proposal_id) => engine?.send({ cmd: "memory_reject", proposal_id })}
+          onClose={() => dispatch({ type: "clear_proposals" })}
+        />
+      ) : null}
+
+      {state.retrievalTrace ? (
+        <Box paddingX={1} marginTop={1}>
+          <Panel title="retrieval" subtitle="inspect" width={cols - 2} variant="idle">
+            <RetrievalInspector trace={state.retrievalTrace} width={cols - 4} />
+          </Panel>
+        </Box>
+      ) : null}
+
+      {state.mode !== "settings" && state.routerTier !== "none" ? (
+        <Box paddingX={1} flexDirection="column">
+          <Text color={COLOR.muted}>{`router ${state.routerTier} · ${state.routerLatencyMs.toFixed(1)}ms`}</Text>
+          <MemoryChips
+            chips={[
+              { type: "working", label: "working", detail: `${state.memoryHits} hits`, active: state.memoryHits > 0 },
+              { type: "semantic", label: "semantic", detail: state.memoryMode, active: state.memoryMode === "retrieved" },
+              { type: "episodic", label: "episodic", detail: "consent gated", active: false },
+              { type: "procedural", label: "procedural", detail: "approval gated", active: false },
+            ]}
+          />
+        </Box>
       ) : null}
 
       {state.mode === "settings" ? (
@@ -347,33 +374,7 @@ export function App({ target, profile, noModel = false }: AppProps) {
           </Panel>
         </Box>
       ) : null}
-      <Box justifyContent="space-between">
-        <FooterHints hints={hints} />
-        <Box paddingX={1}>
-          <Text color={COLOR.muted}>
-            <Text bold color={COLOR.accent}>
-              {state.mode}
-            </Text>
-            {` ${ICON.dot} ${state.profile} ${ICON.dot} mem${noModel ? ICON.off : ICON.on}`}
-            {llm ? (
-              <Text>
-                {` ${ICON.dot} `}
-                <Text
-                  color={
-                    state.llmConfig?.backend === "remote"
-                      ? COLOR.warn
-                      : COLOR.good
-                  }
-                >
-                  {state.llmConfig?.backend === "remote"
-                    ? `remote ${llm}`
-                    : `local ${llm}`}
-                </Text>
-              </Text>
-            ) : null}
-          </Text>
-        </Box>
-      </Box>
+      <StatusBar hints={hints} mode={state.mode} profile={state.profile} memoryOn={!noModel} llm={llm} remote={state.llmConfig?.backend === "remote"} />
     </Box>
   );
 }

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
-from typing import Any, Protocol
+from dataclasses import dataclass, field
+from typing import Any, Protocol, cast
 
 from soca.core.guardrails import (
     DEFAULT_POLICY,
@@ -77,18 +77,22 @@ class DefaultRuntimeToolRouter:
         self.knowledge_search_prefixes = knowledge_search_prefixes
         self.enable_markdown_read = enable_markdown_read
         self.enable_time = enable_time
+        self.last_tier = "none"
 
     def select(self, text: str, *, knowledge_limit: int) -> ToolCall | None:
         if self.enable_markdown_read:
             path = self._first_markdown_path(text)
             if path is not None:
+                self.last_tier = "deterministic"
                 return ToolCall("knowledge.read", {"path": path})
 
         if self.enable_time and is_time_question(text):
+            self.last_tier = "deterministic"
             return ToolCall("local_time.now", {})
 
         query = self._parse_knowledge_search_query(text)
         if query is not None:
+            self.last_tier = "deterministic"
             return ToolCall(
                 "knowledge.search",
                 {
@@ -97,6 +101,7 @@ class DefaultRuntimeToolRouter:
                 },
             )
 
+        self.last_tier = "none"
         return None
 
     def _first_markdown_path(self, text: str) -> str | None:
@@ -114,7 +119,7 @@ class DefaultRuntimeToolRouter:
         return None
 
 
-@dataclass(frozen=True)
+@dataclass
 class _TraceDraft:
     guardrail_events: list[GuardrailEvent]
     tool_calls: list[ToolCall]
@@ -122,6 +127,10 @@ class _TraceDraft:
     knowledge_hits: list[Any]
     citations: list[KnowledgeCitation]
     stage_latencies_ms: dict[str, float]
+    tool_router_tier: str = "none"
+    memory_hits: list[Any] = field(default_factory=list)
+    memory_mode: str = "blob"
+    memory_degraded_reason: str = ""
 
 
 class AssistantRuntime:
@@ -168,14 +177,16 @@ class AssistantRuntime:
                 reason=input_event.message or self._safe_block_message(input_event.reason),
             )
 
-        tool_call = self.tool_router.select(
-            frame.text,
-            knowledge_limit=self.options.knowledge_limit,
-        )
+        with self._stage(draft, "tool_router"):
+            tool_call = self.tool_router.select(
+                frame.text,
+                knowledge_limit=self.options.knowledge_limit,
+            )
+        draft.tool_router_tier = str(getattr(self.tool_router, "last_tier", "deterministic"))
         if tool_call is not None:
             return self._run_tool_turn(frame, tool_call, draft)
 
-        memory_context = self._build_memory_context(draft)
+        memory_context = self._build_memory_context(frame, draft)
         knowledge_context = self._build_knowledge_context(frame, draft)
 
         return self._run_llm_turn(frame, draft, memory_context, knowledge_context)
@@ -221,16 +232,18 @@ class AssistantRuntime:
             yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
             return
 
-        tool_call = self.tool_router.select(
-            frame.text,
-            knowledge_limit=self.options.knowledge_limit,
-        )
+        with self._stage(draft, "tool_router"):
+            tool_call = self.tool_router.select(
+                frame.text,
+                knowledge_limit=self.options.knowledge_limit,
+            )
+        draft.tool_router_tier = str(getattr(self.tool_router, "last_tier", "deterministic"))
         if tool_call is not None:
             result = self._run_tool_turn(frame, tool_call, draft)
             yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
             return
 
-        memory_context = self._build_memory_context(draft)
+        memory_context = self._build_memory_context(frame, draft)
         knowledge_context = self._build_knowledge_context(frame, draft)
         yield from self._stream_llm_turn(
             frame,
@@ -295,8 +308,9 @@ class AssistantRuntime:
         """
         count_tokens = getattr(self.llm, "count_tokens", None)
         if callable(count_tokens):
-            prompt_tokens = count_tokens(prompt)
-            completion_tokens = count_tokens(completion)
+            token_counter = cast(Callable[[str], int], count_tokens)
+            prompt_tokens = token_counter(prompt)
+            completion_tokens = token_counter(completion)
         else:
             prompt_tokens = 0
             completion_tokens = len(completion.split())
@@ -625,12 +639,26 @@ class AssistantRuntime:
             usage=usage,
         )
 
-    def _build_memory_context(self, draft: _TraceDraft) -> MemoryContext | None:
+    def _build_memory_context(
+        self,
+        frame: TurnFrame,
+        draft: _TraceDraft,
+    ) -> MemoryContext | None:
         if self.memory_builder is None:
             return None
 
+        query = str(frame.metadata.get("memory_query") or frame.text)
         with self._stage(draft, "memory_context"):
-            context = self.memory_builder.build()
+            context = self.memory_builder.build(query)
+        draft.memory_hits.extend(context.hits)
+        draft.memory_mode = context.mode
+        draft.memory_degraded_reason = context.degraded_reason
+        for hit in context.hits:
+            snippet = getattr(hit, "snippet", "")
+            if snippet:
+                draft.guardrail_events.append(
+                    check_untrusted_text(snippet, stage=GuardrailStage.RETRIEVAL)
+                )
         return context
 
     def _build_knowledge_context(
@@ -712,11 +740,15 @@ class AssistantRuntime:
             tool_calls=tuple(draft.tool_calls),
             tool_results=tuple(draft.tool_results),
             knowledge_hits=tuple(draft.knowledge_hits),
+            memory_hits=tuple(draft.memory_hits),
+            memory_mode=draft.memory_mode,
+            memory_degraded_reason=draft.memory_degraded_reason,
             citations=tuple(draft.citations),
             used_tool=used_tool,
             used_llm=used_llm,
             blocked=blocked,
             stage_latencies_ms=dict(draft.stage_latencies_ms),
+            tool_router_tier=draft.tool_router_tier,
         )
         return RuntimeResult(
             response_text=response_text,

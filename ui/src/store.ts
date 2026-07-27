@@ -11,6 +11,24 @@ export type VoiceState =
 export interface TimelineEntry {
   kind: "user" | "soca" | "system" | "error";
   text: string;
+  citations?: string[];
+  latencyMs?: number;
+}
+
+export interface MemoryProposal {
+  id: string;
+  kind: "preference" | "stable_fact" | "project" | "correction";
+  statement: string;
+  confidence: number;
+  createdAt: string;
+}
+
+export interface RetrievalTrace {
+  query: string;
+  tier: "deterministic" | "semantic" | "llm" | "none";
+  latencyMs: number;
+  columns: Array<{ source: "bm25" | "dense"; hits: Array<{ path: string; score: number }> }>;
+  fused: Array<{ path: string; picked: boolean }>;
 }
 
 export interface StatusProfile {
@@ -53,6 +71,15 @@ export interface AppState {
   profiles: StatusProfile[];
   notice: string;
   caption: Caption | null;
+  voiceLevel: number;
+  bargeIn: "off" | "armed" | "fired";
+  routerTier: "deterministic" | "semantic" | "llm" | "none";
+  routerLatencyMs: number;
+  memoryMode: "blob" | "retrieved" | "degraded";
+  memoryHits: number;
+  proposals: MemoryProposal[];
+  memoryActionError: string;
+  retrievalTrace: RetrievalTrace | null;
   llmProviders: LlmProviderStatus[];
   llmCatalog: RemoteModelEvent[];
   llmCatalogProvider: string;
@@ -77,6 +104,15 @@ export const initialState: AppState = {
   profiles: [],
   notice: "",
   caption: null,
+  voiceLevel: 0,
+  bargeIn: "off",
+  routerTier: "none",
+  routerLatencyMs: 0,
+  memoryMode: "blob",
+  memoryHits: 0,
+  proposals: [],
+  memoryActionError: "",
+  retrievalTrace: null,
   llmProviders: [],
   llmCatalog: [],
   llmCatalogProvider: "",
@@ -90,7 +126,8 @@ export type Action =
   | { type: "user_message"; text: string }
   | { type: "system_message"; text: string }
   | { type: "voice_started" }
-  | { type: "clear_timeline" };
+  | { type: "clear_timeline" }
+  | { type: "clear_proposals" };
 
 function push(
   timeline: TimelineEntry[],
@@ -115,6 +152,14 @@ function reduceVoiceCore(
           tentative: String(meta["tentative"] ?? ""),
         },
       };
+    case "voice_level":
+      return { ...state, voiceLevel: Math.max(0, Math.min(1, Number(meta["rms"] ?? 0))) };
+    case "barge_in":
+      return {
+        ...state,
+        bargeIn: meta["phase"] === "fired" ? "fired" : "armed",
+        voiceState: meta["phase"] === "fired" ? "listening" : state.voiceState,
+      };
     case "loading":
       return { ...state, voiceState: "loading", voiceNote: "tải ASR/LLM/TTS…" };
     case "ready":
@@ -126,6 +171,7 @@ function reduceVoiceCore(
         voiceRunning: true,
         voiceState: "listening",
         voiceNote: "",
+        bargeIn: "armed",
       };
     case "turn_start": {
       const turn =
@@ -175,11 +221,13 @@ function reduceVoiceCore(
         voiceNote: "",
         lastRoute: route,
         lastLatencyMs: event.latency_ms,
+        bargeIn: "armed",
       };
       if (event.text && !rejected) {
         next.timeline = push(state.timeline, {
           kind: "soca",
           text: event.text,
+          latencyMs: event.latency_ms ?? undefined,
         });
       }
       return next;
@@ -193,6 +241,7 @@ function reduceVoiceCore(
         voiceRunning: false,
         voiceState: "idle",
         voiceNote: `đã dừng (${typeof turns === "number" ? turns : 0} lượt)`,
+        bargeIn: "off",
       };
     }
     case "error":
@@ -245,6 +294,7 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
             timeline: push(state.timeline, {
               kind: "soca",
               text: event.text ?? "",
+              latencyMs: event.usage && typeof event.usage["total_latency_ms"] === "number" ? Number(event.usage["total_latency_ms"]) : undefined,
             }),
           };
         case "error":
@@ -282,6 +332,27 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
         timeline: push(state.timeline, { kind: "system", text }),
       };
     }
+    case "router_trace":
+      return { ...state, routerTier: event.tier, routerLatencyMs: event.latency_ms };
+    case "memory_trace":
+      return { ...state, memoryMode: event.mode, memoryHits: event.hits.length };
+    case "memory_proposals":
+      return { ...state, proposals: event.proposals, memoryActionError: "" };
+    case "memory_action":
+      return event.ok
+        ? { ...state, proposals: state.proposals.filter((proposal) => proposal.id !== event.proposal_id), memoryActionError: "" }
+        : { ...state, memoryActionError: event.error_code ?? "memory action failed" };
+    case "retrieval_trace":
+      return {
+        ...state,
+        retrievalTrace: {
+          query: event.query,
+          tier: event.tier,
+          latencyMs: event.latency_ms,
+          columns: event.columns,
+          fused: event.fused,
+        },
+      };
     case "llm_providers":
       return { ...state, llmProviders: event.providers, settingsNotice: "" };
     case "llm_catalog":
@@ -341,6 +412,7 @@ export function reduce(state: AppState, action: Action): AppState {
       return {
         ...state,
         chatBusy: true,
+        retrievalTrace: null,
         timeline: push(state.timeline, { kind: "user", text: action.text }),
       };
     case "system_message":
@@ -356,6 +428,8 @@ export function reduce(state: AppState, action: Action): AppState {
       };
     case "clear_timeline":
       return { ...state, timeline: [] };
+    case "clear_proposals":
+      return { ...state, proposals: [], memoryActionError: "" };
     default:
       return state;
   }

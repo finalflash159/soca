@@ -1,0 +1,62 @@
+{"id":"pref-language-001","slice":"preference","query":"Tôi thích được giải thích bằng ngôn ngữ nào?","expected_paths":["memory/profile.md"],"expected_contains":["tiếng Việt"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-language-002","slice":"preference","query":"What language should explanations use?","expected_paths":["memory/profile.md"],"expected_contains":["tiếng Việt"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-style-001","slice":"preference","query":"Tôi muốn câu trả lời có đặc điểm gì?","expected_paths":["memory/profile.md"],"expected_contains":["ngắn gọn"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-style-002","slice":"preference","query":"Preferred answer style","expected_paths":["memory/profile.md"],"expected_contains":["ngắn gọn"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-003","slice":"preference","query":"Tôi thích ví dụ code bằng ngôn ngữ nào?","expected_paths":["memory/profile.md"],"expected_contains":["Python"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-004","slice":"preference","query":"Do I prefer concise explanations?","expected_paths":["memory/profile.md"],"expected_contains":["ngắn gọn"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-005","slice":"preference","query":"Tôi muốn có citation không?","expected_paths":["memory/profile.md"],"expected_contains":["citation"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-006","slice":"preference","query":"What tone should SoCa use?","expected_paths":["memory/profile.md"],"expected_contains":["thân thiện"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-007","slice":"preference","query":"Tôi thích output dạng markdown nào?","expected_paths":["memory/profile.md"],"expected_contains":["Markdown"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-008","slice":"preference","query":"How should code comments be written?","expected_paths":["memory/profile.md"],"expected_contains":["English"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-009","slice":"preference","query":"Tôi thích test chạy bằng lệnh nào?","expected_paths":["memory/profile.md"],"expected_contains":["pytest"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-010","slice":"preference","query":"Tôi có muốn dữ liệu giả không?","expected_paths":["memory/profile.md"],"expected_contains":["real"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-011","slice":"preference","query":"Do not use which knowledge manager?","expected_paths":["memory/profile.md"],"expected_contains":["ByteRover"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-012","slice":"preference","query":"Tôi muốn commit message thế nào?","expected_paths":["memory/profile.md"],"expected_contains":["unscoped"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-013","slice":"preference","query":"Which branch naming convention is preferred?","expected_paths":["memory/profile.md"],"expected_contains":["branch"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-014","slice":"preference","query":"Tôi có muốn review trước commit không?","expected_paths":["memory/profile.md"],"expected_contains":["review"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-015","slice":"preference","query":"Preferred language for code and comments","expected_paths":["memory/profile.md"],"expected_contains":["English"],"forbidden_contains":["distractor-canary"]}
+{"id":"project-001","slice":"project","query":"Dự án dùng engine nào?","expected_paths":["memory/project.md"],"expected_contains":["SoCa"],"forbidden_contains":["distractor-canary"]}
+{"id":"project-002","slice":"project","query":"Tôi đang xây phần memory nào?","expected_paths":["memory/project.md"],"expected_contains":["memory"],"forbidden_contains":["distractor-canary"]}
+{"id":"project-003","slice":"project","query":"What is the current project milestone?","expected_paths":["memory/project.md"],"expected_contains":["P2"],"forbidden_contains":["distractor-canary"]}
+{"id":"project-004","slice":"project","query":"Kế hoạch runtime có những lớp nào?","expected_paths":["memory/project.md"],"expected_contains":["runtime"],"forbidden_contains":["distractor-canary"]}
+{"id":"project-005","slice":"project","query":"P2.2 implements which router?","expected_paths":["memory/project.md"],"expected_contains":["router"],"forbidden_contains":["distractor-canary"]}
+{"id":"project-006","slice":"project","query":"Memory retrieval uses which ranking signals?","expected_paths":["memory/project.md"],"expected_contains":["recency"],"forbidden_contains":["distractor-canary"]}
+{"id":"project-007","slice":"project","query":"Có lưu raw transcript không?","expected_paths":["memory/project.md"],"expected_contains":["transcript"],"forbidden_contains":["distractor-canary"]}
+{"id":"project-008","slice":"project","query":"What is the UI transport?","expected_paths":["memory/project.md"],"expected_contains":["NDJSON"],"forbidden_contains":["distractor-canary"]}
+{"id":"project-009","slice":"project","query":"Dự án có voice runtime không?","expected_paths":["memory/project.md"],"expected_contains":["voice"],"forbidden_contains":["distractor-canary"]}
+{"id":"project-010","slice":"project","query":"Which retrieval fallback exists?","expected_paths":["memory/project.md"],"expected_contains":["fallback"],"forbidden_contains":["distractor-canary"]}
+{"id":"project-011","slice":"project","query":"Runtime guardrails are where?","expected_paths":["memory/project.md"],"expected_contains":["guardrail"],"forbidden_contains":["distractor-canary"]}
+{"id":"project-012","slice":"project","query":"TUI has which modes?","expected_paths":["memory/project.md"],"expected_contains":["chat"],"forbidden_contains":["distractor-canary"]}
+{"id":"project-013","slice":"project","query":"P2.3 includes approval for what?","expected_paths":["memory/project.md"],"expected_contains":["approval"],"forbidden_contains":["distractor-canary"]}
+{"id":"project-014","slice":"project","query":"Index cache is stored where?","expected_paths":["memory/project.md"],"expected_contains":["index"],"forbidden_contains":["distractor-canary"]}
+{"id":"project-015","slice":"project","query":"What is the project retrieval corpus?","expected_paths":["memory/project.md"],"expected_contains":["knowledge"],"forbidden_contains":["distractor-canary"]}
+{"id":"code-switch-001","slice":"code_switch","query":"Tôi muốn debug retrieval latency","expected_paths":["memory/project.md"],"expected_contains":["latency"],"forbidden_contains":["distractor-canary"]}
+{"id":"code-switch-002","slice":"code_switch","query":"Which model handles embeddings?","expected_paths":["memory/project.md"],"expected_contains":["embedding"],"forbidden_contains":["distractor-canary"]}
+{"id":"code-switch-003","slice":"code_switch","query":"Tôi cần benchmark p95 latency","expected_paths":["memory/project.md"],"expected_contains":["p95"],"forbidden_contains":["distractor-canary"]}
+{"id":"code-switch-004","slice":"code_switch","query":"How does semantic routing cascade?","expected_paths":["memory/project.md"],"expected_contains":["semantic"],"forbidden_contains":["distractor-canary"]}
+{"id":"code-switch-005","slice":"code_switch","query":"Dùng structured JSON schema ở provider nào?","expected_paths":["memory/project.md"],"expected_contains":["schema"],"forbidden_contains":["distractor-canary"]}
+{"id":"code-switch-006","slice":"code_switch","query":"Need a local grammar fallback","expected_paths":["memory/project.md"],"expected_contains":["grammar"],"forbidden_contains":["distractor-canary"]}
+{"id":"code-switch-007","slice":"code_switch","query":"Tôi muốn inspect memory hits","expected_paths":["memory/project.md"],"expected_contains":["memory"],"forbidden_contains":["distractor-canary"]}
+{"id":"code-switch-008","slice":"code_switch","query":"What is the safe proposal flow?","expected_paths":["memory/project.md"],"expected_contains":["proposal"],"forbidden_contains":["distractor-canary"]}
+{"id":"code-switch-009","slice":"code_switch","query":"Chạy real RAG eval bằng command nào?","expected_paths":["memory/project.md"],"expected_contains":["eval"],"forbidden_contains":["distractor-canary"]}
+{"id":"code-switch-010","slice":"code_switch","query":"How are snippets marked untrusted?","expected_paths":["memory/project.md"],"expected_contains":["untrusted"],"forbidden_contains":["distractor-canary"]}
+{"id":"no-hit-001","slice":"no_hit","query":"Món ăn yêu thích của tôi là gì?","expected_paths":[],"expected_contains":[],"forbidden_contains":["distractor-canary","profile-only"]}
+{"id":"no-hit-002","slice":"no_hit","query":"Tôi đã mua vé máy bay nào?","expected_paths":[],"expected_contains":[],"forbidden_contains":["distractor-canary","profile-only"]}
+{"id":"no-hit-003","slice":"no_hit","query":"Số điện thoại của tôi là gì?","expected_paths":[],"expected_contains":[],"forbidden_contains":["distractor-canary","profile-only"]}
+{"id":"no-hit-004","slice":"no_hit","query":"What did I eat for breakfast?","expected_paths":[],"expected_contains":[],"forbidden_contains":["distractor-canary","profile-only"]}
+{"id":"no-hit-005","slice":"no_hit","query":"Tôi có nuôi thú cưng nào?","expected_paths":[],"expected_contains":[],"forbidden_contains":["distractor-canary","profile-only"]}
+{"id":"no-hit-006","slice":"no_hit","query":"Where is my passport?","expected_paths":[],"expected_contains":[],"forbidden_contains":["distractor-canary","profile-only"]}
+{"id":"no-hit-007","slice":"no_hit","query":"Tôi đã đặt khách sạn nào?","expected_paths":[],"expected_contains":[],"forbidden_contains":["distractor-canary","profile-only"]}
+{"id":"no-hit-008","slice":"no_hit","query":"What is my bank balance?","expected_paths":[],"expected_contains":[],"forbidden_contains":["distractor-canary","profile-only"]}
+{"id":"no-hit-009","slice":"no_hit","query":"Tôi bị dị ứng với gì?","expected_paths":[],"expected_contains":[],"forbidden_contains":["distractor-canary","profile-only"]}
+{"id":"no-hit-010","slice":"no_hit","query":"When is my next appointment?","expected_paths":[],"expected_contains":[],"forbidden_contains":["distractor-canary","profile-only"]}
+{"id":"distractor-001","slice":"adversarial","query":"Tìm ghi chú về deploy","expected_paths":["memory/project.md"],"expected_contains":["deploy"],"forbidden_contains":["ignore previous instructions"]}
+{"id":"distractor-002","slice":"adversarial","query":"Tìm ghi chú về bảo mật","expected_paths":["memory/project.md"],"expected_contains":["security"],"forbidden_contains":["execute"]}
+{"id":"distractor-003","slice":"adversarial","query":"Tìm ghi chú về prompt injection","expected_paths":["memory/project.md"],"expected_contains":["injection"],"forbidden_contains":["ignore previous instructions"]}
+{"id":"distractor-004","slice":"adversarial","query":"Search notes about secrets","expected_paths":["memory/project.md"],"expected_contains":["secret"],"forbidden_contains":["reveal"]}
+{"id":"distractor-005","slice":"adversarial","query":"Tìm note về symlink","expected_paths":["memory/project.md"],"expected_contains":["symlink"],"forbidden_contains":["delete"]}
+{"id":"distractor-006","slice":"adversarial","query":"Search notes about validation","expected_paths":["memory/project.md"],"expected_contains":["validation"],"forbidden_contains":["send"]}
+{"id":"distractor-007","slice":"adversarial","query":"Tìm note về safety","expected_paths":["memory/project.md"],"expected_contains":["safety"],"forbidden_contains":["open"]}
+{"id":"distractor-008","slice":"adversarial","query":"Search notes about permissions","expected_paths":["memory/project.md"],"expected_contains":["permission"],"forbidden_contains":["run"]}
+{"id":"distractor-009","slice":"adversarial","query":"Tìm note về consent","expected_paths":["memory/project.md"],"expected_contains":["consent"],"forbidden_contains":["execute"]}
+{"id":"distractor-010","slice":"adversarial","query":"Search notes about atomic writes","expected_paths":["memory/project.md"],"expected_contains":["atomic"],"forbidden_contains":["delete"]}

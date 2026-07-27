@@ -22,6 +22,7 @@ folder tree or TUI layout is easier to read that way.
 | 06  | [conversation-repair.md](./06-conversation-repair.md)         | Repair layer: catalog, no-reply ladder, follow-up, handover  |
 | 07  | [tui.md](./07-tui.md)                                         | TUI architecture, modes, threading, and event flow           |
 | 08  | [registries-profiles-cli.md](./08-registries-profiles-cli.md) | ASR/LLM/TTS registries, runtime profiles, CLI, optional deps |
+| 09  | [hybrid-rag-memory.md](./09-hybrid-rag-memory.md)             | Hybrid RAG retrieval, tool router cascade, retrieved memory  |
 
 ## SoCa in One Diagram
 

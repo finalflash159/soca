@@ -288,6 +288,13 @@ class VoicePipeline:
                 "used_tool": bool(getattr(trace, "used_tool", False)),
                 "used_llm": bool(getattr(trace, "used_llm", False)),
                 "citations": [{"path": item.path, "title": item.title} for item in citations],
+                "router_tier": getattr(trace, "tool_router_tier", "none"),
+                "router_latency_ms": float(
+                    getattr(trace, "stage_latencies_ms", {}).get("tool_router", 0.0)
+                ),
+                "memory_hit_count": len(getattr(trace, "memory_hits", ()) or ()),
+                "memory_mode": getattr(trace, "memory_mode", "blob"),
+                "memory_degraded_reason": getattr(trace, "memory_degraded_reason", ""),
                 # LLM telemetry for `soca voice --usage`. Object is fine in metadata;
                 # eval/console read named keys, not the whole dict.
                 "llm_usage": getattr(runtime_result, "usage", None),
@@ -310,7 +317,10 @@ class VoicePipeline:
         playback are still pipelined across sentences.
         """
         with self.metrics.stage("runtime"):
-            runtime_result = self.assistant_runtime.run_text_turn(
+            runtime = self.assistant_runtime
+            if runtime is None:
+                raise RuntimeError("assistant runtime is not configured")
+            runtime_result = runtime.run_text_turn(
                 transcript,
                 source="asr",
                 metadata={"asr_rejection_reason": rejection_reason},
@@ -364,7 +374,10 @@ class VoicePipeline:
         pump.start()
 
         runtime_result: Any | None = None
-        stream = self.assistant_runtime.stream_text_turn(
+        runtime = self.assistant_runtime
+        if runtime is None:
+            raise RuntimeError("assistant runtime is not configured")
+        stream = runtime.stream_text_turn(
             transcript,
             source="asr",
             metadata={"asr_rejection_reason": rejection_reason},

@@ -1,0 +1,10 @@
+{"id":"det-knowledge-001","query":"knowledge: định lý Bayes","expected_tool":"knowledge.search"}
+{"id":"det-knowledge-002","query":"wiki: ONNX runtime","expected_tool":"knowledge.search"}
+{"id":"det-knowledge-003","query":"knowledge: memory compaction","expected_tool":"knowledge.search"}
+{"id":"det-time-001","query":"Bây giờ là mấy giờ?","expected_tool":"local_time.now"}
+{"id":"det-time-002","query":"Cho tôi biết giờ hiện tại","expected_tool":"local_time.now"}
+{"id":"det-read-001","query":"Đọc wiki/project/tui.md","expected_tool":"knowledge.read"}
+{"id":"det-read-002","query":"Mở docs/runtime.md","expected_tool":"knowledge.read"}
+{"id":"none-001","query":"Hãy giải thích ngắn gọn về embeddings","expected_tool":"none"}
+{"id":"none-002","query":"Viết một lời chào thân thiện","expected_tool":"none"}
+{"id":"none-003","query":"Tóm tắt ý tưởng này","expected_tool":"none"}

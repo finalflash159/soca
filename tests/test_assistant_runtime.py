@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from soca.core import AssistantRuntime, RuntimeRoute
 from soca.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
 from soca.llm import LLMResult
-from soca.memory import MemoryContextBuilder, SessionMemory
+from soca.memory import MemoryContextBuilder, RetrievedMemory, SessionMemory
 from soca.tools import KnowledgeReadTool, KnowledgeSearchTool, LocalTimeTool, ToolRuntime
 
 
@@ -51,6 +51,11 @@ class EmptyKnowledgeSource(FakeKnowledgeSource):
     def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
         self.search_calls.append((query, limit))
         return []
+
+
+class FailingMemorySource(FakeKnowledgeSource):
+    def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
+        raise RuntimeError("memory index unavailable")
 
 
 class SpyLLM:
@@ -155,6 +160,20 @@ def test_empty_knowledge_search_result_does_not_require_citation() -> None:
     assert result.blocked is False
     assert result.citations == ()
     assert "chưa tìm thấy" in result.response_text
+
+
+def test_runtime_trace_preserves_degraded_memory_mode() -> None:
+    memory = RetrievedMemory(FailingMemorySource(), FakeLongTermMemory())
+    runtime = AssistantRuntime(
+        llm=SpyLLM(),
+        memory_builder=MemoryContextBuilder(long_term=memory),
+    )
+
+    result = runtime.run_text_turn("TTS")
+
+    assert result.trace is not None
+    assert result.trace.memory_mode == "blob"
+    assert result.trace.memory_degraded_reason == "retrieval_unavailable"
 
 
 def test_markdown_path_uses_knowledge_read_tool() -> None:

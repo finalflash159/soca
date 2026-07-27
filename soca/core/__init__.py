@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from .audio_out import (
     AudioPlaybackSession,
     AudioSink,
@@ -29,9 +33,16 @@ from .profiles import (
     get_voice_runtime_profile,
     validate_voice_runtime_profiles,
 )
-from .runtime import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions, RuntimeToolRouter
 from .streaming import StreamingEvent, pop_ready_sentence
 from .text_chunking import chunk_text_for_tts, split_sentences
+from .tool_routing import (
+    ParsedToolDecision,
+    RouterOutputError,
+    SemanticRouterConfig,
+    ToolRouterConfig,
+    build_tool_decision_schema,
+    parse_tool_decision,
+)
 from .turn import (
     RuntimeResult,
     RuntimeRoute,
@@ -40,14 +51,65 @@ from .turn import (
     TurnFrame,
 )
 from .usage import LLMUsage, SessionUsage, TurnUsage
-from .voice_runtime import (
-    ResolvedVoiceRuntimeConfig,
-    VoiceRuntimeBundle,
-    VoiceRuntimeWarmupResult,
-    build_voice_runtime,
-    resolve_voice_runtime_config,
-    warm_up_voice_runtime,
-)
+
+if TYPE_CHECKING:
+    from .runtime import (
+        AssistantRuntime,
+        DefaultRuntimeToolRouter,
+        RuntimeOptions,
+        RuntimeToolRouter,
+    )
+    from .voice_runtime import (
+        ResolvedVoiceRuntimeConfig,
+        VoiceRuntimeBundle,
+        VoiceRuntimeWarmupResult,
+        build_voice_runtime,
+        resolve_voice_runtime_config,
+        warm_up_voice_runtime,
+    )
+
+
+def __getattr__(name: str):
+    if name in {"AssistantRuntime", "DefaultRuntimeToolRouter", "RuntimeOptions", "RuntimeToolRouter"}:
+        from .runtime import (
+            AssistantRuntime,
+            DefaultRuntimeToolRouter,
+            RuntimeOptions,
+            RuntimeToolRouter,
+        )
+
+        return {
+            "AssistantRuntime": AssistantRuntime,
+            "DefaultRuntimeToolRouter": DefaultRuntimeToolRouter,
+            "RuntimeOptions": RuntimeOptions,
+            "RuntimeToolRouter": RuntimeToolRouter,
+        }[name]
+    if name in {
+        "ResolvedVoiceRuntimeConfig",
+        "VoiceRuntimeBundle",
+        "VoiceRuntimeWarmupResult",
+        "build_voice_runtime",
+        "resolve_voice_runtime_config",
+        "warm_up_voice_runtime",
+    }:
+        from .voice_runtime import (
+            ResolvedVoiceRuntimeConfig,
+            VoiceRuntimeBundle,
+            VoiceRuntimeWarmupResult,
+            build_voice_runtime,
+            resolve_voice_runtime_config,
+            warm_up_voice_runtime,
+        )
+
+        return {
+            "ResolvedVoiceRuntimeConfig": ResolvedVoiceRuntimeConfig,
+            "VoiceRuntimeBundle": VoiceRuntimeBundle,
+            "VoiceRuntimeWarmupResult": VoiceRuntimeWarmupResult,
+            "build_voice_runtime": build_voice_runtime,
+            "resolve_voice_runtime_config": resolve_voice_runtime_config,
+            "warm_up_voice_runtime": warm_up_voice_runtime,
+        }[name]
+    raise AttributeError(name)
 
 __all__ = [
     "AudioPlaybackSession",
@@ -55,6 +117,12 @@ __all__ = [
     "StreamingAudioSink",
     "AssistantRuntime",
     "DefaultRuntimeToolRouter",
+    "ToolRouterConfig",
+    "SemanticRouterConfig",
+    "ParsedToolDecision",
+    "RouterOutputError",
+    "build_tool_decision_schema",
+    "parse_tool_decision",
     "EndpointConfig",
     "GuardrailAction",
     "GuardrailEvent",

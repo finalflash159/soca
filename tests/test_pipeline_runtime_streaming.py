@@ -172,6 +172,25 @@ def test_pipeline_prefers_stream_text_turn_and_emits_streaming_events() -> None:
     assert events[-1].metadata["rejected"] is False
 
 
+def test_runtime_summary_includes_memory_degradation() -> None:
+    runtime = SpyStreamingRuntime(["Câu trả lời đủ dài."])
+    runtime_result = RuntimeResult(
+        response_text="Câu trả lời đủ dài.",
+        route=RuntimeRoute.FREE_CHAT,
+        trace=RuntimeTrace(
+            route=RuntimeRoute.FREE_CHAT,
+            memory_mode="degraded",
+            memory_degraded_reason="retrieval_unavailable",
+        ),
+    )
+    pipeline = VoicePipeline(asr=FakeASR("xin chào"), llm=object(), tts=SpyTTS(), assistant_runtime=runtime)
+
+    event = pipeline._runtime_summary_event(runtime_result)
+
+    assert event.metadata["memory_mode"] == "degraded"
+    assert event.metadata["memory_degraded_reason"] == "retrieval_unavailable"
+
+
 def test_pipeline_stream_first_tts_carries_ttfa_metric() -> None:
     runtime = SpyStreamingRuntime(["Câu một đủ dài rồi.", "Câu hai cũng đủ dài."])
     tts = SpyTTS()
