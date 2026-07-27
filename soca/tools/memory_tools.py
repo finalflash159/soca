@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from soca.memory.context import MemoryContextBuilder
-from soca.memory.proposals import MemoryProposal, ProposalStore
+from soca.memory.proposals import MemoryProposal, ProposalKind, ProposalStore
 from soca.tools.base import SideEffectLevel, ToolResult, ToolSpec, object_schema
 
 
@@ -106,9 +106,13 @@ class MemoryProposeNoteTool:
     def run(self, arguments: dict[str, Any]) -> ToolResult:
         proposal_id = str(uuid4())
         source_episode_id = str(arguments.get("source_episode_id") or uuid4())
+        kind_value = str(arguments["kind"])
+        if kind_value not in {"preference", "stable_fact", "project", "correction"}:
+            raise ValueError("unknown proposal kind")
+        kind = cast(ProposalKind, kind_value)
         proposal = MemoryProposal(
             id=proposal_id,
-            kind=str(arguments["kind"]),
+            kind=kind,
             statement=str(arguments["statement"]).strip(),
             evidence_excerpt=str(arguments["evidence_excerpt"]).strip(),
             confidence=float(arguments.get("confidence", 0.8)),
