@@ -11,6 +11,7 @@ const GROUPS: Array<{ title: string; hints: Array<[string, string]> }> = [
       ["/s", "mở cài đặt LLM"],
       ["/listen", "chạy voice loop"],
       ["/stop", "dừng voice loop"],
+      ["/k <câu hỏi>", "ép dùng knowledge context"],
       ["/memory", "xem session memory"],
       ["/usage", "token / latency của phiên"],
       ["/quit", "thoát"],

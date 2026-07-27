@@ -143,6 +143,18 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
     if (!text) return;
     if (text.startsWith("/")) {
       const cmd = text.toLowerCase();
+      if (state.mode === "chat" && /^\/k(?:\s|$)/i.test(text)) {
+        if (text.slice(2).trim() === "") {
+          dispatch({
+            type: "system_message",
+            text: "Cú pháp: /k <câu hỏi> — ép dùng knowledge context",
+          });
+        } else {
+          dispatch({ type: "user_message", text });
+          engine?.send({ cmd: "chat", text });
+        }
+        return;
+      }
       if (cmd === "/quit" || cmd === "/exit") {
         engine?.stop();
         exit();
