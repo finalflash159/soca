@@ -1,19 +1,11 @@
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from soca.knowledge.base import KnowledgeHit
 
 VoiceKnowledgeMode = Literal["off", "intent", "always"]
-QUESTION_RE = re.compile(
-    r"\b(là gì|la gi|như thế nào|nhu the nao|thế nào|the nao|ở đâu|o dau|"
-    r"khi nào|khi nao|bao nhiêu|bao nhieu|tại sao|tai sao|vì sao|vi sao)\b",
-    re.IGNORECASE,
-)
-
-
 @dataclass(frozen=True)
 class IntentDecision:
     use_knowledge: bool
@@ -45,8 +37,6 @@ class RetrievalIntentGate:
         hits = tuple(batch.hits)
         if not hits:
             return IntentDecision(False, "no_hits", batch.max_dense_score, hits)
-        if QUESTION_RE.search(query):
-            return IntentDecision(True, "question_marker", batch.max_dense_score, hits)
         score = batch.max_dense_score
         if score is None:
             return IntentDecision(False, "no_dense_signal", None, hits)

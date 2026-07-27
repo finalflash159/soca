@@ -23,8 +23,12 @@ bake-off before it becomes a default (see [BENCHMARKS.md](BENCHMARKS.md)).
 - **RobustASR**: VAD, de-looping, confidence guard, model-specific BoH matching,
   and hallucination heuristics — turns flaky Whisper output into trusted text or a
   clean reject with a reason.
-- **AssistantRuntime**: staged guardrails, deterministic tool routing, knowledge +
-  memory prompt assembly, citations, trace output, and end-to-end streaming.
+- **AssistantRuntime**: staged guardrails, deterministic → semantic → LLM tool
+  routing, knowledge + memory prompt assembly, citations, trace output, and
+  end-to-end streaming.
+- **Tool catalog**: five real local tools only — knowledge search/read, local
+  time, memory search, and approval-gated memory proposals. Weather/device/alarm
+  requests stay in free chat; no fake backend or capability classifier is registered.
 - **Conversation-repair layer**: natural Vietnamese follow-ups with variants,
   no-repeat, and escalation instead of raw ASR rejects, with handover to chat.
 - **Registries + profiles** for ASR/LLM/TTS, plus eval harnesses and benchmark reports.
@@ -66,9 +70,6 @@ uv run python scripts/download_llm.py --model arcee_vylinh_3b_q4_k_m
 # 3) Initialize a local Markdown knowledge vault (default: ~/KnowledgeVault)
 uv run python scripts/init_knowledge_vault.py ~/KnowledgeVault
 
-# Optional: seed the traceable two-slice demo vault into a separate directory
-uv run python scripts/seed_demo_knowledge.py --vault /tmp/soca-knowledge-demo
-
 # 4) Run
 uv run soca voice                 # CLI voice loop (baseline profile)
 uv run soca ui voice              # Ink terminal UI, voice mode (build: cd ui && npm i && npm run build)
@@ -100,18 +101,10 @@ The runtime reads local Markdown only (notes under `~/KnowledgeVault/wiki/`,
 curated profile memory in `~/KnowledgeVault/memory/profile.md`); it never
 auto-writes long-term memory, and vault contents are not committed.
 
-For a reproducible demo without touching the personal vault, use the checked-in
-fixture explicitly:
-
-```bash
-uv run python scripts/seed_demo_knowledge.py --fixture
-uv run soca ui chat --vault eval/fixtures/knowledge_demo_vault
-```
-
-The demo fixture has two slices: `learning_notes` for study/engineering notes
-and `life_vault` for project decisions, a clearly synthetic food-budget ledger,
-and health safety boundaries. The small `eval/fixtures/knowledge_vault` remains
-a legacy regression fixture for unit tests; it is not the product vault.
+The active local vault is `~/KnowledgeVault`. Its `wiki/` tree contains the
+learning notes, project decisions, synthetic food ledger, and health safety
+boundaries used by the current runtime. The separate `memory/` tree remains
+the reviewed long-term memory namespace; vault contents are not committed.
 
 ## Runtime profiles
 
@@ -147,8 +140,10 @@ Profiles drive both voice and text; `--llm-model` overrides both. Details:
 `soca ask` is the fastest way to exercise routing without mic/TTS:
 
 ```bash
-uv run soca ask "mấy giờ rồi?" --trace             # local time tool
+uv run soca ask "time:" --trace                  # deterministic local time tool
+uv run soca ask "mấy giờ rồi?" --trace             # semantic local time when the embedder is provisioned
 uv run soca ask "wiki: chất đạm là gì?" --trace     # knowledge search
+uv run soca ask "memory: lựa chọn TTS của tôi" --trace # private memory search
 uv run soca ask "đọc private/secrets.md" --no-llm --trace   # guardrail block
 ```
 
@@ -168,7 +163,7 @@ soca/
   app/         presentation: CLI helpers + engine (UI itself lives in ui/, Ink)
 
 docs/          system design (start at docs/README.md)
-scripts/       local demos, smoke tests, model download helpers
+scripts/       local utilities, smoke tests, model download helpers
 eval/          ASR / LLM / TTS / voice-loop / knowledge eval harnesses
 zplan/         local planning docs
 ```

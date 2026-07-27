@@ -35,8 +35,8 @@ from soca.knowledge.hybrid_source import HybridKnowledgeSource
 from soca.knowledge.intent_gate import RetrievalIntentGate, RetrievalSourceLike, VoiceKnowledgeMode
 from soca.llm import LocalLlamaCppLLM
 from soca.llm.registry import LLM_MODEL_REGISTRY
-from soca.memory import SessionMemory
-from soca.tools import LocalTimeTool, Tool, ToolRuntime
+from soca.memory import ProposalStore, SessionMemory
+from soca.tools import LocalTimeTool, MemoryProposeNoteTool, MemorySearchTool, Tool, ToolRuntime
 from soca.tts import VALTEC_TTS_CONFIG, TTSEngine, create_tts_engine
 
 
@@ -367,6 +367,11 @@ def build_voice_runtime(
         )
         memory_builder = memory_setup.builder
         memory_status = memory_setup.status
+        tools.append(MemorySearchTool(memory_builder, max_limit=config.knowledge_limit))
+        if config.vault.is_dir():
+            tools.append(
+                MemoryProposeNoteTool(ProposalStore(config.vault / "memory" / ".proposals"))
+            )
 
     tool_runtime = ToolRuntime(tools)
     tool_router = build_runtime_tool_router(
@@ -374,6 +379,7 @@ def build_voice_runtime(
         tool_runtime=tool_runtime,
         deterministic=DefaultRuntimeToolRouter(
             knowledge_search_prefixes=("wiki:", "knowledge:", "wiki ", "knowledge "),
+            enable_memory_search=memory_builder is not None,
         ),
         config=ToolRouterConfig(
             mode=cast(ToolRouterMode, config.tool_router_mode),

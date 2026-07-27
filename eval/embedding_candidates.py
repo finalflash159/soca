@@ -8,7 +8,15 @@ from soca.knowledge.retrievers.dense import EmbeddingModel, default_model_home
 
 EVAL_CANDIDATES = {
     "aiteamvn_bge_m3": "AITeamVN/Vietnamese_Embedding",
+    "aiteamvn_v2": "AITeamVN/Vietnamese_Embedding_v2",
     "bkai_phobert_seg": "bkai-foundation-models/vietnamese-bi-encoder",
+}
+
+# The v2 weights are also mirrored under this ID.  Keep the model's canonical
+# ID above, but let the provisioning helper use an already-cached mirror when
+# the canonical Hugging Face snapshot is incomplete.
+EVAL_CANDIDATE_FALLBACKS = {
+    "aiteamvn_v2": ("thanhtantran/Vietnamese_Embedding_v2",),
 }
 
 

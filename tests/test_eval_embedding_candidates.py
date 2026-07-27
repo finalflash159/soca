@@ -8,10 +8,18 @@ import numpy as np
 import pytest
 
 from eval.embedding_candidates import (
+    EVAL_CANDIDATE_FALLBACKS,
     EVAL_CANDIDATES,
     VietnameseEvalEmbedding,
     build_eval_candidate,
 )
+
+
+def test_vietnamese_v2_fallback_is_explicit_and_canonical_id_is_preserved() -> None:
+    assert EVAL_CANDIDATES["aiteamvn_v2"] == "AITeamVN/Vietnamese_Embedding_v2"
+    assert EVAL_CANDIDATE_FALLBACKS["aiteamvn_v2"] == (
+        "thanhtantran/Vietnamese_Embedding_v2",
+    )
 
 
 def _install_fake_sentence_transformers(

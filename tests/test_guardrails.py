@@ -60,18 +60,16 @@ def test_system_prompt_extraction_is_blocked() -> None:
     assert event.reason == "system_prompt_extraction"
 
 
-def test_unsupported_device_action_is_blocked() -> None:
+def test_device_action_is_allowed_as_normal_chat_input() -> None:
     event = check_input_text("Mở Chrome giúp tôi")
 
-    assert event.blocked is True
-    assert event.reason == "unsupported_device_action"
+    assert event.blocked is False
 
 
-def test_unsupported_scheduling_action_is_blocked_without_real_scheduler() -> None:
+def test_scheduling_action_is_allowed_as_normal_chat_input() -> None:
     event = check_input_text("Đặt hẹn giờ 5 phút giúp tôi")
 
-    assert event.blocked is True
-    assert event.reason == "unsupported_scheduling_action"
+    assert event.blocked is False
 
 
 def test_scheduling_howto_question_is_allowed_for_llm() -> None:
@@ -80,11 +78,10 @@ def test_scheduling_howto_question_is_allowed_for_llm() -> None:
     assert event.action == GuardrailAction.ALLOW
 
 
-def test_weather_realtime_request_is_blocked_without_weather_tool() -> None:
+def test_weather_request_is_allowed_as_normal_chat_input() -> None:
     event = check_input_text("Thời tiết hiện tại ở Hà Nội thế nào?")
 
-    assert event.blocked is True
-    assert event.reason == "unsupported_realtime_request"
+    assert event.blocked is False
 
 
 def test_time_question_is_allowed_for_later_time_tool_routing() -> None:

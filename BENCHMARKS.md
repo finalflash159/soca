@@ -1077,6 +1077,10 @@ XQuAD, CC BY-SA 4.0, `SOURCE_MANIFEST.json` SHA-256 verified). Cases:
 `eval/prompts/real_rag_vi.jsonl` (1,193 questions). Provenance guarded by
 `tests/test_real_rag_fixture.py` (passing).
 
+The table below is the historical pre-incident baseline captured before the
+no-evidence guard was added; the current-tree v2 run, with the guard active, is
+recorded in P2.1.1.
+
 ```bash
 uv run --all-extras python eval/eval_hybrid_retrieval.py \
   --vault eval/fixtures/real_rag_vault --cases eval/prompts/real_rag_vi.jsonl \
@@ -1095,7 +1099,49 @@ Hybrid (RRF, `k=60`) beats sparse on every metric for ~4 ms extra p95. By slice,
 hybrid scores Recall@5 0.995 on the XQuAD Wikipedia slice (`learning_notes`) and
 0.667 on the small `life_vault_project` slice (3 cases).
 
-### P2.2 — Tool router (deterministic)
+### P2.1.1 — Vietnamese relevance incident and model bake-off
+
+Measured 2026-07-27 after reproducing an unsupported Bayes query against the
+real nutrition-only vault. The incident was caused by lexical retrieval
+returning weak top-k matches without a no-evidence decision. The temporary
+fail-closed guard is corpus-derived (IDF coverage + score separation), not a
+Vietnamese stopword or subject-word rule. Full model-selection details are in
+[`docs/10-vietnamese-rag-model-selection.md`](docs/10-vietnamese-rag-model-selection.md).
+
+The pre-migration smoke corpus had eight labelled queries and all variants
+scored 1.0 on Recall@5, MRR@10, and nDCG@10; the meaningful comparison is the
+XQuAD slice.
+The following table uses the first 200 XQuAD cases so model candidates can be
+compared without hiding the current code's latency/memory trade-offs:
+
+| Variant | Recall@5 | MRR@10 | nDCG@10 | p50 | p95 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| cached sparse + guard | 0.945 | 0.881 | 0.899 | 29.4 ms | 30.6 ms |
+| `multilingual-e5-small` hybrid + guard | 0.975 | 0.960 | 0.964 | 93.2 ms | 97.7 ms |
+| `Vietnamese_Embedding_v2` hybrid + guard | 0.970 | 0.968 | 0.970 | 115.2 ms | 140.3 ms |
+
+The Vietnamese encoder is a promising candidate, but it is not silently made
+the default. A full 1,193-case run is now recorded below; a calibrated
+reranker/no-answer test is still required. `Vietnamese_Reranker` improved
+no-answer score separation in a small diagnostic, but lowered smoke-set MRR to
+0.9375 by misordering the RAG architecture query, so it remains an opt-in
+research component.
+
+Full v2 run (`rrf_k=60`, `warm_repeats=1`, `encoding_repeats=1`, same current
+guard):
+
+| Variant | Cases | Recall@5 | MRR@10 | nDCG@10 | warm p50 | warm p95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `Vietnamese_Embedding_v2` hybrid + guard | 1,193 | 0.975692 | 0.958761 | 0.963662 | 111.06 ms | 126.01 ms |
+
+Slice metrics: `learning_notes` Recall@5 `0.975630`, MRR@10 `0.959330`,
+nDCG@10 `0.964086`; `life_vault_project` Recall@5 `1.000000`, MRR@10
+`0.733333`, nDCG@10 `0.795618` (only 3 cases). Cold mean/p95 were `132.51 /
+127.92 ms`; isolated query encoding mean/p95 were `16.83 / 24.36 ms`. The
+machine-specific JSON is ignored by git; the exact command and model-source
+notes are in [`docs/10-vietnamese-rag-model-selection.md`](docs/10-vietnamese-rag-model-selection.md).
+
+### P2.2 — Tool router (v2, offline)
 
 Dataset: `eval/prompts/tool_router_vi.jsonl`. With no predictions file the eval
 runs the deterministic `DefaultRuntimeToolRouter` live.
@@ -1105,11 +1151,34 @@ uv run --all-extras python eval/eval_tool_router.py \
   --dataset eval/prompts/tool_router_vi.jsonl --output eval/results/tool-router.json
 ```
 
-Exact tool accuracy **1.00**, coverage 1.00, zero false tool calls (10-case
-smoke set). Note: this is a smoke set; the ≥100-case / 8-slice acceptance dataset
-in the plan is not yet built, and there is no CLI that scores the LLM/cascade
-router live against a remote provider — only the deterministic tier is measured
-here.
+The v2 dataset has **100 cases across 8 slices**. The offline deterministic
+baseline is reproducible and does not call a provider:
+
+| Metric                              | Overall | Notes                                                              |
+| ----------------------------------- | ------: | ------------------------------------------------------------------ |
+| Accuracy                            |   0.610 | Expected: deterministic only; NL slices intentionally fall through |
+| Coverage                            |   1.000 | Every row gets a recorded decision                                 |
+| False-trigger rate                  |   0.000 | Hard-negative + no-tool slices have no tool calls                  |
+| Deterministic command/read accuracy |   1.000 | Explicit commands and scoped reads                                 |
+
+```bash
+uv run python -m eval.eval_tool_router \
+  --dataset eval/prompts/tool_router_vi.jsonl \
+  --output eval/results/tool-router-v2-baseline.json
+```
+
+The semantic and cascade captures use the same precision/recall/F1, slice,
+false-trigger, coverage, and p50/p95 latency schema. A live provider run is
+strictly opt-in and capped by default:
+
+```bash
+uv run python -m eval.eval_tool_router_live --provider openrouter \
+  --model <openrouter-model-id> --dataset eval/prompts/tool_router_vi.jsonl \
+  --predictions eval/results/tool-router-live.predictions.jsonl --max-cases 25
+```
+
+That command sends router prompts to OpenRouter and never executes a tool; it
+requires a stored OpenRouter key and may incur provider cost.
 
 ### P2.3 — Retrieved memory
 

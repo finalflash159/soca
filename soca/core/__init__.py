@@ -40,6 +40,7 @@ from .tool_routing import (
     RouterOutputError,
     SemanticRouterConfig,
     ToolRouterConfig,
+    ToolRouterDecision,
     build_tool_decision_schema,
     parse_tool_decision,
 )
@@ -119,6 +120,7 @@ __all__ = [
     "DefaultRuntimeToolRouter",
     "ToolRouterConfig",
     "SemanticRouterConfig",
+    "ToolRouterDecision",
     "ParsedToolDecision",
     "RouterOutputError",
     "build_tool_decision_schema",

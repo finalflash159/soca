@@ -13,15 +13,16 @@ from soca.core.guardrails import (
     GuardrailStage,
     check_final_output,
     check_input_text,
+    check_knowledge_read_path,
     check_tool_call,
     check_tool_result,
     check_untrusted_text,
     extract_markdown_paths,
-    is_time_question,
     normalize_vi,
 )
 from soca.core.streaming import pop_ready_first_clause, pop_ready_sentence
 from soca.core.text_chunking import chunk_text_for_tts
+from soca.core.tool_routing import ToolRouterDecision
 from soca.core.turn import (
     RuntimeResult,
     RuntimeRoute,
@@ -71,42 +72,94 @@ class DefaultRuntimeToolRouter:
         self,
         *,
         knowledge_search_prefixes: tuple[str, ...] = ("wiki:", "knowledge:"),
+        memory_search_prefixes: tuple[str, ...] = ("memory:", "mem:"),
+        time_prefixes: tuple[str, ...] = ("time:", "gio:", "giờ:"),
+        read_prefixes: tuple[str, ...] = (
+            "read:",
+            "read ",
+            "doc:",
+            "doc ",
+            "đọc:",
+            "đọc ",
+        ),
         enable_markdown_read: bool = True,
         enable_time: bool = True,
+        enable_memory_search: bool = True,
     ) -> None:
         self.knowledge_search_prefixes = knowledge_search_prefixes
+        self.memory_search_prefixes = memory_search_prefixes
+        self.time_prefixes = time_prefixes
+        self.read_prefixes = read_prefixes
         self.enable_markdown_read = enable_markdown_read
         self.enable_time = enable_time
+        self.enable_memory_search = enable_memory_search
         self.last_tier = "none"
+        self.last_decision = ToolRouterDecision()
 
     def select(self, text: str, *, knowledge_limit: int) -> ToolCall | None:
         if self.enable_markdown_read:
             path = self._first_markdown_path(text)
             if path is not None:
-                self.last_tier = "deterministic"
-                return ToolCall("knowledge.read", {"path": path})
+                path_event = check_knowledge_read_path(path)
+                if path_event.blocked:
+                    return self._none("unsafe_read_path")
+                normalized_path = path_event.metadata.get("normalized_path")
+                if not isinstance(normalized_path, str) or not normalized_path:
+                    return self._none("unsafe_read_path")
+                return self._call("knowledge.read", {"path": normalized_path})
 
-        if self.enable_time and is_time_question(text):
-            self.last_tier = "deterministic"
-            return ToolCall("local_time.now", {})
+        if self.enable_time:
+            timezone = self._parse_explicit_prefix(text, self.time_prefixes)
+            if timezone is not None:
+                arguments = {"timezone": timezone} if timezone else {}
+                return self._call("local_time.now", arguments)
 
         query = self._parse_knowledge_search_query(text)
         if query is not None:
-            self.last_tier = "deterministic"
-            return ToolCall(
+            return self._call(
                 "knowledge.search",
-                {
-                    "query": query,
-                    "limit": knowledge_limit,
-                },
+                {"query": query, "limit": knowledge_limit},
             )
 
+        if self.enable_memory_search:
+            query = self._parse_explicit_prefix(text, self.memory_search_prefixes)
+            if query:
+                return self._call(
+                    "memory.search",
+                    {"query": query, "limit": knowledge_limit},
+                )
+
+        return self._none("no_match")
+
+    def _call(self, name: str, arguments: dict[str, Any]) -> ToolCall:
+        call = ToolCall(name, arguments)
+        self.last_tier = "deterministic"
+        self.last_decision = ToolRouterDecision(call=call, reason="explicit_command")
+        return call
+
+    def _none(self, reason: str) -> None:
         self.last_tier = "none"
+        self.last_decision = ToolRouterDecision(reason=reason)
         return None
 
     def _first_markdown_path(self, text: str) -> str | None:
+        if not self._has_prefix(text, self.read_prefixes):
+            return None
         paths = extract_markdown_paths(text)
         return paths[0] if paths else None
+
+    def _has_prefix(self, text: str, prefixes: tuple[str, ...]) -> bool:
+        normalized = normalize_vi(text.strip())
+        return any(normalized.startswith(normalize_vi(prefix)) for prefix in prefixes)
+
+    def _parse_explicit_prefix(self, text: str, prefixes: tuple[str, ...]) -> str | None:
+        stripped = text.strip()
+        normalized = normalize_vi(stripped)
+        for prefix in prefixes:
+            normalized_prefix = normalize_vi(prefix)
+            if normalized.startswith(normalized_prefix):
+                return stripped[len(prefix) :].strip(" :,-")
+        return None
 
     def _parse_knowledge_search_query(self, text: str) -> str | None:
         stripped = text.strip()
@@ -128,6 +181,7 @@ class _TraceDraft:
     citations: list[KnowledgeCitation]
     stage_latencies_ms: dict[str, float]
     tool_router_tier: str = "none"
+    tool_router_reason: str = "no_match"
     memory_hits: list[Any] = field(default_factory=list)
     memory_mode: str = "blob"
     memory_degraded_reason: str = ""
@@ -183,6 +237,8 @@ class AssistantRuntime:
                 knowledge_limit=self.options.knowledge_limit,
             )
         draft.tool_router_tier = str(getattr(self.tool_router, "last_tier", "deterministic"))
+        decision = getattr(self.tool_router, "last_decision", ToolRouterDecision())
+        draft.tool_router_reason = str(getattr(decision, "reason", "no_match"))
         if tool_call is not None:
             return self._run_tool_turn(frame, tool_call, draft)
 
@@ -238,6 +294,8 @@ class AssistantRuntime:
                 knowledge_limit=self.options.knowledge_limit,
             )
         draft.tool_router_tier = str(getattr(self.tool_router, "last_tier", "deterministic"))
+        decision = getattr(self.tool_router, "last_decision", ToolRouterDecision())
+        draft.tool_router_reason = str(getattr(decision, "reason", "no_match"))
         if tool_call is not None:
             result = self._run_tool_turn(frame, tool_call, draft)
             yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
@@ -360,7 +418,11 @@ class AssistantRuntime:
             yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
             return
 
-        prompt = self._build_llm_prompt(frame.text, memory_context, knowledge_context)
+        prompt = self._build_llm_prompt(
+            frame.text,
+            memory_context,
+            knowledge_context,
+        )
         citations = tuple(draft.citations)
         knowledge_used = bool(citations)
 
@@ -591,7 +653,11 @@ class AssistantRuntime:
                 route=RuntimeRoute.BLOCKED,
             )
 
-        prompt = self._build_llm_prompt(frame.text, memory_context, knowledge_context)
+        prompt = self._build_llm_prompt(
+            frame.text,
+            memory_context,
+            knowledge_context,
+        )
 
         with self._stage(draft, "llm"):
             llm_result = self.llm.generate(
@@ -749,6 +815,7 @@ class AssistantRuntime:
             blocked=blocked,
             stage_latencies_ms=dict(draft.stage_latencies_ms),
             tool_router_tier=draft.tool_router_tier,
+            tool_router_reason=draft.tool_router_reason,
         )
         return RuntimeResult(
             response_text=response_text,

@@ -289,6 +289,7 @@ class VoicePipeline:
                 "used_llm": bool(getattr(trace, "used_llm", False)),
                 "citations": [{"path": item.path, "title": item.title} for item in citations],
                 "router_tier": getattr(trace, "tool_router_tier", "none"),
+                "router_reason": getattr(trace, "tool_router_reason", "no_match"),
                 "router_latency_ms": float(
                     getattr(trace, "stage_latencies_ms", {}).get("tool_router", 0.0)
                 ),

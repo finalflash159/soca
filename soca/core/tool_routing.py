@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from soca.tools import ToolSpec
+from soca.tools import ToolCall, ToolSpec
 
 ToolRouterMode = Literal["deterministic", "llm", "cascade"]
 RouterResponseMode = Literal["prompt_json", "json_schema"]
@@ -76,6 +76,14 @@ class RouterOutputError(ValueError):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+@dataclass(frozen=True)
+class ToolRouterDecision:
+    """Observable router result, including a reason for a deliberate ``none``."""
+
+    call: ToolCall | None = None
+    reason: str = "no_match"
 
 
 def build_tool_decision_schema(specs: tuple[ToolSpec, ...]) -> dict[str, Any]:

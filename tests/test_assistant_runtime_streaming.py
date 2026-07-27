@@ -210,7 +210,7 @@ def test_stream_tool_route_has_no_tokens_and_returns_tool_result() -> None:
     runtime = AssistantRuntime(llm=llm, tool_runtime=tool_runtime)
 
     tokens, sentences, result, _ = _collect(
-        runtime.stream_text_turn("Mấy giờ rồi?", min_sentence_chars=8)
+        runtime.stream_text_turn("time:", min_sentence_chars=8)
     )
 
     assert tokens == []
