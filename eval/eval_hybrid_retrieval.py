@@ -56,7 +56,11 @@ def _validate_path(path: str) -> None:
         raise ValueError(f"invalid relevant path: {path!r}")
 
 
-def load_cases(path: Path) -> tuple[RetrievalCase, ...]:
+def load_cases(
+    path: Path,
+    limit: int | None = None,
+    slice_name: str | None = None,
+) -> tuple[RetrievalCase, ...]:
     cases: list[RetrievalCase] = []
     seen: set[str] = set()
     with path.open("r", encoding="utf-8") as handle:
@@ -68,14 +72,14 @@ def load_cases(path: Path) -> tuple[RetrievalCase, ...]:
             if not isinstance(payload, dict):
                 raise ValueError(f"{path}:{line_number} must be an object")
             case_id = payload.get("id")
-            slice_name = payload.get("slice")
+            case_slice = payload.get("slice")
             query = payload.get("query")
             relevant = payload.get("relevant_paths")
             if (
                 not isinstance(case_id, str)
                 or not case_id.strip()
-                or not isinstance(slice_name, str)
-                or not slice_name.strip()
+                or not isinstance(case_slice, str)
+                or not case_slice.strip()
                 or not isinstance(query, str)
                 or not query.strip()
                 or not isinstance(relevant, list)
@@ -85,13 +89,17 @@ def load_cases(path: Path) -> tuple[RetrievalCase, ...]:
                 raise ValueError(f"{path}:{line_number} has invalid fields")
             if case_id in seen:
                 raise ValueError(f"duplicate case id: {case_id}")
+            if slice_name is not None and slice_name != case_slice:
+                continue
             seen.add(case_id)
             relevant_paths = tuple(relevant)
             if len(relevant_paths) != len(set(relevant_paths)):
                 raise ValueError(f"{case_id}: relevant paths must be unique")
             for relevant_path in relevant_paths:
                 _validate_path(relevant_path)
-            cases.append(RetrievalCase(case_id, slice_name, query, relevant_paths))
+            cases.append(RetrievalCase(case_id, case_slice, query, relevant_paths))
+            if limit is not None and len(cases) >= limit:
+                break
     if not cases:
         raise ValueError("retrieval eval requires at least one case")
     return tuple(cases)
@@ -169,11 +177,13 @@ def summarize(samples: Sequence[RetrievalSample]) -> dict[str, Any]:
     def metrics(group: Sequence[RetrievalSample]) -> dict[str, float]:
         ordered = sorted(sample.latency_ms for sample in group)
         p95_index = min(len(ordered) - 1, math.ceil(len(ordered) * 0.95) - 1)
+        p50_index = min(len(ordered) - 1, math.ceil(len(ordered) * 0.50) - 1)
         return {
             "recall_at_5": mean(sample.recall_at_5 for sample in group),
             "mrr_at_10": mean(sample.reciprocal_rank_at_10 for sample in group),
             "ndcg_at_10": mean(sample.ndcg_at_10 for sample in group),
             "latency_mean_ms": mean(ordered),
+            "latency_p50_ms": ordered[p50_index],
             "latency_p95_ms": ordered[p95_index],
         }
 
@@ -192,6 +202,18 @@ def _package_version(name: str) -> str | None:
         return metadata.version(name)
     except metadata.PackageNotFoundError:
         return None
+
+
+def _sha256_file(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    import hashlib
+
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def build_embedding_model(backend: str):
@@ -336,6 +358,8 @@ def run_benchmark(
             "backend": backend,
             "rrf_k": rrf_k,
             "warm_repeats": warm_repeats,
+            "index_reuse": True,
+            "data_manifest_sha256": _sha256_file(vault / "SOURCE_MANIFEST.json"),
             "packages": {
                 name: _package_version(name)
                 for name in (
@@ -374,6 +398,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--rrf-k", type=int, default=60)
     parser.add_argument("--warm-repeats", type=int, default=5)
+    parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--slice", dest="slice_name", type=str, default=None)
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -383,7 +409,7 @@ def main() -> int:
     try:
         report = run_benchmark(
             vault=args.vault.expanduser().resolve(),
-            cases=load_cases(args.cases),
+            cases=load_cases(args.cases, limit=args.limit, slice_name=args.slice_name),
             variant=args.variant,
             backend=args.backend,
             rrf_k=args.rrf_k,

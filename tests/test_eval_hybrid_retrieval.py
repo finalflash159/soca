@@ -79,6 +79,26 @@ def test_load_cases_validates_paths_duplicates_and_requires_rows(tmp_path: Path)
         evaluation.load_cases(cases_path)
 
 
+def test_load_cases_can_select_one_real_data_slice(tmp_path: Path) -> None:
+    cases_path = tmp_path / "cases.jsonl"
+    cases_path.write_text(
+        "\n".join(
+            json.dumps(
+                {
+                    "id": case_id,
+                    "slice": slice_name,
+                    "query": "query",
+                    "relevant_paths": ["wiki/note.md"],
+                }
+            )
+            for case_id, slice_name in (("one", "learning_notes"), ("two", "life_vault_project"))
+        ),
+        encoding="utf-8",
+    )
+    selected = evaluation.load_cases(cases_path, slice_name="life_vault_project")
+    assert [case.case_id for case in selected] == ["two"]
+
+
 class FakeSource:
     def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
         document = KnowledgeDocument(
