@@ -95,6 +95,7 @@ export interface AppState {
   llmCatalog: RemoteModelEvent[];
   llmCatalogProvider: string;
   llmConfig: LlmConfigEvent | null;
+  llmKeyPendingProvider: string | null;
   settingsNotice: string;
   knowledgeIndex: KnowledgeIndexStatus | null;
 }
@@ -129,6 +130,7 @@ export const initialState: AppState = {
   llmCatalog: [],
   llmCatalogProvider: "",
   llmConfig: null,
+  llmKeyPendingProvider: null,
   settingsNotice: "",
   knowledgeIndex: null,
 };
@@ -404,6 +406,13 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
         settingsNotice: "",
       };
     case "llm_key_status": {
+      if (event.pending) {
+        return {
+          ...state,
+          llmKeyPendingProvider: event.provider,
+          settingsNotice: event.message ?? "Đang xác thực API key…",
+        };
+      }
       const llmProviders = state.llmProviders.map((provider) =>
         provider.key === event.provider && event.ok
           ? { ...provider, has_key: true }
@@ -412,6 +421,10 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
       return {
         ...state,
         llmProviders,
+        llmKeyPendingProvider:
+          state.llmKeyPendingProvider === event.provider
+            ? null
+            : state.llmKeyPendingProvider,
         settingsNotice: event.ok
           ? `API key đã được xác thực${event.masked ? ` (${event.masked})` : ""}.`
           : (event.message ?? "Không thể xác thực API key."),

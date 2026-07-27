@@ -42,6 +42,7 @@ describe("SettingsScreen", () => {
           },
         ]}
         catalogProvider="openrouter"
+        keyPendingProvider={null}
         notice=""
         onRequestModels={vi.fn()}
         onSetKey={vi.fn()}
@@ -96,6 +97,7 @@ describe("SettingsScreen", () => {
         providers={providers}
         catalog={twoModelCatalog}
         catalogProvider="openrouter"
+        keyPendingProvider={null}
         notice=""
         onRequestModels={vi.fn()}
         onSetKey={vi.fn()}
@@ -139,5 +141,91 @@ describe("SettingsScreen", () => {
     it("returns nothing when no model matches", () => {
       expect(filterCatalog(twoModelCatalog, "nonexistent")).toEqual([]);
     });
+  });
+
+  it("starts replacement with an empty key buffer", async () => {
+    const onSetKey = vi.fn();
+    const view = render(
+      <SettingsScreen
+        config={{
+          event: "llm_config",
+          backend: "remote",
+          provider: "openrouter",
+          model: "openai/gpt-4o-mini",
+          max_tokens: 4096,
+          temperature: 0.2,
+          top_p: 0.95,
+          pricing_as_of: "2026-07",
+          pricing: null,
+        }}
+        providers={providers}
+        catalog={[]}
+        catalogProvider=""
+        keyPendingProvider={null}
+        notice=""
+        onRequestModels={vi.fn()}
+        onSetKey={onSetKey}
+        onSelect={vi.fn()}
+        onExit={vi.fn()}
+      />,
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    view.stdin.write("r");
+    await new Promise((resolve) => setImmediate(resolve));
+    view.stdin.write("old-secret");
+    await new Promise((resolve) => setImmediate(resolve));
+    view.stdin.write("\u001b");
+    await new Promise((resolve) => setImmediate(resolve));
+    view.stdin.write("r");
+    await new Promise((resolve) => setImmediate(resolve));
+    view.stdin.write("new-secret");
+    await new Promise((resolve) => setImmediate(resolve));
+    view.stdin.write("\r");
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(onSetKey).toHaveBeenCalledWith("openrouter", "new-secret");
+    view.unmount();
+  });
+
+  it("clears the whole temporary key buffer on Delete", async () => {
+    const onSetKey = vi.fn();
+    const view = render(
+      <SettingsScreen
+        config={{
+          event: "llm_config",
+          backend: "remote",
+          provider: "openrouter",
+          model: "openai/gpt-4o-mini",
+          max_tokens: 4096,
+          temperature: 0.2,
+          top_p: 0.95,
+          pricing_as_of: "2026-07",
+          pricing: null,
+        }}
+        providers={providers}
+        catalog={[]}
+        catalogProvider=""
+        keyPendingProvider={null}
+        notice=""
+        onRequestModels={vi.fn()}
+        onSetKey={onSetKey}
+        onSelect={vi.fn()}
+        onExit={vi.fn()}
+      />,
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    view.stdin.write("r");
+    await new Promise((resolve) => setImmediate(resolve));
+    view.stdin.write("old-secret");
+    await new Promise((resolve) => setImmediate(resolve));
+    view.stdin.write("\u001b[3~");
+    await new Promise((resolve) => setImmediate(resolve));
+    view.stdin.write("\r");
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(onSetKey).not.toHaveBeenCalled();
+    view.unmount();
   });
 });

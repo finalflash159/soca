@@ -201,8 +201,22 @@ class RemoteOpenAILLM:
                 "temperature": temperature,
                 "top_p": top_p,
                 "stream": False,
+                **self._openrouter_generation_options(),
             },
         )
+
+    def _openrouter_generation_options(self) -> dict[str, Any]:
+        """Disable hidden reasoning by default for ordinary SoCa turns.
+
+        OpenRouter counts reasoning tokens against the same completion budget.
+        With the old 160-token default, reasoning models could spend the whole
+        budget before producing ``message.content``. This is an adapter
+        default, not a prompt rule: providers that do not support the field
+        receive no extra request parameter.
+        """
+        if self.provider.key != "openrouter":
+            return {}
+        return {"extra_body": {"reasoning": {"effort": "none"}}}
 
     def generate_structured(
         self,
@@ -241,6 +255,7 @@ class RemoteOpenAILLM:
         }
         if self.provider.key == "openrouter":
             request["extra_body"] = {
+                "reasoning": {"effort": "none"},
                 "provider": {
                     "require_parameters": True,
                     "data_collection": "deny" if zero_data_retention else "allow",
@@ -268,6 +283,7 @@ class RemoteOpenAILLM:
                 top_p=top_p,
                 stream=True,
                 stream_options={"include_usage": True},
+                **self._openrouter_generation_options(),
             )
             for chunk in stream:
                 text = _chunk_delta_text(chunk)

@@ -16,6 +16,7 @@ from soca.app.style.palette import ALT, st
 from soca.app.text_chat import run_text_chat
 from soca.app.text_runtime import TextRuntimeConfig, resolve_text_runtime_config, run_text_ask
 from soca.asr.registry import ASR_MODEL_REGISTRY, DEFAULT_ASR_MODEL_KEY
+from soca.config import DEFAULT_MAX_TOKENS
 from soca.core import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
     VOICE_RUNTIME_PROFILES,
@@ -336,7 +337,7 @@ def profiles_command(show_paths: bool) -> None:
 )
 @click.option("--no-memory", is_flag=True, help="Disable profile/session memory.")
 @click.option("--no-llm", is_flag=True, help="Run tool/guardrail-only without loading LLM.")
-@click.option("--max-tokens", type=int, default=160, show_default=True)
+@click.option("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS, show_default=True)
 @click.option("--temperature", type=float, default=0.2, show_default=True)
 @click.option("--top-p", type=float, default=0.95, show_default=True)
 @click.option("--knowledge-limit", type=int, default=3, show_default=True)
@@ -439,7 +440,7 @@ def ask(
 )
 @click.option("--no-memory", is_flag=True, help="Disable profile/session memory.")
 @click.option("--no-llm", is_flag=True, help="Run tool/guardrail-only without loading LLM.")
-@click.option("--max-tokens", type=int, default=160, show_default=True)
+@click.option("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS, show_default=True)
 @click.option("--temperature", type=float, default=0.2, show_default=True)
 @click.option("--top-p", type=float, default=0.95, show_default=True)
 @click.option("--knowledge-limit", type=int, default=3, show_default=True)
@@ -716,7 +717,7 @@ def engine(
         vault=vault,
         no_memory=no_memory,
         no_llm=no_model,
-        max_tokens=160,
+        max_tokens=DEFAULT_MAX_TOKENS,
         temperature=0.2,
         top_p=0.95,
         knowledge_limit=3,

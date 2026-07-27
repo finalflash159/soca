@@ -118,6 +118,15 @@ def test_generate_without_persona_has_no_forced_system_prompt():
     assert "system" not in roles
 
 
+def test_openrouter_disables_hidden_reasoning_for_ordinary_generation():
+    client = FakeClient(completion=_make_completion("ok", 10, 1))
+    engine = _engine(client, provider_key="openrouter")
+
+    engine.generate("Câu hỏi")
+
+    assert client.calls[0]["extra_body"] == {"reasoning": {"effort": "none"}}
+
+
 def test_generate_strips_whitespace_from_completion():
     client = FakeClient(completion=_make_completion("  Trả lời.\n", 5, 2))
     engine = _engine(client)
@@ -173,6 +182,15 @@ def test_generate_stream_yields_delta_text_and_requests_usage():
     call = client.calls[0]
     assert call["stream"] is True
     assert call["stream_options"] == {"include_usage": True}
+
+
+def test_openrouter_stream_disables_hidden_reasoning():
+    client = FakeClient(stream_chunks=[_make_delta("ok")])
+    engine = _engine(client, provider_key="openrouter")
+
+    list(engine.generate_stream("Câu hỏi"))
+
+    assert client.calls[0]["extra_body"] == {"reasoning": {"effort": "none"}}
 
 
 def test_generate_stream_validates_arguments():

@@ -16,6 +16,8 @@ Backend = Literal["local", "remote"]
 DEFAULT_CONFIG_DIR = Path.home() / ".config" / "soca"
 DEFAULT_SETTINGS_PATH = DEFAULT_CONFIG_DIR / "llm.json"
 DEFAULT_LOCAL_MODEL_ID = "arcee_vylinh_3b_q4_k_m"
+DEFAULT_MAX_TOKENS = 4_096
+_LEGACY_DEFAULT_MAX_TOKENS = 160
 
 
 @dataclass(frozen=True)
@@ -25,7 +27,7 @@ class LlmSettings:
     backend: Backend = "local"
     provider_key: str = "openrouter"
     model_id: str = DEFAULT_LOCAL_MODEL_ID
-    max_tokens: int = 160
+    max_tokens: int = DEFAULT_MAX_TOKENS
     temperature: float = 0.2
     top_p: float = 0.95
 
@@ -127,14 +129,22 @@ def _settings_from_payload(payload: object, path: Path) -> LlmSettings:
     if set(payload) != _SETTINGS_FIELDS:
         expected = ", ".join(sorted(_SETTINGS_FIELDS))
         raise ValueError(f"LLM settings tại {path} phải có đúng các trường: {expected}.")
+    # Settings files created before the UI exposed generation controls contain
+    # the old implicit 160-token default. Migrate that implicit value so a
+    # long grounded answer or a reasoning model cannot consume the entire
+    # budget before its answer.
+    normalized = dict(payload)
+    if normalized.get("max_tokens") == _LEGACY_DEFAULT_MAX_TOKENS:
+        normalized["max_tokens"] = DEFAULT_MAX_TOKENS
     try:
-        return LlmSettings(**payload)
+        return LlmSettings(**normalized)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"LLM settings tại {path} không hợp lệ: {exc}") from exc
 
 
 __all__ = [
     "DEFAULT_CONFIG_DIR",
+    "DEFAULT_MAX_TOKENS",
     "DEFAULT_SETTINGS",
     "DEFAULT_SETTINGS_PATH",
     "LlmSettings",

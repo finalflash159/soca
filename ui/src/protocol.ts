@@ -179,6 +179,7 @@ export interface LlmKeyStatusEvent {
   event: "llm_key_status";
   provider: string;
   ok: boolean;
+  pending?: boolean;
   masked?: string;
   message?: string;
 }

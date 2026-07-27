@@ -21,6 +21,7 @@ export interface SettingsScreenProps {
   providers: LlmProviderStatus[];
   catalog: RemoteModelEvent[];
   catalogProvider: string;
+  keyPendingProvider: string | null;
   notice: string;
   onRequestModels: (provider: string, query: string) => void;
   onSetKey: (provider: string, key: string) => void;
@@ -108,6 +109,7 @@ export function SettingsScreen({
   providers,
   catalog,
   catalogProvider,
+  keyPendingProvider,
   notice,
   onRequestModels,
   onSetKey,
@@ -143,6 +145,7 @@ export function SettingsScreen({
   );
   const selectedProvider = choices[selectedIndex] ?? choices[0];
   const isLocal = selectedProvider?.key === "local";
+  const keyPending = selectedProvider?.key === keyPendingProvider;
 
   const visibleCatalog =
     selectedProvider?.key === catalogProvider ? catalog : [];
@@ -171,6 +174,24 @@ export function SettingsScreen({
     }
     prevHasKey.current = hasKey;
   }, [selectedProvider?.hasKey, focus]);
+
+  // A successful replacement must leave the key editor even when the
+  // provider already had a key (hasKey therefore stays true). Failed
+  // validation keeps the editor open so the user can retry.
+  const wasKeyPending = useRef(false);
+  useEffect(() => {
+    if (wasKeyPending.current && !keyPending) {
+      if (notice.startsWith("API key đã")) {
+        setApiKey("");
+        setFocus("providers");
+      }
+    }
+    wasKeyPending.current = keyPending;
+  }, [keyPending, notice]);
+
+  // ink-text-input treats Delete like Backspace. For a masked API key field,
+  // Delete should clear the whole temporary buffer in one operation.
+  const clearKeyOnDelete = useRef(false);
 
   function moveSelection(delta: number): void {
     touched.current = true;
@@ -212,6 +233,11 @@ export function SettingsScreen({
         else onExit();
         return;
       }
+      if (focus === "key" && key.delete) {
+        clearKeyOnDelete.current = true;
+        setApiKey("");
+        return;
+      }
       // Only the provider row reacts to navigation keys; while a text field or
       // the model list owns focus, let its own input handler consume them.
       if (focus === "providers") {
@@ -225,7 +251,8 @@ export function SettingsScreen({
         ) {
           moveSelection(1);
         } else if (input === "r" && !isLocal && selectedProvider?.hasKey) {
-          setFocus("key"); // reveal key field to replace a saved/expired key
+          setApiKey("");
+          setFocus("key"); // reveal an empty field to replace a saved/expired key
         } else if (key.return) {
           descend();
         }
@@ -276,6 +303,11 @@ export function SettingsScreen({
         })}
       </Box>
       <Text color={COLOR.muted}>{hintFor(focus)}</Text>
+      {config ? (
+        <Text color={COLOR.muted}>
+          giới hạn đầu ra mặc định: {config.max_tokens.toLocaleString("vi-VN")} token
+        </Text>
+      ) : null}
 
       {isLocal ? (
         <Box marginTop={1} flexDirection="column">
@@ -300,12 +332,19 @@ export function SettingsScreen({
                 <Box>
                   <Text color={COLOR.alt}>{ICON.pointer} </Text>
                   <TextInput
-                    focus={focus === "key"}
+                    focus={focus === "key" && !keyPending}
                     value={apiKey}
                     mask="•"
-                    onChange={setApiKey}
+                    onChange={(value) => {
+                      if (clearKeyOnDelete.current) {
+                        clearKeyOnDelete.current = false;
+                        setApiKey("");
+                        return;
+                      }
+                      setApiKey(value);
+                    }}
                     onSubmit={(value) => {
-                      if (value.trim())
+                      if (!keyPending && value.trim())
                         onSetKey(selectedProvider.key, value.trim());
                     }}
                     placeholder={
@@ -320,9 +359,11 @@ export function SettingsScreen({
                 <Text
                   color={selectedProvider.hasKey ? COLOR.good : COLOR.muted}
                 >
-                  {selectedProvider.hasKey
-                    ? `${ICON.on} đang thay key — Esc để hủy`
-                    : `${ICON.off} cần API key hợp lệ trước khi chọn model`}
+                  {keyPending
+                    ? `${ICON.on} đang xác thực API key…`
+                    : selectedProvider.hasKey
+                      ? `${ICON.on} nhập key mới rồi Enter · Esc để hủy`
+                      : `${ICON.off} cần API key hợp lệ trước khi chọn model`}
                 </Text>
                 {selectedProvider.hasPricingApi ? (
                   <Text color={COLOR.alt}> · giá live</Text>

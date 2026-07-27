@@ -9,6 +9,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from soca.config.llm_settings import (
+    DEFAULT_MAX_TOKENS,
     DEFAULT_SETTINGS,
     LlmSettings,
     load_settings,
@@ -22,6 +23,26 @@ def test_defaults_are_local_backend() -> None:
     assert DEFAULT_SETTINGS.backend == "local"
     # A fresh install must never silently point at a paid remote provider.
     assert isinstance(DEFAULT_SETTINGS, LlmSettings)
+    assert DEFAULT_SETTINGS.max_tokens == DEFAULT_MAX_TOKENS == 4_096
+
+
+def test_load_migrates_the_old_implicit_token_default(tmp_path) -> None:
+    path = tmp_path / "llm.json"
+    path.write_text(
+        json.dumps(
+            {
+                "backend": "remote",
+                "model_id": "z-ai/glm-5.2",
+                "provider_key": "openrouter",
+                "max_tokens": 160,
+                "temperature": 0.2,
+                "top_p": 0.95,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert load_settings(path).max_tokens == DEFAULT_MAX_TOKENS
 
 
 def test_rejects_unknown_backend() -> None:

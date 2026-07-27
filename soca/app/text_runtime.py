@@ -11,7 +11,7 @@ from rich.text import Text as RichText
 
 from soca.app.style.palette import ACCENT, ALT, BAD, BORDER, ICON, MUTED, TEXT, st
 from soca.app.usage_view import print_turn_usage
-from soca.config import LlmSettings, SecretStore, load_settings
+from soca.config import DEFAULT_MAX_TOKENS, LlmSettings, SecretStore, load_settings
 from soca.core import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
 from soca.core.knowledge_setup import build_knowledge_runtime_setup
 from soca.core.memory_setup import (
@@ -54,7 +54,7 @@ class TextRuntimeConfig:
     vault: Path = Path.home() / "KnowledgeVault"
     no_memory: bool = False
     no_llm: bool = False
-    max_tokens: int = 160
+    max_tokens: int = DEFAULT_MAX_TOKENS
     temperature: float = 0.2
     top_p: float = 0.95
     knowledge_limit: int = 3
@@ -87,7 +87,7 @@ def resolve_text_runtime_config(
     vault: str | Path | None = None,
     no_memory: bool = False,
     no_llm: bool = False,
-    max_tokens: int = 160,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
     temperature: float = 0.2,
     top_p: float = 0.95,
     knowledge_limit: int = 3,

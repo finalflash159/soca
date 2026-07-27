@@ -386,6 +386,7 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
           providers={state.llmProviders}
           catalog={state.llmCatalog}
           catalogProvider={state.llmCatalogProvider}
+          keyPendingProvider={state.llmKeyPendingProvider}
           notice={state.settingsNotice}
           onRequestModels={(provider, query) =>
             engine?.send({ cmd: "llm_models", provider, query })

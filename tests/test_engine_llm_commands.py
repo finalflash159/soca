@@ -125,7 +125,11 @@ def test_llm_providers_reports_all_providers_and_only_key_presence() -> None:
 def test_llm_models_filters_catalog_by_query() -> None:
     capture, _ = _run([{"cmd": "llm_models", "provider": "groq", "query": "qwen"}])
 
-    event = next(item for item in capture.events() if item["event"] == "llm_catalog")
+    event = next(
+        item
+        for item in reversed(capture.events())
+        if item["event"] == "llm_catalog"
+    )
     assert event["provider"] == "groq"
     assert [model["id"] for model in event["models"]] == ["qwen/qwen3-32b"]
     assert "supported_parameters" not in event["models"][0]
@@ -150,7 +154,11 @@ def test_llm_set_key_validates_then_masks_without_echoing_secret() -> None:
         secrets=FakeSecrets(),
     )
 
-    event = next(item for item in capture.events() if item["event"] == "llm_key_status")
+    event = next(
+        item
+        for item in reversed(capture.events())
+        if item["event"] == "llm_key_status" and not item.get("pending")
+    )
     assert event == {
         "event": "llm_key_status",
         "provider": "openrouter",
@@ -170,7 +178,11 @@ def test_llm_set_key_converts_an_unexpected_catalog_failure_to_a_safe_status() -
         catalog_fetcher=broken_catalog,
     )
 
-    event = next(item for item in capture.events() if item["event"] == "llm_key_status")
+    event = next(
+        item
+        for item in reversed(capture.events())
+        if item["event"] == "llm_key_status" and not item.get("pending")
+    )
     assert event["ok"] is False
     assert "không thể xác thực api key" in event["message"].lower()
     assert "internal catalog diagnostic" not in event["message"]

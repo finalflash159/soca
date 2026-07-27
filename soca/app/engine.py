@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import hashlib
 import json
 import logging
 import sys
@@ -186,6 +187,14 @@ class SocaEngine:
             self._settings_warning = "Không thể đọc cấu hình LLM đã lưu; đang dùng Local mặc định."
         self.secret_store = secret_store or SecretStore()
         self.catalog_fetcher = catalog_fetcher
+        # Provider /models endpoints (especially OpenRouter) can be large and
+        # slow. Never run them on the stdin command loop: doing so makes a key
+        # submit, startup, or model picker look frozen.
+        self._catalog_lock = threading.Lock()
+        self._catalog_cache: dict[str, tuple[str, list[RemoteModelInfo]]] = {}
+        self._catalog_inflight: set[tuple[str, str]] = set()
+        self._catalog_threads: set[threading.Thread] = set()
+        self._key_validation_tokens: dict[str, str] = {}
 
         self.session_memory = self._create_session_memory()
         self.text_bundle: TextRuntimeBundle | None = None
@@ -265,6 +274,13 @@ class SocaEngine:
             self._chat_thread.join(timeout=10.0)
         for thread in self._voice_threads:
             thread.join(timeout=5.0)
+        # Fake fetchers finish immediately in tests; real HTTP fetches are
+        # bounded below the UI termination grace period. Threads are daemonized
+        # so a slow provider cannot keep the process alive forever.
+        with self._catalog_lock:
+            catalog_threads = tuple(self._catalog_threads)
+        for thread in catalog_threads:
+            thread.join(timeout=1.0)
         self.writer.emit({"event": "bye"})
 
     def _error(self, message: str, **extra: Any) -> None:
@@ -324,37 +340,20 @@ class SocaEngine:
         provider = self._provider_from_command(command)
         if provider is None:
             return
-        api_key = self.secret_store.get_key(provider.key)
-        if not api_key:
-            self._error(f"Chưa có API key cho {provider.label}.")
-            return
-        try:
-            catalog = self.catalog_fetcher(provider, api_key)
-        except RemoteLLMError as exc:
-            self._error(str(exc), provider=provider.key)
-            return
-        except Exception as exc:  # noqa: BLE001 - external catalog adapters are untrusted
-            LOGGER.warning(
-                "Unexpected model catalog failure for provider %s (%s)",
-                provider.key,
-                type(exc).__name__,
-            )
-            self._error(
-                f"Không thể lấy danh sách model của {provider.label}.", provider=provider.key
-            )
-            return
         query = command.get("query", "")
         if not isinstance(query, str):
             self._error("LLM model query phải là chuỗi.")
             return
-        self.writer.emit(
-            {
-                "event": "llm_catalog",
-                "provider": provider.key,
-                "models": [_model_protocol_payload(model) for model in search_models(catalog, query)],
-                "pricing_as_of": PRICING_TABLE_AS_OF,
-            }
-        )
+        api_key = self.secret_store.get_key(provider.key)
+        if not api_key:
+            self._error(f"Chưa có API key cho {provider.label}.")
+            return
+        cached = self._cached_catalog(provider, api_key)
+        if cached is not None:
+            self._emit_catalog(provider, cached, query)
+            return
+        self._emit_catalog(provider, [], query)
+        self._start_catalog_fetch(provider, api_key, purpose="models", query=query)
 
     def _cmd_llm_set_key(self, command: dict[str, Any]) -> None:
         provider = self._provider_from_command(command)
@@ -365,25 +364,16 @@ class SocaEngine:
             self._emit_key_status(provider.key, ok=False, message="API key không được để trống.")
             return
         secret = value.strip()
-        try:
-            self.catalog_fetcher(provider, secret)
-            self.secret_store.set_key(provider.key, secret)
-        except (RemoteLLMError, ValueError) as exc:
-            self._emit_key_status(provider.key, ok=False, message=str(exc))
-            return
-        except Exception as exc:  # noqa: BLE001 - never expose adapter diagnostics or keys to the UI
-            LOGGER.warning(
-                "Unexpected API-key validation failure for provider %s (%s)",
-                provider.key,
-                type(exc).__name__,
-            )
-            self._emit_key_status(
-                provider.key,
-                ok=False,
-                message="Không thể xác thực API key. Hãy thử lại sau.",
-            )
-            return
-        self._emit_key_status(provider.key, ok=True, masked=self.secret_store.mask(secret))
+        fingerprint = self._catalog_fingerprint(secret)
+        with self._catalog_lock:
+            self._key_validation_tokens[provider.key] = fingerprint
+        self._emit_key_status(
+            provider.key,
+            ok=False,
+            pending=True,
+            message=f"Đang xác thực API key của {provider.label}…",
+        )
+        self._start_catalog_fetch(provider, secret, purpose="key")
 
     def _cmd_llm_select(self, command: dict[str, Any]) -> None:
         if self._chat_lock.locked():
@@ -426,6 +416,11 @@ class SocaEngine:
     def _emit_llm_config(self) -> None:
         settings = self.llm_settings
         active_model = self._active_remote_model(settings)
+        if settings.backend == "remote":
+            provider = get_provider(settings.provider_key)
+            api_key = self.secret_store.get_key(provider.key)
+            if api_key and active_model is None:
+                self._start_catalog_fetch(provider, api_key, purpose="config")
         payload: dict[str, Any] = {
             "event": "llm_config",
             "backend": settings.backend,
@@ -445,19 +440,156 @@ class SocaEngine:
         api_key = self.secret_store.get_key(settings.provider_key)
         if not api_key:
             return None
-        try:
-            provider = get_provider(settings.provider_key)
-            catalog = self.catalog_fetcher(provider, api_key)
-        except RemoteLLMError:
-            return None
-        except Exception as exc:  # noqa: BLE001 - config output must not terminate the engine
-            LOGGER.warning(
-                "Unexpected active-model lookup failure for %s (%s)",
-                settings.provider_key,
-                type(exc).__name__,
-            )
+        provider = get_provider(settings.provider_key)
+        catalog = self._cached_catalog(provider, api_key)
+        if catalog is None:
             return None
         return next((model for model in catalog if model.id == settings.model_id), None)
+
+    @staticmethod
+    def _catalog_fingerprint(api_key: str) -> str:
+        return hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+
+    def _cached_catalog(
+        self,
+        provider: LLMProvider,
+        api_key: str,
+    ) -> list[RemoteModelInfo] | None:
+        fingerprint = self._catalog_fingerprint(api_key)
+        with self._catalog_lock:
+            cached = self._catalog_cache.get(provider.key)
+            if cached is None or cached[0] != fingerprint:
+                return None
+            return list(cached[1])
+
+    def _emit_catalog(
+        self,
+        provider: LLMProvider,
+        catalog: list[RemoteModelInfo],
+        query: str,
+    ) -> None:
+        self.writer.emit(
+            {
+                "event": "llm_catalog",
+                "provider": provider.key,
+                "models": [
+                    _model_protocol_payload(model)
+                    for model in search_models(catalog, query)
+                ],
+                "pricing_as_of": PRICING_TABLE_AS_OF,
+            }
+        )
+
+    def _start_catalog_fetch(
+        self,
+        provider: LLMProvider,
+        api_key: str,
+        *,
+        purpose: str,
+        query: str = "",
+    ) -> None:
+        fingerprint = self._catalog_fingerprint(api_key)
+        cached = self._cached_catalog(provider, api_key)
+        if cached is not None:
+            if purpose == "key":
+                self._complete_key_validation(provider, api_key, fingerprint)
+            elif purpose == "models":
+                self._emit_catalog(provider, cached, query)
+            return
+
+        request_key = (provider.key, fingerprint)
+        with self._catalog_lock:
+            if request_key in self._catalog_inflight:
+                return
+            self._catalog_inflight.add(request_key)
+            thread = threading.Thread(
+                target=self._catalog_worker,
+                args=(provider, api_key, fingerprint, purpose, query),
+                daemon=True,
+                name=f"soca-catalog-{provider.key}",
+            )
+            self._catalog_threads.add(thread)
+        thread.start()
+
+    def _catalog_worker(
+        self,
+        provider: LLMProvider,
+        api_key: str,
+        fingerprint: str,
+        purpose: str,
+        query: str,
+    ) -> None:
+        try:
+            catalog = self.catalog_fetcher(provider, api_key)
+        except RemoteLLMError as exc:
+            if purpose == "key":
+                if self._key_validation_is_current(provider.key, fingerprint):
+                    self._emit_key_status(provider.key, ok=False, message=str(exc))
+            else:
+                self._error(str(exc), provider=provider.key)
+            return
+        except Exception as exc:  # noqa: BLE001 - external catalog adapters are untrusted
+            LOGGER.warning(
+                "Unexpected model catalog failure for provider %s (%s)",
+                provider.key,
+                type(exc).__name__,
+            )
+            if purpose == "key":
+                if self._key_validation_is_current(provider.key, fingerprint):
+                    self._emit_key_status(
+                        provider.key,
+                        ok=False,
+                        message="Không thể xác thực API key. Hãy thử lại sau.",
+                    )
+            else:
+                self._error(
+                    f"Không thể lấy danh sách model của {provider.label}.",
+                    provider=provider.key,
+                )
+            return
+        finally:
+            request_key = (provider.key, fingerprint)
+            with self._catalog_lock:
+                self._catalog_inflight.discard(request_key)
+                self._catalog_threads.discard(threading.current_thread())
+
+        with self._catalog_lock:
+            self._catalog_cache[provider.key] = (fingerprint, list(catalog))
+
+        if purpose == "key":
+            self._complete_key_validation(provider, api_key, fingerprint)
+        elif purpose in {"models", "config"}:
+            self._emit_catalog(provider, catalog, query)
+
+        # Startup can emit llm_config before this fetch is ready. Refresh only
+        # its pricing field once the cache is available.
+        if purpose != "key" and (
+            self.llm_settings.backend == "remote"
+            and self.llm_settings.provider_key == provider.key
+        ):
+            self._emit_llm_config()
+
+    def _key_validation_is_current(self, provider_key: str, fingerprint: str) -> bool:
+        with self._catalog_lock:
+            return self._key_validation_tokens.get(provider_key) == fingerprint
+
+    def _complete_key_validation(
+        self,
+        provider: LLMProvider,
+        api_key: str,
+        fingerprint: str,
+    ) -> None:
+        if not self._key_validation_is_current(provider.key, fingerprint):
+            return
+        self.secret_store.set_key(provider.key, api_key)
+        # A runtime may have captured the previous key when a chat was already
+        # initialized; force the next turn to rebuild with this key.
+        self.text_bundle = None
+        self._emit_key_status(
+            provider.key,
+            ok=True,
+            masked=self.secret_store.mask(api_key),
+        )
 
     def _provider_from_command(self, command: dict[str, Any]) -> LLMProvider | None:
         raw_provider = command.get("provider")
@@ -477,12 +609,15 @@ class SocaEngine:
         ok: bool,
         masked: str | None = None,
         message: str | None = None,
+        pending: bool = False,
     ) -> None:
         payload: dict[str, Any] = {
             "event": "llm_key_status",
             "provider": provider_key,
             "ok": ok,
         }
+        if pending:
+            payload["pending"] = True
         if masked is not None:
             payload["masked"] = masked
         if message is not None:
@@ -705,9 +840,15 @@ class SocaEngine:
         # Pass the engine's in-memory settings + secret store so chat honours the
         # backend the UI just selected, rather than re-reading disk with a fresh
         # SecretStore. Fall back for builders with a narrower signature (tests).
+        runtime_config = dataclasses.replace(
+            self.text_config,
+            max_tokens=self.llm_settings.max_tokens,
+            temperature=self.llm_settings.temperature,
+            top_p=self.llm_settings.top_p,
+        )
         try:
             bundle = self.text_runtime_builder(
-                self.text_config,
+                runtime_config,
                 session_memory=self.session_memory,
                 llm_settings=self.llm_settings,
                 secret_store=self.secret_store,
@@ -715,10 +856,10 @@ class SocaEngine:
         except TypeError:
             try:
                 bundle = self.text_runtime_builder(
-                    self.text_config, session_memory=self.session_memory
+                    runtime_config, session_memory=self.session_memory
                 )
             except TypeError:
-                bundle = self.text_runtime_builder(self.text_config)
+                bundle = self.text_runtime_builder(runtime_config)
         self.text_bundle = bundle
         self.writer.emit(
             {
