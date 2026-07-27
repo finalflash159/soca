@@ -10,6 +10,7 @@ from soca.core.tool_routing import (
     ParsedToolDecision,
     RouterOutputError,
     ToolRouterConfig,
+    ToolRouterDecision,
     build_tool_decision_schema,
     parse_tool_decision,
 )
@@ -83,6 +84,7 @@ class LLMToolRouter:
         self._config = config or ToolRouterConfig(mode="llm")
         self._fallback = fallback
         self.last_tier = "none"
+        self.last_decision = ToolRouterDecision()
 
     def select(self, text: str, *, knowledge_limit: int) -> ToolCall | None:
         catalog = _tool_catalog(self._tool_runtime)
@@ -110,10 +112,15 @@ class LLMToolRouter:
 
     def _finish(self, raw: str, text: str, knowledge_limit: int) -> ToolCall | None:
         try:
-            call = self._validated_call(raw)
+            decision = self._validated_decision(raw)
         except RouterOutputError:
             return self._fallback_select(text, knowledge_limit)
         self.last_tier = "llm"
+        if decision.tool == "none":
+            self.last_decision = ToolRouterDecision(reason="llm_none")
+            return None
+        call = ToolCall(decision.tool, dict(decision.arguments))
+        self.last_decision = ToolRouterDecision(call=call, reason="llm_match")
         return call
 
     def _attempt(
@@ -188,7 +195,13 @@ class LLMToolRouter:
     def _fallback_select(self, text: str, knowledge_limit: int) -> ToolCall | None:
         if self._fallback is None:
             self.last_tier = "none"
+            self.last_decision = ToolRouterDecision(reason="no_fallback")
             return None
         call = self._fallback.select(text, knowledge_limit=knowledge_limit)
         self.last_tier = getattr(self._fallback, "last_tier", "deterministic")
+        self.last_decision = getattr(
+            self._fallback,
+            "last_decision",
+            ToolRouterDecision(call=call, reason="fallback_match" if call else "fallback_none"),
+        )
         return call

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 
 from soca.core.llm_tool_router import LLMToolRouter
@@ -10,6 +11,8 @@ from soca.core.tool_routing import ToolRouterConfig
 from soca.knowledge.retrievers.dense import EmbeddingModel
 from soca.llm import LLMEngine
 from soca.tools import ToolRuntime
+
+LOGGER = logging.getLogger(__name__)
 
 
 def build_runtime_tool_router(
@@ -33,11 +36,20 @@ def build_runtime_tool_router(
         if voice and not config.semantic_enabled_in_voice
         else config.semantic
     )
-    semantic_router = build_semantic_router(
-        tool_runtime=tool_runtime,
-        config=semantic_config,
-        embedding_model=embedding_model,
-    )
+    try:
+        semantic_router = build_semantic_router(
+            tool_runtime=tool_runtime,
+            config=semantic_config,
+            embedding_model=embedding_model,
+        )
+    except (FileNotFoundError, ImportError, OSError, RuntimeError, ValueError) as exc:
+        LOGGER.warning("Semantic tool router unavailable; using lower tiers (%s)", type(exc).__name__)
+        semantic_router = None
+    if semantic_router is None and config.semantic.enabled and embedding_model is None:
+        # Text's semantic default is explicitly offline-safe: without an
+        # embedder, degrade to Tier 0 instead of paying a second LLM call for
+        # every ordinary chat turn.
+        return deterministic
     llm_router = (
         LLMToolRouter(llm, tool_runtime, config=config, fallback=None)
         if llm is not None and (not voice or config.enabled_in_voice)

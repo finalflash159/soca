@@ -23,8 +23,12 @@ bake-off before it becomes a default (see [BENCHMARKS.md](BENCHMARKS.md)).
 - **RobustASR**: VAD, de-looping, confidence guard, model-specific BoH matching,
   and hallucination heuristics — turns flaky Whisper output into trusted text or a
   clean reject with a reason.
-- **AssistantRuntime**: staged guardrails, deterministic tool routing, knowledge +
-  memory prompt assembly, citations, trace output, and end-to-end streaming.
+- **AssistantRuntime**: staged guardrails, deterministic → semantic → LLM tool
+  routing, knowledge + memory prompt assembly, citations, trace output, and
+  end-to-end streaming.
+- **Tool catalog**: five real local tools only — knowledge search/read, local
+  time, memory search, and approval-gated memory proposals. Weather/device/alarm
+  requests stay in free chat; no fake backend or capability classifier is registered.
 - **Conversation-repair layer**: natural Vietnamese follow-ups with variants,
   no-repeat, and escalation instead of raw ASR rejects, with handover to chat.
 - **Registries + profiles** for ASR/LLM/TTS, plus eval harnesses and benchmark reports.
@@ -147,8 +151,10 @@ Profiles drive both voice and text; `--llm-model` overrides both. Details:
 `soca ask` is the fastest way to exercise routing without mic/TTS:
 
 ```bash
-uv run soca ask "mấy giờ rồi?" --trace             # local time tool
+uv run soca ask "time:" --trace                  # deterministic local time tool
+uv run soca ask "mấy giờ rồi?" --trace             # semantic local time when the embedder is provisioned
 uv run soca ask "wiki: chất đạm là gì?" --trace     # knowledge search
+uv run soca ask "memory: lựa chọn TTS của tôi" --trace # private memory search
 uv run soca ask "đọc private/secrets.md" --no-llm --trace   # guardrail block
 ```
 

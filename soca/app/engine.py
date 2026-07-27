@@ -614,12 +614,13 @@ class SocaEngine:
                 except (OSError, ValueError):
                     pending_count = 0
                 self.writer.emit(
-                    {
-                        "event": "router_trace",
-                        "tier": trace.tool_router_tier,
-                        "tool": trace.tool_calls[-1].name if trace.tool_calls else None,
-                        "latency_ms": trace.stage_latencies_ms.get("tool_router", 0.0),
-                    }
+                        {
+                            "event": "router_trace",
+                            "tier": trace.tool_router_tier,
+                            "tool": trace.tool_calls[-1].name if trace.tool_calls else None,
+                            "reason": trace.tool_router_reason,
+                            "latency_ms": trace.stage_latencies_ms.get("tool_router", 0.0),
+                        }
                 )
                 knowledge_hits = trace.knowledge_hits[:16]
                 if knowledge_hits:

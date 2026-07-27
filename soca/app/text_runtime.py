@@ -30,16 +30,20 @@ from soca.core.tool_routing import (
 from soca.core.turn import RuntimeResult
 from soca.core.usage import TurnUsage
 from soca.knowledge.factory import DenseBackend, RetrievalMode
-from soca.knowledge.retrievers.dense import EmbeddingModel
+from soca.knowledge.retrievers.dense import EmbeddingModel, FastEmbedModel
 from soca.llm import LLMEngine, LocalLlamaCppLLM
 from soca.llm.factory import SecretReader, build_llm_engine
-from soca.memory import SessionMemory
-from soca.tools import LocalTimeTool, Tool, ToolRuntime
+from soca.memory import ProposalStore, SessionMemory
+from soca.tools import LocalTimeTool, MemoryProposeNoteTool, MemorySearchTool, Tool, ToolRuntime
 
 
 def default_text_llm_model_key() -> str:
     """Return the product default LLM from the default runtime profile."""
     return get_voice_runtime_profile(DEFAULT_VOICE_RUNTIME_PROFILE_KEY).llm_model
+
+
+def default_semantic_router_examples() -> Path:
+    return Path(__file__).resolve().parents[2] / "eval" / "prompts" / "tool_router_examples_vi.jsonl"
 
 
 @dataclass(frozen=True)
@@ -61,12 +65,12 @@ class TextRuntimeConfig:
     turn_chars: int = 500
     llm_threads: int = 8
     llm_gpu_layers: int = -1
-    tool_router_mode: str = "deterministic"
+    tool_router_mode: str = "cascade"
     tool_router_response_mode: str = "prompt_json"
-    semantic_router_enabled: bool = False
-    semantic_router_threshold: float = 0.0
-    semantic_router_margin: float = 0.0
-    semantic_router_examples: Path | None = None
+    semantic_router_enabled: bool = True
+    semantic_router_threshold: float = 0.58
+    semantic_router_margin: float = 0.04
+    semantic_router_examples: Path | None = field(default_factory=default_semantic_router_examples)
     memory_mode: MemoryMode = "retrieved"
     memory_limit: int = 3
     memory_retrieval_mode: str = "chunk_sparse"
@@ -94,11 +98,11 @@ def resolve_text_runtime_config(
     turn_chars: int = 500,
     llm_threads: int = 8,
     llm_gpu_layers: int = -1,
-    tool_router_mode: str = "deterministic",
+    tool_router_mode: str = "cascade",
     tool_router_response_mode: str = "prompt_json",
-    semantic_router_enabled: bool = False,
-    semantic_router_threshold: float = 0.0,
-    semantic_router_margin: float = 0.0,
+    semantic_router_enabled: bool = True,
+    semantic_router_threshold: float = 0.58,
+    semantic_router_margin: float = 0.04,
     semantic_router_examples: str | Path | None = None,
     memory_mode: str = "retrieved",
     memory_limit: int = 3,
@@ -141,7 +145,7 @@ def resolve_text_runtime_config(
         semantic_router_examples=(
             Path(semantic_router_examples).expanduser().resolve()
             if semantic_router_examples is not None
-            else None
+            else default_semantic_router_examples()
         ),
         memory_mode=cast(MemoryMode, memory_mode),
         memory_limit=memory_limit,
@@ -250,6 +254,9 @@ def build_text_runtime(
         )
         memory_builder = memory_setup.builder
         memory_status = memory_setup.status
+        tools.append(MemorySearchTool(memory_builder, max_limit=config.knowledge_limit))
+        if vault.is_dir():
+            tools.append(MemoryProposeNoteTool(ProposalStore(vault / "memory" / ".proposals")))
 
     if config.no_llm:
         llm = None
@@ -283,13 +290,20 @@ def build_text_runtime(
     )
     deterministic_router = DefaultRuntimeToolRouter(
         knowledge_search_prefixes=("wiki:", "knowledge:"),
+        enable_memory_search=memory_builder is not None,
     )
+    router_embedding_model = embedding_model
+    if router_config.semantic.enabled and router_embedding_model is None:
+        try:
+            router_embedding_model = FastEmbedModel(allow_download=False)
+        except (ImportError, FileNotFoundError, OSError, RuntimeError, ValueError):
+            router_embedding_model = None
     tool_router = build_runtime_tool_router(
         llm=llm,
         tool_runtime=tool_runtime,
         deterministic=deterministic_router,
         config=router_config,
-        embedding_model=embedding_model,
+        embedding_model=router_embedding_model,
         voice=False,
     )
     runtime = AssistantRuntime(
@@ -385,6 +399,8 @@ def render_trace(console: Console, result: RuntimeResult) -> None:
     summary.add_row("blocked", str(trace.blocked))
     summary.add_row("used_tool", str(trace.used_tool))
     summary.add_row("used_llm", str(trace.used_llm))
+    summary.add_row("router_tier", trace.tool_router_tier)
+    summary.add_row("router_reason", trace.tool_router_reason)
     console.print(summary)
 
     if trace.tool_calls:

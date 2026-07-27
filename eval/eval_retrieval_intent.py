@@ -8,8 +8,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from soca.knowledge.intent_gate import QUESTION_RE
-
 
 @dataclass(frozen=True)
 class IntentCase:
@@ -65,8 +63,6 @@ def load_cases(path: Path) -> tuple[IntentCase, ...]:
 def predict(signal: IntentSignal, threshold: float) -> bool:
     if not signal.has_hits:
         return False
-    if signal.question_marker:
-        return True
     return signal.dense_score is not None and signal.dense_score >= threshold
 
 
@@ -155,7 +151,7 @@ def collect_signals(source, cases: Sequence[IntentCase], *, limit: int) -> tuple
                 split=case.split,
                 expected=case.expected,
                 has_hits=bool(batch.hits),
-                question_marker=QUESTION_RE.search(case.text) is not None,
+                question_marker=False,
                 dense_score=batch.max_dense_score,
                 retrieval_ms=(time.perf_counter() - started) * 1000,
             )

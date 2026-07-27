@@ -24,6 +24,7 @@ CHAT_HELP = "\n".join(
         "Nhập câu bình thường để chat qua AssistantRuntime.",
         "wiki: <query>              -> search knowledge vault trực tiếp",
         "đọc wiki/path/note.md      -> read knowledge note trực tiếp",
+        "memory: <query>            -> search private memory notes",
         "/k <câu hỏi>               -> ép LLM dùng knowledge context",
         "/trace                     -> bật/tắt trace",
         "/usage                     -> xem token/latency của session",

@@ -43,6 +43,7 @@ class RuntimeTrace:
     blocked: bool = False
     stage_latencies_ms: dict[str, float] = field(default_factory=dict)
     tool_router_tier: str = "none"
+    tool_router_reason: str = "no_match"
 
 
 @dataclass(frozen=True)

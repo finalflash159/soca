@@ -1095,7 +1095,7 @@ Hybrid (RRF, `k=60`) beats sparse on every metric for ~4 ms extra p95. By slice,
 hybrid scores Recall@5 0.995 on the XQuAD Wikipedia slice (`learning_notes`) and
 0.667 on the small `life_vault_project` slice (3 cases).
 
-### P2.2 — Tool router (deterministic)
+### P2.2 — Tool router (v2, offline)
 
 Dataset: `eval/prompts/tool_router_vi.jsonl`. With no predictions file the eval
 runs the deterministic `DefaultRuntimeToolRouter` live.
@@ -1105,11 +1105,34 @@ uv run --all-extras python eval/eval_tool_router.py \
   --dataset eval/prompts/tool_router_vi.jsonl --output eval/results/tool-router.json
 ```
 
-Exact tool accuracy **1.00**, coverage 1.00, zero false tool calls (10-case
-smoke set). Note: this is a smoke set; the ≥100-case / 8-slice acceptance dataset
-in the plan is not yet built, and there is no CLI that scores the LLM/cascade
-router live against a remote provider — only the deterministic tier is measured
-here.
+The v2 dataset has **100 cases across 8 slices**. The offline deterministic
+baseline is reproducible and does not call a provider:
+
+| Metric                              | Overall | Notes                                                              |
+| ----------------------------------- | ------: | ------------------------------------------------------------------ |
+| Accuracy                            |   0.610 | Expected: deterministic only; NL slices intentionally fall through |
+| Coverage                            |   1.000 | Every row gets a recorded decision                                 |
+| False-trigger rate                  |   0.000 | Hard-negative + no-tool slices have no tool calls                  |
+| Deterministic command/read accuracy |   1.000 | Explicit commands and scoped reads                                 |
+
+```bash
+uv run python -m eval.eval_tool_router \
+  --dataset eval/prompts/tool_router_vi.jsonl \
+  --output eval/results/tool-router-v2-baseline.json
+```
+
+The semantic and cascade captures use the same precision/recall/F1, slice,
+false-trigger, coverage, and p50/p95 latency schema. A live provider run is
+strictly opt-in and capped by default:
+
+```bash
+uv run python -m eval.eval_tool_router_live --provider openrouter \
+  --model <openrouter-model-id> --dataset eval/prompts/tool_router_vi.jsonl \
+  --predictions eval/results/tool-router-live.predictions.jsonl --max-cases 25
+```
+
+That command sends router prompts to OpenRouter and never executes a tool; it
+requires a stored OpenRouter key and may incur provider cost.
 
 ### P2.3 — Retrieved memory
 

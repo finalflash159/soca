@@ -73,7 +73,7 @@ def test_ask_time_question_uses_tool_without_llm(tmp_path: Path) -> None:
         main,
         [
             "ask",
-            "mấy giờ rồi?",
+            "time:",
             "--vault",
             str(tmp_path),
             "--no-llm",
@@ -88,7 +88,7 @@ def test_ask_time_question_uses_tool_without_llm(tmp_path: Path) -> None:
     assert "used_llm" in result.output
 
 
-def test_ask_blocks_scheduling_before_llm(tmp_path: Path) -> None:
+def test_ask_without_llm_stays_blocked_without_a_tool_call(tmp_path: Path) -> None:
     result = CliRunner().invoke(
         main,
         [
@@ -103,8 +103,8 @@ def test_ask_blocks_scheduling_before_llm(tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.output
     assert "Route: blocked" in result.output
-    assert "unsupported_scheduling_action" in result.output
-    assert "Mình chưa có công cụ hẹn giờ" in result.output
+    assert "router_reason" in result.output
+    assert "unsupported_capability" not in result.output
 
 
 def test_ask_blocks_private_path_before_tool_or_llm(tmp_path: Path) -> None:

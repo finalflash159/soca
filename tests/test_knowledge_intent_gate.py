@@ -42,14 +42,14 @@ def test_gate_uses_dense_threshold(score: float, expected: bool, reason: str) ->
     assert calls == ["protein"]
 
 
-def test_gate_question_marker_overrides_low_dense_score() -> None:
+def test_gate_does_not_override_low_dense_score_with_question_keywords() -> None:
     class Source:
         def retrieve(self, query: str, *, limit: int):
             return SimpleNamespace(hits=(_hit(),), max_dense_score=0.01)
 
     decision = RetrievalIntentGate(Source(), threshold=0.9).evaluate("Protein là gì?", limit=3)
-    assert decision.use_knowledge is True
-    assert decision.reason == "question_marker"
+    assert decision.use_knowledge is False
+    assert decision.reason == "below_threshold"
 
 
 def test_gate_no_hits_and_no_dense_signal_are_safe() -> None:

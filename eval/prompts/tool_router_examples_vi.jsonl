@@ -1,11 +1,73 @@
 {"id":"knowledge-001","text":"Ghi chú của tôi nói định lý Bayes thế nào?","tool":"knowledge.search","argument_policy":"raw_query"}
 {"id":"knowledge-002","text":"Tuần trước tôi note gì về ONNX runtime?","tool":"knowledge.search","argument_policy":"raw_query"}
 {"id":"knowledge-003","text":"Tìm trong knowledge về memory compaction","tool":"knowledge.search","argument_policy":"raw_query"}
-{"id":"knowledge-004","text":"Tôi đã quyết chọn TTS nào, vì sao?","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-004","text":"Trong tài liệu dự án, quyết định chọn TTS nào được ghi lại?","tool":"knowledge.search","argument_policy":"raw_query"}
 {"id":"knowledge-005","text":"Ngân sách ăn uống tháng này còn bao nhiêu?","tool":"knowledge.search","argument_policy":"raw_query"}
 {"id":"knowledge-006","text":"RAG hiện tại của dự án chạy qua những bước nào?","tool":"knowledge.search","argument_policy":"raw_query"}
 {"id":"knowledge-007","text":"Nếu tôi hỏi vấn đề sức khỏe thì SoCa phải cảnh báo gì?","tool":"knowledge.search","argument_policy":"raw_query"}
 {"id":"time-001","text":"Bây giờ là mấy giờ?","tool":"local_time.now","argument_policy":"none"}
 {"id":"time-002","text":"Cho tôi biết giờ hiện tại","tool":"local_time.now","argument_policy":"none"}
-{"id":"read-001","text":"Đọc file wiki/project/tui.md","tool":"knowledge.read","argument_policy":"none"}
-{"id":"read-002","text":"Mở tài liệu docs/runtime.md","tool":"knowledge.read","argument_policy":"none"}
+{"id":"time-003","text":"Bây giờ ở Hà Nội là mấy giờ?","tool":"local_time.now","argument_policy":"none"}
+{"id":"time-004","text":"Hiện tại là mấy giờ rồi nhỉ","tool":"local_time.now","argument_policy":"none"}
+{"id":"time-005","text":"Múi giờ Việt Nam đang là mấy giờ","tool":"local_time.now","argument_policy":"none"}
+{"id":"time-006","text":"Bạn xem giúp thời gian hiện tại với","tool":"local_time.now","argument_policy":"none"}
+{"id":"time-007","text":"Giờ địa phương lúc này là bao nhiêu","tool":"local_time.now","argument_policy":"none"}
+{"id":"time-008","text":"Tôi cần biết đồng hồ hiện đang chỉ mấy giờ","tool":"local_time.now","argument_policy":"none"}
+{"id":"time-009","text":"Hôm nay là ngày bao nhiêu và mấy giờ","tool":"local_time.now","argument_policy":"none"}
+{"id":"time-010","text":"Bây giờ theo giờ Việt Nam là bao nhiêu","tool":"local_time.now","argument_policy":"none"}
+{"id":"time-011","text":"Có thể đọc giờ hiện tại cho tôi không","tool":"local_time.now","argument_policy":"none"}
+{"id":"time-012","text":"Thời điểm này ở đây là mấy giờ","tool":"local_time.now","argument_policy":"none"}
+{"id":"time-013","text":"Mình muốn xem ngày giờ hiện tại","tool":"local_time.now","argument_policy":"none"}
+{"id":"knowledge-008","text":"Trong wiki có ghi cách dùng hybrid retrieval không?","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-009","text":"Tìm ghi chú về cách đánh giá semantic router","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-010","text":"Các nguyên tắc guardrail của SoCa là gì?","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-011","text":"Tôi note gì về memory compaction?","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-012","text":"Trong tài liệu có benchmark TTFA nào không?","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-013","text":"Tìm phần nói về safety disclaimer sức khỏe","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-014","text":"Tài liệu dự án giải thích local-first ra sao?","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-015","text":"Tôi muốn tra ghi chú về prompt injection","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-016","text":"Có note nào về lựa chọn model TTS không?","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-017","text":"Tìm tài liệu nói về voice barge-in","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-018","text":"Tìm trong tài liệu dự án phần RAG hybrid","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-019","text":"Ghi chú học tập của tôi giải thích Bayes thế nào?","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-020","text":"Trong vault có note nào về ONNX Runtime không?","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"memory-001","text":"Tôi đã quyết chọn TTS nào, vì sao?","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-002","text":"Trong memory của tôi có thông tin gì về ONNX?","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-003","text":"Mục tiêu cá nhân tôi đang theo đuổi là gì?","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-004","text":"Tôi thường ưu tiên kiểu trả lời nào?","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-005","text":"Ngân sách ăn uống của tôi tháng này thế nào?","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-006","text":"Tôi có ghi quyết định nào cho dự án không?","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-007","text":"Nhắc lại thông tin tôi từng lưu về RAG","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-008","text":"Các sở thích đã lưu của tôi là gì?","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-009","text":"Tôi từng ghi lý do chọn backend nào?","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-010","text":"Trong memory có ghi kế hoạch tuần này không?","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-011","text":"Tôi đã lưu note nào về sức khỏe?","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-012","text":"Tìm lại quyết định cá nhân gần đây của tôi","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-013","text":"Tôi muốn tra lại những điều mình đã ghi nhớ","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-014","text":"Hồi trước tôi lưu gì về dự án SoCa?","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-015","text":"Tìm ghi chú riêng của tôi về chi tiêu","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-016","text":"Memory cá nhân nói gì về cách làm việc của tôi?","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-017","text":"Tôi từng quyết định dùng backend nào cho voice?","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-018","text":"Hãy tìm lại một note cá nhân về sức khỏe","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-019","text":"Tôi đã lưu những ưu tiên nào cho dự án?","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"memory-020","text":"Trong kho memory riêng có nhắc tới ngân sách không?","tool":"memory.search","argument_policy":"raw_query"}
+{"id":"none-001","text":"Xin chào SoCa","tool":"none","argument_policy":"none"}
+{"id":"none-002","text":"Cảm ơn bạn nhé","tool":"none","argument_policy":"none"}
+{"id":"none-003","text":"Bạn khỏe không?","tool":"none","argument_policy":"none"}
+{"id":"none-004","text":"Kể tôi nghe một câu chuyện vui đi","tool":"none","argument_policy":"none"}
+{"id":"none-005","text":"Chúc bạn một ngày tốt lành","tool":"none","argument_policy":"none"}
+{"id":"none-006","text":"Tôi chỉ muốn trò chuyện một chút","tool":"none","argument_policy":"none"}
+{"id":"none-007","text":"Bạn có thể giải thích từ này không?","tool":"none","argument_policy":"none"}
+{"id":"none-008","text":"Hôm nay tôi thấy vui","tool":"none","argument_policy":"none"}
+{"id":"none-009","text":"Cho tôi một lời động viên","tool":"none","argument_policy":"none"}
+{"id":"none-010","text":"Bạn tên gì?","tool":"none","argument_policy":"none"}
+{"id":"none-011","text":"Tạm biệt nhé","tool":"none","argument_policy":"none"}
+{"id":"none-012","text":"Không cần gọi công cụ, chỉ trả lời tôi thôi","tool":"none","argument_policy":"none"}
+{"id":"none-013","text":"Tôi đang nói chuyện bình thường thôi","tool":"none","argument_policy":"none"}
+{"id":"none-014","text":"Hôm nay công việc của bạn thế nào?","tool":"none","argument_policy":"none"}
+{"id":"none-015","text":"Hãy giúp tôi suy nghĩ về một ý tưởng","tool":"none","argument_policy":"none"}
+{"id":"none-016","text":"Từ knowledge có nghĩa là gì?","tool":"none","argument_policy":"none"}
+{"id":"none-017","text":"Tại sao ứng dụng cần tool router?","tool":"none","argument_policy":"none"}
+{"id":"none-018","text":"Tôi muốn học cách đặt báo thức trên điện thoại","tool":"none","argument_policy":"none"}
+{"id":"none-019","text":"Đừng tìm trong wiki, hãy nói chuyện với tôi","tool":"none","argument_policy":"none"}
+{"id":"none-020","text":"Tôi đang viết truyện có nhân vật mở file notes.md","tool":"none","argument_policy":"none"}

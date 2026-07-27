@@ -122,7 +122,7 @@ def test_time_question_uses_tool_without_llm() -> None:
     llm = SpyLLM()
     runtime = AssistantRuntime(llm=llm, tool_runtime=tool_runtime)
 
-    result = runtime.run_text_turn("Mấy giờ rồi?")
+    result = runtime.run_text_turn("time:")
 
     assert result.route == RuntimeRoute.TOOL_DIRECT
     assert result.blocked is False

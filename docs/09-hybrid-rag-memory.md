@@ -23,7 +23,7 @@ flowchart TD
     R -->|deterministic hit| TC[ToolCall]
     R -->|semantic hit| TC
     R -->|LLM select| TC
-    R -->|none| CHAT[Free chat]
+    R -->|none + reason| CHAT[Free chat / no matching tool]
     TC --> VAL[validate_arguments + guardrail]
     VAL --> KS[knowledge.search / knowledge.read]
     KS --> HS[HybridKnowledgeSource]
@@ -104,7 +104,7 @@ only proposes; `ToolRuntime` validates and runs.
 
 ```mermaid
 flowchart LR
-    T[text] --> D[DefaultRuntimeToolRouter<br/>deterministic prefixes]
+    T[text] --> D[DefaultRuntimeToolRouter<br/>explicit commands]
     D -->|hit| OUT[ToolCall]
     D -->|miss| S[SemanticToolRouter<br/>embedded route examples]
     S -->|>= threshold + margin| OUT
@@ -114,23 +114,31 @@ flowchart LR
     P -->|fail| D2[fallback: deterministic / free chat]
 ```
 
-| Stage         | Module                         | Notes                                              |
-| ------------- | ------------------------------ | -------------------------------------------------- |
-| Config/schema | `core/tool_routing.py`         | Frozen config, robust JSON parser, decision schema |
-| Deterministic | `core/runtime.py`              | `DefaultRuntimeToolRouter`, prefix/path/time rules |
-| Semantic      | `core/semantic_tool_router.py` | Route examples embedded once, threshold + margin   |
-| LLM           | `core/llm_tool_router.py`      | Prompt JSON or JSON-schema, one repair, fallback   |
-| Cascade       | `core/router_cascade.py`       | Short-circuits deterministic → semantic → LLM      |
-| Construction  | `core/router_setup.py`         | `build_runtime_tool_router(...)`                   |
+| Stage         | Module                         | Notes                                                |
+| ------------- | ------------------------------ | ---------------------------------------------------- |
+| Config/schema | `core/tool_routing.py`         | Frozen config, robust JSON parser, decision schema   |
+| Deterministic | `core/runtime.py`              | Explicit prefixes, scoped read paths, no NL guessing |
+| Semantic      | `core/semantic_tool_router.py` | Route examples + explicit `none`, threshold/margin   |
+| LLM           | `core/llm_tool_router.py`      | Prompt JSON or JSON-schema, one repair, fallback     |
+| Cascade       | `core/router_cascade.py`       | Short-circuits deterministic → semantic → LLM        |
+| Construction  | `core/router_setup.py`         | `build_runtime_tool_router(...)`                     |
 
 Invariants worth remembering:
 
 - **The router never kills a turn.** Parse failure, invalid schema, unknown
   tool, timeout, rate-limit, and provider errors all degrade to
   deterministic/free-chat. Only construction-time config errors fail fast.
-- **Deterministic is the default and the safe floor.** Semantic and LLM tiers
-  are implemented and tested but off by default; voice keeps the LLM router off
-  until a paired TTFA gate (≤10%) is met.
+- **Text uses the cascade by default.** Semantic is enabled with the checked-in
+  Vietnamese examples and degrades to Tier 0 when its embedding model is absent;
+  voice keeps semantic/LLM routing off until a paired TTFA gate (≤10%) is met.
+- **The executable catalog has five product tools only:**
+  `knowledge.search`, `knowledge.read`, `local_time.now`, `memory.search`, and
+  `memory.propose_note`. There are no weather, device-control, or scheduling
+  tools. Requests for those capabilities remain ordinary free chat and cannot
+  trigger a fake tool call.
+- **Safety stays in guardrails.** Prompt injection, path traversal, schema,
+  side-effect, and unsupported realtime-claim checks remain guardrail
+  responsibilities; they are not capability classifiers.
 - **Structured output is an optimization, not a requirement.** Remote uses JSON
   schema with `require_parameters=true`; local `llama.cpp` uses a JSON-schema →
   GBNF grammar. Both fall back to prompted JSON when unavailable.
@@ -145,6 +153,7 @@ The stack is in `soca/memory/`:
 | Concern                 | Module                                      |
 | ----------------------- | ------------------------------------------- |
 | Query-aware retrieval   | `retrieved.py` (`RetrievedMemory`)          |
+| Search tool             | `tools/memory_tools.py` (`memory.search`)   |
 | Ranking signals         | `scoring.py` (relevance/recency/importance) |
 | Blob fallback + profile | `longterm.py` (`MarkdownLongTermMemory`)    |
 | Profile + episode merge | `composite.py`                              |
@@ -180,6 +189,8 @@ Durable memory is never written automatically.
   tool.
 - Approved notes land under `<vault>/memory/captured/<uuid>.md` with restrictive
   permissions; `private/`, dot-directories, and symlinks are never indexed.
+- `memory.propose_note` may create only a pending proposal. It is a local-state
+  tool with human approval still required; it never writes an approved note.
 
 See the memory lifecycle and compaction numbers in
 [BENCHMARKS.md → P2.3](../BENCHMARKS.md).

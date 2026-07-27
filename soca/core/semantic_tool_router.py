@@ -7,14 +7,14 @@ from typing import Literal
 
 import numpy as np
 
-from soca.core.tool_routing import SemanticRouterConfig
+from soca.core.tool_routing import SemanticRouterConfig, ToolRouterDecision
 from soca.knowledge.retrievers.dense import EmbeddingModel
 from soca.tools import ToolCall, ToolRuntime
 from soca.tools.base import validate_arguments
 
 ArgumentPolicy = Literal["none", "raw_query"]
-MAX_EXAMPLE_BYTES = 8_192
-MAX_EXAMPLES = 1_024
+MAX_EXAMPLE_BYTES = 32_768
+MAX_EXAMPLES = 512
 
 
 @dataclass(frozen=True)
@@ -92,11 +92,13 @@ class SemanticToolRouter:
         self._config = config
         self._embedding_model = embedding_model
         self.last_tier = "none"
+        self.last_decision = ToolRouterDecision()
 
     def select(self, text: str, *, knowledge_limit: int) -> ToolCall | None:
         normalized = _normalize_text(text)
         if not normalized or not self._examples:
             self.last_tier = "none"
+            self.last_decision = ToolRouterDecision(reason="empty_or_no_examples")
             return None
         try:
             query_vector = np.asarray(
@@ -109,6 +111,7 @@ class SemanticToolRouter:
             scores = self._vectors @ query_vector
         except (OSError, RuntimeError, ValueError):
             self.last_tier = "none"
+            self.last_decision = ToolRouterDecision(reason="embedding_unavailable")
             return None
 
         best_by_tool: dict[str, float] = {}
@@ -121,29 +124,40 @@ class SemanticToolRouter:
         ranked = sorted(best_by_tool.items(), key=lambda item: (-item[1], item[0]))
         if not ranked or ranked[0][1] < self._config.threshold:
             self.last_tier = "none"
+            self.last_decision = ToolRouterDecision(reason="below_threshold")
             return None
         if len(ranked) > 1 and ranked[0][1] - ranked[1][1] < self._config.margin:
             self.last_tier = "none"
+            self.last_decision = ToolRouterDecision(reason="ambiguous_margin")
             return None
 
         tool_name, _ = ranked[0]
+        if tool_name == "none":
+            self.last_tier = "semantic"
+            self.last_decision = ToolRouterDecision(reason="semantic_none")
+            return None
         tool = self._tool_runtime.get(tool_name)
         if tool is None or not tool.spec.enabled:
             self.last_tier = "none"
+            self.last_decision = ToolRouterDecision(reason="tool_unavailable")
             return None
         policy = policies[tool_name]
         if policy == "none":
             arguments: dict[str, object] = {}
-        elif policy == "raw_query" and tool_name == "knowledge.search":
+        elif policy == "raw_query" and tool_name in {"knowledge.search", "memory.search"}:
             arguments = {"query": normalized, "limit": knowledge_limit}
         else:
             self.last_tier = "none"
+            self.last_decision = ToolRouterDecision(reason="argument_policy_invalid")
             return None
         if validate_arguments(tool.spec.input_schema, arguments):
             self.last_tier = "none"
+            self.last_decision = ToolRouterDecision(reason="invalid_arguments")
             return None
         self.last_tier = "semantic"
-        return ToolCall(tool_name, arguments)
+        call = ToolCall(tool_name, arguments)
+        self.last_decision = ToolRouterDecision(call=call, reason="semantic_match")
+        return call
 
 
 def build_semantic_router(
@@ -154,18 +168,32 @@ def build_semantic_router(
 ) -> SemanticToolRouter | None:
     if not config.enabled or embedding_model is None or config.examples_path is None:
         return None
-    examples = _load_examples(config.examples_path)
-    for example in examples:
+    loaded_examples = _load_examples(config.examples_path)
+    examples: list[SemanticRouteExample] = []
+    for example in loaded_examples:
+        if example.tool == "none":
+            if example.argument_policy != "none":
+                raise ValueError("none route only accepts the none argument policy")
+            examples.append(example)
+            continue
         tool = tool_runtime.get(example.tool)
         if tool is None or not tool.spec.enabled:
-            raise ValueError(f"semantic example references unavailable tool: {example.tool}")
-        if example.argument_policy == "raw_query" and example.tool != "knowledge.search":
-            raise ValueError("raw_query policy is only allowed for knowledge.search")
+            # A disabled optional tool must not disable unrelated semantic routes.
+            continue
+        if example.argument_policy == "raw_query" and example.tool not in {
+            "knowledge.search",
+            "memory.search",
+        }:
+            raise ValueError("raw_query policy is only allowed for search tools")
         if example.argument_policy == "none" and tool.spec.input_schema.get("required"):
             raise ValueError(f"none policy requires no required arguments: {example.tool}")
-    vectors = embedding_model.embed_documents(tuple(example.text for example in examples))
+        examples.append(example)
+    if not examples:
+        return None
+    example_tuple = tuple(examples)
+    vectors = embedding_model.embed_documents(tuple(example.text for example in example_tuple))
     matrix = np.asarray(vectors, dtype=np.float32)
-    if matrix.ndim != 2 or matrix.shape[0] != len(examples):
+    if matrix.ndim != 2 or matrix.shape[0] != len(example_tuple):
         raise ValueError("semantic example embeddings have an invalid shape")
     norms = np.linalg.norm(matrix, axis=1, keepdims=True)
     if np.any(norms <= 1e-12) or not np.isfinite(matrix).all():
@@ -173,7 +201,7 @@ def build_semantic_router(
     normalized = np.ascontiguousarray(matrix / norms, dtype=np.float32)
     normalized.setflags(write=False)
     return SemanticToolRouter(
-        examples,
+        example_tuple,
         normalized,
         tool_runtime,
         config=config,

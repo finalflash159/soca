@@ -64,38 +64,7 @@ SYSTEM_PROMPT_PATTERNS = (
     "chi dan he thong",
     "lenh he thong",
 )
-UNSUPPORTED_DEVICE_PATTERNS = (
-    "mo chrome",
-    "mo ung dung",
-    "xoa file",
-    "tat may",
-    "khoi dong lai",
-    "gui email",
-)
-UNSUPPORTED_SCHEDULING_PATTERNS = (
-    "dat hen gio",
-    "hen gio",
-    "dat bao thuc",
-    "bao thuc luc",
-)
-HOWTO_PATTERNS = (
-    "lam sao",
-    "lam the nao",
-    "cach",
-    "huong dan",
-)
-WEATHER_PATTERNS = (
-    "thoi tiet",
-    "troi mua",
-    "nhiet do",
-    "du bao",
-)
-TIME_PATTERNS = (
-    "may gio",
-    "bay gio la",
-    "gio hien tai",
-    "hom nay ngay may",
-)
+EXPLICIT_READ_PREFIXES = ("read:", "read ", "doc:", "doc ", "đọc:", "đọc ")
 INJECTION_PATTERNS = (
     "ignore previous instructions",
     "ignore all previous instructions",
@@ -225,16 +194,18 @@ def check_input_text(
     if not text.strip():
         return block(GuardrailStage.INPUT, "empty_input", "Mình chưa nghe rõ.")
 
-    for path in extract_markdown_paths(text):
-        path_event = check_knowledge_read_path(path, policy)
-        if path_event.blocked:
-            return GuardrailEvent(
-                stage=GuardrailStage.INPUT,
-                action=GuardrailAction.BLOCK,
-                reason=path_event.reason,
-                message=path_event.message,
-                metadata=path_event.metadata,
-            )
+    normalized = normalize_vi(text.strip())
+    if any(normalized.startswith(normalize_vi(prefix)) for prefix in EXPLICIT_READ_PREFIXES):
+        for path in extract_markdown_paths(text):
+            path_event = check_knowledge_read_path(path, policy)
+            if path_event.blocked:
+                return GuardrailEvent(
+                    stage=GuardrailStage.INPUT,
+                    action=GuardrailAction.BLOCK,
+                    reason=path_event.reason,
+                    message=path_event.message,
+                    metadata=path_event.metadata,
+                )
 
     if contains_any(text, SYSTEM_PROMPT_PATTERNS):
         return block(
@@ -243,39 +214,7 @@ def check_input_text(
             "Mình không thể tiết lộ system prompt hoặc chỉ dẫn nội bộ.",
         )
 
-    if contains_any(text, UNSUPPORTED_DEVICE_PATTERNS):
-        return block(
-            GuardrailStage.INPUT,
-            "unsupported_device_action",
-            "Mình chưa có quyền điều khiển thiết bị hoặc thao tác file.",
-        )
-
-    if is_unsupported_scheduling_action(text):
-        return block(
-            GuardrailStage.INPUT,
-            "unsupported_scheduling_action",
-            "Mình chưa có công cụ hẹn giờ hoặc báo thức thật đang bật.",
-        )
-
-    if contains_any(text, WEATHER_PATTERNS):
-        return block(
-            GuardrailStage.INPUT,
-            "unsupported_realtime_request",
-            "Mình chưa có công cụ thời tiết đang bật, nên không thể trả lời thời tiết hiện tại.",
-        )
-
     return allow(GuardrailStage.INPUT)
-
-
-def is_time_question(text: str) -> bool:
-    return contains_any(text, TIME_PATTERNS)
-
-
-def is_unsupported_scheduling_action(text: str) -> bool:
-    normalized = normalize_vi(text)
-    asks_howto = any(pattern in normalized for pattern in HOWTO_PATTERNS)
-    asks_to_schedule = any(pattern in normalized for pattern in UNSUPPORTED_SCHEDULING_PATTERNS)
-    return asks_to_schedule and not asks_howto
 
 
 def check_untrusted_text(
@@ -319,6 +258,18 @@ def check_tool_call(
             validation_error,
             metadata=metadata,
         )
+
+    if call.name == "knowledge.read":
+        path = str(call.arguments.get("path", ""))
+        path_event = check_knowledge_read_path(path, policy)
+        if path_event.blocked:
+            return GuardrailEvent(
+                stage=GuardrailStage.TOOL_INPUT,
+                action=GuardrailAction.BLOCK,
+                reason=path_event.reason,
+                message=path_event.message,
+                metadata={**metadata, **path_event.metadata},
+            )
 
     return allow(GuardrailStage.TOOL_INPUT, metadata=metadata)
 
