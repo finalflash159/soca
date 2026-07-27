@@ -1108,8 +1108,9 @@ fail-closed guard is corpus-derived (IDF coverage + score separation), not a
 Vietnamese stopword or subject-word rule. Full model-selection details are in
 [`docs/10-vietnamese-rag-model-selection.md`](docs/10-vietnamese-rag-model-selection.md).
 
-The demo corpus has eight labelled queries and all variants below score 1.0 on
-Recall@5, MRR@10, and nDCG@10; the meaningful comparison is the XQuAD slice.
+The pre-migration smoke corpus had eight labelled queries and all variants
+scored 1.0 on Recall@5, MRR@10, and nDCG@10; the meaningful comparison is the
+XQuAD slice.
 The following table uses the first 200 XQuAD cases so model candidates can be
 compared without hiding the current code's latency/memory trade-offs:
 
@@ -1122,7 +1123,7 @@ compared without hiding the current code's latency/memory trade-offs:
 The Vietnamese encoder is a promising candidate, but it is not silently made
 the default. A full 1,193-case run is now recorded below; a calibrated
 reranker/no-answer test is still required. `Vietnamese_Reranker` improved
-no-answer score separation in a small diagnostic, but lowered demo MRR to
+no-answer score separation in a small diagnostic, but lowered smoke-set MRR to
 0.9375 by misordering the RAG architecture query, so it remains an opt-in
 research component.
 

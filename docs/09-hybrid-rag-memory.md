@@ -62,31 +62,23 @@ Markdown vault reader. Chunks are line-anchored, so `KnowledgeCitation` carries
 lists (`k=60`). When the embedding model is unavailable the source degrades to
 sparse-only — the pre-P2 behavior — so retrieval never hard-fails.
 
-Measured numbers on real XQuAD-Vietnamese (1,193 questions) are in
-[BENCHMARKS.md → P2.1](../BENCHMARKS.md): hybrid reaches Recall@5 0.994 vs 0.979
-for BM25 alone, at ~4 ms extra p95.
+Historical pre-guard numbers on real XQuAD-Vietnamese (1,193 questions) are in
+[BENCHMARKS.md → P2.1](../BENCHMARKS.md). The current guarded model comparison,
+including the migrated local vault incident regression, is in
+[BENCHMARKS.md → P2.1.1](../BENCHMARKS.md).
 
-### Assistant-like demo corpus
+### Active local knowledge vault
 
-The broad `real_rag_vault` benchmark is useful for retrieval metrics, but it is
-not a personal assistant demo. The reproducible demo corpus lives at
-`eval/fixtures/knowledge_demo_vault` and is built with:
+The product runtime now queries the migrated local vault at
+`~/KnowledgeVault/wiki/`. It contains two knowledge areas:
 
-```bash
-uv run python scripts/seed_demo_knowledge.py --fixture
-```
+- learning notes: Bayes and ONNX Runtime;
+- life/project notes: the TTS decision, hybrid RAG architecture, a clearly
+  synthetic food ledger, and health safety boundaries.
 
-It has two explicit slices and eight grounded queries in
-`eval/prompts/knowledge_demo_vi.jsonl`:
-
-- `learning_notes`: a Bayes study note and an ONNX Runtime engineering note;
-- `life_vault`: the Valtec TTS decision, project RAG notes, a clearly synthetic
-  food-budget ledger, and a health safety-boundary note.
-
-The finance note is marked synthetic and the health note is a disclaimer-only
-guardrail. Neither is treated as private user data. The old
-`eval/fixtures/knowledge_vault` is intentionally retained as a minimal unit-test
-fixture so regression tests do not depend on the larger demo corpus.
+The synthetic finance note remains explicitly marked as non-personal data. The
+health note is a disclaimer-only guardrail. These notes are in the real local
+vault and are not committed to the repository.
 
 ### Voice gating
 

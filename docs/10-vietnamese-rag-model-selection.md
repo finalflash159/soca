@@ -9,7 +9,7 @@ choice: the failure happened before answer generation, in candidate retrieval.
 The default text knowledge source was `cached_sparse`. Its lexical scorer
 returned the highest-scoring documents even when the query's distinctive terms
 were absent from the vault. With the real `~/KnowledgeVault`, the query
-`Ghi chú demo nói định lý Bayes thế nào?` returned nutrition notes although the
+`Ghi chú nói định lý Bayes thế nào?` returned nutrition notes although the
 vault contains no Bayes note.
 
 The first guard against this failure is corpus-derived: it uses document
@@ -44,14 +44,14 @@ production dependency.
 
 ## Measurements
 
-Hardware: MacBook M4 Pro, macOS arm64, Python 3.11.14. The demo corpus has
-eight labelled queries, so it is a correctness smoke test rather than a model
-ranking benchmark.
+Hardware: MacBook M4 Pro, macOS arm64, Python 3.11.14. The pre-migration smoke
+corpus had eight labelled queries, so it is a correctness smoke test rather than
+a model ranking benchmark.
 
-### Demo corpus
+### Eight-query smoke corpus
 
 All measured variants reached Recall@5, MRR@10, and nDCG@10 of `1.0` on all
-eight demo queries. This is a ceiling effect; it does not justify choosing a
+eight smoke queries. This is a ceiling effect; it does not justify choosing a
 model.
 
 ### XQuAD Vietnamese slice (first 200 cases)
@@ -67,7 +67,7 @@ These runs use the same 200 labelled cases from
 
 The v2 encoder improves ranking quality over the current dense model on this
 slice, but it is not a decisive win on Recall@5. The reranker experiment on the
-eight-note demo kept Recall@5 at `1.0`, but reduced MRR@10 to `0.9375`: the RAG
+eight-note smoke set kept Recall@5 at `1.0`, but reduced MRR@10 to `0.9375`: the RAG
 architecture query was reranked behind the ONNX note. This is why the reranker
 is not default yet; it needs a candidate-quality and score-threshold benchmark
 before it can be trusted as a no-answer gate.
