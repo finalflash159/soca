@@ -301,19 +301,34 @@ def chat(
     is_flag=True,
     help="Do not load model runtimes. Useful for UI smoke tests.",
 )
+@click.option(
+    "--vault",
+    type=click.Path(path_type=Path),
+    default=Path.home() / "KnowledgeVault",
+    show_default=True,
+    help="Knowledge vault root for the UI session.",
+)
 @click.pass_context
 def ui(
     ctx: click.Context,
     quick_mode: str | None,
     quick_profile: str | None,
     no_model: bool,
+    vault: Path,
 ) -> None:
     """Open the SoCa terminal UI (Ink) on top of `soca engine`.
 
     Quick form: soca ui [status|chat|voice] [profile]. Without a mode the UI
     opens on the splash screen.
     """
-    ctx.exit(_launch_ink_ui(mode=quick_mode, profile=quick_profile, no_model=no_model))
+    ctx.exit(
+        _launch_ink_ui(
+            mode=quick_mode,
+            profile=quick_profile,
+            no_model=no_model,
+            vault=vault,
+        )
+    )
 
 
 def build_text_runtime_config(
@@ -374,7 +389,7 @@ def build_text_runtime_config(
         raise click.ClickException(str(exc)) from exc
 
 
-def _launch_ink_ui(*, mode: str | None, profile: str | None, no_model: bool) -> int:
+def _launch_ink_ui(*, mode: str | None, profile: str | None, no_model: bool, vault: Path) -> int:
     """Spawn the Ink UI (ui/dist), which owns the terminal and spawns `soca engine`."""
     import shutil
 
@@ -394,6 +409,7 @@ def _launch_ink_ui(*, mode: str | None, profile: str | None, no_model: bool) -> 
         args.append(profile)
     if no_model:
         args.append("--no-model")
+    args.extend(["--vault", str(vault.expanduser().resolve())])
     return subprocess.run(args, cwd=repo_root, check=False).returncode
 
 

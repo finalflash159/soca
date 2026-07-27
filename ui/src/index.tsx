@@ -7,11 +7,14 @@ interface CliArgs {
   mode: Mode | null;
   profile?: string;
   noModel: boolean;
+  vault?: string;
 }
 
 function parseArgs(argv: string[]): CliArgs {
   const args: CliArgs = { mode: null, noModel: false };
-  for (const arg of argv) {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (!arg) continue;
     if (
       arg === "chat" ||
       arg === "voice" ||
@@ -20,6 +23,10 @@ function parseArgs(argv: string[]): CliArgs {
     )
       args.mode = arg;
     else if (arg === "--no-model") args.noModel = true;
+    else if (arg === "--vault" && argv[index + 1]) {
+      args.vault = argv[index + 1];
+      index += 1;
+    }
     else if (!arg.startsWith("-") && !args.profile && args.mode)
       args.profile = arg;
     else if (!arg.startsWith("-") && !args.mode) args.mode = null;
@@ -32,7 +39,14 @@ function Root({ args }: { args: CliArgs }) {
   // through Settings first (handled in <App>), then into that mode.
   const [target, setTarget] = useState<Mode | null>(args.mode);
   if (target === null) return <Splash onDone={setTarget} />;
-  return <App target={target} profile={args.profile} noModel={args.noModel} />;
+  return (
+    <App
+      target={target}
+      profile={args.profile}
+      noModel={args.noModel}
+      vault={args.vault}
+    />
+  );
 }
 
 const args = parseArgs(process.argv.slice(2));

@@ -28,6 +28,7 @@ export interface AppProps {
   target: Mode;
   profile?: string;
   noModel?: boolean;
+  vault?: string;
 }
 
 // History flows into the terminal's own scrollback via <Static> (the
@@ -61,7 +62,7 @@ function Brand({ profile }: { profile: string }) {
   );
 }
 
-export function App({ target, profile, noModel = false }: AppProps) {
+export function App({ target, profile, noModel = false, vault }: AppProps) {
   const { exit } = useApp();
   const rawInput = Boolean(useStdin().isRawModeSupported);
   // Choosing chat/voice routes through Settings first so the user picks the LLM
@@ -87,7 +88,7 @@ export function App({ target, profile, noModel = false }: AppProps) {
     engine.on("exit", () =>
       dispatch({ type: "system_message", text: "engine đã thoát" }),
     );
-    engine.start({ profile, noModel });
+    engine.start({ profile, noModel, vault });
     engine.send({ cmd: "llm_providers" });
     engine.send({ cmd: "llm_config" });
     if (initialMode === "status") engine.send({ cmd: "status" });
