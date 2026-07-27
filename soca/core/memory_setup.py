@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from soca.knowledge.factory import RetrievalConfig, build_retrieval_source
+from soca.knowledge.factory import (
+    DenseBackend,
+    RetrievalConfig,
+    RetrievalMode,
+    build_retrieval_source,
+)
 from soca.knowledge.index.persistence import default_index_home
 from soca.memory import MarkdownLongTermMemory, MemoryContextBuilder, SessionMemory
 from soca.memory.retrieved import RetrievedMemory, RetrievedMemoryConfig
@@ -23,8 +28,8 @@ class MemoryRuntimeConfig:
     top_k: int = 3
     context_chars: int = 2_200
     profile_chars: int = 900
-    retrieval_mode: str = "chunk_sparse"
-    dense_backend: str = "fastembed"
+    retrieval_mode: RetrievalMode = "chunk_sparse"
+    dense_backend: DenseBackend = "fastembed"
     relevance_weight: float = 0.70
     recency_weight: float = 0.20
     importance_weight: float = 0.10

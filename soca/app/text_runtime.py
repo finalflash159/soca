@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from rich.console import Console
 from rich.panel import Panel
@@ -14,17 +14,27 @@ from soca.app.usage_view import print_turn_usage
 from soca.config import LlmSettings, SecretStore, load_settings
 from soca.core import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
 from soca.core.knowledge_setup import build_knowledge_runtime_setup
-from soca.core.memory_setup import MemoryRuntimeConfig, build_memory_runtime_setup
+from soca.core.memory_setup import (
+    MemoryMode,
+    MemoryRuntimeConfig,
+    build_memory_runtime_setup,
+)
 from soca.core.profiles import DEFAULT_VOICE_RUNTIME_PROFILE_KEY, get_voice_runtime_profile
 from soca.core.router_setup import build_runtime_tool_router
-from soca.core.tool_routing import SemanticRouterConfig, ToolRouterConfig
+from soca.core.tool_routing import (
+    RouterResponseMode,
+    SemanticRouterConfig,
+    ToolRouterConfig,
+    ToolRouterMode,
+)
 from soca.core.turn import RuntimeResult
 from soca.core.usage import TurnUsage
+from soca.knowledge.factory import DenseBackend, RetrievalMode
 from soca.knowledge.retrievers.dense import EmbeddingModel
 from soca.llm import LLMEngine, LocalLlamaCppLLM
 from soca.llm.factory import SecretReader, build_llm_engine
 from soca.memory import SessionMemory
-from soca.tools import LocalTimeTool, ToolRuntime
+from soca.tools import LocalTimeTool, Tool, ToolRuntime
 
 
 def default_text_llm_model_key() -> str:
@@ -57,7 +67,7 @@ class TextRuntimeConfig:
     semantic_router_threshold: float = 0.0
     semantic_router_margin: float = 0.0
     semantic_router_examples: Path | None = None
-    memory_mode: str = "retrieved"
+    memory_mode: MemoryMode = "retrieved"
     memory_limit: int = 3
     memory_retrieval_mode: str = "chunk_sparse"
     memory_dense_backend: str = "fastembed"
@@ -133,7 +143,7 @@ def resolve_text_runtime_config(
             if semantic_router_examples is not None
             else None
         ),
-        memory_mode=memory_mode,
+        memory_mode=cast(MemoryMode, memory_mode),
         memory_limit=memory_limit,
         memory_retrieval_mode=memory_retrieval_mode,
         memory_dense_backend=memory_dense_backend,
@@ -194,7 +204,7 @@ def build_text_runtime(
     vault = config.vault.expanduser()
     knowledge_builder = None
     knowledge_status = "disabled:not_found"
-    tools = [LocalTimeTool()]
+    tools: list[Tool] = [LocalTimeTool()]
 
     if vault.is_dir():
         knowledge = build_knowledge_runtime_setup(
@@ -230,8 +240,8 @@ def build_text_runtime(
                 top_k=config.memory_limit,
                 context_chars=config.memory_chars,
                 profile_chars=config.profile_chars,
-                retrieval_mode=config.memory_retrieval_mode,
-                dense_backend=config.memory_dense_backend,
+                retrieval_mode=cast(RetrievalMode, config.memory_retrieval_mode),
+                dense_backend=cast(DenseBackend, config.memory_dense_backend),
                 recency_weight=config.memory_recency_weight,
                 importance_weight=config.memory_importance_weight,
                 relevance_weight=1.0 - config.memory_recency_weight - config.memory_importance_weight,
@@ -262,8 +272,8 @@ def build_text_runtime(
 
     tool_runtime = ToolRuntime(tools)
     router_config = ToolRouterConfig(
-        mode=config.tool_router_mode,
-        response_mode=config.tool_router_response_mode,
+        mode=cast(ToolRouterMode, config.tool_router_mode),
+        response_mode=cast(RouterResponseMode, config.tool_router_response_mode),
         semantic=SemanticRouterConfig(
             enabled=config.semantic_router_enabled,
             threshold=config.semantic_router_threshold,

@@ -7,7 +7,7 @@ import os
 import tempfile
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from soca.llm.providers import get_provider
 
@@ -41,7 +41,11 @@ class SecretStore:
         dotenv_path: Path | None = None,
         json_path: Path = DEFAULT_KEYS_PATH,
     ) -> None:
-        self._keyring = _load_keyring() if keyring_module is _UNSET else keyring_module
+        self._keyring = (
+            _load_keyring()
+            if keyring_module is _UNSET
+            else cast(KeyringBackend | None, keyring_module)
+        )
         self._env = dict(os.environ if env is None else env)
         self._dotenv_path = (
             dotenv_path
@@ -114,7 +118,7 @@ def _load_keyring() -> KeyringBackend | None:
         import keyring
     except ImportError:
         return None
-    return keyring
+    return cast(KeyringBackend, keyring)
 
 
 def _read_dotenv(path: Path | None) -> dict[str, str]:

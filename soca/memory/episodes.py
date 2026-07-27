@@ -79,7 +79,10 @@ class EpisodeStore:
                 continue
             if path.is_symlink():
                 raise ValueError("episode store contains a symlink")
-            episodes.append(self._load_path(path))
+            episode = self._load_path(path)
+            if episode is None:
+                raise ValueError(f"episode file is missing: {path}")
+            episodes.append(episode)
         return tuple(episodes)
 
     def delete(self, episode_id: str) -> bool:

@@ -5,10 +5,11 @@ import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import cast
 from uuid import uuid4
 
 from soca.memory.episodes import MemoryEpisode
-from soca.memory.proposals import MemoryProposal, ProposalStore
+from soca.memory.proposals import MemoryProposal, ProposalKind, ProposalStore
 
 LOGGER = logging.getLogger(__name__)
 
@@ -64,10 +65,10 @@ class ReflectionService:
             raise ValueError("proposal candidate must be an object")
         return MemoryProposal(
             id=str(uuid4()),
-            kind=raw["kind"],
+            kind=cast(ProposalKind, raw["kind"]),
             statement=str(raw["statement"])[: self.config.statement_chars],
             evidence_excerpt=str(raw["evidence_excerpt"])[: self.config.evidence_chars],
-            confidence=float(raw["confidence"]),
+            confidence=float(cast(str | float | int, raw["confidence"])),
             source_episode_id=episode.id,
             created_at=datetime.now(UTC),
         )

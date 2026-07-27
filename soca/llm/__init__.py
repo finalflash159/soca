@@ -8,7 +8,7 @@ from .base import LLMEngine, LLMResult, StructuredLLMEngine
 
 if TYPE_CHECKING:
     from .llamacpp_runner import LocalLlamaCppLLM
-    from .memory_aware import MemoryAwareLLM
+    from .memory_aware import MemoryAwareLLM, build_memory_prompt
 
 __all__ = [
     "LLMEngine",

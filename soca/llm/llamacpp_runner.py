@@ -11,7 +11,7 @@ import json
 import time
 from collections.abc import Iterator, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from llama_cpp import Llama, LlamaGrammar
 
@@ -101,24 +101,24 @@ class LocalLlamaCppLLM:
     ) -> Iterator[dict]:
         if uses_completion_prompt(self.config):
             prompt = build_completion_prompt(user_msg, self.config, inject_persona)
-            yield from self.llm(
+            yield from cast(Iterator[dict[str, Any]], self.llm(
                 prompt,
                 max_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
                 stop=list(self.config.stop_sequences),
                 stream=True,
-            )
+            ))
             return
 
         messages = build_chat_messages(user_msg, self.config, inject_persona)
-        yield from self.llm.create_chat_completion(
-            messages=messages,
+        yield from cast(Iterator[dict[str, Any]], self.llm.create_chat_completion(
+            messages=cast(Any, messages),
             max_tokens=max_tokens,
             temperature=temperature,
             top_p=top_p,
             stream=True,
-        )
+        ))
 
     def _prompt_for_metrics(self, user_msg: str, inject_persona: bool) -> str:
         if uses_completion_prompt(self.config):
@@ -169,7 +169,7 @@ class LocalLlamaCppLLM:
             else:
                 messages = build_chat_messages(user_msg, self.config, inject_persona)
                 response = self.llm.create_chat_completion(
-                    messages=messages,
+                    messages=cast(Any, messages),
                     max_tokens=max_tokens,
                     temperature=temperature,
                     top_p=top_p,
@@ -179,7 +179,7 @@ class LocalLlamaCppLLM:
         except Exception as exc:  # noqa: BLE001 - local model boundary
             raise RuntimeError("structured local generation failed") from exc
         ended = time.perf_counter()
-        raw_completion = self._chunk_text(response)
+        raw_completion = self._chunk_text(cast(dict[str, Any], response))
         usage = response.get("usage", {}) if isinstance(response, dict) else {}
         n_prompt = usage.get("prompt_tokens") if isinstance(usage, dict) else None
         n_completion = usage.get("completion_tokens") if isinstance(usage, dict) else None

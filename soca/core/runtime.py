@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from soca.core.guardrails import (
     DEFAULT_POLICY,
@@ -308,8 +308,9 @@ class AssistantRuntime:
         """
         count_tokens = getattr(self.llm, "count_tokens", None)
         if callable(count_tokens):
-            prompt_tokens = count_tokens(prompt)
-            completion_tokens = count_tokens(completion)
+            token_counter = cast(Callable[[str], int], count_tokens)
+            prompt_tokens = token_counter(prompt)
+            completion_tokens = token_counter(completion)
         else:
             prompt_tokens = 0
             completion_tokens = len(completion.split())

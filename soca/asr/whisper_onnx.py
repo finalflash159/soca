@@ -4,6 +4,7 @@ import json
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import onnxruntime as ort
@@ -167,13 +168,13 @@ class VietnameseASR:
         logprobs: list[float] = []
 
         for _ in range(max_new_tokens):
-            outputs = self.decoder.run(
+            outputs = cast(list[np.ndarray], self.decoder.run(
                 None,
                 {
                     "input_ids": decoder_ids,
                     "encoder_hidden_states": encoder_hidden,
                 },
-            )
+            ))
             logits = outputs[0]  # (1, seq_len, vocab_size)
             next_token_logits = logits[0, -1].copy()
 
@@ -208,7 +209,7 @@ class VietnameseASR:
 
         input_features = self._preprocess(audio)
         encoder_out = self.encoder.run(None, {"input_features": input_features})
-        encoder_hidden = encoder_out[0]
+        encoder_hidden = cast(np.ndarray, encoder_out[0])
 
         token_ids, avg_logprob = self._decode_greedy(encoder_hidden, max_new_tokens=max_new_tokens)
         text = self.processor.tokenizer.decode(

@@ -4,6 +4,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 
@@ -11,23 +12,32 @@ from soca.asr import ASR_MODEL_REGISTRY, SpeechDetector
 from soca.asr.robust_asr import RobustASR, load_confidence_guard_calibration
 from soca.asr.whisper_onnx import VietnameseASR
 from soca.core.knowledge_setup import build_knowledge_runtime_setup
-from soca.core.memory_setup import MemoryRuntimeConfig, build_memory_runtime_setup
+from soca.core.memory_setup import (
+    MemoryMode,
+    MemoryRuntimeConfig,
+    build_memory_runtime_setup,
+)
 from soca.core.pipeline import VoicePipeline
 from soca.core.profiles import get_voice_runtime_profile
 from soca.core.repair import default_repair_catalog
 from soca.core.router_setup import build_runtime_tool_router
 from soca.core.runtime import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
 from soca.core.smart_turn import SmartTurnDetector
-from soca.core.tool_routing import SemanticRouterConfig, ToolRouterConfig
+from soca.core.tool_routing import (
+    RouterResponseMode,
+    SemanticRouterConfig,
+    ToolRouterConfig,
+    ToolRouterMode,
+)
 from soca.core.turn_taking import partial_interval_from_cost
-from soca.knowledge.factory import RetrievalConfig
+from soca.knowledge.factory import DenseBackend, RetrievalConfig, RetrievalMode
 from soca.knowledge.hybrid_source import HybridKnowledgeSource
-from soca.knowledge.intent_gate import RetrievalIntentGate
+from soca.knowledge.intent_gate import RetrievalIntentGate, RetrievalSourceLike, VoiceKnowledgeMode
 from soca.llm import LocalLlamaCppLLM
 from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.memory import SessionMemory
-from soca.tools import LocalTimeTool, ToolRuntime
-from soca.tts import VALTEC_TTS_CONFIG, create_tts_engine
+from soca.tools import LocalTimeTool, Tool, ToolRuntime
+from soca.tts import VALTEC_TTS_CONFIG, TTSEngine, create_tts_engine
 
 
 @dataclass(frozen=True)
@@ -70,7 +80,7 @@ class ResolvedVoiceRuntimeConfig:
     semantic_router_threshold: float = 0.0
     semantic_router_margin: float = 0.0
     semantic_router_examples: Path | None = None
-    memory_mode: str = "retrieved"
+    memory_mode: MemoryMode = "retrieved"
     memory_limit: int = 3
     memory_retrieval_mode: str = "chunk_sparse"
     memory_dense_backend: str = "fastembed"
@@ -85,7 +95,7 @@ class VoiceRuntimeBundle:
     detector: SpeechDetector
     asr: RobustASR
     llm: LocalLlamaCppLLM
-    tts: object
+    tts: TTSEngine
     assistant_runtime: AssistantRuntime
     pipeline: VoicePipeline
     memory_status: str
@@ -251,7 +261,7 @@ def resolve_voice_runtime_config(
             if semantic_router_examples is not None
             else None
         ),
-        memory_mode=memory_mode,
+        memory_mode=cast(MemoryMode, memory_mode),
         memory_limit=memory_limit,
         memory_retrieval_mode=memory_retrieval_mode,
         memory_dense_backend=memory_dense_backend,
@@ -298,7 +308,7 @@ def build_voice_runtime(
     knowledge_status = "disabled:not_found"
     memory_builder = None
     knowledge_builder = None
-    tools = [LocalTimeTool()]
+    tools: list[Tool] = [LocalTimeTool()]
 
     knowledge_intent_gate = None
     effective_voice_mode = config.voice_knowledge_mode
@@ -307,8 +317,8 @@ def build_voice_runtime(
             config.vault,
             knowledge_limit=knowledge_limit,
             retrieval_config=RetrievalConfig(
-                mode=config.knowledge_retrieval_mode,
-                dense_backend=config.knowledge_dense_backend,
+                mode=cast(RetrievalMode, config.knowledge_retrieval_mode),
+                dense_backend=cast(DenseBackend, config.knowledge_dense_backend),
             ),
         )
         knowledge_builder = knowledge.builder
@@ -320,7 +330,7 @@ def build_voice_runtime(
             and config.knowledge_intent_threshold is not None
         ):
             knowledge_intent_gate = RetrievalIntentGate(
-                knowledge.source,
+                cast(RetrievalSourceLike, knowledge.source),
                 threshold=config.knowledge_intent_threshold,
             )
         elif effective_voice_mode == "intent":
@@ -347,8 +357,8 @@ def build_voice_runtime(
                 top_k=config.memory_limit,
                 context_chars=config.memory_chars,
                 profile_chars=config.profile_chars,
-                retrieval_mode=config.memory_retrieval_mode,
-                dense_backend=config.memory_dense_backend,
+                retrieval_mode=cast(RetrievalMode, config.memory_retrieval_mode),
+                dense_backend=cast(DenseBackend, config.memory_dense_backend),
                 recency_weight=config.memory_recency_weight,
                 importance_weight=config.memory_importance_weight,
                 relevance_weight=1.0 - config.memory_recency_weight - config.memory_importance_weight,
@@ -366,8 +376,8 @@ def build_voice_runtime(
             knowledge_search_prefixes=("wiki:", "knowledge:", "wiki ", "knowledge "),
         ),
         config=ToolRouterConfig(
-            mode=config.tool_router_mode,
-            response_mode=config.tool_router_response_mode,
+            mode=cast(ToolRouterMode, config.tool_router_mode),
+            response_mode=cast(RouterResponseMode, config.tool_router_response_mode),
             enabled_in_voice=config.llm_router_in_voice,
             semantic_enabled_in_voice=config.semantic_router_in_voice,
             semantic=SemanticRouterConfig(
@@ -391,7 +401,7 @@ def build_voice_runtime(
             temperature=config.temperature,
             top_p=config.top_p,
             knowledge_limit=knowledge_limit,
-            voice_knowledge_mode=effective_voice_mode,
+            voice_knowledge_mode=cast(VoiceKnowledgeMode, effective_voice_mode),
         ),
         knowledge_intent_gate=knowledge_intent_gate,
     )
@@ -529,7 +539,10 @@ def _warm_up_tts(bundle: VoiceRuntimeBundle, *, text: str) -> VoiceRuntimeWarmup
 
 def _warm_up_smart_turn(bundle: VoiceRuntimeBundle) -> VoiceRuntimeWarmupResult:
     t0 = time.perf_counter()
-    bundle.turn_detector.warmup()
+    detector = bundle.turn_detector
+    if detector is None:
+        raise RuntimeError("smart turn detector is not configured")
+    detector.warmup()
     return VoiceRuntimeWarmupResult(
         component="smart_turn",
         ok=True,

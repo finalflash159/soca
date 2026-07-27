@@ -317,7 +317,10 @@ class VoicePipeline:
         playback are still pipelined across sentences.
         """
         with self.metrics.stage("runtime"):
-            runtime_result = self.assistant_runtime.run_text_turn(
+            runtime = self.assistant_runtime
+            if runtime is None:
+                raise RuntimeError("assistant runtime is not configured")
+            runtime_result = runtime.run_text_turn(
                 transcript,
                 source="asr",
                 metadata={"asr_rejection_reason": rejection_reason},
@@ -371,7 +374,10 @@ class VoicePipeline:
         pump.start()
 
         runtime_result: Any | None = None
-        stream = self.assistant_runtime.stream_text_turn(
+        runtime = self.assistant_runtime
+        if runtime is None:
+            raise RuntimeError("assistant runtime is not configured")
+        stream = runtime.stream_text_turn(
             transcript,
             source="asr",
             metadata={"asr_rejection_reason": rejection_reason},

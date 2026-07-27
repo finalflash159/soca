@@ -6,7 +6,7 @@ import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .artifacts import ValtecOnnxArtifacts
 from .frontend import ValtecModelInputs
@@ -214,10 +214,10 @@ class PortableVietnameseG2P:
         spelled = " ".join(
             LETTER_NAMES.get(char, char) for char in token.lower()
         ).split()
-        return [
+        return cast(list[tuple[list[int], int, int, bool]], [
             (*(self._syllable_segment(part) or ([self.symbol_to_id["UNK"]], 0, 1)), True)
             for part in spelled
-        ]
+        ])
 
     def convert(self, text: str) -> ValtecModelInputs:
         phone_ids: list[int] = [self.symbol_to_id["_"]]

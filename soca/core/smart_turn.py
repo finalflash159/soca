@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 
@@ -46,7 +47,8 @@ class SmartTurnDetector:
             do_normalize=True,
         ).input_features.squeeze(0).astype(np.float32)
         feats = np.expand_dims(feats, axis=0)  # (1, 80, 800)
-        prob_complete = float(self._session.run(None, {"input_features": feats})[0][0].item())
+        outputs = cast(list[np.ndarray], self._session.run(None, {"input_features": feats}))
+        prob_complete = float(outputs[0][0][0].item())
         return float(np.clip(1.0 - prob_complete, 0.0, 1.0))
 
     def warmup(self) -> None:
