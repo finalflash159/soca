@@ -14,12 +14,16 @@ from soca.app.usage_view import print_turn_usage
 from soca.config import LlmSettings, SecretStore, load_settings
 from soca.core import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
 from soca.core.knowledge_setup import build_knowledge_runtime_setup
+from soca.core.memory_setup import MemoryRuntimeConfig, build_memory_runtime_setup
 from soca.core.profiles import DEFAULT_VOICE_RUNTIME_PROFILE_KEY, get_voice_runtime_profile
+from soca.core.router_setup import build_runtime_tool_router
+from soca.core.tool_routing import SemanticRouterConfig, ToolRouterConfig
 from soca.core.turn import RuntimeResult
 from soca.core.usage import TurnUsage
+from soca.knowledge.retrievers.dense import EmbeddingModel
 from soca.llm import LLMEngine, LocalLlamaCppLLM
 from soca.llm.factory import SecretReader, build_llm_engine
-from soca.memory import MarkdownLongTermMemory, MemoryContextBuilder, SessionMemory
+from soca.memory import SessionMemory
 from soca.tools import LocalTimeTool, ToolRuntime
 
 
@@ -47,6 +51,19 @@ class TextRuntimeConfig:
     turn_chars: int = 500
     llm_threads: int = 8
     llm_gpu_layers: int = -1
+    tool_router_mode: str = "deterministic"
+    tool_router_response_mode: str = "prompt_json"
+    semantic_router_enabled: bool = False
+    semantic_router_threshold: float = 0.0
+    semantic_router_margin: float = 0.0
+    semantic_router_examples: Path | None = None
+    memory_mode: str = "retrieved"
+    memory_limit: int = 3
+    memory_retrieval_mode: str = "chunk_sparse"
+    memory_dense_backend: str = "fastembed"
+    memory_recency_weight: float = 0.20
+    memory_importance_weight: float = 0.10
+    memory_recency_half_life_days: float = 30.0
 
 
 def resolve_text_runtime_config(
@@ -67,6 +84,19 @@ def resolve_text_runtime_config(
     turn_chars: int = 500,
     llm_threads: int = 8,
     llm_gpu_layers: int = -1,
+    tool_router_mode: str = "deterministic",
+    tool_router_response_mode: str = "prompt_json",
+    semantic_router_enabled: bool = False,
+    semantic_router_threshold: float = 0.0,
+    semantic_router_margin: float = 0.0,
+    semantic_router_examples: str | Path | None = None,
+    memory_mode: str = "retrieved",
+    memory_limit: int = 3,
+    memory_retrieval_mode: str = "chunk_sparse",
+    memory_dense_backend: str = "fastembed",
+    memory_recency_weight: float = 0.20,
+    memory_importance_weight: float = 0.10,
+    memory_recency_half_life_days: float = 30.0,
 ) -> TextRuntimeConfig:
     """Resolve text-only runtime config from the same profile source as voice.
 
@@ -93,6 +123,23 @@ def resolve_text_runtime_config(
         turn_chars=turn_chars,
         llm_threads=llm_threads,
         llm_gpu_layers=llm_gpu_layers,
+        tool_router_mode=tool_router_mode,
+        tool_router_response_mode=tool_router_response_mode,
+        semantic_router_enabled=semantic_router_enabled,
+        semantic_router_threshold=semantic_router_threshold,
+        semantic_router_margin=semantic_router_margin,
+        semantic_router_examples=(
+            Path(semantic_router_examples).expanduser().resolve()
+            if semantic_router_examples is not None
+            else None
+        ),
+        memory_mode=memory_mode,
+        memory_limit=memory_limit,
+        memory_retrieval_mode=memory_retrieval_mode,
+        memory_dense_backend=memory_dense_backend,
+        memory_recency_weight=memory_recency_weight,
+        memory_importance_weight=memory_importance_weight,
+        memory_recency_half_life_days=memory_recency_half_life_days,
     )
 
 
@@ -135,6 +182,7 @@ def build_text_runtime(
     llm_settings: LlmSettings | None = None,
     secret_store: SecretReader | None = None,
     engine_factory: LLMEngineFactory = build_llm_engine,
+    embedding_model: EmbeddingModel | None = None,
 ) -> TextRuntimeBundle:
     """Build text-only AssistantRuntime without ASR or TTS.
 
@@ -174,20 +222,24 @@ def build_text_runtime(
                 max_turn_chars=config.turn_chars,
             )
         )
-        long_term = (
-            MarkdownLongTermMemory(vault, max_chars=config.profile_chars)
-            if vault.is_dir()
-            else None
-        )
-        memory_builder = MemoryContextBuilder(
-            long_term=long_term,
+        memory_setup = build_memory_runtime_setup(
+            vault,
             session=runtime_session_memory,
-            max_chars=config.memory_chars,
+            config=MemoryRuntimeConfig(
+                mode=config.memory_mode,
+                top_k=config.memory_limit,
+                context_chars=config.memory_chars,
+                profile_chars=config.profile_chars,
+                retrieval_mode=config.memory_retrieval_mode,
+                dense_backend=config.memory_dense_backend,
+                recency_weight=config.memory_recency_weight,
+                importance_weight=config.memory_importance_weight,
+                relevance_weight=1.0 - config.memory_recency_weight - config.memory_importance_weight,
+                recency_half_life_days=config.memory_recency_half_life_days,
+            ),
         )
-        if vault.is_dir():
-            memory_status = f"enabled:{vault / 'memory' / 'profile.md'}"
-        else:
-            memory_status = f"session-only:vault_missing:{vault}"
+        memory_builder = memory_setup.builder
+        memory_status = memory_setup.status
 
     if config.no_llm:
         llm = None
@@ -208,12 +260,32 @@ def build_text_runtime(
         else:
             llm_status = f"enabled:{selected_settings.model_id}"
 
+    tool_runtime = ToolRuntime(tools)
+    router_config = ToolRouterConfig(
+        mode=config.tool_router_mode,
+        response_mode=config.tool_router_response_mode,
+        semantic=SemanticRouterConfig(
+            enabled=config.semantic_router_enabled,
+            threshold=config.semantic_router_threshold,
+            margin=config.semantic_router_margin,
+            examples_path=config.semantic_router_examples,
+        ),
+    )
+    deterministic_router = DefaultRuntimeToolRouter(
+        knowledge_search_prefixes=("wiki:", "knowledge:"),
+    )
+    tool_router = build_runtime_tool_router(
+        llm=llm,
+        tool_runtime=tool_runtime,
+        deterministic=deterministic_router,
+        config=router_config,
+        embedding_model=embedding_model,
+        voice=False,
+    )
     runtime = AssistantRuntime(
         llm=llm,
-        tool_runtime=ToolRuntime(tools),
-        tool_router=DefaultRuntimeToolRouter(
-            knowledge_search_prefixes=("wiki:", "knowledge:"),
-        ),
+        tool_runtime=tool_runtime,
+        tool_router=tool_router,
         knowledge_builder=knowledge_builder,
         memory_builder=memory_builder,
         options=RuntimeOptions(

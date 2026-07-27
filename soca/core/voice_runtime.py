@@ -11,18 +11,21 @@ from soca.asr import ASR_MODEL_REGISTRY, SpeechDetector
 from soca.asr.robust_asr import RobustASR, load_confidence_guard_calibration
 from soca.asr.whisper_onnx import VietnameseASR
 from soca.core.knowledge_setup import build_knowledge_runtime_setup
+from soca.core.memory_setup import MemoryRuntimeConfig, build_memory_runtime_setup
 from soca.core.pipeline import VoicePipeline
 from soca.core.profiles import get_voice_runtime_profile
 from soca.core.repair import default_repair_catalog
+from soca.core.router_setup import build_runtime_tool_router
 from soca.core.runtime import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
 from soca.core.smart_turn import SmartTurnDetector
+from soca.core.tool_routing import SemanticRouterConfig, ToolRouterConfig
 from soca.core.turn_taking import partial_interval_from_cost
 from soca.knowledge.factory import RetrievalConfig
 from soca.knowledge.hybrid_source import HybridKnowledgeSource
 from soca.knowledge.intent_gate import RetrievalIntentGate
 from soca.llm import LocalLlamaCppLLM
 from soca.llm.registry import LLM_MODEL_REGISTRY
-from soca.memory import MarkdownLongTermMemory, MemoryContextBuilder, SessionMemory
+from soca.memory import SessionMemory
 from soca.tools import LocalTimeTool, ToolRuntime
 from soca.tts import VALTEC_TTS_CONFIG, create_tts_engine
 
@@ -59,6 +62,21 @@ class ResolvedVoiceRuntimeConfig:
     knowledge_dense_backend: str = "fastembed"
     voice_knowledge_mode: str = "off"
     knowledge_intent_threshold: float | None = None
+    tool_router_mode: str = "deterministic"
+    tool_router_response_mode: str = "prompt_json"
+    llm_router_in_voice: bool = False
+    semantic_router_in_voice: bool = False
+    semantic_router_enabled: bool = False
+    semantic_router_threshold: float = 0.0
+    semantic_router_margin: float = 0.0
+    semantic_router_examples: Path | None = None
+    memory_mode: str = "retrieved"
+    memory_limit: int = 3
+    memory_retrieval_mode: str = "chunk_sparse"
+    memory_dense_backend: str = "fastembed"
+    memory_recency_weight: float = 0.20
+    memory_importance_weight: float = 0.10
+    memory_recency_half_life_days: float = 30.0
 
 
 @dataclass
@@ -117,6 +135,21 @@ def resolve_voice_runtime_config(
     knowledge_dense_backend: str | None = None,
     voice_knowledge_mode: str | None = None,
     knowledge_intent_threshold: float | None = None,
+    tool_router_mode: str = "deterministic",
+    tool_router_response_mode: str = "prompt_json",
+    llm_router_in_voice: bool = False,
+    semantic_router_in_voice: bool = False,
+    semantic_router_enabled: bool = False,
+    semantic_router_threshold: float = 0.0,
+    semantic_router_margin: float = 0.0,
+    semantic_router_examples: str | Path | None = None,
+    memory_mode: str = "retrieved",
+    memory_limit: int = 3,
+    memory_retrieval_mode: str = "chunk_sparse",
+    memory_dense_backend: str = "fastembed",
+    memory_recency_weight: float = 0.20,
+    memory_importance_weight: float = 0.10,
+    memory_recency_half_life_days: float = 30.0,
 ) -> ResolvedVoiceRuntimeConfig:
     profile = get_voice_runtime_profile(profile_key)
 
@@ -206,6 +239,25 @@ def resolve_voice_runtime_config(
         knowledge_dense_backend=resolved_backend,
         voice_knowledge_mode=resolved_voice_mode,
         knowledge_intent_threshold=resolved_threshold,
+        tool_router_mode=tool_router_mode,
+        tool_router_response_mode=tool_router_response_mode,
+        llm_router_in_voice=llm_router_in_voice,
+        semantic_router_in_voice=semantic_router_in_voice,
+        semantic_router_enabled=semantic_router_enabled,
+        semantic_router_threshold=semantic_router_threshold,
+        semantic_router_margin=semantic_router_margin,
+        semantic_router_examples=(
+            Path(semantic_router_examples).expanduser().resolve()
+            if semantic_router_examples is not None
+            else None
+        ),
+        memory_mode=memory_mode,
+        memory_limit=memory_limit,
+        memory_retrieval_mode=memory_retrieval_mode,
+        memory_dense_backend=memory_dense_backend,
+        memory_recency_weight=memory_recency_weight,
+        memory_importance_weight=memory_importance_weight,
+        memory_recency_half_life_days=memory_recency_half_life_days,
     )
 
 
@@ -277,11 +329,7 @@ def build_voice_runtime(
         if not config.no_memory:
             memory_status = f"disabled:not_found:{config.vault}"
 
-    if not config.no_memory and config.vault.is_dir():
-        long_term_memory = MarkdownLongTermMemory(
-            config.vault,
-            max_chars=config.profile_chars,
-        )
+    if not config.no_memory:
         session_memory = (
             session_memory
             if session_memory is not None
@@ -291,21 +339,51 @@ def build_voice_runtime(
                 max_turn_chars=config.turn_chars,
             )
         )
-        memory_builder = MemoryContextBuilder(
-            long_term=long_term_memory,
+        memory_setup = build_memory_runtime_setup(
+            config.vault,
             session=session_memory,
-            max_chars=config.memory_chars,
-            profile_chars=config.profile_chars,
+            config=MemoryRuntimeConfig(
+                mode=config.memory_mode,
+                top_k=config.memory_limit,
+                context_chars=config.memory_chars,
+                profile_chars=config.profile_chars,
+                retrieval_mode=config.memory_retrieval_mode,
+                dense_backend=config.memory_dense_backend,
+                recency_weight=config.memory_recency_weight,
+                importance_weight=config.memory_importance_weight,
+                relevance_weight=1.0 - config.memory_recency_weight - config.memory_importance_weight,
+                recency_half_life_days=config.memory_recency_half_life_days,
+            ),
         )
-        memory_status = f"enabled:{config.vault / 'memory' / 'profile.md'}"
+        memory_builder = memory_setup.builder
+        memory_status = memory_setup.status
 
     tool_runtime = ToolRuntime(tools)
+    tool_router = build_runtime_tool_router(
+        llm=llm,
+        tool_runtime=tool_runtime,
+        deterministic=DefaultRuntimeToolRouter(
+            knowledge_search_prefixes=("wiki:", "knowledge:", "wiki ", "knowledge "),
+        ),
+        config=ToolRouterConfig(
+            mode=config.tool_router_mode,
+            response_mode=config.tool_router_response_mode,
+            enabled_in_voice=config.llm_router_in_voice,
+            semantic_enabled_in_voice=config.semantic_router_in_voice,
+            semantic=SemanticRouterConfig(
+                enabled=config.semantic_router_enabled,
+                threshold=config.semantic_router_threshold,
+                margin=config.semantic_router_margin,
+                examples_path=config.semantic_router_examples,
+            ),
+        ),
+        embedding_model=None,
+        voice=True,
+    )
     assistant_runtime = AssistantRuntime(
         llm=llm,
         tool_runtime=tool_runtime,
-        tool_router=DefaultRuntimeToolRouter(
-            knowledge_search_prefixes=("wiki:", "knowledge:", "wiki ", "knowledge ")
-        ),
+        tool_router=tool_router,
         knowledge_builder=knowledge_builder,
         memory_builder=memory_builder,
         options=RuntimeOptions(
