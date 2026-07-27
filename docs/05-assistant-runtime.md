@@ -17,8 +17,10 @@ flowchart TD
     MEM --> KN[_build_knowledge_context]
     KN --> LLM[_run_llm_turn]
 
-    TT --> RT{tool returns directly?}
-    RT -->|knowledge read| KD[(KNOWLEDGE_DIRECT)]
+    TT --> RT{knowledge tool?}
+    RT -->|yes| KC[tool result → KnowledgeContext]
+    KC -->|LLM enabled| KL[(KNOWLEDGE_LLM)]
+    KC -->|no LLM| KD[(KNOWLEDGE_DIRECT)]
     RT -->|other tool| TD[(TOOL_DIRECT)]
 
     LLM --> RU{used knowledge?}
@@ -32,7 +34,7 @@ flowchart TD
 | ------------------ | --------------------------------------------------------------- | ---------- |
 | `BLOCKED`          | A guardrail blocks at any stage                                 | No         |
 | `TOOL_DIRECT`      | A deterministic tool can answer directly, e.g. `local_time.now` | No         |
-| `KNOWLEDGE_DIRECT` | A knowledge file is read directly                               | No         |
+| `KNOWLEDGE_DIRECT` | Knowledge tool result is returned because LLM is disabled             | No         |
 | `KNOWLEDGE_LLM`    | LLM answers with knowledge context and citations                | Yes        |
 | `FREE_CHAT`        | Normal chat answer without knowledge                            | Yes        |
 
@@ -43,9 +45,11 @@ flowchart TD
 
 `RuntimeToolRouter` (Protocol) and `DefaultRuntimeToolRouter` decide **before the
 LLM call** whether the user text matches a local tool, such as asking for time or
-searching/reading knowledge notes. If a tool matches, the runtime can call it and
-return directly without the LLM. This is cheaper and more reliable. Tools also
-have side-effect levels and parameter validation.
+searching/reading knowledge notes. Knowledge tools are retrieval steps, not answer
+generators: their result is converted to `KnowledgeContext` and passed to the LLM
+when one is enabled. If no LLM is available, the raw tool result is returned. Other
+read-only tools such as `local_time.now` can still answer directly. Tools also have
+side-effect levels and parameter validation.
 
 ## Guardrails: Multiple Stages
 
@@ -93,9 +97,10 @@ token*  → sentence*  → result
 - `sentence`: guardrail-checked chunk ready for TTS.
 - `result`: full `RuntimeResult` with route, trace, citations, and usage.
 
-Only **LLM routes** stream token-by-token. Tool, knowledge-direct, and blocked
-routes produce fixed text through `_emit_fixed_result`, chunked into sentences.
-This keeps pipeline handling uniform across routes.
+LLM routes, including `KNOWLEDGE_LLM`, stream token-by-token. Non-LLM tool,
+knowledge-direct, and blocked routes produce fixed text through
+`_emit_fixed_result`, chunked into sentences. This keeps pipeline handling uniform
+across routes.
 
 `first_sentence_min_chars` lets the first sentence flush earlier than later
 sentences so audio reaches the speaker faster.
@@ -115,8 +120,11 @@ flowchart LR
 - **Long-term memory**: `memory/profile.md`, read when the vault exists.
 - **Session memory**: RAM-only, multi-turn. The TUI uses **shared session
   memory** so voice ↔ chat keep the same context. See [07](./07-tui.md).
-- **Knowledge**: Markdown vault. When used, the answer includes
-  `KnowledgeCitation` values such as `[K1] path`.
+- **Knowledge**: Markdown vault. The retrieved passages are inserted into the
+  dynamic prompt together with grounding instructions: the LLM may only claim
+  facts supported by the passages, must preserve citations such as `[K1] path`,
+  and must state that the vault lacks enough information when the context is
+  empty or insufficient. No answer text is assembled from snippets in code.
 
 ## <a id="usage-telemetry"></a>Usage Telemetry
 

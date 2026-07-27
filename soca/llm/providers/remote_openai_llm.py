@@ -141,7 +141,29 @@ class RemoteOpenAILLM:
             raise _map_error(exc, self.provider) from exc
         ended = time.perf_counter()
 
-        text = (response.choices[0].message.content or "").strip()
+        choices = getattr(response, "choices", None) or []
+        if not choices:
+            raise RemoteLLMError(
+                f"{self.provider.label} trả về response không có lựa chọn.",
+                category="unknown",
+            )
+
+        choice = choices[0]
+        message = getattr(choice, "message", None)
+        raw_text = getattr(message, "content", None)
+        text = raw_text.strip() if isinstance(raw_text, str) else ""
+        if not text:
+            finish_reason = getattr(choice, "finish_reason", None)
+            hint = (
+                " Model có thể đã dùng hết max_tokens trước khi tạo câu trả lời; "
+                "hãy tăng max_tokens hoặc chọn model chat khác."
+                if finish_reason == "length"
+                else " Hãy tăng max_tokens hoặc chọn model chat khác."
+            )
+            raise RemoteLLMError(
+                f"{self.provider.label} trả về nội dung rỗng.{hint}",
+                category="unknown",
+            )
         usage = getattr(response, "usage", None)
         n_prompt = getattr(usage, "prompt_tokens", 0) or 0
         n_completion = getattr(usage, "completion_tokens", 0) or 0

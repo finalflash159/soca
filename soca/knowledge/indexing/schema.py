@@ -1,17 +1,28 @@
 from __future__ import annotations
 
 import sqlite3
+import stat
 from pathlib import Path
 
 from soca.knowledge.index.persistence import ensure_private_directory
 
 SCHEMA_VERSION = 2
+PRIVATE_FILE_MODE = stat.S_IRUSR | stat.S_IWUSR
+
+
+def _ensure_private_file(path: Path) -> None:
+    """Keep the SQLite catalog and its WAL sidecars owner-only."""
+    try:
+        path.chmod(PRIVATE_FILE_MODE)
+    except FileNotFoundError:
+        pass
 
 
 def connect_catalog(path: Path) -> sqlite3.Connection:
     sqlite_path = path if str(path) == ":memory:" else path.expanduser().resolve()
     if str(sqlite_path) != ":memory:":
         ensure_private_directory(sqlite_path.parent)
+        _ensure_private_file(sqlite_path)
     connection = sqlite3.connect(sqlite_path, timeout=5.0, isolation_level=None)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
@@ -23,6 +34,10 @@ def connect_catalog(path: Path) -> sqlite3.Connection:
             connection.execute("PRAGMA journal_mode = DELETE")
     connection.execute("PRAGMA synchronous = FULL")
     ensure_schema(connection)
+    if str(sqlite_path) != ":memory:":
+        _ensure_private_file(sqlite_path)
+        _ensure_private_file(Path(f"{sqlite_path}-wal"))
+        _ensure_private_file(Path(f"{sqlite_path}-shm"))
     return connection
 
 

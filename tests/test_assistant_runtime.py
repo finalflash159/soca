@@ -151,6 +151,28 @@ def test_explicit_wiki_prefix_uses_knowledge_search_tool_with_citation() -> None
     assert "Protein" in result.response_text
 
 
+def test_explicit_wiki_search_synthesizes_retrieved_context_with_llm() -> None:
+    source = FakeKnowledgeSource()
+    llm = SpyLLM(text="Theo [K1], protein hỗ trợ duy trì cơ bắp.")
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        knowledge_builder=KnowledgeContextBuilder(source),
+    )
+
+    result = runtime.run_text_turn("wiki: chất đạm")
+
+    assert result.route == RuntimeRoute.KNOWLEDGE_LLM
+    assert result.trace is not None
+    assert result.trace.used_tool is True
+    assert result.trace.used_llm is True
+    assert result.trace.knowledge_hits
+    assert len(source.search_calls) == 1
+    assert "Knowledge:" in llm.calls[0]["user_msg"]
+    assert "Protein hỗ trợ" in llm.calls[0]["user_msg"]
+    assert result.response_text.startswith("Theo [K1]")
+
+
 def test_empty_knowledge_search_result_does_not_require_citation() -> None:
     source = EmptyKnowledgeSource()
     tool_runtime = ToolRuntime([KnowledgeSearchTool(source)])
@@ -162,6 +184,37 @@ def test_empty_knowledge_search_result_does_not_require_citation() -> None:
     assert result.blocked is False
     assert result.citations == ()
     assert "chưa tìm thấy" in result.response_text
+
+
+def test_empty_knowledge_search_passes_empty_context_to_llm() -> None:
+    source = EmptyKnowledgeSource()
+    llm = SpyLLM(text="Mình chưa đủ thông tin trong vault.")
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        knowledge_builder=KnowledgeContextBuilder(source),
+    )
+
+    result = runtime.run_text_turn("wiki: không có note này")
+
+    assert result.route == RuntimeRoute.KNOWLEDGE_LLM
+    assert result.trace is not None
+    assert result.trace.used_llm is True
+    assert len(llm.calls) == 1
+    assert "No local knowledge notes found." in llm.calls[0]["user_msg"]
+    assert "grounding" in llm.calls[0]["user_msg"]
+    assert "chưa đủ thông tin" in result.response_text
+
+
+def test_empty_llm_response_is_not_rendered_as_success() -> None:
+    runtime = AssistantRuntime(llm=SpyLLM(text=""))
+
+    result = runtime.run_text_turn("xin chào")
+
+    assert result.blocked is True
+    assert result.trace is not None
+    assert result.trace.used_llm is True
+    assert "không trả về nội dung" in result.response_text
 
 
 def test_runtime_trace_preserves_degraded_memory_mode() -> None:

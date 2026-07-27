@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import stat
 from pathlib import Path
 
 import numpy as np
@@ -117,3 +118,18 @@ def test_catalog_verify_reports_clean_generation(tmp_path: Path) -> None:
     coordinator.build_blocking(dense=True)
 
     assert coordinator.verify() == ()
+
+
+def test_catalog_file_is_private_and_repairs_existing_mode(tmp_path: Path) -> None:
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    (wiki / "note.md").write_text("# Note\nContent.", encoding="utf-8")
+    coordinator = _coordinator(tmp_path)
+
+    coordinator.snapshot()
+    catalog_path = tmp_path / ".index" / "v2" / "index.sqlite3"
+    catalog_path.chmod(0o644)
+
+    coordinator.snapshot()
+
+    assert stat.S_IMODE(catalog_path.stat().st_mode) == 0o600

@@ -22,8 +22,8 @@ CHAT_EXIT_COMMANDS = {"/exit", "/quit", ":q"}
 CHAT_HELP = "\n".join(
     [
         "Nhập câu bình thường để chat qua AssistantRuntime.",
-        "wiki: <query>              -> search knowledge vault trực tiếp",
-        "đọc wiki/path/note.md      -> read knowledge note trực tiếp",
+        "wiki: <query>              -> retrieve vault; LLM synthesize nếu bật",
+        "đọc wiki/path/note.md      -> retrieve note; LLM synthesize nếu bật",
         "memory: <query>            -> search private memory notes",
         "/k <câu hỏi>               -> ép LLM dùng knowledge context",
         "/trace                     -> bật/tắt trace",

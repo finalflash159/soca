@@ -124,6 +124,22 @@ def test_generate_strips_whitespace_from_completion():
     assert engine.generate("hi").text == "Trả lời."
 
 
+def test_generate_rejects_empty_completion_with_actionable_error():
+    completion = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content=""),
+                finish_reason="length",
+            )
+        ],
+        usage=SimpleNamespace(prompt_tokens=5, completion_tokens=40),
+    )
+    engine = _engine(FakeClient(completion=completion))
+
+    with pytest.raises(RemoteLLMError, match="max_tokens"):
+        engine.generate("hi", max_tokens=40)
+
+
 def test_generate_rejects_empty_user_message():
     engine = _engine(FakeClient(completion=_make_completion("x", 1, 1)))
     with pytest.raises(ValueError):

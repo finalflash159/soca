@@ -10,7 +10,7 @@ from soca.core.turn import RuntimeResult
 from soca.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
 from soca.llm import LLMResult
 from soca.memory import MemoryContextBuilder, SessionMemory
-from soca.tools import LocalTimeTool, ToolRuntime
+from soca.tools import KnowledgeSearchTool, LocalTimeTool, ToolRuntime
 
 
 @dataclass(frozen=True)
@@ -265,6 +265,29 @@ def test_stream_knowledge_llm_route_when_metadata_requests_knowledge() -> None:
     prompt = llm.stream_calls[0]["user_msg"]
     assert "Knowledge:" in prompt
     assert "Memory:" in prompt
+
+
+def test_stream_explicit_knowledge_search_synthesizes_with_llm() -> None:
+    source = FakeKnowledgeSource()
+    llm = StreamSpyLLM(["Theo [K1], protein hỗ trợ cơ bắp."])
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        knowledge_builder=KnowledgeContextBuilder(source),
+    )
+
+    _, sentences, result, _ = _collect(
+        runtime.stream_text_turn("wiki: chất đạm", min_sentence_chars=8)
+    )
+
+    assert result is not None
+    assert result.route == RuntimeRoute.KNOWLEDGE_LLM
+    assert result.trace is not None
+    assert result.trace.used_tool is True
+    assert result.trace.used_llm is True
+    assert sentences == ["Theo [K1], protein hỗ trợ cơ bắp."]
+    assert llm.stream_calls
+    assert "Knowledge:" in llm.stream_calls[0]["user_msg"]
 
 
 def test_stream_blocked_input_does_not_update_session_memory() -> None:
