@@ -27,15 +27,19 @@ export const ROLE = {
 } as const;
 
 export type MemoryType = "working" | "semantic" | "episodic" | "procedural";
-export const MEMORY_STYLE: Record<MemoryType, { tag: string; color: string }> = {
-  working: { tag: "work", color: COLOR.alt },
-  semantic: { tag: "sem", color: COLOR.accent },
-  episodic: { tag: "epi", color: COLOR.accentBright },
-  procedural: { tag: "proc", color: COLOR.muted },
-};
+export const MEMORY_STYLE: Record<MemoryType, { tag: string; color: string }> =
+  {
+    working: { tag: "work", color: COLOR.alt },
+    semantic: { tag: "sem", color: COLOR.accent },
+    episodic: { tag: "epi", color: COLOR.accentBright },
+    procedural: { tag: "proc", color: COLOR.muted },
+  };
 
 export type RetrievalSource = "bm25" | "dense" | "rrf";
-export const RETRIEVAL_STYLE: Record<RetrievalSource, { tag: string; color: string }> = {
+export const RETRIEVAL_STYLE: Record<
+  RetrievalSource,
+  { tag: string; color: string }
+> = {
   bm25: { tag: "bm25", color: COLOR.alt },
   dense: { tag: "dense", color: COLOR.accentBright },
   rrf: { tag: "rrf", color: COLOR.accent },
@@ -48,7 +52,10 @@ export function styleOf<T extends string>(
   return (id && map[id]) || { tag: "·", color: COLOR.muted };
 }
 
-export function meterCells(value: number, width: number): { filled: number; frac: number } {
+export function meterCells(
+  value: number,
+  width: number,
+): { filled: number; frac: number } {
   const clamped = Math.max(0, Math.min(1, value));
   const exact = clamped * Math.max(0, width);
   const filled = Math.floor(exact);

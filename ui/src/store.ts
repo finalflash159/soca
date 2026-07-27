@@ -27,7 +27,10 @@ export interface RetrievalTrace {
   query: string;
   tier: "deterministic" | "semantic" | "llm" | "none";
   latencyMs: number;
-  columns: Array<{ source: "bm25" | "dense"; hits: Array<{ path: string; score: number }> }>;
+  columns: Array<{
+    source: "bm25" | "dense";
+    hits: Array<{ path: string; score: number }>;
+  }>;
   fused: Array<{ path: string; picked: boolean }>;
 }
 
@@ -153,7 +156,10 @@ function reduceVoiceCore(
         },
       };
     case "voice_level":
-      return { ...state, voiceLevel: Math.max(0, Math.min(1, Number(meta["rms"] ?? 0))) };
+      return {
+        ...state,
+        voiceLevel: Math.max(0, Math.min(1, Number(meta["rms"] ?? 0))),
+      };
     case "barge_in":
       return {
         ...state,
@@ -294,7 +300,11 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
             timeline: push(state.timeline, {
               kind: "soca",
               text: event.text ?? "",
-              latencyMs: event.usage && typeof event.usage["total_latency_ms"] === "number" ? Number(event.usage["total_latency_ms"]) : undefined,
+              latencyMs:
+                event.usage &&
+                typeof event.usage["total_latency_ms"] === "number"
+                  ? Number(event.usage["total_latency_ms"])
+                  : undefined,
             }),
           };
         case "error":
@@ -333,15 +343,32 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
       };
     }
     case "router_trace":
-      return { ...state, routerTier: event.tier, routerLatencyMs: event.latency_ms };
+      return {
+        ...state,
+        routerTier: event.tier,
+        routerLatencyMs: event.latency_ms,
+      };
     case "memory_trace":
-      return { ...state, memoryMode: event.mode, memoryHits: event.hits.length };
+      return {
+        ...state,
+        memoryMode: event.mode,
+        memoryHits: event.hits.length,
+      };
     case "memory_proposals":
       return { ...state, proposals: event.proposals, memoryActionError: "" };
     case "memory_action":
       return event.ok
-        ? { ...state, proposals: state.proposals.filter((proposal) => proposal.id !== event.proposal_id), memoryActionError: "" }
-        : { ...state, memoryActionError: event.error_code ?? "memory action failed" };
+        ? {
+            ...state,
+            proposals: state.proposals.filter(
+              (proposal) => proposal.id !== event.proposal_id,
+            ),
+            memoryActionError: "",
+          }
+        : {
+            ...state,
+            memoryActionError: event.error_code ?? "memory action failed",
+          };
     case "retrieval_trace":
       return {
         ...state,

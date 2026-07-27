@@ -1,7 +1,10 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, expect, it } from "vitest";
-import { MemoryProposalInbox, type MemoryProposalView } from "./MemoryProposalInbox.js";
+import {
+  MemoryProposalInbox,
+  type MemoryProposalView,
+} from "./MemoryProposalInbox.js";
 
 const proposals: MemoryProposalView[] = [
   {

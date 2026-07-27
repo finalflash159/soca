@@ -28,4 +28,24 @@ describe("parseEngineEvent", () => {
     expect(parseEngineEvent("not-json")).toBeNull();
     expect(parseEngineEvent('{"event": 1}')).toBeNull();
   });
+
+  it("accepts a large remote catalog event", () => {
+    const models = Array.from({ length: 500 }, (_, index) => ({
+      id: `provider/model-${index}-${"x".repeat(100)}`,
+      label: `Model ${index}`,
+      context_length: 128000,
+      price_prompt_per_1m: 0.15,
+      price_completion_per_1m: 0.6,
+      pricing_source: "live",
+    }));
+    const line = JSON.stringify({
+      event: "llm_catalog",
+      provider: "openrouter",
+      pricing_as_of: "2026-07",
+      models,
+    });
+
+    expect(line.length).toBeGreaterThan(64_000);
+    expect(parseEngineEvent(line)?.event).toBe("llm_catalog");
+  });
 });

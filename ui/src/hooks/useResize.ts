@@ -18,7 +18,8 @@ export function useResize(): TermSize {
     const onResize = (): void => {
       const next = { rows: stdout.rows ?? 24, cols: stdout.columns ?? 80 };
       if (next.rows === previous.rows && next.cols === previous.cols) return;
-      if (next.rows < previous.rows || next.cols < previous.cols) stdout.write("\x1b[2J\x1b[H");
+      if (next.rows < previous.rows || next.cols < previous.cols)
+        stdout.write("\x1b[2J\x1b[H");
       previous = next;
       setSize(next);
     };

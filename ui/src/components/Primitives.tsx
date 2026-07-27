@@ -66,18 +66,35 @@ export function Panel({
   children: ReactNode;
 }) {
   const active = focused || variant === "focus";
-  const color = variant === "danger" ? ROLE.danger : active ? ROLE.focus : ROLE.hairline;
+  const color =
+    variant === "danger" ? ROLE.danger : active ? ROLE.focus : ROLE.hairline;
   const w = Math.max(12, width);
-  const fill = Math.max(0, w - title.length - (subtitle ? subtitle.length + 7 : 5));
+  const fill = Math.max(
+    0,
+    w - title.length - (subtitle ? subtitle.length + 7 : 5),
+  );
   return (
     <Box flexDirection="column" width={w}>
       <Box>
         <Text color={color}>{"╭─ "}</Text>
-        <Text bold color={active ? ROLE.focus : variant === "danger" ? ROLE.danger : COLOR.muted}>
+        <Text
+          bold
+          color={
+            active
+              ? ROLE.focus
+              : variant === "danger"
+                ? ROLE.danger
+                : COLOR.muted
+          }
+        >
           {title}
         </Text>
         <Text color={color}>{` ${"─".repeat(fill)}`}</Text>
-        {subtitle ? <Text color={COLOR.muted}>{` ${subtitle} `}</Text> : <Text color={color}>{"─"}</Text>}
+        {subtitle ? (
+          <Text color={COLOR.muted}>{` ${subtitle} `}</Text>
+        ) : (
+          <Text color={color}>{"─"}</Text>
+        )}
         <Text color={color}>{"╮"}</Text>
       </Box>
       <Box

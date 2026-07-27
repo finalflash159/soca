@@ -126,6 +126,23 @@ class _ProtocolWriter:
             self._stream.flush()
 
 
+def _model_protocol_payload(model: RemoteModelInfo) -> dict[str, Any]:
+    """Expose only the catalog fields consumed by the external UI.
+
+    ``RemoteModelInfo.supported_parameters`` is useful to the LLM adapter, but
+    it is not part of the UI protocol. Omitting it keeps the OpenRouter catalog
+    event compact enough for a single NDJSON frame.
+    """
+    return {
+        "id": model.id,
+        "label": model.label,
+        "context_length": model.context_length,
+        "price_prompt_per_1m": model.price_prompt_per_1m,
+        "price_completion_per_1m": model.price_completion_per_1m,
+        "pricing_source": model.pricing_source,
+    }
+
+
 class SocaEngine:
     """Command dispatcher bridging the protocol to the existing runtimes."""
 
@@ -318,7 +335,7 @@ class SocaEngine:
             {
                 "event": "llm_catalog",
                 "provider": provider.key,
-                "models": search_models(catalog, query),
+                "models": [_model_protocol_payload(model) for model in search_models(catalog, query)],
                 "pricing_as_of": PRICING_TABLE_AS_OF,
             }
         )
