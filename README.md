@@ -66,6 +66,9 @@ uv run python scripts/download_llm.py --model arcee_vylinh_3b_q4_k_m
 # 3) Initialize a local Markdown knowledge vault (default: ~/KnowledgeVault)
 uv run python scripts/init_knowledge_vault.py ~/KnowledgeVault
 
+# Optional: seed the traceable two-slice demo vault into a separate directory
+uv run python scripts/seed_demo_knowledge.py --vault /tmp/soca-knowledge-demo
+
 # 4) Run
 uv run soca voice                 # CLI voice loop (baseline profile)
 uv run soca ui voice              # Ink terminal UI, voice mode (build: cd ui && npm i && npm run build)
@@ -96,6 +99,19 @@ to a third party — details and the read/precedence rules are in
 The runtime reads local Markdown only (notes under `~/KnowledgeVault/wiki/`,
 curated profile memory in `~/KnowledgeVault/memory/profile.md`); it never
 auto-writes long-term memory, and vault contents are not committed.
+
+For a reproducible demo without touching the personal vault, use the checked-in
+fixture explicitly:
+
+```bash
+uv run python scripts/seed_demo_knowledge.py --fixture
+uv run soca ui chat --vault eval/fixtures/knowledge_demo_vault
+```
+
+The demo fixture has two slices: `learning_notes` for study/engineering notes
+and `life_vault` for project decisions, a clearly synthetic food-budget ledger,
+and health safety boundaries. The small `eval/fixtures/knowledge_vault` remains
+a legacy regression fixture for unit tests; it is not the product vault.
 
 ## Runtime profiles
 

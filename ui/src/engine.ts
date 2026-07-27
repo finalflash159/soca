@@ -14,6 +14,7 @@ import {
 export interface EngineOptions {
   profile?: string;
   noModel?: boolean;
+  vault?: string;
 }
 
 /** Locate the repo's soca executable relative to this file (ui/src or ui/dist). */
@@ -25,6 +26,7 @@ function defaultEngineCommand(options: EngineOptions): string[] {
   const args = ["engine"];
   if (options.profile) args.push(options.profile);
   if (options.noModel) args.push("--no-model");
+  if (options.vault) args.push("--vault", options.vault);
   return [...base, ...args];
 }
 

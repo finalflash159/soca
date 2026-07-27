@@ -66,6 +66,28 @@ Measured numbers on real XQuAD-Vietnamese (1,193 questions) are in
 [BENCHMARKS.md → P2.1](../BENCHMARKS.md): hybrid reaches Recall@5 0.994 vs 0.979
 for BM25 alone, at ~4 ms extra p95.
 
+### Assistant-like demo corpus
+
+The broad `real_rag_vault` benchmark is useful for retrieval metrics, but it is
+not a personal assistant demo. The reproducible demo corpus lives at
+`eval/fixtures/knowledge_demo_vault` and is built with:
+
+```bash
+uv run python scripts/seed_demo_knowledge.py --fixture
+```
+
+It has two explicit slices and eight grounded queries in
+`eval/prompts/knowledge_demo_vi.jsonl`:
+
+- `learning_notes`: a Bayes study note and an ONNX Runtime engineering note;
+- `life_vault`: the Valtec TTS decision, project RAG notes, a clearly synthetic
+  food-budget ledger, and a health safety-boundary note.
+
+The finance note is marked synthetic and the health note is a disclaimer-only
+guardrail. Neither is treated as private user data. The old
+`eval/fixtures/knowledge_vault` is intentionally retained as a minimal unit-test
+fixture so regression tests do not depend on the larger demo corpus.
+
 ### Voice gating
 
 Retrieval in the voice loop is gated by `knowledge/intent_gate.py`

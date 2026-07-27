@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from click.testing import CliRunner
 
 from soca.cli import main
@@ -12,13 +14,14 @@ def test_ui_help_shows_quick_examples_not_hidden_compat_options() -> None:
     assert "soca ui chat" in result.output
     assert "--mode [" not in result.output
     assert "--profile [" not in result.output
+    assert "--vault PATH" in result.output
 
 
 def test_ui_default_launches_ink_app(monkeypatch) -> None:
     calls: list[dict[str, object]] = []
 
-    def fake_launch(*, mode, profile, no_model):
-        calls.append({"mode": mode, "profile": profile, "no_model": no_model})
+    def fake_launch(*, mode, profile, no_model, vault):
+        calls.append({"mode": mode, "profile": profile, "no_model": no_model, "vault": vault})
         return 0
 
     import soca.cli as cli
@@ -27,14 +30,21 @@ def test_ui_default_launches_ink_app(monkeypatch) -> None:
     result = CliRunner().invoke(main, ["ui", "voice", "baseline", "--no-model"])
 
     assert result.exit_code == 0, result.output
-    assert calls == [{"mode": "voice", "profile": "baseline", "no_model": True}]
+    assert calls == [
+        {
+            "mode": "voice",
+            "profile": "baseline",
+            "no_model": True,
+            "vault": Path.home() / "KnowledgeVault",
+        }
+    ]
 
 
 def test_ui_bare_launches_ink_splash_without_mode(monkeypatch) -> None:
     calls: list[dict[str, object]] = []
 
-    def fake_launch(*, mode, profile, no_model):
-        calls.append({"mode": mode, "profile": profile, "no_model": no_model})
+    def fake_launch(*, mode, profile, no_model, vault):
+        calls.append({"mode": mode, "profile": profile, "no_model": no_model, "vault": vault})
         return 0
 
     import soca.cli as cli
@@ -43,4 +53,34 @@ def test_ui_bare_launches_ink_splash_without_mode(monkeypatch) -> None:
     result = CliRunner().invoke(main, ["ui"])
 
     assert result.exit_code == 0, result.output
-    assert calls == [{"mode": None, "profile": None, "no_model": False}]
+    assert calls == [
+        {
+            "mode": None,
+            "profile": None,
+            "no_model": False,
+            "vault": Path.home() / "KnowledgeVault",
+        }
+    ]
+
+
+def test_ui_passes_explicit_vault_to_ink_app(monkeypatch, tmp_path) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_launch(*, mode, profile, no_model, vault):
+        calls.append({"mode": mode, "profile": profile, "no_model": no_model, "vault": vault})
+        return 0
+
+    import soca.cli as cli
+
+    monkeypatch.setattr(cli, "_launch_ink_ui", fake_launch)
+    result = CliRunner().invoke(main, ["ui", "chat", "--vault", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [
+        {
+            "mode": "chat",
+            "profile": None,
+            "no_model": False,
+            "vault": tmp_path,
+        }
+    ]

@@ -1,6 +1,10 @@
 {"id":"knowledge-001","text":"Ghi chú của tôi nói định lý Bayes thế nào?","tool":"knowledge.search","argument_policy":"raw_query"}
 {"id":"knowledge-002","text":"Tuần trước tôi note gì về ONNX runtime?","tool":"knowledge.search","argument_policy":"raw_query"}
 {"id":"knowledge-003","text":"Tìm trong knowledge về memory compaction","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-004","text":"Tôi đã quyết chọn TTS nào, vì sao?","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-005","text":"Ngân sách ăn uống tháng này còn bao nhiêu?","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-006","text":"RAG hiện tại của dự án chạy qua những bước nào?","tool":"knowledge.search","argument_policy":"raw_query"}
+{"id":"knowledge-007","text":"Nếu tôi hỏi vấn đề sức khỏe thì SoCa phải cảnh báo gì?","tool":"knowledge.search","argument_policy":"raw_query"}
 {"id":"time-001","text":"Bây giờ là mấy giờ?","tool":"local_time.now","argument_policy":"none"}
 {"id":"time-002","text":"Cho tôi biết giờ hiện tại","tool":"local_time.now","argument_policy":"none"}
 {"id":"read-001","text":"Đọc file wiki/project/tui.md","tool":"knowledge.read","argument_policy":"none"}
