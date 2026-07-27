@@ -35,6 +35,8 @@ class RuntimeTrace:
     tool_results: tuple[ToolResult, ...] = ()
     knowledge_hits: tuple[Any, ...] = ()
     memory_hits: tuple[Any, ...] = ()
+    memory_mode: str = "blob"
+    memory_degraded_reason: str = ""
     citations: tuple[KnowledgeCitation, ...] = ()
     used_tool: bool = False
     used_llm: bool = False

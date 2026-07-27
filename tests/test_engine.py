@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from soca.app.engine import run_engine
+from soca.app.engine import _memory_protocol_mode, run_engine
 from soca.app.text_runtime import TextRuntimeBundle, TextRuntimeConfig
 from soca.core import ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
 from soca.core.turn import RuntimeResult, RuntimeRoute
@@ -75,6 +75,11 @@ def make_voice_config() -> ResolvedVoiceRuntimeConfig:
         vault=Path("/tmp/soca-test-vault"),
         no_memory=True,
     )
+
+
+def test_memory_protocol_mode_exposes_degraded_fallback() -> None:
+    assert _memory_protocol_mode("blob", "retrieval_unavailable", 0) == "degraded"
+    assert _memory_protocol_mode("retrieved", "", 0) == "retrieved"
 
 
 def test_engine_hello_then_quit_emits_bye() -> None:

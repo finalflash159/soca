@@ -129,6 +129,8 @@ class _TraceDraft:
     stage_latencies_ms: dict[str, float]
     tool_router_tier: str = "none"
     memory_hits: list[Any] = field(default_factory=list)
+    memory_mode: str = "blob"
+    memory_degraded_reason: str = ""
 
 
 class AssistantRuntime:
@@ -648,6 +650,8 @@ class AssistantRuntime:
         with self._stage(draft, "memory_context"):
             context = self.memory_builder.build(query)
         draft.memory_hits.extend(context.hits)
+        draft.memory_mode = context.mode
+        draft.memory_degraded_reason = context.degraded_reason
         for hit in context.hits:
             snippet = getattr(hit, "snippet", "")
             if snippet:
@@ -736,6 +740,8 @@ class AssistantRuntime:
             tool_results=tuple(draft.tool_results),
             knowledge_hits=tuple(draft.knowledge_hits),
             memory_hits=tuple(draft.memory_hits),
+            memory_mode=draft.memory_mode,
+            memory_degraded_reason=draft.memory_degraded_reason,
             citations=tuple(draft.citations),
             used_tool=used_tool,
             used_llm=used_llm,

@@ -293,6 +293,8 @@ class VoicePipeline:
                     getattr(trace, "stage_latencies_ms", {}).get("tool_router", 0.0)
                 ),
                 "memory_hit_count": len(getattr(trace, "memory_hits", ()) or ()),
+                "memory_mode": getattr(trace, "memory_mode", "blob"),
+                "memory_degraded_reason": getattr(trace, "memory_degraded_reason", ""),
                 # LLM telemetry for `soca voice --usage`. Object is fine in metadata;
                 # eval/console read named keys, not the whole dict.
                 "llm_usage": getattr(runtime_result, "usage", None),

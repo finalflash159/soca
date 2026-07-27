@@ -70,6 +70,18 @@ SettingsSaver = Callable[[LlmSettings], None]
 CatalogFetcher = Callable[[LLMProvider, str], list[RemoteModelInfo]]
 
 
+def _memory_protocol_mode(
+    mode: object,
+    degraded_reason: object,
+    hit_count: object,
+) -> str:
+    if degraded_reason or mode == "degraded":
+        return "degraded"
+    if mode == "retrieved" or (mode == "blob" and isinstance(hit_count, int) and hit_count > 0):
+        return "retrieved"
+    return "blob"
+
+
 class LlmSecretStore(Protocol):
     def get_key(self, provider_key: str) -> str | None: ...
 
@@ -623,7 +635,12 @@ class SocaEngine:
                 self.writer.emit(
                     {
                         "event": "memory_trace",
-                        "mode": "retrieved" if trace.memory_hits else "blob",
+                        "mode": _memory_protocol_mode(
+                            trace.memory_mode,
+                            trace.memory_degraded_reason,
+                            len(trace.memory_hits),
+                        ),
+                        "degraded_reason": trace.memory_degraded_reason,
                         "hits": [
                             {
                                 "id": str(getattr(hit.document, "id", ""))[:120],
@@ -753,7 +770,12 @@ class SocaEngine:
                 self.writer.emit(
                     {
                         "event": "memory_trace",
-                        "mode": "retrieved" if metadata.get("memory_hit_count", 0) else "blob",
+                        "mode": _memory_protocol_mode(
+                            metadata.get("memory_mode", "blob"),
+                            metadata.get("memory_degraded_reason", ""),
+                            metadata.get("memory_hit_count", 0),
+                        ),
+                        "degraded_reason": metadata.get("memory_degraded_reason", ""),
                         "hits": [],
                         "compacted_turn_count": 0,
                         "recent_turn_count": len(self.session_memory.turns)

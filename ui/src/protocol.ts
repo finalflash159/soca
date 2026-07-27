@@ -55,6 +55,7 @@ export interface RouterTraceEvent {
 export interface MemoryTraceEvent {
   event: "memory_trace";
   mode: "blob" | "retrieved" | "degraded";
+  degraded_reason?: string;
   hits: Array<{ id: string; corpus: "profile" | "episode"; relevance: number; recency: number; importance: number; total: number }>;
   compacted_turn_count: number;
   recent_turn_count: number;
