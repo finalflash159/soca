@@ -5,7 +5,16 @@ from pathlib import Path
 
 import pytest
 
-from soca.core import resolve_voice_runtime_config
+from soca.core import (
+    RuntimeOptions,
+    build_voice_runtime,
+    resolve_voice_runtime_config,
+    voice_runtime,
+)
+from soca.core.knowledge_setup import (
+    KnowledgeRuntimeSetup,
+    build_knowledge_runtime_setup,
+)
 
 
 def test_resolver_does_not_accept_tts_model_override() -> None:
@@ -66,3 +75,69 @@ def test_unknown_valtec_voice_is_rejected(tmp_path: Path) -> None:
             tts_voice="not-a-valtec-voice",
             vault=tmp_path,
         )
+
+
+@pytest.mark.parametrize("threshold", [True, False])
+def test_boolean_intent_threshold_is_rejected(tmp_path: Path, threshold: bool) -> None:
+    with pytest.raises(ValueError, match="threshold"):
+        resolve_voice_runtime_config(
+            profile_key="baseline",
+            vault=tmp_path,
+            knowledge_intent_threshold=threshold,
+        )
+
+
+def test_voice_runtime_uses_shared_knowledge_setup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "wiki").mkdir()
+    shared_setup = build_knowledge_runtime_setup(
+        tmp_path,
+        knowledge_limit=RuntimeOptions().knowledge_limit,
+    )
+    setup_calls: list[tuple[Path, int]] = []
+
+    def fake_knowledge_setup(
+        vault: Path,
+        *,
+        knowledge_limit: int,
+        retrieval_config=None,
+    ) -> KnowledgeRuntimeSetup:
+        setup_calls.append((vault, knowledge_limit))
+        return shared_setup
+
+    monkeypatch.setattr(
+        voice_runtime,
+        "build_knowledge_runtime_setup",
+        fake_knowledge_setup,
+        raising=False,
+    )
+    monkeypatch.setattr(voice_runtime, "SpeechDetector", lambda: object())
+    monkeypatch.setattr(voice_runtime, "VietnameseASR", lambda **kwargs: object())
+    monkeypatch.setattr(voice_runtime, "RobustASR", lambda **kwargs: object())
+    monkeypatch.setattr(
+        voice_runtime,
+        "load_confidence_guard_calibration",
+        lambda _model_key: None,
+    )
+    monkeypatch.setattr(voice_runtime, "LocalLlamaCppLLM", lambda **kwargs: object())
+    monkeypatch.setattr(voice_runtime, "create_tts_engine", lambda **kwargs: object())
+    monkeypatch.setattr(voice_runtime, "VoicePipeline", lambda **kwargs: object())
+    monkeypatch.setattr(voice_runtime, "default_repair_catalog", lambda: object())
+    config = resolve_voice_runtime_config(
+        profile_key="baseline",
+        vault=tmp_path,
+        adaptive_endpoint=False,
+        no_memory=True,
+    )
+
+    bundle = build_voice_runtime(config)
+
+    assert setup_calls == [
+        (config.vault, RuntimeOptions().knowledge_limit),
+    ]
+    assert bundle.knowledge_status == "enabled"
+    assert bundle.assistant_runtime.knowledge_builder is shared_setup.builder
+    assert bundle.assistant_runtime.tool_runtime.get("knowledge.search") is shared_setup.search_tool
+    assert bundle.assistant_runtime.tool_runtime.get("knowledge.read") is shared_setup.read_tool

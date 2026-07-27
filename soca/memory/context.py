@@ -2,18 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from soca.core.text_budget import truncate
 from soca.memory.base import LongTermMemorySource, SessionMemorySource
-
-
-def _truncate(text: str, max_chars: int) -> str:
-    text = text.strip()
-    if max_chars <= 0:
-        return ""
-    if len(text) <= max_chars:
-        return text
-    if max_chars <= 3:
-        return text[:max_chars]
-    return text[: max_chars - 3].rstrip() + "..."
 
 
 @dataclass(frozen=True)
@@ -47,7 +37,7 @@ class MemoryContextBuilder:
         parts: list[str] = []
 
         if self.long_term is not None:
-            profile_text = _truncate(self.long_term.read_profile(), self.profile_chars)
+            profile_text = truncate(self.long_term.read_profile(), self.profile_chars)
             if profile_text:
                 parts.append(f"Long-term memory:\n{profile_text}")
 
@@ -56,7 +46,7 @@ class MemoryContextBuilder:
             if session_text:
                 parts.append(session_text)
 
-        prompt_text = _truncate("\n\n".join(parts), self.max_chars)
+        prompt_text = truncate("\n\n".join(parts), self.max_chars)
         return MemoryContext(
             profile_text=profile_text,
             session_text=session_text,

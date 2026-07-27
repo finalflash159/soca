@@ -3,12 +3,12 @@ Encoder modules for zero-shot voice cloning.
 Includes H/ASP Speaker Encoder, Style Encoder (AdaIN), and Prosody Predictor.
 """
 
-import os
 import math
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchaudio
 import torchaudio.transforms as T
 from torch.nn.utils import weight_norm
 
@@ -129,7 +129,7 @@ class StyleEncoder(nn.Module):
 
 class SEBlock(nn.Module):
     def __init__(self, channels, reduction=8):
-        super(SEBlock, self).__init__()
+        super().__init__()
         self.fc = nn.Sequential(
             nn.Linear(channels, channels // reduction),
             nn.ReLU(inplace=True),
@@ -148,7 +148,7 @@ class SEBasicBlock(nn.Module):
     expansion = 1
 
     def __init__(self, inplanes, planes, stride=1, downsample=None, reduction=8):
-        super(SEBasicBlock, self).__init__()
+        super().__init__()
         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
         self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, padding=1, bias=False)
@@ -174,7 +174,7 @@ class SEBasicBlock(nn.Module):
 
 class ResNetSE34V2(nn.Module):
     def __init__(self, nOut=512, encoder_type='ASP', n_mels=64, **kwargs):
-        super(ResNetSE34V2, self).__init__()
+        super().__init__()
         self.inplanes = 32
         self.encoder_type = encoder_type
         self.n_mels = n_mels
@@ -254,7 +254,7 @@ class ResNetSE34V2(nn.Module):
 
 class SpeakerEncoder(nn.Module):
     def __init__(self, device='cpu', embed_dim=512):
-        super(SpeakerEncoder, self).__init__()
+        super().__init__()
         self.device = device
         self.target_embed_dim = embed_dim
         self.native_embed_dim = 512
@@ -323,7 +323,7 @@ class SpeakerEncoder(nn.Module):
                 state_dict = checkpoint['state_dict']
             else:
                 state_dict = checkpoint
-            
+
             state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
             self.model.load_state_dict(state_dict, strict=False)
             print("[SpeakerEncoder] ✓ Loaded pretrained weights")
@@ -405,7 +405,7 @@ class AdainResBlk1d(nn.Module):
             self.pool = nn.Identity()
         else:
             self.pool = weight_norm(nn.ConvTranspose1d(
-                dim_in, dim_in, kernel_size=3, stride=2, 
+                dim_in, dim_in, kernel_size=3, stride=2,
                 groups=dim_in, padding=1, output_padding=1))
 
     def _build_weights(self, dim_in, dim_out, style_dim):
@@ -443,7 +443,7 @@ class ProsodyPredictor(nn.Module):
 
         self.text_proj = nn.Conv1d(text_dim, d_hid, 1)
 
-        self.shared = nn.LSTM(d_hid + style_dim, d_hid // 2, 1, 
+        self.shared = nn.LSTM(d_hid + style_dim, d_hid // 2, 1,
                               batch_first=True, bidirectional=True)
 
         self.F0 = nn.ModuleList()
@@ -470,7 +470,7 @@ class ProsodyPredictor(nn.Module):
 
         # Expand style
         s_expanded = s.unsqueeze(1).expand(-1, x.shape[1], -1)  # [B, T, style_dim]
-        
+
         # Concat text + style
         x_s = torch.cat([x, s_expanded], dim=-1)
 

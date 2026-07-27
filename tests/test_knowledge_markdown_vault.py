@@ -186,3 +186,76 @@ def test_search_skips_large_file(tmp_path: Path):
     vault = MarkdownVaultKnowledgeSource(tmp_path, max_file_bytes=10)
 
     assert vault.search("PhoGPT") == []
+
+
+def test_iter_paths_returns_sorted_unique_public_paths(tmp_path: Path):
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    (wiki / "z.md").write_text("# Z", encoding="utf-8")
+    (wiki / "a.md").write_text("# A", encoding="utf-8")
+    (wiki / "index.md").write_text("# Index", encoding="utf-8")
+
+    vault = MarkdownVaultKnowledgeSource(
+        tmp_path,
+        include_globs=("**/*.md", "wiki/**/*.md"),
+    )
+
+    assert vault.iter_paths() == ("wiki/a.md", "wiki/z.md")
+
+
+def test_iter_paths_skips_symlink_to_file_outside_vault(tmp_path: Path):
+    vault_root = tmp_path / "vault"
+    vault_root.mkdir()
+    outside = tmp_path / "outside.md"
+    outside.write_text("# Outside\nsecret", encoding="utf-8")
+    link = vault_root / "outside-link.md"
+    try:
+        link.symlink_to(outside)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symlinks are unavailable: {exc}")
+
+    vault = MarkdownVaultKnowledgeSource(vault_root)
+
+    assert vault.iter_paths() == ()
+    with pytest.raises(ValueError, match="outside"):
+        vault.read("outside-link.md")
+
+
+def test_iter_paths_skips_symlink_component_into_private_directory(tmp_path: Path):
+    private = tmp_path / "private"
+    private.mkdir()
+    (private / "secret.md").write_text("# Secret\nprivate", encoding="utf-8")
+    public = tmp_path / "public"
+    public.mkdir()
+    link = public / "private-alias"
+    try:
+        link.symlink_to(private, target_is_directory=True)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symlinks are unavailable: {exc}")
+    (public / "visible.md").write_text("# Visible\npublic", encoding="utf-8")
+
+    vault = MarkdownVaultKnowledgeSource(tmp_path)
+
+    assert vault.iter_paths() == ("public/visible.md",)
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    ("../**/*.md", "", r"wiki\**\*.md"),
+)
+def test_rejects_unsafe_relative_include_globs(
+    tmp_path: Path,
+    pattern: str,
+) -> None:
+    with pytest.raises(ValueError, match="include globs"):
+        MarkdownVaultKnowledgeSource(tmp_path, include_globs=(pattern,))
+
+
+def test_rejects_absolute_include_glob(tmp_path: Path) -> None:
+    absolute_pattern = (tmp_path / "**" / "*.md").as_posix()
+
+    with pytest.raises(ValueError, match="include globs"):
+        MarkdownVaultKnowledgeSource(
+            tmp_path,
+            include_globs=(absolute_pattern,),
+        )

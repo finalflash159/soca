@@ -1,17 +1,14 @@
 import atexit
 import contextlib
 import importlib.util
-import io
 import os
 import platform
-import re
 import shutil
 import sys
 import tempfile
 import unicodedata
 import warnings
 from collections.abc import Callable
-from typing import List, Tuple
 
 try:
     import fcntl  # type: ignore
@@ -185,7 +182,7 @@ def _viphoneme_global_lock():
 # Vietnamese tone diacritics to tone number mapping
 TONE_MARKS = {
     '\u0300': 2,  # ̀  huyền (falling)
-    '\u0301': 1,  # ́  sắc (rising) 
+    '\u0301': 1,  # ́  sắc (rising)
     '\u0303': 3,  # ̃  ngã (broken)
     '\u0309': 4,  # ̉  hỏi (dipping)
     '\u0323': 5,  # ̣  nặng (heavy/glottalized)
@@ -197,7 +194,7 @@ TONE_MARKS = {
 VI_TO_IPA = {
     # Trigraphs (check first)
     'ngh': 'ŋ',
-    
+
     # Digraphs
     'ng': 'ŋ',
     'nh': 'ɲ',
@@ -209,10 +206,10 @@ VI_TO_IPA = {
     'gh': 'ɣ',
     'gi': 'z',
     'qu': 'kw',
-    
+
     # Special consonants
     'đ': 'ɗ',       # Implosive d
-    
+
     # Simple consonants
     'b': 'ɓ',       # Implosive b (can also be plain b)
     'c': 'k',
@@ -229,7 +226,7 @@ VI_TO_IPA = {
     't': 't',
     'v': 'v',
     'x': 's',       # Vietnamese x = s
-    
+
     # Vowels
     'a': 'aː',
     'ă': 'a',       # Short a
@@ -243,7 +240,7 @@ VI_TO_IPA = {
     'ơ': 'əː',      # Long schwa
     'u': 'u',
     'ư': 'ɯ',       # Unrounded u
-    
+
     # Diphthongs (handled separately)
 }
 
@@ -266,7 +263,7 @@ PUNCTUATION = set(',.!?;:\'"--—…()[]{}')
 PAUSE_PUNCTUATION = {',', ';', ':'}
 STOP_PUNCTUATION = {'.', '!', '?', '…'}
 
-def extract_tone(char: str) -> Tuple[str, int]:
+def extract_tone(char: str) -> tuple[str, int]:
     """
     Extract tone from a Vietnamese character.
     Returns (base_char, tone_number)
@@ -275,17 +272,17 @@ def extract_tone(char: str) -> Tuple[str, int]:
     decomposed = unicodedata.normalize('NFD', char)
     base = ''
     tone = 0
-    
+
     for c in decomposed:
         if c in TONE_MARKS:
             tone = TONE_MARKS[c]
         elif not unicodedata.combining(c):
             base += c
-    
+
     return base, tone
 
 
-def syllable_to_ipa(syllable: str) -> Tuple[List[str], int]:
+def syllable_to_ipa(syllable: str) -> tuple[list[str], int]:
     """
     Convert a Vietnamese syllable to IPA phonemes with tone.
     Returns (phonemes, tone)
@@ -293,7 +290,7 @@ def syllable_to_ipa(syllable: str) -> Tuple[List[str], int]:
     syllable = syllable.lower()
     phonemes = []
     tone = 0
-    
+
     # Extract tone from vowels
     processed = ''
     for char in syllable:
@@ -301,13 +298,13 @@ def syllable_to_ipa(syllable: str) -> Tuple[List[str], int]:
         if char_tone > 0:
             tone = char_tone
         processed += base
-    
+
     syllable = processed
     i = 0
-    
+
     while i < len(syllable):
         matched = False
-        
+
         # Try trigraphs
         if i + 2 < len(syllable):
             tri = syllable[i:i+3]
@@ -315,7 +312,7 @@ def syllable_to_ipa(syllable: str) -> Tuple[List[str], int]:
                 phonemes.append(VI_TO_IPA[tri])
                 i += 3
                 matched = True
-        
+
         # Try digraphs
         if not matched and i + 1 < len(syllable):
             di = syllable[i:i+2]
@@ -323,7 +320,7 @@ def syllable_to_ipa(syllable: str) -> Tuple[List[str], int]:
                 phonemes.append(VI_TO_IPA[di])
                 i += 2
                 matched = True
-        
+
         # Single character
         if not matched:
             char = syllable[i]
@@ -332,11 +329,11 @@ def syllable_to_ipa(syllable: str) -> Tuple[List[str], int]:
             elif char.isalpha():
                 phonemes.append(char)  # Keep as-is if not mapped
             i += 1
-    
+
     return phonemes, tone
 
 
-def text_to_phonemes_viphoneme(text: str) -> Tuple[List[str], List[int], List[int]]:
+def text_to_phonemes_viphoneme(text: str) -> tuple[list[str], list[int], list[int]]:
     """
     Convert text to phonemes using viphoneme library.
     Returns (phones, tones, word2ph)
@@ -357,7 +354,7 @@ def text_to_phonemes_viphoneme(text: str) -> Tuple[List[str], List[int], List[in
     converter = _load_vi2ipa()
     if converter is None:
         return text_to_phonemes_charbased(text)
-    
+
     # Normal mode: use full viphoneme with isolation
     try:
         _ensure_vinorm_isolated()
@@ -375,25 +372,25 @@ def text_to_phonemes_viphoneme(text: str) -> Tuple[List[str], List[int], List[in
     except Exception as e:
         print(f"[WARN] Viphoneme failed: {e}")
         return text_to_phonemes_charbased(text)
-    
+
     # Check if viphoneme returned empty or invalid result
     if not ipa_text or ipa_text.strip() in ['', '.', '..', '...']:
         return text_to_phonemes_charbased(text)
-    
+
     phones = []
     tones = []
     word2ph = []
-    
+
     # viphoneme tone mapping: 1=ngang, 2=huyền, 3=ngã, 4=hỏi, 5=sắc, 6=nặng
     # Our internal: 0=ngang, 1=sắc, 2=huyền, 3=ngã, 4=hỏi, 5=nặng
     VIPHONEME_TONE_MAP = {1: 0, 2: 2, 3: 3, 4: 4, 5: 1, 6: 5}
-    
+
     # Characters to skip (combining marks, ties)
     SKIP_CHARS = {'\u0306', '\u0361', '\u032f', '\u0330', '\u0329'}  # breve, tie, etc.
-    
+
     # Split by space
     tokens = ipa_text.strip().split()
-    
+
     for token in tokens:
         # Handle punctuation-only tokens
         if all(c in PUNCTUATION or c == '.' for c in token):
@@ -403,62 +400,62 @@ def text_to_phonemes_viphoneme(text: str) -> Tuple[List[str], List[int], List[in
                     tones.append(0)
                     word2ph.append(1)
             continue
-        
+
         # Split compound words by underscore
         syllables = token.split('_')
-        
+
         for syllable in syllables:
             if not syllable:
                 continue
-                
+
             syllable_phones = []
             syllable_tone = 0
             i = 0
-            
+
             while i < len(syllable):
                 char = syllable[i]
-                
+
                 # Tone number at end
                 if char.isdigit():
                     syllable_tone = VIPHONEME_TONE_MAP.get(int(char), 0)
                     i += 1
                     continue
-                
+
                 # Skip combining marks (they modify previous char, already handled)
                 if unicodedata.combining(char):
                     i += 1
                     continue
-                
+
                 # Skip modifier letters like ʷ ʰ (append to previous if exists)
                 if char in {'ʷ', 'ʰ', 'ː'}:
                     if syllable_phones:
                         syllable_phones[-1] = syllable_phones[-1] + char
                     i += 1
                     continue
-                
+
                 # Skip tie bars and other special marks
-                if char in {'\u0361', '\u035c', '\u0361'}:  # tie bars
+                if char in {'\u0361', '\u035c'}:  # tie bars
                     i += 1
                     continue
-                
+
                 # Punctuation within syllable
                 if char in PUNCTUATION:
                     i += 1
                     continue
-                
+
                 # Regular phoneme character
                 syllable_phones.append(char)
                 i += 1
-            
+
             if syllable_phones:
                 phones.extend(syllable_phones)
                 tones.extend([syllable_tone] * len(syllable_phones))
                 word2ph.append(len(syllable_phones))
-    
+
     return phones, tones, word2ph
 
 
-def text_to_phonemes_charbased(text: str) -> Tuple[List[str], List[int], List[int]]:
+def text_to_phonemes_charbased(text: str) -> tuple[list[str], list[int], list[int]]:
     """
     Convert text to phonemes using character-based mapping.
     Returns (phones, tones, word2ph)
@@ -466,28 +463,28 @@ def text_to_phonemes_charbased(text: str) -> Tuple[List[str], List[int], List[in
     phones = []
     tones = []
     word2ph = []
-    
+
     words = text.split()
-    
+
     for word in words:
         # Check for punctuation at end
         trailing_punct = []
         while word and word[-1] in PUNCTUATION:
             trailing_punct.insert(0, word[-1])
             word = word[:-1]
-        
+
         # Check for punctuation at start
         leading_punct = []
         while word and word[0] in PUNCTUATION:
             leading_punct.append(word[0])
             word = word[1:]
-        
+
         # Add leading punctuation
         for p in leading_punct:
             phones.append(p)
             tones.append(0)
             word2ph.append(1)
-        
+
         # Process word syllables (Vietnamese words can be multi-syllable)
         if word:
             word_phones, tone = syllable_to_ipa(word)
@@ -495,17 +492,17 @@ def text_to_phonemes_charbased(text: str) -> Tuple[List[str], List[int], List[in
                 phones.extend(word_phones)
                 tones.extend([tone] * len(word_phones))
                 word2ph.append(len(word_phones))
-        
+
         # Add trailing punctuation
         for p in trailing_punct:
             phones.append(p)
             tones.append(0)
             word2ph.append(1)
-    
+
     return phones, tones, word2ph
 
 
-def text_to_phonemes(text: str, use_viphoneme: bool = True) -> Tuple[List[str], List[int], List[int]]:
+def text_to_phonemes(text: str, use_viphoneme: bool = True) -> tuple[list[str], list[int], list[int]]:
     """
     Main function to convert Vietnamese text to phonemes.
     
@@ -522,19 +519,19 @@ def text_to_phonemes(text: str, use_viphoneme: bool = True) -> Tuple[List[str], 
         phones, tones, word2ph = text_to_phonemes_viphoneme(text)
     else:
         phones, tones, word2ph = text_to_phonemes_charbased(text)
-    
+
     # Add boundary tokens
     phones = ["_"] + phones + ["_"]
     tones = [0] + tones + [0]
     word2ph = [1] + word2ph + [1]
-    
+
     return phones, tones, word2ph
 
 
-def get_all_phonemes() -> List[str]:
+def get_all_phonemes() -> list[str]:
     """Get list of all possible phonemes for symbol table."""
     phonemes = set()
-    
+
     # From IPA mapping
     for ipa in VI_TO_IPA.values():
         if isinstance(ipa, str):
@@ -542,7 +539,7 @@ def get_all_phonemes() -> List[str]:
             # Also add with length marker
             if len(ipa) == 1:
                 phonemes.add(ipa + 'ː')
-    
+
     # Common IPA symbols
     phonemes.update([
         # Consonants
@@ -553,8 +550,8 @@ def get_all_phonemes() -> List[str]:
         # Special
         '_', ' ',
     ])
-    
+
     # Punctuation
     phonemes.update(PUNCTUATION)
-    
+
     return sorted(list(phonemes))
