@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import asdict, dataclass
-from typing import Protocol
+from typing import Any, Protocol, runtime_checkable
 
 
 @dataclass
@@ -38,4 +38,21 @@ class LLMEngine(Protocol):
         top_p: float = 0.95,
         inject_persona: bool = True,
     ) -> Iterator[str]:
+        ...
+
+
+@runtime_checkable
+class StructuredLLMEngine(Protocol):
+    def generate_structured(
+        self,
+        user_msg: str,
+        *,
+        schema_name: str,
+        schema: Mapping[str, Any],
+        max_tokens: int,
+        temperature: float = 0.0,
+        top_p: float = 1.0,
+        inject_persona: bool = False,
+        zero_data_retention: bool = True,
+    ) -> LLMResult:
         ...

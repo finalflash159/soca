@@ -7,12 +7,13 @@ other compatible architectures.
 
 from __future__ import annotations
 
+import json
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
-from llama_cpp import Llama
+from llama_cpp import Llama, LlamaGrammar
 
 from .base import LLMResult
 from .message_format import (
@@ -124,6 +125,80 @@ class LocalLlamaCppLLM:
             return build_completion_prompt(user_msg, self.config, inject_persona)
         messages = build_chat_messages(user_msg, self.config, inject_persona)
         return "\n".join(f"{m['role']}: {m['content']}" for m in messages)
+
+    @staticmethod
+    def _grammar_from_schema(schema: Mapping[str, Any]) -> LlamaGrammar:
+        schema_text = json.dumps(
+            dict(schema),
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        return LlamaGrammar.from_json_schema(schema_text, verbose=False)
+
+    def generate_structured(
+        self,
+        user_msg: str,
+        *,
+        schema_name: str,
+        schema: Mapping[str, Any],
+        max_tokens: int,
+        temperature: float = 0.0,
+        top_p: float = 1.0,
+        inject_persona: bool = False,
+        zero_data_retention: bool = True,
+    ) -> LLMResult:
+        del schema_name, zero_data_retention
+        self._validate_generation_args(user_msg, max_tokens, temperature, top_p)
+        if not isinstance(schema, Mapping):
+            raise ValueError("structured output schema is invalid")
+        grammar = self._grammar_from_schema(schema)
+        prompt = self._prompt_for_metrics(user_msg, inject_persona)
+        started = time.perf_counter()
+        try:
+            if uses_completion_prompt(self.config):
+                response = self.llm(
+                    prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    stop=list(self.config.stop_sequences),
+                    grammar=grammar,
+                    stream=False,
+                )
+            else:
+                messages = build_chat_messages(user_msg, self.config, inject_persona)
+                response = self.llm.create_chat_completion(
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    grammar=grammar,
+                    stream=False,
+                )
+        except Exception as exc:  # noqa: BLE001 - local model boundary
+            raise RuntimeError("structured local generation failed") from exc
+        ended = time.perf_counter()
+        raw_completion = self._chunk_text(response)
+        usage = response.get("usage", {}) if isinstance(response, dict) else {}
+        n_prompt = usage.get("prompt_tokens") if isinstance(usage, dict) else None
+        n_completion = usage.get("completion_tokens") if isinstance(usage, dict) else None
+        n_prompt = n_prompt if isinstance(n_prompt, int) else len(self.llm.tokenize(prompt.encode()))
+        n_completion = (
+            n_completion
+            if isinstance(n_completion, int)
+            else len(self.llm.tokenize(raw_completion.encode(), add_bos=False))
+        )
+        total_latency_ms = (ended - started) * 1000
+        return LLMResult(
+            text=raw_completion,
+            prompt=prompt,
+            n_prompt_tokens=n_prompt,
+            n_completion_tokens=n_completion,
+            ttft_ms=total_latency_ms,
+            total_latency_ms=total_latency_ms,
+            tokens_per_second=n_completion / (ended - started) if ended > started else 0.0,
+        )
 
     def generate(
         self,

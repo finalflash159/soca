@@ -12,7 +12,7 @@ The OpenAI client is injectable so tests drive it without any network access.
 from __future__ import annotations
 
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from typing import Any
 
 from soca.prompts import SOCA_LLM_SYSTEM_PROMPT, split_embedded_system_prompt
@@ -129,6 +129,35 @@ class RemoteOpenAILLM:
     def _prompt_for_metrics(messages: list[ChatMessage]) -> str:
         return "\n".join(f"{m['role']}: {m['content']}" for m in messages)
 
+    def _create_non_streaming_result(
+        self,
+        messages: list[ChatMessage],
+        request: dict[str, Any],
+    ) -> LLMResult:
+        started = time.perf_counter()
+        try:
+            response = self._client.chat.completions.create(**request)
+        except Exception as exc:  # noqa: BLE001 - provider boundary translation
+            raise _map_error(exc, self.provider) from exc
+        ended = time.perf_counter()
+
+        text = (response.choices[0].message.content or "").strip()
+        usage = getattr(response, "usage", None)
+        n_prompt = getattr(usage, "prompt_tokens", 0) or 0
+        n_completion = getattr(usage, "completion_tokens", 0) or 0
+        total_latency_ms = (ended - started) * 1000
+        elapsed = ended - started
+        tokens_per_second = n_completion / elapsed if elapsed > 0 else 0.0
+        return LLMResult(
+            text=text,
+            prompt=self._prompt_for_metrics(messages),
+            n_prompt_tokens=n_prompt,
+            n_completion_tokens=n_completion,
+            ttft_ms=total_latency_ms,
+            total_latency_ms=total_latency_ms,
+            tokens_per_second=tokens_per_second,
+        )
+
     # -- generation ---------------------------------------------------------
 
     def generate(
@@ -141,41 +170,61 @@ class RemoteOpenAILLM:
     ) -> LLMResult:
         self._validate_generation_args(user_msg, max_tokens, temperature, top_p)
         messages = build_remote_messages(user_msg, inject_persona)
-        prompt = self._prompt_for_metrics(messages)
-
-        t0 = time.perf_counter()
-        try:
-            response = self._client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                stream=False,
-            )
-        except Exception as exc:  # noqa: BLE001 - boundary: translate to friendly error
-            raise _map_error(exc, self.provider) from exc
-        t1 = time.perf_counter()
-
-        text = (response.choices[0].message.content or "").strip()
-        usage = getattr(response, "usage", None)
-        n_prompt = getattr(usage, "prompt_tokens", 0) or 0
-        n_completion = getattr(usage, "completion_tokens", 0) or 0
-
-        total_latency_ms = (t1 - t0) * 1000
-        gen_time = t1 - t0
-        tps = n_completion / gen_time if gen_time > 0 and n_completion else 0.0
-
-        return LLMResult(
-            text=text,
-            prompt=prompt,
-            n_prompt_tokens=n_prompt,
-            n_completion_tokens=n_completion,
-            # No token-level timing on a non-streaming call; ttft == total.
-            ttft_ms=total_latency_ms,
-            total_latency_ms=total_latency_ms,
-            tokens_per_second=tps,
+        return self._create_non_streaming_result(
+            messages,
+            {
+                "model": self.model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "top_p": top_p,
+                "stream": False,
+            },
         )
+
+    def generate_structured(
+        self,
+        user_msg: str,
+        *,
+        schema_name: str,
+        schema: Mapping[str, Any],
+        max_tokens: int,
+        temperature: float = 0.0,
+        top_p: float = 1.0,
+        inject_persona: bool = False,
+        zero_data_retention: bool = True,
+    ) -> LLMResult:
+        self._validate_generation_args(user_msg, max_tokens, temperature, top_p)
+        if not isinstance(schema_name, str) or not schema_name.strip():
+            raise ValueError("structured output schema name is invalid")
+        if not isinstance(schema, Mapping):
+            raise ValueError("structured output schema is invalid")
+
+        messages = build_remote_messages(user_msg, inject_persona)
+        request: dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "top_p": top_p,
+            "stream": False,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": schema_name,
+                    "strict": True,
+                    "schema": dict(schema),
+                },
+            },
+        }
+        if self.provider.key == "openrouter":
+            request["extra_body"] = {
+                "provider": {
+                    "require_parameters": True,
+                    "data_collection": "deny" if zero_data_retention else "allow",
+                }
+            }
+        return self._create_non_streaming_result(messages, request)
 
     def generate_stream(
         self,

@@ -41,6 +41,10 @@ class RemoteModelInfo:
     price_completion_per_1m: float | None
     # "live" (from provider API) | "table" (static table) | "unknown".
     pricing_source: str
+    supported_parameters: tuple[str, ...] = ()
+
+    def supports(self, parameter: str) -> bool:
+        return parameter in self.supported_parameters
 
 
 def fetch_catalog(
@@ -107,6 +111,12 @@ def _to_model_info(provider: LLMProvider, raw: object) -> RemoteModelInfo:
     context_length = _context_length(raw)
 
     prompt_per_1m, completion_per_1m, source = _resolve_pricing(provider, model_id, raw)
+    raw_parameters = raw.get("supported_parameters", ())
+    supported_parameters = (
+        tuple(sorted(value for value in raw_parameters if isinstance(value, str)))
+        if isinstance(raw_parameters, list)
+        else ()
+    )
 
     return RemoteModelInfo(
         id=model_id,
@@ -115,6 +125,7 @@ def _to_model_info(provider: LLMProvider, raw: object) -> RemoteModelInfo:
         price_prompt_per_1m=prompt_per_1m,
         price_completion_per_1m=completion_per_1m,
         pricing_source=source,
+        supported_parameters=supported_parameters,
     )
 
 
@@ -148,7 +159,7 @@ def _per_token_to_per_1m(value: Any) -> float | None:
         price = float(value) * _TOKENS_PER_MILLION
     except (TypeError, ValueError):
         return None
-    return price if math.isfinite(price) else None
+    return price if math.isfinite(price) and price >= 0 else None
 
 
 def _context_length(raw: Mapping[str, Any]) -> int | None:
