@@ -1508,3 +1508,49 @@ Post-decision disk cleanup removed the four rejected GGUF files (0.6B, 1.7B,
 Qwen2.5-3B, and Qwen3-4B base), reducing `models/summary` from about 9.0 GB to
 2.3 GB. The Instruct-2507 finalist remains; all removed artifacts are
 reprovisionable from pinned registry metadata.
+
+### P4.2 — Production acceptance and 15K auto-compaction
+
+Run date: 2026-07-28. This decision supersedes the P4.1 `trim_only` production
+decision after explicit product-owner acceptance of the measured quality
+trade-off. It does not invalidate the P4.1 measurements.
+
+The selected production model is `Qwen3-4B-Instruct-2507 Q4_K_M`. The revised
+gate is:
+
+- schema 100%, negative-state clean 100%, forbidden surface 0%;
+- single annotated fact recall >= 80%;
+- rolling annotated fact recall >= 70%;
+- child clean exit and stopped-worker rates 100%;
+- peak summary-child RSS <= 8,192 MiB.
+
+The measured 80.0% single recall, 72.5% rolling recall, clean safety metrics,
+and process lifecycle pass this gate. Decision recall 84%, correction recall
+92%, and mixed Vietnamese/code/path placement recall 8% remain documented
+technical debt.
+
+Production wiring:
+
+- `working_v2_16k` target/high/hard = 12,000/15,000/16,384 tokens;
+- automatic and manual compaction use one coordinator in chat, voice, and UI;
+- worker context is allocated per job from 4K through a 32K maximum;
+- selected weight is stored privately under
+  `~/.local/share/soca/models/summary/<key>/<revision>/`;
+- runtime never downloads the weight and falls back to `trim_only` if it is
+  missing, malformed, non-private, or the worker fails.
+
+Real 15K production smoke:
+
+| Metric | Result |
+| --- | ---: |
+| auto-trigger | 15,288 approximate tokens |
+| allocated llama.cpp context | 20,480 tokens |
+| load / generation | 466 ms / 44.78 s |
+| peak child RSS | 6,030 MiB |
+| exit / stopped | 0 / true |
+| publish / checkpoint 0600 / reload / render | pass / pass / pass / pass |
+
+The final full-flow run used the persisted real answer backend
+`openrouter:qwen/qwen3.7-flash`. The local summary was present in the answer
+prompt, the active `TTS B` decision was visible, the provider was called, and
+the returned content was non-empty. No summary process remained afterward.

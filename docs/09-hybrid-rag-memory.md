@@ -165,12 +165,14 @@ always-on bounded working/profile context. Archive snippets become `[M#]`
 grounded context only when selected.
 
 Working memory is typed as complete `ConversationTurn`s instead of a flat
-message deque. The `working_v1_4k` policy caps target/high/hard prompt tokens at
-768/896/1024. It currently degrades to transparent `trim_only`: the dedicated
-local summary worker and its model registry exist, but no candidate has passed
-the held-out quality-first bake-off, so no extractive/regex summary, remote
-fallback, or automatic weight download is used. `/memory compact`, `status`,
-and `cancel` share the same coordinator in CLI and UI.
+message deque. The production `working_v2_16k` policy uses
+target/high/hard limits of 12,000/15,000/16,384 tokens. At the high watermark,
+chat and voice start `Qwen3-4B-Instruct-2507 Q4_K_M` in an isolated local
+process, publish its typed artifact with generation CAS, then unload it.
+Summary context is allocated dynamically from 4K to 32K. A missing or invalid
+private weight falls back to `trim_only`; there is no extractive/regex summary,
+remote summary fallback, or automatic runtime download. `/memory compact`,
+`status`, and `cancel` share the same coordinator in CLI and UI.
 
 ### Human-in-the-loop capture
 
