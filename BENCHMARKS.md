@@ -1441,3 +1441,70 @@ before a quality score can be a release gate.  This does **not** excuse the
 observed forbidden leaks or schema failures.  No candidate has passed all
 quality, rolling, cold-process, or target-16-GiB gates, so the approved mode
 remains `trim_only`.
+
+### P4.1 — Real-data and structured-state v2 decision
+
+Run date: 2026-07-28. Full design, source provenance, candidate revisions,
+license notes, commands, and failure analysis:
+`docs/12-local-summary-model-selection.md`.
+
+The v1 fixtures and captures above are now **invalidated** for model selection:
+200 single rows contained only eight unique expected payloads, while the
+40-session rolling set had one effective expected state. The files were removed
+from the current tree. V2 contains 200 unique inputs/151 expected states and
+40 distinct four-generation sessions. Negative injection/noise cases
+intentionally share empty expected state.
+
+Public real-data was explicitly provisioned and pinned:
+
+| Dataset | Local rows | Comparative probe per candidate |
+| --- | ---: | ---: |
+| VSoLSCSum-VI | 141 | 8 |
+| SEAHORSE-VI | 64 | 8 |
+| WikiLingua-VI | 64 | 8 |
+| XL-Sum-VI | 64 | 8 |
+| DialogSum-EN control | 64 | 8 |
+
+Public probe (40 records/candidate; overlap is report-only):
+
+| Candidate | Schema | Token F1 | ROUGE-L F1 | Model2Vec cosine |
+| --- | ---: | ---: | ---: | ---: |
+| Qwen3-0.6B Q8_0 | 77.5% | 0.2522 | 0.1719 | 0.6759 on 31 parses |
+| Qwen3-1.7B Q8_0 | 97.5% | 0.2667 | 0.1728 | 0.6746 on 39 parses |
+| Qwen2.5-3B-Instruct Q4_K_M | 100% | **0.2707** | **0.1899** | 0.6655 |
+| Qwen3-4B Q4_K_M | 100% | 0.2524 | 0.1705 | 0.6331 |
+| Qwen3-4B-Instruct-2507 Q4_K_M | 100% | 0.2690 | 0.1713 | **0.6876** |
+
+Final prompt fingerprint: `aa317641bb249d5b`. Only the best finalist,
+Qwen3-4B-Instruct-2507 Q4_K_M, advanced to final-prompt full captures:
+
+| Run | Denominator | Schema | Fact recall | Negative clean | Forbidden surface | p50 / p95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| single state v2 | 200 | 100% | 80.0% | 100% | 0% | 1.508 / 2.787 s |
+| rolling v2 | 40 sessions / 160 generations | 100% | 72.5% | n/a | 0% | 11.111 / 13.863 s/session |
+
+Single family recall: constraints 100%, open items 100%, commitments 96%,
+corrections 92%, decisions 84%, mixed code/path 8%. Rolling ranged from 67.5%
+for correction chains to 82.5% for open-item chains.
+
+Eight cold-process jobs measured:
+
+- outer p50/p95 5.318/6.387 s;
+- child load p50 300 ms; generation p50 2.357 s;
+- max child peak RSS 3,822 MiB;
+- clean exit 8/8 and supervisor-observed stopped 8/8.
+
+The explicit real-flow smoke passed local generation, CAS publication, worker
+idle, private `0600` checkpoint, reload, structured-state render, and render
+round-trip. No worker remained after the run.
+
+**Decision:** resource lifecycle passes on the development machine, quality
+does not. There is no production winner. Keep `trim_only`; retain
+Qwen3-4B-Instruct-2507 only as a research finalist for a typed, ID-addressed
+delta + deterministic merge experiment. Do not add keyword/regex merge rules,
+auto-download, remote fallback, or lower the release gate.
+
+Post-decision disk cleanup removed the four rejected GGUF files (0.6B, 1.7B,
+Qwen2.5-3B, and Qwen3-4B base), reducing `models/summary` from about 9.0 GB to
+2.3 GB. The Instruct-2507 finalist remains; all removed artifacts are
+reprovisionable from pinned registry metadata.

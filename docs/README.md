@@ -25,6 +25,7 @@ folder tree or TUI layout is easier to read that way.
 | 09  | [hybrid-rag-memory.md](./09-hybrid-rag-memory.md)             | Hybrid RAG retrieval, tool router cascade, retrieved memory  |
 | 10  | [vietnamese-rag-model-selection.md](./10-vietnamese-rag-model-selection.md) | Vietnamese embedding, reranker, and vector-backend evidence |
 | 11  | [index-lifecycle.md](./11-index-lifecycle.md)                 | Transactional sparse/dense index lifecycle and operations    |
+| 12  | [local-summary-model-selection.md](./12-local-summary-model-selection.md) | Local summary datasets, bake-off, lifecycle, and decision |
 
 ## SoCa in One Diagram
 
