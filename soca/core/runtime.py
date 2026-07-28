@@ -192,6 +192,11 @@ class _TraceDraft:
     memory_hits: list[Any] = field(default_factory=list)
     memory_mode: str = "blob"
     memory_degraded_reason: str = ""
+    disposition: str = "unresolved"
+    selected_sources: tuple[str, ...] = ()
+    router_scores: dict[str, float] = field(default_factory=dict)
+    router_runner_up: str | None = None
+    router_margin: float | None = None
 
 
 @dataclass(frozen=True)
@@ -253,8 +258,12 @@ class AssistantRuntime:
         draft.tool_router_tier = str(getattr(self.tool_router, "last_tier", "deterministic"))
         decision = getattr(self.tool_router, "last_decision", ToolRouterDecision())
         draft.tool_router_reason = str(getattr(decision, "reason", "no_match"))
+        self._record_router_decision(draft, decision)
         if tool_call is not None:
             return self._run_tool_turn(frame, tool_call, draft)
+        special = self._run_semantic_disposition(frame, draft, decision)
+        if special is not None:
+            return special
 
         memory_context = self._build_memory_context(frame, draft)
         knowledge_context = self._build_knowledge_context(frame, draft)
@@ -310,6 +319,7 @@ class AssistantRuntime:
         draft.tool_router_tier = str(getattr(self.tool_router, "last_tier", "deterministic"))
         decision = getattr(self.tool_router, "last_decision", ToolRouterDecision())
         draft.tool_router_reason = str(getattr(decision, "reason", "no_match"))
+        self._record_router_decision(draft, decision)
         if tool_call is not None:
             prepared = self._prepare_tool_turn(frame, tool_call, draft)
             if isinstance(prepared, RuntimeResult):
@@ -333,6 +343,11 @@ class AssistantRuntime:
                 return
             result = self._finish_prepared_tool_turn(frame, draft, prepared)
             yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
+            return
+
+        special = self._run_semantic_disposition(frame, draft, decision)
+        if special is not None:
+            yield from self._emit_fixed_result(special, min_sentence_chars=min_sentence_chars)
             return
 
         memory_context = self._build_memory_context(frame, draft)
@@ -614,6 +629,8 @@ class AssistantRuntime:
             route=(
                 RuntimeRoute.KNOWLEDGE_LLM
                 if knowledge_context is not None
+                else RuntimeRoute.MEMORY_LLM
+                if memory_context is not None and memory_context.citations
                 else RuntimeRoute.FREE_CHAT
             ),
             used_tool=used_tool,
@@ -917,6 +934,8 @@ class AssistantRuntime:
             route=(
                 RuntimeRoute.KNOWLEDGE_LLM
                 if knowledge_context is not None
+                else RuntimeRoute.MEMORY_LLM
+                if memory_context is not None and memory_context.citations
                 else RuntimeRoute.FREE_CHAT
             ),
             used_tool=used_tool,
@@ -935,7 +954,7 @@ class AssistantRuntime:
 
         query = str(frame.metadata.get("memory_query") or frame.text)
         with self._stage(draft, "memory_context"):
-            context = self.memory_builder.build(query)
+            context = self.memory_builder.build(query, include_archive=False)
         draft.memory_hits.extend(context.hits)
         draft.memory_mode = context.mode
         draft.memory_degraded_reason = context.degraded_reason
@@ -945,6 +964,101 @@ class AssistantRuntime:
                 draft.guardrail_events.append(
                     check_untrusted_text(snippet, stage=GuardrailStage.RETRIEVAL)
                 )
+        return context
+
+    def _build_archive_memory_context(
+        self,
+        frame: TurnFrame,
+        draft: _TraceDraft,
+    ) -> MemoryContext | None:
+        if self.memory_builder is None:
+            return None
+        with self._stage(draft, "memory_archive_context"):
+            context = self.memory_builder.build(frame.text, include_archive=True)
+        draft.memory_hits.extend(context.hits)
+        draft.citations.extend(context.citations)
+        draft.memory_mode = context.mode
+        draft.memory_degraded_reason = context.degraded_reason
+        return context
+
+    def _record_router_decision(self, draft: _TraceDraft, decision: ToolRouterDecision) -> None:
+        draft.disposition = decision.disposition
+        draft.selected_sources = decision.sources
+        draft.router_scores = dict(decision.scores)
+        draft.router_runner_up = decision.runner_up
+        draft.router_margin = decision.margin
+
+    def _run_semantic_disposition(
+        self,
+        frame: TurnFrame,
+        draft: _TraceDraft,
+        decision: ToolRouterDecision,
+    ) -> RuntimeResult | None:
+        if decision.disposition == "out_of_scope":
+            return self._blocked_result(
+                frame,
+                draft,
+                reason="Mình chưa hỗ trợ khả năng này trên máy bạn.",
+                route=RuntimeRoute.OUT_OF_SCOPE,
+            )
+        if decision.disposition == "unresolved" and decision.reason.startswith("semantic_"):
+            return self._blocked_result(
+                frame,
+                draft,
+                reason="Mình chưa rõ bạn muốn tra phần nào. Bạn nói rõ hơn giúp mình nhé.",
+                route=RuntimeRoute.CLARIFICATION,
+            )
+        if decision.disposition != "retrieval_request":
+            return None
+        if not decision.sources:
+            return self._blocked_result(
+                frame,
+                draft,
+                reason="Mình chưa xác định được nên tra knowledge hay memory. Bạn nói rõ nguồn cần tra nhé.",
+                route=RuntimeRoute.CLARIFICATION,
+            )
+        memory_context = self._build_memory_context(frame, draft)
+        knowledge_context = None
+        if "memory" in decision.sources:
+            memory_context = self._build_archive_memory_context(frame, draft)
+        if "knowledge" in decision.sources:
+            knowledge_context = self._build_knowledge_context_from_query(frame, draft)
+        if self.llm is not None:
+            return self._run_llm_turn(frame, draft, memory_context, knowledge_context)
+        if knowledge_context is not None:
+            return self._result(
+                frame,
+                draft,
+                response_text=knowledge_context.prompt_text,
+                route=RuntimeRoute.KNOWLEDGE_DIRECT,
+                used_tool=False,
+                used_llm=False,
+            )
+        if memory_context is not None:
+            return self._result(
+                frame,
+                draft,
+                response_text=memory_context.prompt_text or "Mình chưa tìm thấy ghi chú phù hợp trong memory.",
+                route=RuntimeRoute.MEMORY_DIRECT,
+                used_tool=False,
+                used_llm=False,
+            )
+        return self._blocked_result(
+            frame,
+            draft,
+            reason="Nguồn ghi chú cục bộ hiện chưa sẵn sàng.",
+            route=RuntimeRoute.BLOCKED,
+        )
+
+    def _build_knowledge_context_from_query(
+        self, frame: TurnFrame, draft: _TraceDraft
+    ) -> KnowledgeContext | None:
+        if self.knowledge_builder is None:
+            return None
+        with self._stage(draft, "knowledge_context"):
+            context = self.knowledge_builder.build(frame.text)
+        draft.knowledge_hits.extend(context.hits)
+        draft.citations.extend(context.citations)
         return context
 
     def _build_knowledge_context(
@@ -996,6 +1110,7 @@ class AssistantRuntime:
         return build_runtime_prompt(
             user_text=user_text,
             memory_prompt_text=memory_context.prompt_text if memory_context is not None else "",
+            memory_grounding=bool(memory_context is not None and memory_context.citations),
             knowledge_prompt_text=(
                 knowledge_context.prompt_text if knowledge_context is not None else ""
             ),
@@ -1036,6 +1151,11 @@ class AssistantRuntime:
             stage_latencies_ms=dict(draft.stage_latencies_ms),
             tool_router_tier=draft.tool_router_tier,
             tool_router_reason=draft.tool_router_reason,
+            disposition=draft.disposition,
+            selected_sources=draft.selected_sources,
+            router_scores=draft.router_scores,
+            router_runner_up=draft.router_runner_up,
+            router_margin=draft.router_margin,
         )
         return RuntimeResult(
             response_text=response_text,

@@ -217,7 +217,7 @@ def test_empty_llm_response_is_not_rendered_as_success() -> None:
     assert "không trả về nội dung" in result.response_text
 
 
-def test_runtime_trace_preserves_degraded_memory_mode() -> None:
+def test_runtime_does_not_search_memory_archive_without_a_memory_access_plan() -> None:
     memory = RetrievedMemory(FailingMemorySource(), FakeLongTermMemory())
     runtime = AssistantRuntime(
         llm=SpyLLM(),
@@ -228,7 +228,7 @@ def test_runtime_trace_preserves_degraded_memory_mode() -> None:
 
     assert result.trace is not None
     assert result.trace.memory_mode == "blob"
-    assert result.trace.memory_degraded_reason == "retrieval_unavailable"
+    assert result.trace.memory_degraded_reason == ""
 
 
 def test_markdown_path_uses_knowledge_read_tool() -> None:
