@@ -1359,3 +1359,51 @@ floor + read-speech VAD; grows under stronger echo).
 - Backchannel is a synthetic 400 ms FLEURS head, not recorded "vâng/dạ".
 - Tier 1 synth uses one echo level (alpha 0.5) and MIT RIRs only; a full SER
   curve + OpenSLR simulated RIRs would strengthen the acoustic claim.
+
+---
+
+## P4 — Local working-memory summary bake-off (not yet a release decision)
+
+The compaction path is deliberately held at `trim_only` until a local candidate
+passes the held-out quality and cold-process resource gates.  The benchmark
+fixtures are committed synthetic data, not user transcripts:
+
+- `eval/prompts/summary_session_vi_v1.jsonl`: 200 records, eight semantic
+  families, family-level train/validation/test split;
+- `eval/prompts/summary_rolling_vi_v1.jsonl`: 40 multi-generation correction
+  and decision chains;
+- the full candidate protocol is zero-shot constrained JSON generation at
+  `n_ctx=4096`, `temperature=0`, `max_tokens=384`.
+
+### Arcee-VyLinh 3B Q4_K_M smoke capture
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-07-28 |
+| Machine | MacBook M4 Pro, macOS 15.7.4 arm64, Python 3.11.14 |
+| Runtime | `llama-cpp-python 0.3.16`, Metal, `n_gpu_layers=-1`, 8 threads |
+| Model | `Arcee-VyLinh.Q4_K_M.gguf` (local, already provisioned) |
+| Input | first 5 synthetic `constraints` records only |
+| Process mode | one warm process; **not** cold-per-job |
+| Schema-valid rate | 5/5 (100%) |
+| Structured-field recall | 0.000 (0/5) |
+| Latency p50 / p95 | 1981.8 / 2200.0 ms |
+| Raw artifact | `eval/results/summary_arcee_smoke_20260728.json` (gitignored; no raw transcript persisted) |
+
+**Decision:** this is a failure, not a winner.  Although grammar-constrained
+JSON was valid, the candidate misplaced the explicit user constraint into other
+fields and retained synthetic situation labels.  The run is only a runtime
+smoke: it is too small, warm-process, single-family, and has no rolling,
+adversarial, resource-cleanup or 16 GiB measurement.  It cannot satisfy the
+quality-first gate; `background_summary` stays disabled and there is no remote
+fallback or automatic model download.
+
+Reproduce the same non-release smoke explicitly (it never downloads weights):
+
+```bash
+uv run python eval/eval_summary_bakeoff.py \
+  --dataset eval/prompts/summary_session_vi_v1.jsonl \
+  --model-key arcee_vylinh_3b_q4_k_m \
+  --model-path models/arcee-vylinh-gguf/Arcee-VyLinh.Q4_K_M.gguf \
+  --limit 5 --output eval/results/summary_arcee_smoke.json
+```
