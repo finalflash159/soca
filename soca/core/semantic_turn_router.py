@@ -212,10 +212,17 @@ class SemanticTurnRouter:
                 continue
             for source in example.sources:
                 by_source[source] = max(by_source.get(source, float("-inf")), float(raw_score))
+        if not by_source:
+            return ()
+        best_score = max(by_source.values())
+        # Source selection is multi-label, not "every corpus above a global
+        # floor".  A second corpus is selected only when it is genuinely close
+        # to the best source; a labelled ambiguous example can therefore fan
+        # out, while an unambiguous Bayes question stays knowledge-only.
         selected = tuple(
             source
             for source, score in sorted(by_source.items())
-            if score >= self._config.threshold
+            if score >= self._config.threshold and best_score - score <= self._config.margin
         )
         # A confident retrieval request with no confident corpus is deliberately
         # unresolved.  The runtime asks for clarification; it must not search a

@@ -33,6 +33,7 @@ from soca.core.turn_taking import partial_interval_from_cost
 from soca.knowledge.factory import DenseBackend, RetrievalConfig, RetrievalMode
 from soca.knowledge.hybrid_source import HybridKnowledgeSource
 from soca.knowledge.intent_gate import RetrievalIntentGate, RetrievalSourceLike, VoiceKnowledgeMode
+from soca.knowledge.retrievers.dense import FastEmbedModel
 from soca.llm import LocalLlamaCppLLM
 from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.memory import ProposalStore, SessionMemory
@@ -116,6 +117,10 @@ class VoiceRuntimeWarmupResult:
     ok: bool
     latency_ms: float
     detail: str = ""
+
+
+def default_semantic_turn_examples() -> Path:
+    return Path(__file__).resolve().parents[2] / "eval" / "prompts" / "turn_routing_vi.jsonl"
 
 
 def resolve_voice_runtime_config(
@@ -252,14 +257,16 @@ def resolve_voice_runtime_config(
         tool_router_mode=tool_router_mode,
         tool_router_response_mode=tool_router_response_mode,
         llm_router_in_voice=llm_router_in_voice,
-        semantic_router_in_voice=semantic_router_in_voice,
+        # Semantic capability routing is the same policy for text and ASR. The
+        # LLM-routing tier remains independently off for voice.
+        semantic_router_in_voice=semantic_router_enabled or semantic_router_in_voice,
         semantic_router_enabled=semantic_router_enabled,
         semantic_router_threshold=semantic_router_threshold,
         semantic_router_margin=semantic_router_margin,
         semantic_router_examples=(
             Path(semantic_router_examples).expanduser().resolve()
             if semantic_router_examples is not None
-            else None
+            else default_semantic_turn_examples()
         ),
         memory_mode=cast(MemoryMode, memory_mode),
         memory_limit=memory_limit,
@@ -374,6 +381,15 @@ def build_voice_runtime(
             )
 
     tool_runtime = ToolRuntime(tools)
+    router_embedding_model = None
+    if config.semantic_router_enabled:
+        try:
+            router_embedding_model = FastEmbedModel(allow_download=False)
+        except (ImportError, FileNotFoundError, OSError, RuntimeError, ValueError):
+            # ``build_runtime_tool_router`` records its deterministic fallback;
+            # voice must remain usable when the optional local embedder is absent.
+            router_embedding_model = None
+
     tool_router = build_runtime_tool_router(
         llm=llm,
         tool_runtime=tool_runtime,
@@ -393,7 +409,7 @@ def build_voice_runtime(
                 examples_path=config.semantic_router_examples,
             ),
         ),
-        embedding_model=None,
+        embedding_model=router_embedding_model,
         voice=True,
     )
     assistant_runtime = AssistantRuntime(
