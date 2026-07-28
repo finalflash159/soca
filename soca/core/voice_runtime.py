@@ -36,8 +36,8 @@ from soca.knowledge.intent_gate import RetrievalIntentGate, RetrievalSourceLike,
 from soca.knowledge.retrievers.dense import FastEmbedModel
 from soca.llm import LocalLlamaCppLLM
 from soca.llm.registry import LLM_MODEL_REGISTRY
-from soca.memory import ProposalStore, SessionMemory
-from soca.tools import LocalTimeTool, MemoryProposeNoteTool, MemorySearchTool, Tool, ToolRuntime
+from soca.memory import SessionMemory
+from soca.tools import LocalTimeTool, MemorySearchTool, Tool, ToolRuntime
 from soca.tts import VALTEC_TTS_CONFIG, TTSEngine, create_tts_engine
 
 
@@ -375,10 +375,6 @@ def build_voice_runtime(
         memory_builder = memory_setup.builder
         memory_status = memory_setup.status
         tools.append(MemorySearchTool(memory_builder, max_limit=config.knowledge_limit))
-        if config.vault.is_dir():
-            tools.append(
-                MemoryProposeNoteTool(ProposalStore(config.vault / "memory" / ".proposals"))
-            )
 
     tool_runtime = ToolRuntime(tools)
     router_embedding_model = None

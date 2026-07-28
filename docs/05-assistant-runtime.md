@@ -13,7 +13,10 @@ flowchart TD
     G1 -->|block| B[(RuntimeRoute.BLOCKED)]
     G1 -->|allow| TR[tool_router.select]
     TR -->|ToolCall exists| TT[_run_tool_turn]
-    TR -->|none| MEM[_build_memory_context]
+    TR -->|retrieval_request| RET[select knowledge / memory / both]
+    TR -->|smalltalk| MEM[_build_memory_context]
+    TR -->|out_of_scope / unresolved| B
+    RET --> MEM
     MEM --> KN[_build_knowledge_context]
     KN --> LLM[_run_llm_turn]
 
@@ -36,6 +39,9 @@ flowchart TD
 | `TOOL_DIRECT`      | A deterministic tool can answer directly, e.g. `local_time.now` | No         |
 | `KNOWLEDGE_DIRECT` | Knowledge tool result is returned because LLM is disabled             | No         |
 | `KNOWLEDGE_LLM`    | LLM answers with knowledge context and citations                | Yes        |
+| `MEMORY_LLM`       | LLM answers with selected archive-memory `[M#]` context          | Yes        |
+| `OUT_OF_SCOPE`     | Capability is not implemented; no tool/answer LLM is called      | No         |
+| `CLARIFICATION`    | Router cannot safely identify a local corpus                      | No         |
 | `FREE_CHAT`        | Normal chat answer without knowledge                            | Yes        |
 
 > `LLM_FALLBACK` is the old alias of `FREE_CHAT`, kept for compatibility with
@@ -109,17 +115,21 @@ sentences so audio reaches the speaker faster.
 
 ```mermaid
 flowchart LR
-    F[TurnFrame] --> M[_build_memory_context<br/>long-term profile.md + RAM session]
-    F --> K[_build_knowledge_context<br/>search markdown vault]
+    F[TurnFrame] --> M[_build_memory_context<br/>bounded working/profile]
+    F --> R[semantic retrieval source decision]
+    R --> K[_build_knowledge_context<br/>selected markdown vault]
+    R --> A[_build_archive_memory_context<br/>selected memory archive]
     M & K --> P[_build_llm_prompt]
     P --> LLM[llama.cpp generate / stream]
     LLM --> CL[output cleaning]
     CL --> OUT[response + citations]
 ```
 
-- **Long-term memory**: `memory/profile.md`, read when the vault exists.
-- **Session memory**: RAM-only, multi-turn. The TUI uses **shared session
-  memory** so voice ↔ chat keep the same context. See [07](./07-tui.md).
+- **Working memory**: complete user→delivered-assistant turns, bounded by the
+  4K working policy. The TUI shares it across voice ↔ chat. It is RAM-only by
+  default; the versioned private checkpoint store is opt-in wiring.
+- **Archive memory**: never retrieved implicitly. It enters a prompt only after
+  the semantic source decision selects `memory`; its citations use `[M#]`.
 - **Knowledge**: Markdown vault. The retrieved passages are inserted into the
   dynamic prompt together with grounding instructions: the LLM may only claim
   facts supported by the passages, must preserve citations such as `[K1] path`,

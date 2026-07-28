@@ -33,8 +33,8 @@ from soca.knowledge.factory import DenseBackend, RetrievalMode
 from soca.knowledge.retrievers.dense import EmbeddingModel, FastEmbedModel
 from soca.llm import LLMEngine, LocalLlamaCppLLM
 from soca.llm.factory import SecretReader, build_llm_engine
-from soca.memory import ProposalStore, SessionMemory
-from soca.tools import LocalTimeTool, MemoryProposeNoteTool, MemorySearchTool, Tool, ToolRuntime
+from soca.memory import SessionMemory
+from soca.tools import LocalTimeTool, MemorySearchTool, Tool, ToolRuntime
 
 
 def default_text_llm_model_key() -> str:
@@ -255,8 +255,6 @@ def build_text_runtime(
         memory_builder = memory_setup.builder
         memory_status = memory_setup.status
         tools.append(MemorySearchTool(memory_builder, max_limit=config.knowledge_limit))
-        if vault.is_dir():
-            tools.append(MemoryProposeNoteTool(ProposalStore(vault / "memory" / ".proposals")))
 
     if config.no_llm:
         llm = None
