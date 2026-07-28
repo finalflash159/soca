@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 
 from soca.llm import LLMResult
-from soca.memory.summary import SUMMARY_MODEL_REGISTRY, execute_summary_job
+from soca.memory.summary import (
+    SUMMARY_MODEL_REGISTRY,
+    LocalSummaryWorkerProcess,
+    default_summary_model_root,
+    execute_summary_job,
+)
 from soca.memory.working import WorkingMemory
 
 
@@ -43,3 +48,16 @@ def test_summary_registry_is_separate_and_summary_job_uses_structured_local_cont
     assert artifact.generation == job.generation
     assert artifact.source_through_sequence == 2
     assert result.text
+
+
+def test_unprovisioned_summary_worker_never_auto_downloads_or_stays_loaded(tmp_path) -> None:
+    memory = WorkingMemory(token_counter=lambda _: 1000)
+    for index in range(6):
+        turn = memory.begin_turn(f"user {index}")
+        memory.finish_turn(turn.sequence, f"assistant {index}")
+    job = memory.prepare_compaction()
+    assert job is not None
+    worker = LocalSummaryWorkerProcess(SUMMARY_MODEL_REGISTRY["arcee_vylinh_3b_q4_k_m"], model_root=tmp_path)
+    assert worker.start(job) is False
+    assert worker.status.state == "idle"
+    assert default_summary_model_root().name == "summary"

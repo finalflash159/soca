@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import multiprocessing as mp
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,7 +21,8 @@ from soca.memory.working import CompactionJob, WorkingSummaryArtifact
 
 def default_summary_model_root() -> Path:
     data_home = os.environ.get("XDG_DATA_HOME")
-    return Path(data_home) if data_home else Path.home() / ".local" / "share" / "soca" / "models" / "summary"
+    base = Path(data_home) if data_home else Path.home() / ".local" / "share"
+    return base / "soca" / "models" / "summary"
 
 
 @dataclass(frozen=True)
@@ -161,6 +164,121 @@ def execute_summary_job(
     return artifact_from_json(job, result.text), result
 
 
+@dataclass(frozen=True)
+class SummaryWorkerStatus:
+    state: str
+    generation: int | None = None
+    detail: str = ""
+
+
+def _child_summary_main(
+    connection: object,
+    job: CompactionJob,
+    spec: SummaryModelSpec,
+    model_path: str,
+) -> None:
+    """One isolated load → constrained generation → exit lifecycle."""
+    from multiprocessing.connection import Connection
+
+    pipe = connection
+    assert isinstance(pipe, Connection)
+    for key in tuple(os.environ):
+        lowered = key.lower()
+        if "api_key" in lowered or "openrouter" in lowered or "openai" in lowered:
+            os.environ.pop(key, None)
+    started = time.perf_counter()
+    try:
+        if spec.answer_model_key is None:
+            raise RuntimeError("candidate has no llama-cpp runtime adapter")
+        from soca.llm import LocalLlamaCppLLM
+
+        engine = LocalLlamaCppLLM(
+            model_key=spec.answer_model_key,
+            model_path=model_path,
+            n_ctx=4096,
+            n_gpu_layers=-1,
+        )
+        artifact, usage = execute_summary_job(job, engine)
+        pipe.send(
+            {
+                "ok": True,
+                "artifact": artifact.to_dict(),
+                "latency_ms": (time.perf_counter() - started) * 1000,
+                "usage": usage.to_dict(),
+            }
+        )
+    except Exception as exc:  # noqa: BLE001 - child process boundary
+        pipe.send({"ok": False, "error": type(exc).__name__})
+    finally:
+        pipe.close()
+
+
+class LocalSummaryWorkerProcess:
+    """Single-job subprocess supervisor; it never retains a loaded model idle."""
+
+    def __init__(self, spec: SummaryModelSpec, *, model_root: Path | None = None) -> None:
+        self.spec = spec
+        self.model_root = model_root or default_summary_model_root()
+        self._process: mp.Process | None = None
+        self._connection: object | None = None
+        self._generation: int | None = None
+
+    @property
+    def status(self) -> SummaryWorkerStatus:
+        if self._process is None:
+            return SummaryWorkerStatus("idle")
+        if self._process.is_alive():
+            return SummaryWorkerStatus("running", self._generation)
+        return SummaryWorkerStatus("finished", self._generation)
+
+    def start(self, job: CompactionJob) -> bool:
+        if self._process is not None and self._process.is_alive():
+            return False
+        path = self.spec.path(self.model_root)
+        if not path.is_file():
+            return False
+        parent, child = mp.Pipe(duplex=False)
+        process = mp.Process(
+            target=_child_summary_main,
+            args=(child, job, self.spec, str(path)),
+            daemon=True,
+            name="soca-summary-worker",
+        )
+        process.start()
+        child.close()
+        self._process = process
+        self._connection = parent
+        self._generation = job.generation
+        return True
+
+    def poll(self) -> dict[str, object] | None:
+        from multiprocessing.connection import Connection
+
+        connection = self._connection
+        if not isinstance(connection, Connection) or not connection.poll():
+            return None
+        payload = connection.recv()
+        connection.close()
+        self._connection = None
+        if self._process is not None:
+            self._process.join(timeout=1.0)
+        self._process = None
+        self._generation = None
+        return payload if isinstance(payload, dict) else {"ok": False, "error": "invalid_worker_payload"}
+
+    def cancel(self) -> bool:
+        if self._process is None or not self._process.is_alive():
+            return False
+        self._process.terminate()
+        self._process.join(timeout=1.0)
+        if self._connection is not None:
+            self._connection.close()  # type: ignore[union-attr]
+        self._process = None
+        self._connection = None
+        self._generation = None
+        return True
+
+
 __all__ = [
     "SUMMARY_MODEL_REGISTRY",
     "SUMMARY_SCHEMA",
@@ -169,5 +287,7 @@ __all__ = [
     "build_summary_prompt",
     "default_summary_model_root",
     "execute_summary_job",
+    "LocalSummaryWorkerProcess",
     "prompt_fingerprint",
+    "SummaryWorkerStatus",
 ]
