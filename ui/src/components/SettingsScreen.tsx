@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useInput, useStdin, useStdout } from "ink";
 import SelectInput from "ink-select-input";
-import TextInput from "ink-text-input";
 import type { LlmConfigEvent, RemoteModelEvent } from "../protocol.js";
 import type { LlmProviderStatus } from "../store.js";
 import { COLOR, ICON } from "../theme.js";
+import { ImeTextInput } from "../imeInput.js";
 import { Panel } from "./Primitives.js";
 
 type FocusTarget =
@@ -259,9 +259,6 @@ export function SettingsScreen({
     wasKeyPending.current = keyPending;
   }, [keyPending, notice]);
 
-  const clearKeyOnDelete = useRef(false);
-  const clearMaxOnDelete = useRef(false);
-
   function moveSelection(delta: number): void {
     touched.current = true;
     const next =
@@ -339,12 +336,10 @@ export function SettingsScreen({
         return;
       }
       if (focus === "key" && key.delete) {
-        clearKeyOnDelete.current = true;
         setApiKey("");
         return;
       }
       if (focus === "maxTokens" && key.delete) {
-        clearMaxOnDelete.current = true;
         setMaxTokens("");
         return;
       }
@@ -477,15 +472,10 @@ export function SettingsScreen({
                 <Text color={COLOR.alt}>
                   {focus === "maxTokens" ? `${ICON.pointer} ` : "  "}
                 </Text>
-                <TextInput
+                <ImeTextInput
                   focus={focus === "maxTokens"}
                   value={maxTokens}
                   onChange={(value) => {
-                    if (clearMaxOnDelete.current) {
-                      clearMaxOnDelete.current = false;
-                      setMaxTokens("");
-                      return;
-                    }
                     setMaxTokens(value.replace(/\D/g, ""));
                   }}
                   onSubmit={() => {
@@ -544,16 +534,11 @@ export function SettingsScreen({
               >
                 <Box>
                   <Text color={COLOR.alt}>{ICON.pointer} </Text>
-                  <TextInput
+                  <ImeTextInput
                     focus={focus === "key" && !keyPending}
                     value={apiKey}
                     mask="•"
                     onChange={(value) => {
-                      if (clearKeyOnDelete.current) {
-                        clearKeyOnDelete.current = false;
-                        setApiKey("");
-                        return;
-                      }
                       setApiKey(value);
                     }}
                     onSubmit={(value) => {
@@ -592,7 +577,7 @@ export function SettingsScreen({
                   >
                     <Box>
                       <Text color={COLOR.alt}>{ICON.pointer} </Text>
-                      <TextInput
+                      <ImeTextInput
                         focus={focus === "search"}
                         value={query}
                         onChange={setQuery}

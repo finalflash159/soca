@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Box, Static, Text, useApp, useInput, useStdin, useStdout } from "ink";
-import TextInput from "ink-text-input";
 import { EngineClient } from "./engine.js";
 import {
   initialState,
@@ -33,6 +32,7 @@ import { CommandPalette } from "./components/CommandPalette.js";
 import { InformationPanel } from "./components/InformationPanel.js";
 import { SessionTokenMeter } from "./components/SessionTokenMeter.js";
 import { TurnProgress } from "./components/TurnProgress.js";
+import { ImeTextInput } from "./imeInput.js";
 
 export interface AppProps {
   /** The mode the user picked on the splash / CLI. */
@@ -100,6 +100,12 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
   const engineRef = useRef<EngineClient | null>(null);
 
   const { cols } = useResize();
+  // Leave one terminal column unused. Ink's log-update counts newline rows,
+  // while terminals also create an implicit row when a line reaches the
+  // right margin and autowraps. A full-width live border would therefore
+  // leave a ghost copy behind on every keystroke.
+  const safeWidth = Math.max(1, cols - 1);
+  const panelWidth = Math.max(12, cols - 3);
 
   useEffect(() => {
     const engine = new EngineClient();
@@ -142,7 +148,7 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
   // While the help overlay is open it owns every key: the prompt is blurred
   // (see `focus` below), so any key — Esc, ?, Enter — just closes it. This keeps
   // the toggle reliable and avoids the stray-"?" bug that came from a focused
-  // TextInput also receiving the key. Opening happens in `onPromptChange`.
+  // ImeTextInput also receives the key. Opening happens in `onPromptChange`.
   useInput(() => setShowHelp(false), { isActive: rawInput && showHelp });
 
   const filteredCommands = useMemo(
@@ -391,7 +397,7 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
   }
 
   return (
-    <Box flexDirection="column" width={cols}>
+    <Box flexDirection="column" width={safeWidth}>
       <Static items={staticItems}>
         {(item) =>
           item.kind === "brand" ? (
@@ -411,7 +417,7 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
       {state.activeInfo ? (
         <InformationPanel
           view={state.activeInfo}
-          width={cols - 2}
+          width={panelWidth}
           context={state.context}
           memory={state.memorySnapshot}
           usage={state.usageSnapshot}
@@ -452,7 +458,8 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
 
       {state.mode === "chat" &&
       state.timeline.length === 0 &&
-      state.activeInfo === null ? (
+      state.activeInfo === null &&
+      input.length === 0 ? (
         <Empty
           icon={ICON.bird}
           title="No messages yet."
@@ -464,7 +471,7 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
         <MemoryProposalInbox
           proposals={state.proposals}
           error={state.memoryActionError}
-          width={cols - 2}
+          width={panelWidth}
           onApprove={(proposal_id) =>
             engine?.send({ cmd: "memory_approve", proposal_id })
           }
@@ -480,10 +487,10 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
           <Panel
             title="retrieval"
             subtitle="inspect"
-            width={cols - 2}
+            width={panelWidth}
             variant="idle"
           >
-            <RetrievalInspector trace={state.retrievalTrace} width={cols - 4} />
+            <RetrievalInspector trace={state.retrievalTrace} width={panelWidth - 2} />
           </Panel>
         </Box>
       ) : null}
@@ -564,15 +571,15 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
             <CommandPalette
               commands={filteredCommands}
               selectedIndex={commandIndex}
-              width={cols - 2}
+              width={panelWidth}
             />
           ) : null}
           <Box paddingX={1}>
-            <Panel title={state.mode} width={cols - 2} height={2} focused>
+            <Panel title={state.mode} width={panelWidth} height={2} focused>
               <Box>
                 <Text color={COLOR.accent}>{`${ICON.pointer} `}</Text>
                 <Box flexGrow={1}>
-                  <TextInput
+                  <ImeTextInput
                     focus={
                       rawInput &&
                       !showHelp &&

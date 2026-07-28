@@ -162,6 +162,10 @@ async function tick(): Promise<void> {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
+function stripAnsi(value: string): string {
+  return value.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+}
+
 describe("App slash command interaction", () => {
   beforeEach(() => {
     harness.sent.length = 0;
@@ -199,6 +203,12 @@ describe("App slash command interaction", () => {
     await tick();
     expect(view.lastFrame()).not.toContain("context & usage");
     expect(view.lastFrame()).toContain("x");
+    expect(view.lastFrame()).not.toContain("No messages yet.");
+    const promptBorder = stripAnsi(view.lastFrame() ?? "")
+      .split("\n")
+      .find((line) => line.includes("chat") && line.includes("─"));
+    expect(promptBorder).toBeDefined();
+    expect(Array.from(promptBorder ?? "").length).toBeLessThan(100);
     view.unmount();
   });
 
