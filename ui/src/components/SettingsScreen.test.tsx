@@ -1,7 +1,13 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { describe, expect, it, vi } from "vitest";
-import { SettingsScreen, filterCatalog } from "./SettingsScreen.js";
+import {
+  MAX_MAX_TOKENS,
+  MIN_MAX_TOKENS,
+  SettingsScreen,
+  filterCatalog,
+  validateMaxTokens,
+} from "./SettingsScreen.js";
 
 const providers = [
   { key: "openai", label: "OpenAI", has_key: false, has_pricing_api: false },
@@ -16,6 +22,57 @@ const providers = [
 ];
 
 describe("SettingsScreen", () => {
+  it("validates the configurable output range without accepting text", () => {
+    expect(validateMaxTokens("")).toContain("Nhập");
+    expect(validateMaxTokens("abc")).toContain("không hợp lệ");
+    expect(validateMaxTokens(String(MIN_MAX_TOKENS - 1))).toContain("Tối thiểu");
+    expect(validateMaxTokens(String(MAX_MAX_TOKENS + 1))).toContain("Tối đa");
+    expect(validateMaxTokens("4096")).toBe("");
+  });
+
+  it("offers the saved configuration as the first explicit choice", async () => {
+    const onExit = vi.fn();
+    const view = render(
+      <SettingsScreen
+        config={{
+          event: "llm_config",
+          backend: "remote",
+          provider: "openrouter",
+          model: "z-ai/glm-5",
+          max_tokens: 500000,
+          effective_max_tokens: 131072,
+          reasoning_enabled: true,
+          effective_reasoning_enabled: true,
+          reasoning_supported: true,
+          reasoning_mandatory: false,
+          temperature: 0.2,
+          top_p: 0.95,
+          pricing_as_of: "2026-07",
+          pricing: null,
+          context_length: 200000,
+        }}
+        providers={providers}
+        catalog={[]}
+        catalogProvider=""
+        keyPendingProvider={null}
+        notice=""
+        onRequestModels={vi.fn()}
+        onSetKey={vi.fn()}
+        onSelect={vi.fn()}
+        onExit={onExit}
+      />,
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(view.lastFrame()).toContain("Cấu hình gần nhất");
+    expect(view.lastFrame()).toContain("500.000 → 131.072 output tok");
+    expect(view.lastFrame()).toContain("reasoning bật");
+    view.stdin.write("\r");
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(onExit).toHaveBeenCalledOnce();
+    view.unmount();
+  });
+
   it("renders provider state, privacy warning, and transparent model prices", () => {
     const view = render(
       <SettingsScreen
@@ -174,6 +231,8 @@ describe("SettingsScreen", () => {
     );
 
     await new Promise((resolve) => setImmediate(resolve));
+    view.stdin.write("e");
+    await new Promise((resolve) => setImmediate(resolve));
     view.stdin.write("r");
     await new Promise((resolve) => setImmediate(resolve));
     view.stdin.write("old-secret");
@@ -220,6 +279,8 @@ describe("SettingsScreen", () => {
     );
 
     await new Promise((resolve) => setImmediate(resolve));
+    view.stdin.write("e");
+    await new Promise((resolve) => setImmediate(resolve));
     view.stdin.write("r");
     await new Promise((resolve) => setImmediate(resolve));
     view.stdin.write("old-secret");
@@ -230,6 +291,80 @@ describe("SettingsScreen", () => {
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(onSetKey).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it("configures model output and reasoning before applying", async () => {
+    const onSelect = vi.fn();
+    const view = render(
+      <SettingsScreen
+        config={{
+          event: "llm_config",
+          backend: "remote",
+          provider: "openrouter",
+          model: "openai/gpt-4o-mini",
+          max_tokens: 4096,
+          effective_max_tokens: 4096,
+          reasoning_enabled: false,
+          effective_reasoning_enabled: false,
+          reasoning_supported: true,
+          reasoning_mandatory: false,
+          temperature: 0.2,
+          top_p: 0.95,
+          pricing_as_of: "2026-07",
+          pricing: null,
+          context_length: 128000,
+        }}
+        providers={providers}
+        catalog={[
+          {
+            ...twoModelCatalog[0]!,
+            max_output_tokens: 16384,
+            reasoning_supported: true,
+            reasoning_mandatory: false,
+          },
+        ]}
+        catalogProvider="openrouter"
+        keyPendingProvider={null}
+        notice=""
+        onRequestModels={vi.fn()}
+        onSetKey={vi.fn()}
+        onSelect={onSelect}
+        onExit={vi.fn()}
+      />,
+    );
+
+    const tick = () => new Promise((resolve) => setImmediate(resolve));
+    await tick();
+    view.stdin.write("e");
+    await tick();
+    view.stdin.write("\r");
+    await tick();
+    view.stdin.write("\u001b[B");
+    await tick();
+    view.stdin.write("\r");
+    await tick();
+    expect(view.lastFrame()).toContain("Generation");
+    view.stdin.write("\u001b[3~");
+    await tick();
+    view.stdin.write("8192abc");
+    await tick();
+    expect(view.lastFrame()).toContain("8192");
+    expect(view.lastFrame()).not.toContain("8192abc");
+    view.stdin.write("\r");
+    await tick();
+    view.stdin.write(" ");
+    await tick();
+    view.stdin.write("\r");
+    await tick();
+
+    expect(onSelect).toHaveBeenCalledWith({
+      backend: "remote",
+      provider: "openrouter",
+      model: "openai/gpt-4o-mini",
+      max_tokens: 8192,
+      reasoning_enabled: true,
+    });
     view.unmount();
   });
 });

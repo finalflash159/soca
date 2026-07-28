@@ -7,13 +7,27 @@ import type { LlmProviderStatus } from "../store.js";
 import { COLOR, ICON } from "../theme.js";
 import { Panel } from "./Primitives.js";
 
-type FocusTarget = "providers" | "key" | "search" | "models";
+type FocusTarget =
+  | "resume"
+  | "providers"
+  | "key"
+  | "search"
+  | "models"
+  | "maxTokens"
+  | "reasoning";
 
 interface ProviderChoice {
   key: string;
   label: string;
   hasKey: boolean;
   hasPricingApi: boolean;
+}
+
+interface PendingSelection {
+  backend: "local" | "remote";
+  provider: string;
+  model: string;
+  info: RemoteModelEvent | null;
 }
 
 export interface SettingsScreenProps {
@@ -29,12 +43,15 @@ export interface SettingsScreenProps {
     backend: "local" | "remote";
     provider: string;
     model: string;
+    max_tokens: number;
+    reasoning_enabled: boolean;
   }) => void;
-  /** Leave the settings screen (Esc while on the provider row). */
   onExit: () => void;
 }
 
 const LOCAL_FALLBACK_MODEL = "arcee_vylinh_3b_q4_k_m";
+export const MIN_MAX_TOKENS = 2_048;
+export const MAX_MAX_TOKENS = 500_000;
 
 function choicesFrom(providers: LlmProviderStatus[]): ProviderChoice[] {
   return [
@@ -48,9 +65,6 @@ function choicesFrom(providers: LlmProviderStatus[]): ProviderChoice[] {
   ];
 }
 
-// Client-side mirror of soca.llm.providers.search_models: case-insensitive,
-// whitespace-split tokens AND-ed across id + label. Runs on every keystroke so
-// the list filters in real time without a server round-trip.
 export function filterCatalog(
   catalog: RemoteModelEvent[],
   query: string,
@@ -83,25 +97,55 @@ function modelItems(catalog: RemoteModelEvent[]): Array<{
   value: RemoteModelEvent;
 }> {
   return catalog.map((model) => ({
-    // ink-select-input keys each row by `key ?? value`; without a string key the
-    // object value stringifies to `[object Object]` and every row collides.
     key: model.id,
     label: `${model.id} · ${formatContext(model.context_length)} · ${formatPrice(model)} [${model.pricing_source}]`,
     value: model,
   }));
 }
 
-function hintFor(focus: FocusTarget): string {
-  switch (focus) {
-    case "providers":
-      return "←/→ chọn provider · Enter mở · Esc thoát cài đặt";
-    case "key":
-      return "dán API key · Enter xác thực · Esc quay lại provider";
-    case "search":
-      return "gõ để lọc realtime · ↓ vào danh sách · Esc quay lại provider";
-    case "models":
-      return "↑/↓ chọn · Enter dùng model · Esc quay lại tìm kiếm";
-  }
+function providerLabel(
+  providerKey: string,
+  providers: LlmProviderStatus[],
+): string {
+  if (providerKey === "local") return "Local";
+  return (
+    providers.find((provider) => provider.key === providerKey)?.label ??
+    providerKey
+  );
+}
+
+export function validateMaxTokens(raw: string): string {
+  if (!raw) return "Nhập số token đầu ra.";
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value))
+    return "Giá trị token không hợp lệ.";
+  if (value < MIN_MAX_TOKENS)
+    return `Tối thiểu ${MIN_MAX_TOKENS.toLocaleString("vi-VN")} token.`;
+  if (value > MAX_MAX_TOKENS)
+    return `Tối đa ${MAX_MAX_TOKENS.toLocaleString("vi-VN")} token.`;
+  return "";
+}
+
+function savedSummary(
+  config: LlmConfigEvent,
+  providers: LlmProviderStatus[],
+): string {
+  const provider =
+    config.backend === "local"
+      ? "Local"
+      : providerLabel(config.provider, providers);
+  const effectiveReasoning = config.effective_reasoning_enabled ?? null;
+  const desiredReasoning = config.reasoning_enabled ?? false;
+  const effectiveMax = config.effective_max_tokens ?? config.max_tokens;
+  const reasoning =
+    effectiveReasoning === null
+      ? `reasoning theo model (đã chọn ${desiredReasoning ? "bật" : "tắt"})`
+      : `reasoning ${effectiveReasoning ? "bật" : "tắt"}`;
+  const output =
+    effectiveMax < config.max_tokens
+      ? `${config.max_tokens.toLocaleString("vi-VN")} → ${effectiveMax.toLocaleString("vi-VN")} output tok`
+      : `${config.max_tokens.toLocaleString("vi-VN")} output tok`;
+  return `${provider} · ${config.model} · ${output} · ${reasoning}`;
 }
 
 export function SettingsScreen({
@@ -118,8 +162,7 @@ export function SettingsScreen({
 }: SettingsScreenProps) {
   const rawInput = Boolean(useStdin().isRawModeSupported);
   const { stdout } = useStdout();
-  const panelWidth = Math.max(24, Math.min(72, (stdout?.columns ?? 80) - 2));
-
+  const panelWidth = Math.max(24, Math.min(88, (stdout?.columns ?? 80) - 2));
   const configProvider =
     config?.backend === "remote" ? config.provider : "local";
   const [selectedProviderKey, setSelectedProviderKey] =
@@ -127,16 +170,20 @@ export function SettingsScreen({
   const [focus, setFocus] = useState<FocusTarget>("providers");
   const [apiKey, setApiKey] = useState("");
   const [query, setQuery] = useState("");
-
-  // Sync the highlight from config until the user first navigates. config
-  // arrives asynchronously, so the initial "local" must catch up once known.
+  const [pending, setPending] = useState<PendingSelection | null>(null);
+  const [maxTokens, setMaxTokens] = useState("4096");
+  const [reasoningEnabled, setReasoningEnabled] = useState(false);
   const touched = useRef(false);
+
   useEffect(() => {
     if (touched.current || !config) return;
     setSelectedProviderKey(
       config.backend === "remote" ? config.provider : "local",
     );
-  }, [config?.backend, config?.provider]);
+    setMaxTokens(String(config.max_tokens));
+    setReasoningEnabled(config.reasoning_enabled ?? false);
+    setFocus("resume");
+  }, [config]);
 
   const choices = choicesFrom(providers);
   const selectedIndex = Math.max(
@@ -146,7 +193,6 @@ export function SettingsScreen({
   const selectedProvider = choices[selectedIndex] ?? choices[0];
   const isLocal = selectedProvider?.key === "local";
   const keyPending = selectedProvider?.key === keyPendingProvider;
-
   const visibleCatalog =
     selectedProvider?.key === catalogProvider ? catalog : [];
   const filtered = useMemo(
@@ -154,17 +200,42 @@ export function SettingsScreen({
     [visibleCatalog, query],
   );
   const items = modelItems(filtered);
-
-  // A saved provider hides its key field entirely; it only reappears when the
-  // user explicitly asks to replace the key (press "r" -> focus "key").
   const showKeyInput = !selectedProvider?.hasKey || focus === "key";
   const browsing = focus === "search" || focus === "models";
   const showModels = browsing || visibleCatalog.length > 0;
+  const editingGeneration = focus === "maxTokens" || focus === "reasoning";
+  const validationError = validateMaxTokens(maxTokens);
 
-  // Key just validated (hasKey false -> true while entering it): clear the field
-  // and back out to the provider row. Choosing a model is a separate, user-
-  // initiated step, so do NOT auto-jump into search. Watches the flag only, so
-  // no per-render refetch churn.
+  const pendingMax = pending?.info?.max_output_tokens ?? null;
+  const parsedMax = validationError ? null : Number(maxTokens);
+  const effectiveMax =
+    parsedMax === null
+      ? null
+      : pendingMax === null
+        ? parsedMax
+        : Math.min(parsedMax, pendingMax);
+  const pendingReasoningSupported =
+    pending?.info?.reasoning_supported ??
+    (config &&
+    pending?.backend === config.backend &&
+    pending?.model === config.model
+      ? (config.reasoning_supported ?? null)
+      : null);
+  const pendingReasoningMandatory =
+    pending?.info?.reasoning_mandatory ??
+    (config &&
+    pending?.backend === config.backend &&
+    pending?.model === config.model
+      ? (config.reasoning_mandatory ?? false)
+      : false);
+  const effectiveReasoning = pendingReasoningMandatory
+    ? true
+    : pendingReasoningSupported === true
+      ? reasoningEnabled
+      : pendingReasoningSupported === false
+        ? false
+        : null;
+
   const prevHasKey = useRef(Boolean(selectedProvider?.hasKey));
   useEffect(() => {
     const hasKey = Boolean(selectedProvider?.hasKey);
@@ -175,23 +246,21 @@ export function SettingsScreen({
     prevHasKey.current = hasKey;
   }, [selectedProvider?.hasKey, focus]);
 
-  // A successful replacement must leave the key editor even when the
-  // provider already had a key (hasKey therefore stays true). Failed
-  // validation keeps the editor open so the user can retry.
   const wasKeyPending = useRef(false);
   useEffect(() => {
-    if (wasKeyPending.current && !keyPending) {
-      if (notice.startsWith("API key đã")) {
-        setApiKey("");
-        setFocus("providers");
-      }
+    if (
+      wasKeyPending.current &&
+      !keyPending &&
+      notice.startsWith("API key đã")
+    ) {
+      setApiKey("");
+      setFocus("providers");
     }
     wasKeyPending.current = keyPending;
   }, [keyPending, notice]);
 
-  // ink-text-input treats Delete like Backspace. For a masked API key field,
-  // Delete should clear the whole temporary buffer in one operation.
   const clearKeyOnDelete = useRef(false);
+  const clearMaxOnDelete = useRef(false);
 
   function moveSelection(delta: number): void {
     touched.current = true;
@@ -203,16 +272,23 @@ export function SettingsScreen({
     setQuery("");
   }
 
+  function beginGeneration(selection: PendingSelection): void {
+    setPending(selection);
+    setMaxTokens(String(config?.max_tokens ?? 4096));
+    setReasoningEnabled(config?.reasoning_enabled ?? false);
+    setFocus("maxTokens");
+  }
+
   function descend(): void {
     if (!selectedProvider) return;
     if (selectedProvider.key === "local") {
-      onSelect({
+      beginGeneration({
         backend: "local",
         provider: config?.provider ?? "openrouter",
         model:
           config?.backend === "local" ? config.model : LOCAL_FALLBACK_MODEL,
+        info: null,
       });
-      onExit(); // choosing a backend is the final step -> back to main UI
       return;
     }
     if (!selectedProvider.hasKey) {
@@ -225,12 +301,41 @@ export function SettingsScreen({
     setFocus("search");
   }
 
+  function applyGeneration(): void {
+    if (!pending || validationError || parsedMax === null) return;
+    onSelect({
+      backend: pending.backend,
+      provider: pending.provider,
+      model: pending.model,
+      max_tokens: parsedMax,
+      reasoning_enabled: reasoningEnabled,
+    });
+    onExit();
+  }
+
   useInput(
     (input, key) => {
       if (key.escape) {
         if (focus === "models") setFocus("search");
-        else if (focus === "search" || focus === "key") setFocus("providers");
+        else if (focus === "search" || focus === "key")
+          setFocus("providers");
+        else if (editingGeneration)
+          setFocus(pending?.backend === "remote" ? "search" : "providers");
+        else if (focus === "resume") setFocus("providers");
         else onExit();
+        return;
+      }
+      if (focus === "resume") {
+        if (key.return) onExit();
+        else if (
+          input === "e" ||
+          key.downArrow ||
+          key.rightArrow ||
+          key.tab
+        ) {
+          touched.current = true;
+          setFocus("providers");
+        }
         return;
       }
       if (focus === "key" && key.delete) {
@@ -238,8 +343,11 @@ export function SettingsScreen({
         setApiKey("");
         return;
       }
-      // Only the provider row reacts to navigation keys; while a text field or
-      // the model list owns focus, let its own input handler consume them.
+      if (focus === "maxTokens" && key.delete) {
+        clearMaxOnDelete.current = true;
+        setMaxTokens("");
+        return;
+      }
       if (focus === "providers") {
         if (key.leftArrow || key.upArrow || input === "h" || input === "k") {
           moveSelection(-1);
@@ -252,7 +360,7 @@ export function SettingsScreen({
           moveSelection(1);
         } else if (input === "r" && !isLocal && selectedProvider?.hasKey) {
           setApiKey("");
-          setFocus("key"); // reveal an empty field to replace a saved/expired key
+          setFocus("key");
         } else if (key.return) {
           descend();
         }
@@ -264,6 +372,24 @@ export function SettingsScreen({
         items.length > 0
       ) {
         setFocus("models");
+        return;
+      }
+      if (focus === "maxTokens" && (key.return || key.tab)) {
+        if (!validationError) setFocus("reasoning");
+        return;
+      }
+      if (focus === "reasoning") {
+        if (
+          input === " " ||
+          key.leftArrow ||
+          key.rightArrow ||
+          key.upArrow ||
+          key.downArrow
+        ) {
+          setReasoningEnabled((value) => !value);
+        } else if (key.return) {
+          applyGeneration();
+        }
       }
     },
     { isActive: rawInput },
@@ -275,9 +401,24 @@ export function SettingsScreen({
         Cài đặt LLM
       </Text>
       <Text color={COLOR.warn}>
-        {ICON.err} Remote gửi transcript đến provider bên thứ ba. Local vẫn là
-        mặc định.
+        {ICON.err} Remote gửi transcript đến provider bên thứ ba.
       </Text>
+
+      {config ? (
+        <Box marginTop={1}>
+          <Panel
+            title="Cấu hình gần nhất"
+            subtitle={focus === "resume" ? "đang chọn" : undefined}
+            variant={focus === "resume" ? "focus" : "idle"}
+            width={panelWidth}
+          >
+            <Text color={COLOR.text}>{savedSummary(config, providers)}</Text>
+            <Text color={focus === "resume" ? COLOR.alt : COLOR.muted}>
+              Enter dùng lại · e hoặc ↓ để cấu hình
+            </Text>
+          </Panel>
+        </Box>
+      ) : null}
 
       <Box marginTop={1} flexWrap="wrap">
         {choices.map((choice) => {
@@ -285,15 +426,16 @@ export function SettingsScreen({
           const active = selected && focus === "providers";
           const status =
             choice.key === "local" || choice.hasKey ? ICON.on : ICON.off;
-          const color = active
-            ? COLOR.bg
-            : selected
-              ? COLOR.accent
-              : COLOR.muted;
           return (
             <Text
               key={choice.key}
-              color={color}
+              color={
+                active
+                  ? COLOR.bg
+                  : selected
+                    ? COLOR.accent
+                    : COLOR.muted
+              }
               backgroundColor={active ? COLOR.accent : undefined}
               bold={selected}
             >
@@ -302,23 +444,94 @@ export function SettingsScreen({
           );
         })}
       </Box>
-      <Text color={COLOR.muted}>{hintFor(focus)}</Text>
-      {config ? (
-        <Text color={COLOR.muted}>
-          giới hạn đầu ra mặc định: {config.max_tokens.toLocaleString("vi-VN")} token
-        </Text>
-      ) : null}
+      <Text color={COLOR.muted}>
+        {focus === "providers"
+          ? "←/→ chọn provider · Enter mở · r đổi key · Esc thoát"
+          : focus === "key"
+            ? "dán API key · Enter xác thực · Delete xóa hết · Esc quay lại"
+            : focus === "search"
+              ? "gõ để lọc realtime · ↓ vào danh sách · Esc quay lại"
+              : focus === "models"
+                ? "↑/↓ chọn · Enter cấu hình model · Esc quay lại"
+                : editingGeneration
+                  ? "Enter tiếp tục/xác nhận · Esc quay lại"
+                  : ""}
+      </Text>
 
-      {isLocal ? (
+      {editingGeneration && pending ? (
+        <Box marginTop={1} flexDirection="column">
+          <Panel
+            title="Generation"
+            subtitle={`${providerLabel(pending.backend === "local" ? "local" : pending.provider, providers)} · ${pending.model}`}
+            variant="info"
+            width={panelWidth}
+          >
+            <Box flexDirection="column">
+              <Text
+                bold={focus === "maxTokens"}
+                color={focus === "maxTokens" ? COLOR.accent : COLOR.text}
+              >
+                Max output tokens
+              </Text>
+              <Box>
+                <Text color={COLOR.alt}>
+                  {focus === "maxTokens" ? `${ICON.pointer} ` : "  "}
+                </Text>
+                <TextInput
+                  focus={focus === "maxTokens"}
+                  value={maxTokens}
+                  onChange={(value) => {
+                    if (clearMaxOnDelete.current) {
+                      clearMaxOnDelete.current = false;
+                      setMaxTokens("");
+                      return;
+                    }
+                    setMaxTokens(value.replace(/\D/g, ""));
+                  }}
+                  onSubmit={() => {
+                    if (!validationError) setFocus("reasoning");
+                  }}
+                  placeholder="2048–500000"
+                />
+              </Box>
+              <Text color={validationError ? COLOR.bad : COLOR.muted}>
+                {validationError ||
+                  (pendingMax !== null && effectiveMax !== parsedMax
+                    ? `Model giới hạn ${pendingMax.toLocaleString("vi-VN")}; chạy thực tế ${effectiveMax?.toLocaleString("vi-VN")} token.`
+                    : `Chạy thực tế ${effectiveMax?.toLocaleString("vi-VN")} token.`)}
+              </Text>
+
+              <Box marginTop={1}>
+                <Text
+                  bold={focus === "reasoning"}
+                  color={focus === "reasoning" ? COLOR.accent : COLOR.text}
+                >
+                  {focus === "reasoning" ? `${ICON.pointer} ` : "  "}
+                  Reasoning{" "}
+                </Text>
+                <Text color={reasoningEnabled ? COLOR.good : COLOR.muted}>
+                  {reasoningEnabled ? "● bật" : "○ tắt"}
+                </Text>
+                <Text color={COLOR.muted}> · Space/←/→ đổi</Text>
+              </Box>
+              <Text color={COLOR.muted}>
+                {pendingReasoningMandatory
+                  ? "Model bắt buộc reasoning; chạy thực tế luôn bật."
+                  : pendingReasoningSupported === false
+                    ? "Model không hỗ trợ reasoning; chạy thực tế tắt."
+                    : effectiveReasoning === null
+                      ? "Model không công bố capability; SoCa giữ mặc định của model/provider."
+                      : `Chạy thực tế: reasoning ${effectiveReasoning ? "bật" : "tắt"}.`}
+              </Text>
+            </Box>
+          </Panel>
+        </Box>
+      ) : isLocal ? (
         <Box marginTop={1} flexDirection="column">
           <Text color={COLOR.good}>
             {ICON.on} Local GGUF — không gửi dữ liệu lên cloud.
           </Text>
-          <Text color={COLOR.muted}>
-            Model:{" "}
-            {config?.backend === "local" ? config.model : LOCAL_FALLBACK_MODEL}
-          </Text>
-          <Text color={COLOR.muted}>Enter để dùng backend Local.</Text>
+          <Text color={COLOR.muted}>Enter để cấu hình Local.</Text>
         </Box>
       ) : selectedProvider ? (
         <Box marginTop={1} flexDirection="column">
@@ -347,36 +560,21 @@ export function SettingsScreen({
                       if (!keyPending && value.trim())
                         onSetKey(selectedProvider.key, value.trim());
                     }}
-                    placeholder={
-                      selectedProvider.hasKey
-                        ? "nhập key mới để thay…"
-                        : "dán API key rồi Enter để xác thực…"
-                    }
+                    placeholder="dán API key rồi Enter để xác thực…"
                   />
                 </Box>
               </Panel>
-              <Box marginTop={1}>
-                <Text
-                  color={selectedProvider.hasKey ? COLOR.good : COLOR.muted}
-                >
-                  {keyPending
-                    ? `${ICON.on} đang xác thực API key…`
-                    : selectedProvider.hasKey
-                      ? `${ICON.on} nhập key mới rồi Enter · Esc để hủy`
-                      : `${ICON.off} cần API key hợp lệ trước khi chọn model`}
-                </Text>
-                {selectedProvider.hasPricingApi ? (
-                  <Text color={COLOR.alt}> · giá live</Text>
-                ) : (
-                  <Text color={COLOR.muted}>
-                    {" "}
-                    · giá không rõ nếu provider không trả API
-                  </Text>
-                )}
-              </Box>
+              <Text
+                color={selectedProvider.hasKey ? COLOR.good : COLOR.muted}
+              >
+                {keyPending
+                  ? `${ICON.on} đang xác thực API key…`
+                  : selectedProvider.hasKey
+                    ? `${ICON.on} nhập key mới rồi Enter`
+                    : `${ICON.off} cần API key hợp lệ trước khi chọn model`}
+              </Text>
             </>
           ) : (
-            // Key already saved: hide the input entirely, offer the model step.
             <Box flexDirection="column">
               <Box>
                 <Text color={COLOR.good}>{ICON.on} API key đã lưu</Text>
@@ -408,7 +606,7 @@ export function SettingsScreen({
                   <Text color={COLOR.muted}>
                     {visibleCatalog.length === 0
                       ? "đang tải danh sách model…"
-                      : `${filtered.length}/${visibleCatalog.length} model · ${hintFor(focus)}`}
+                      : `${filtered.length}/${visibleCatalog.length} model`}
                   </Text>
                   {items.length === 0 ? (
                     <Text color={COLOR.muted}>
@@ -421,14 +619,14 @@ export function SettingsScreen({
                       items={items}
                       isFocused={focus === "models"}
                       limit={6}
-                      onSelect={(item) => {
-                        onSelect({
+                      onSelect={(item) =>
+                        beginGeneration({
                           backend: "remote",
                           provider: selectedProvider.key,
                           model: item.value.id,
-                        });
-                        onExit(); // model picked -> leave settings, back to chat
-                      }}
+                          info: item.value,
+                        })
+                      }
                     />
                   )}
                 </Box>

@@ -40,6 +40,12 @@ def _openrouter_payload() -> dict[str, Any]:
                 "context_length": 131072,
                 # per-token price strings, as OpenRouter returns them.
                 "pricing": {"prompt": "0.00000059", "completion": "0.00000079"},
+                "supported_parameters": ["max_tokens", "reasoning"],
+                "top_provider": {"max_completion_tokens": 32768},
+                "reasoning": {
+                    "default_enabled": True,
+                    "mandatory": True,
+                },
             },
             {
                 "id": "free/model",
@@ -66,6 +72,10 @@ def test_openrouter_parses_live_pricing_per_million_tokens() -> None:
     # 0.00000059 USD/token * 1e6 = 0.59 USD / 1M tokens.
     assert first.price_prompt_per_1m == pytest.approx(0.59)
     assert first.price_completion_per_1m == pytest.approx(0.79)
+    assert first.max_output_tokens == 32768
+    assert first.reasoning_supported is True
+    assert first.reasoning_mandatory is True
+    assert first.reasoning_parameter == "reasoning"
 
 
 def test_openrouter_free_model_prices_are_zero_not_none() -> None:
@@ -146,13 +156,21 @@ def test_gemini_prefix_is_stripped_and_stripped_id_drives_pricing(monkeypatch) -
 
     monkeypatch.setattr(model_catalog, "lookup_pricing", fake_lookup)
     provider = get_provider("gemini")
-    payload = {"data": [{"id": "models/gemini-2.0-flash"}]}
+    payload = {
+        "data": [
+            {
+                "id": "models/gemini-2.0-flash",
+                "outputTokenLimit": 8192,
+            }
+        ]
+    }
 
     catalog = fetch_catalog(provider, "sk-test", http=FakeHttp(payload))
 
     assert catalog[0].id == "gemini-2.0-flash"
     assert seen["model_id"] == "gemini-2.0-flash"  # stripped id feeds the lookup
     assert catalog[0].pricing_source == "table"
+    assert catalog[0].max_output_tokens == 8192
 
 
 def test_groq_context_window_key_is_read() -> None:

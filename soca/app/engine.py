@@ -169,6 +169,9 @@ def _model_protocol_payload(model: RemoteModelInfo) -> dict[str, Any]:
         "price_prompt_per_1m": model.price_prompt_per_1m,
         "price_completion_per_1m": model.price_completion_per_1m,
         "pricing_source": model.pricing_source,
+        "max_output_tokens": model.max_output_tokens,
+        "reasoning_supported": model.reasoning_supported,
+        "reasoning_mandatory": model.reasoning_mandatory,
     }
 
 
@@ -427,14 +430,38 @@ class SocaEngine:
         if not isinstance(provider_key, str) or not isinstance(model_id, str):
             self._error("LLM provider và model phải là chuỗi.")
             return
+        max_tokens = command.get("max_tokens", self.llm_settings.max_tokens)
+        reasoning_enabled = command.get("reasoning_enabled", self.llm_settings.reasoning_enabled)
+        if isinstance(max_tokens, bool) or not isinstance(max_tokens, int):
+            self._error("Max output tokens phải là số nguyên.")
+            return
+        if not isinstance(reasoning_enabled, bool):
+            self._error("Reasoning phải là true hoặc false.")
+            return
+        model_info = (
+            self._remote_model_info(provider_key, model_id) if backend == "remote" else None
+        )
         try:
             settings = LlmSettings(
                 backend=backend,
                 provider_key=provider_key,
                 model_id=model_id,
-                max_tokens=self.llm_settings.max_tokens,
+                max_tokens=max_tokens,
+                reasoning_enabled=reasoning_enabled,
                 temperature=self.llm_settings.temperature,
                 top_p=self.llm_settings.top_p,
+                model_max_output_tokens=(
+                    model_info.max_output_tokens if model_info is not None else None
+                ),
+                model_reasoning_supported=(
+                    model_info.reasoning_supported if model_info is not None else None
+                ),
+                model_reasoning_mandatory=(
+                    model_info.reasoning_mandatory if model_info is not None else False
+                ),
+                model_reasoning_parameter=(
+                    model_info.reasoning_parameter if model_info is not None else None
+                ),
             )
         except ValueError as exc:
             self._error(str(exc))
@@ -466,6 +493,11 @@ class SocaEngine:
             "provider": settings.provider_key,
             "model": settings.model_id,
             "max_tokens": settings.max_tokens,
+            "effective_max_tokens": settings.effective_max_tokens,
+            "reasoning_enabled": settings.reasoning_enabled,
+            "effective_reasoning_enabled": settings.effective_reasoning_enabled,
+            "reasoning_supported": settings.model_reasoning_supported,
+            "reasoning_mandatory": settings.model_reasoning_mandatory,
             "temperature": settings.temperature,
             "top_p": settings.top_p,
             "pricing_as_of": PRICING_TABLE_AS_OF,
@@ -486,6 +518,20 @@ class SocaEngine:
         if catalog is None:
             return None
         return next((model for model in catalog if model.id == settings.model_id), None)
+
+    def _remote_model_info(
+        self,
+        provider_key: str,
+        model_id: str,
+    ) -> RemoteModelInfo | None:
+        api_key = self.secret_store.get_key(provider_key)
+        if not api_key:
+            return None
+        provider = get_provider(provider_key)
+        catalog = self._cached_catalog(provider, api_key)
+        if catalog is None:
+            return None
+        return next((model for model in catalog if model.id == model_id), None)
 
     @staticmethod
     def _catalog_fingerprint(api_key: str) -> str:
@@ -596,6 +642,8 @@ class SocaEngine:
         with self._catalog_lock:
             self._catalog_cache[provider.key] = (fingerprint, list(catalog))
 
+        self._refresh_active_model_capabilities(provider, catalog)
+
         if purpose == "key":
             self._complete_key_validation(provider, api_key, fingerprint)
         elif purpose in {"models", "config"}:
@@ -607,6 +655,33 @@ class SocaEngine:
             self.llm_settings.backend == "remote" and self.llm_settings.provider_key == provider.key
         ):
             self._emit_llm_config()
+
+    def _refresh_active_model_capabilities(
+        self,
+        provider: LLMProvider,
+        catalog: list[RemoteModelInfo],
+    ) -> None:
+        settings = self.llm_settings
+        if settings.backend != "remote" or settings.provider_key != provider.key:
+            return
+        model = next((item for item in catalog if item.id == settings.model_id), None)
+        if model is None:
+            return
+        refreshed = settings.with_model_capabilities(
+            max_output_tokens=model.max_output_tokens,
+            reasoning_supported=model.reasoning_supported,
+            reasoning_mandatory=model.reasoning_mandatory,
+            reasoning_parameter=model.reasoning_parameter,
+        )
+        if refreshed == settings:
+            return
+        try:
+            self.llm_settings_saver(refreshed)
+        except ValueError:
+            LOGGER.warning("Could not persist refreshed model capabilities", exc_info=True)
+            return
+        self.llm_settings = refreshed
+        self.text_bundle = None
 
     def _key_validation_is_current(self, provider_key: str, fingerprint: str) -> bool:
         with self._catalog_lock:
@@ -763,7 +838,7 @@ class SocaEngine:
             },
         ]
         model_context = self._model_context_length()
-        output_reserve = self.llm_settings.max_tokens
+        output_reserve = self.llm_settings.effective_max_tokens
         available = (
             max(0, model_context - resident_tokens - output_reserve)
             if model_context is not None
@@ -1092,7 +1167,7 @@ class SocaEngine:
         # SecretStore. Fall back for builders with a narrower signature (tests).
         runtime_config = dataclasses.replace(
             self.text_config,
-            max_tokens=self.llm_settings.max_tokens,
+            max_tokens=self.llm_settings.effective_max_tokens,
             temperature=self.llm_settings.temperature,
             top_p=self.llm_settings.top_p,
         )

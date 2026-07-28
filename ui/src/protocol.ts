@@ -26,6 +26,8 @@ export interface EngineCommand {
   key?: string;
   backend?: "local" | "remote";
   model?: string;
+  max_tokens?: number;
+  reasoning_enabled?: boolean;
   proposal_id?: string;
   action?: "request" | "status" | "cancel";
 }
@@ -246,6 +248,9 @@ export interface RemoteModelEvent {
   price_prompt_per_1m: number | null;
   price_completion_per_1m: number | null;
   pricing_source: "live" | "table" | "unknown";
+  max_output_tokens?: number | null;
+  reasoning_supported?: boolean | null;
+  reasoning_mandatory?: boolean;
 }
 
 export interface LlmCatalogEvent {
@@ -270,6 +275,11 @@ export interface LlmConfigEvent {
   provider: string;
   model: string;
   max_tokens: number;
+  effective_max_tokens?: number;
+  reasoning_enabled?: boolean;
+  effective_reasoning_enabled?: boolean | null;
+  reasoning_supported?: boolean | null;
+  reasoning_mandatory?: boolean;
   temperature: number;
   top_p: number;
   pricing_as_of: string;

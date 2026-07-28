@@ -542,8 +542,21 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
           onSetKey={(provider, key) =>
             engine?.send({ cmd: "llm_set_key", provider, key })
           }
-          onSelect={({ backend, provider, model }) =>
-            engine?.send({ cmd: "llm_select", backend, provider, model })
+          onSelect={({
+            backend,
+            provider,
+            model,
+            max_tokens,
+            reasoning_enabled,
+          }) =>
+            engine?.send({
+              cmd: "llm_select",
+              backend,
+              provider,
+              model,
+              max_tokens,
+              reasoning_enabled,
+            })
           }
           onExit={leaveSettings}
         />
