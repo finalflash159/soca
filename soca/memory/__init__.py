@@ -17,6 +17,13 @@ from soca.memory.reflection import BackgroundReflection, ReflectionConfig, Refle
 from soca.memory.retrieved import RetrievedMemory, RetrievedMemoryConfig
 from soca.memory.scoring import MemoryHit, MemoryScore, MemoryScoreConfig
 from soca.memory.session import SessionMemory
+from soca.memory.session_store import SessionCheckpointStore
+from soca.memory.working import (
+    CompactionJob,
+    ConversationTurn,
+    WorkingMemoryPolicy,
+    WorkingSummaryArtifact,
+)
 
 __all__ = [
     "LongTermMemorySource",
@@ -47,5 +54,10 @@ __all__ = [
     "MemoryTurn",
     "QueryAwareLongTermMemorySource",
     "SessionMemory",
+    "SessionCheckpointStore",
+    "CompactionJob",
+    "ConversationTurn",
+    "WorkingMemoryPolicy",
+    "WorkingSummaryArtifact",
     "SessionMemorySource",
 ]

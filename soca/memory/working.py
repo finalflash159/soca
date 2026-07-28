@@ -259,6 +259,58 @@ class WorkingMemory:
             "revision": self._revision,
         }
 
+    @classmethod
+    def from_dict(
+        cls,
+        payload: object,
+        *,
+        policy: WorkingMemoryPolicy | None = None,
+        token_counter: Callable[[str], int] = approximate_tokens,
+    ) -> WorkingMemory:
+        if not isinstance(payload, dict) or payload.get("version") != 1:
+            raise ValueError("unsupported working memory checkpoint")
+        thread_id = payload.get("thread_id")
+        turns_data = payload.get("turns")
+        if not isinstance(thread_id, str) or not isinstance(turns_data, list):
+            raise ValueError("invalid working memory checkpoint")
+        memory = cls(thread_id=thread_id, policy=policy, token_counter=token_counter)
+        turns: list[ConversationTurn] = []
+        for value in turns_data:
+            if not isinstance(value, dict):
+                raise ValueError("invalid checkpoint turn")
+            turns.append(
+                ConversationTurn(
+                    sequence=int(value.get("sequence", 0)),
+                    user_text=str(value.get("user_text", "")),
+                    assistant_text=str(value.get("assistant_text", "")),
+                    status=str(value.get("status", "pending")),  # type: ignore[arg-type]
+                )
+            )
+        if any(left.sequence >= right.sequence for left, right in zip(turns, turns[1:], strict=False)):
+            raise ValueError("checkpoint turn sequences must be monotonic")
+        summary_data = payload.get("summary")
+        if summary_data is not None:
+            if not isinstance(summary_data, dict):
+                raise ValueError("invalid checkpoint summary")
+            memory._summary = WorkingSummaryArtifact(
+                version=int(summary_data.get("version", 0)),
+                generation=int(summary_data.get("generation", 0)),
+                source_through_sequence=int(summary_data.get("source_through_sequence", 0)),
+                summary=str(summary_data.get("summary", "")),
+                user_constraints=tuple(summary_data.get("user_constraints", ())),
+                decisions=tuple(summary_data.get("decisions", ())),
+                corrections=tuple(summary_data.get("corrections", ())),
+                open_items=tuple(summary_data.get("open_items", ())),
+                continuity_refs=tuple(summary_data.get("continuity_refs", ())),
+                prompt_fingerprint=str(summary_data.get("prompt_fingerprint", "")),
+            )
+        memory._turns = turns
+        memory._generation = int(payload.get("generation", 0))
+        memory._revision = int(payload.get("revision", 0))
+        if memory._generation < 0 or memory._revision < 0:
+            raise ValueError("invalid checkpoint generation")
+        return memory
+
     def _token_count(self) -> int:
         return self._token_counter(self.render())
 
