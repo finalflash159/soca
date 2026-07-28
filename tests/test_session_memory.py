@@ -147,6 +147,26 @@ def test_session_memory_clear_removes_turns():
     assert memory.render() == ""
 
 
+def test_session_memory_stats_expose_policy_and_prompt_sections() -> None:
+    memory = SessionMemory(summary_enabled=False)
+    memory.append("user", "Ghi nhớ quyết định dùng TTS local.")
+    memory.append("assistant", "Đã ghi nhận.")
+
+    stats = memory.stats()
+
+    assert stats.current_tokens > 0
+    assert stats.rendered_tokens > 0
+    assert stats.hard_limit_tokens == 16_384
+    assert stats.high_watermark_tokens == 15_000
+    assert stats.target_tokens == 12_000
+    assert stats.summary_tokens == 0
+    assert stats.recent_tokens > 0
+    assert stats.turn_count == 1
+    assert stats.complete_turn_count == 1
+    assert stats.pending_compaction is False
+    assert stats.worker_state == "disabled"
+
+
 def test_session_memory_automatically_runs_selected_summary_worker() -> None:
     fake_worker = _ImmediateSummaryWorker()
     worker = cast(LocalSummaryWorkerProcess, cast(Any, fake_worker))

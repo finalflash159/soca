@@ -29,6 +29,7 @@ describe("SettingsScreen", () => {
           top_p: 0.95,
           pricing_as_of: "2026-07",
           pricing: null,
+          context_length: 128000,
         }}
         providers={providers}
         catalog={[
@@ -93,6 +94,7 @@ describe("SettingsScreen", () => {
           top_p: 0.95,
           pricing_as_of: "2026-07",
           pricing: null,
+          context_length: 128000,
         }}
         providers={providers}
         catalog={twoModelCatalog}
@@ -157,6 +159,7 @@ describe("SettingsScreen", () => {
           top_p: 0.95,
           pricing_as_of: "2026-07",
           pricing: null,
+          context_length: 128000,
         }}
         providers={providers}
         catalog={[]}
@@ -202,6 +205,7 @@ describe("SettingsScreen", () => {
           top_p: 0.95,
           pricing_as_of: "2026-07",
           pricing: null,
+          context_length: 128000,
         }}
         providers={providers}
         catalog={[]}

@@ -1,10 +1,15 @@
 import type {
+  ContextEvent,
   EngineEvent,
   LlmConfigEvent,
+  MemoryEvent,
   RemoteModelEvent,
+  UsageEvent,
 } from "./protocol.js";
 
 export type Mode = "chat" | "voice" | "status" | "settings";
+export type InteractiveMode = "chat" | "voice" | "settings";
+export type InfoView = "status" | "context" | "memory" | "usage";
 export type VoiceState =
   "loading" | "idle" | "listening" | "processing" | "speaking" | "error";
 
@@ -89,6 +94,7 @@ export interface AppState {
   memoryMode: "blob" | "retrieved" | "degraded";
   memoryHits: number;
   proposals: MemoryProposal[];
+  proposalsOpen: boolean;
   memoryActionError: string;
   retrievalTrace: RetrievalTrace | null;
   llmProviders: LlmProviderStatus[];
@@ -98,6 +104,11 @@ export interface AppState {
   llmKeyPendingProvider: string | null;
   settingsNotice: string;
   knowledgeIndex: KnowledgeIndexStatus | null;
+  activeInfo: InfoView | null;
+  context: ContextEvent | null;
+  memorySnapshot: MemoryEvent | null;
+  usageSnapshot: UsageEvent | null;
+  memoryCompactionStatus: string;
 }
 
 export const initialState: AppState = {
@@ -124,6 +135,7 @@ export const initialState: AppState = {
   memoryMode: "blob",
   memoryHits: 0,
   proposals: [],
+  proposalsOpen: false,
   memoryActionError: "",
   retrievalTrace: null,
   llmProviders: [],
@@ -133,6 +145,11 @@ export const initialState: AppState = {
   llmKeyPendingProvider: null,
   settingsNotice: "",
   knowledgeIndex: null,
+  activeInfo: null,
+  context: null,
+  memorySnapshot: null,
+  usageSnapshot: null,
+  memoryCompactionStatus: "",
 };
 
 export type Action =
@@ -141,6 +158,8 @@ export type Action =
   | { type: "user_message"; text: string }
   | { type: "system_message"; text: string }
   | { type: "voice_started" }
+  | { type: "show_info"; view: InfoView }
+  | { type: "clear_info" }
   | { type: "clear_timeline" }
   | { type: "clear_proposals" };
 
@@ -337,35 +356,17 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
         profiles: event.profiles,
         knowledgeIndex: event.knowledge_index ?? null,
       };
-    case "memory": {
-      const text = event.enabled
-        ? event.text
-          ? `session memory:\n${event.text}`
-          : "session memory: (trống)"
-        : "session memory: đang tắt (--no-memory)";
-      return {
-        ...state,
-        timeline: push(state.timeline, { kind: "system", text }),
-      };
-    }
+    case "context":
+      return { ...state, context: event };
+    case "memory":
+      return { ...state, memorySnapshot: event };
     case "memory_compaction":
       return {
         ...state,
-        timeline: push(state.timeline, {
-          kind: "system",
-          text: `memory compact: ${event.status}${event.detail ? ` · ${event.detail}` : ""}`,
-        }),
+        memoryCompactionStatus: `${event.status}${event.detail ? ` · ${event.detail}` : ""}`,
       };
-    case "usage": {
-      const text =
-        `phiên: ${event.turns} lượt (${event.llm_turns} LLM) ` +
-        `· prompt ${event.prompt_tokens} tok · completion ${event.completion_tokens} tok ` +
-        `· TTFT ~${Math.round(event.mean_ttft_ms)}ms · ${event.mean_tokens_per_second.toFixed(1)} tok/s`;
-      return {
-        ...state,
-        timeline: push(state.timeline, { kind: "system", text }),
-      };
-    }
+    case "usage":
+      return { ...state, usageSnapshot: event };
     case "router_trace":
       return {
         ...state,
@@ -379,7 +380,12 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
         memoryHits: event.hits.length,
       };
     case "memory_proposals":
-      return { ...state, proposals: event.proposals, memoryActionError: "" };
+      return {
+        ...state,
+        proposals: event.proposals,
+        proposalsOpen: true,
+        memoryActionError: "",
+      };
     case "memory_action":
       return event.ok
         ? {
@@ -488,10 +494,19 @@ export function reduce(state: AppState, action: Action): AppState {
         voiceState: "loading",
         voiceNote: "khởi động voice loop…",
       };
+    case "show_info":
+      return { ...state, activeInfo: action.view };
+    case "clear_info":
+      return { ...state, activeInfo: null };
     case "clear_timeline":
       return { ...state, timeline: [] };
     case "clear_proposals":
-      return { ...state, proposals: [], memoryActionError: "" };
+      return {
+        ...state,
+        proposals: [],
+        proposalsOpen: false,
+        memoryActionError: "",
+      };
     default:
       return state;
   }

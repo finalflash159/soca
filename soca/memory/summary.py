@@ -200,6 +200,16 @@ SUMMARY_SCHEMA: dict[str, object] = {
     ],
     "additionalProperties": False,
 }
+_SUMMARY_FIELDS = frozenset(
+    {
+        "summary",
+        "user_constraints",
+        "decisions",
+        "corrections",
+        "open_items",
+        "continuity_refs",
+    }
+)
 _SUMMARY_POLICY = (
     "POLICY — đây là instruction của summarizer, không phải nội dung hội thoại:",
     "- Tóm tắt trạng thái để tiếp tục hội thoại; không trả lời người dùng.",
@@ -256,7 +266,7 @@ def prompt_fingerprint() -> str:
 
 def artifact_from_json(job: CompactionJob, raw: str) -> WorkingSummaryArtifact:
     parsed = json.loads(raw)
-    if not isinstance(parsed, dict) or set(parsed) != set(SUMMARY_SCHEMA["properties"]):
+    if not isinstance(parsed, dict) or set(parsed) != _SUMMARY_FIELDS:
         raise ValueError("summary worker returned an invalid schema")
     values: dict[str, tuple[str, ...]] = {}
     for field in ("user_constraints", "decisions", "corrections", "open_items", "continuity_refs"):
@@ -473,7 +483,11 @@ class LocalSummaryWorkerProcess:
         self._process = None
         self._generation = None
         self._started_at = None
-        return payload if isinstance(payload, dict) else {"ok": False, "error": "invalid_worker_payload"}
+        return (
+            payload
+            if isinstance(payload, dict)
+            else {"ok": False, "error": "invalid_worker_payload"}
+        )
 
     def cancel(self) -> bool:
         process = self._process

@@ -1,4 +1,5 @@
 import { Box, Text } from "ink";
+import { SLASH_COMMANDS } from "../keymap.js";
 import { COLOR, lerpHex } from "../theme.js";
 
 const CARD_BORDER = lerpHex(COLOR.accent, COLOR.border, 0.55);
@@ -6,21 +7,17 @@ const CARD_BORDER = lerpHex(COLOR.accent, COLOR.border, 0.55);
 const GROUPS: Array<{ title: string; hints: Array<[string, string]> }> = [
   {
     title: "Lệnh",
-    hints: [
-      ["/chat /voice /status /settings", "chuyển chế độ"],
-      ["/s", "mở cài đặt LLM"],
-      ["/listen", "chạy voice loop"],
-      ["/stop", "dừng voice loop"],
-      ["/k <câu hỏi>", "ép dùng knowledge context"],
-      ["/memory", "xem session memory"],
-      ["/usage", "token / latency của phiên"],
-      ["/quit", "thoát"],
-    ],
+    hints: SLASH_COMMANDS.map(
+      (command) =>
+        [command.usage, command.description] as [string, string],
+    ),
   },
   {
     title: "Phím",
     hints: [
       ["↵", "gửi tin nhắn / lệnh"],
+      ["↑/↓", "chọn trong bảng slash command"],
+      ["Tab", "điền slash command đang chọn"],
       ["?", "mở bảng phím này (khi ô nhập trống)"],
       ["bất kỳ phím", "đóng bảng này"],
       ["^c", "thoát"],

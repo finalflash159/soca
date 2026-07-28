@@ -5,6 +5,14 @@ SQLite is the source of truth for corpus/chunk/generation metadata, while a
 validated immutable ``.npy`` file is the source of truth for dense vectors.
 """
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from soca.knowledge.indexing.catalog import IndexCatalog
+    from soca.knowledge.indexing.coordinator import IndexCoordinator
+    from soca.knowledge.indexing.identity import CorpusIdentity, CorpusSpec
+    from soca.knowledge.indexing.status import IndexStatus
+
 __all__ = [
     "CorpusIdentity",
     "CorpusSpec",

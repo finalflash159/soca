@@ -5,11 +5,18 @@ import { EngineClient } from "./engine.js";
 import {
   initialState,
   reduce,
+  type InfoView,
+  type InteractiveMode,
   type Mode,
   type TimelineEntry,
 } from "./store.js";
 import { COLOR, ICON } from "./theme.js";
-import { footerHints as buildFooterHints } from "./keymap.js";
+import {
+  canonicalCommand,
+  filterSlashCommands,
+  footerHints as buildFooterHints,
+  SLASH_COMMANDS,
+} from "./keymap.js";
 import { useResize } from "./hooks/useResize.js";
 import { TimelineLine } from "./components/Timeline.js";
 import { VoiceStatus } from "./components/VoiceStatus.js";
@@ -22,6 +29,9 @@ import { StatusBar } from "./components/StatusBar.js";
 import { MemoryProposalInbox } from "./components/MemoryProposalInbox.js";
 import { RetrievalInspector } from "./components/RetrievalInspector.js";
 import { Panel, Spinner } from "./components/Primitives.js";
+import { CommandPalette } from "./components/CommandPalette.js";
+import { InformationPanel } from "./components/InformationPanel.js";
+import { SessionTokenMeter } from "./components/SessionTokenMeter.js";
 
 export interface AppProps {
   /** The mode the user picked on the splash / CLI. */
@@ -69,14 +79,23 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
   // for this session; leaving Settings (Esc or picking a model) continues into
   // that mode. status/settings targets open directly.
   const gated = target === "chat" || target === "voice";
-  const initialMode: Mode = gated ? "settings" : target;
-  const homeMode: Mode = gated ? target : "chat";
+  const initialMode: InteractiveMode = gated
+    ? "settings"
+    : target === "status"
+      ? "chat"
+      : target;
+  const homeMode: "chat" | "voice" = target === "voice" ? "voice" : "chat";
   const [state, dispatch] = useReducer(reduce, {
     ...initialState,
     mode: initialMode,
+    activeInfo: target === "status" ? "status" : null,
   });
   const [input, setInput] = useState("");
   const [showHelp, setShowHelp] = useState(false);
+  const [commandIndex, setCommandIndex] = useState(0);
+  const [settingsReturnMode, setSettingsReturnMode] = useState<
+    "chat" | "voice"
+  >(homeMode);
   const engineRef = useRef<EngineClient | null>(null);
 
   const { cols } = useResize();
@@ -91,7 +110,7 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
     engine.start({ profile, noModel, vault });
     engine.send({ cmd: "llm_providers" });
     engine.send({ cmd: "llm_config" });
-    if (initialMode === "status") engine.send({ cmd: "status" });
+    if (target === "status") engine.send({ cmd: "status" });
     // A voice target opens in Settings first; the listening loop starts on
     // leaveSettings, not here.
     return () => engine.stop();
@@ -103,6 +122,49 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
   // TextInput also receiving the key. Opening happens in `onPromptChange`.
   useInput(() => setShowHelp(false), { isActive: rawInput && showHelp });
 
+  const filteredCommands = useMemo(
+    () => filterSlashCommands(input),
+    [input],
+  );
+  const commandPaletteOpen =
+    input.startsWith("/") &&
+    state.mode !== "settings" &&
+    !showHelp &&
+    !state.proposalsOpen;
+  const selectedCommand =
+    filteredCommands[
+      Math.min(commandIndex, Math.max(0, filteredCommands.length - 1))
+    ];
+
+  useInput(
+    (_character, key) => {
+      if (key.escape) {
+        setInput("");
+        setCommandIndex(0);
+        return;
+      }
+      if (key.upArrow) {
+        setCommandIndex((value) => Math.max(0, value - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setCommandIndex((value) =>
+          Math.min(Math.max(0, filteredCommands.length - 1), value + 1),
+        );
+        return;
+      }
+      if (key.tab && selectedCommand) {
+        setInput(
+          selectedCommand.argument
+            ? `${selectedCommand.value} `
+            : selectedCommand.value,
+        );
+        setCommandIndex(0);
+      }
+    },
+    { isActive: rawInput && commandPaletteOpen },
+  );
+
   function onPromptChange(value: string): void {
     // Claude Code convention: "?" on an empty prompt opens the shortcuts panel
     // rather than being typed. Any other input (incl. "?" mid-message) passes
@@ -111,15 +173,22 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
       setShowHelp(true);
       return;
     }
+    if (value && state.activeInfo !== null)
+      dispatch({ type: "clear_info" });
+    setCommandIndex(0);
     setInput(value);
   }
 
   const engine = engineRef.current;
 
-  function switchMode(next: Mode) {
+  function switchMode(next: InteractiveMode) {
+    if (
+      next === "settings" &&
+      (state.mode === "chat" || state.mode === "voice")
+    )
+      setSettingsReturnMode(state.mode);
     if (next !== "voice" && state.voiceRunning)
       engine?.send({ cmd: "voice_stop" });
-    if (next === "status") engine?.send({ cmd: "status" });
     if (next === "settings") {
       engine?.send({ cmd: "llm_providers" });
       engine?.send({ cmd: "llm_config" });
@@ -127,22 +196,48 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
     dispatch({ type: "set_mode", mode: next });
   }
 
-  // Leaving Settings continues into the session mode the user picked (homeMode);
-  // for a voice session that also starts the listening loop.
+  // Leaving Settings returns to the interactive mode that opened it; for a
+  // voice session that also restarts the listening loop.
   function leaveSettings() {
-    if (homeMode === "voice" && !state.voiceRunning && !noModel) {
+    if (settingsReturnMode === "voice" && !state.voiceRunning && !noModel) {
       dispatch({ type: "voice_started" });
       engine?.send({ cmd: "voice_start" });
     }
-    switchMode(homeMode);
+    switchMode(settingsReturnMode);
+  }
+
+  function showInfo(view: InfoView) {
+    dispatch({ type: "show_info", view });
+    if (view === "status") engine?.send({ cmd: "status" });
+    else if (view === "context") engine?.send({ cmd: "context" });
+    else if (view === "memory") engine?.send({ cmd: "memory" });
+    else engine?.send({ cmd: "usage" });
   }
 
   function onSubmit(raw: string) {
-    const text = raw.trim();
+    let text = raw.trim();
+    if (text.startsWith("/") && selectedCommand) {
+      const normalized = canonicalCommand(text.toLowerCase());
+      const exact =
+        SLASH_COMMANDS.some((command) => command.value === normalized) ||
+        normalized.startsWith("/k ");
+      if (!exact || commandIndex > 0) {
+        if (selectedCommand.argument) {
+          setInput(`${selectedCommand.value} `);
+          setCommandIndex(0);
+          return;
+        }
+        text = selectedCommand.value;
+      } else if (selectedCommand.argument && normalized === selectedCommand.value) {
+        setInput(`${selectedCommand.value} `);
+        return;
+      }
+    }
     setInput("");
+    setCommandIndex(0);
     if (!text) return;
     if (text.startsWith("/")) {
-      const cmd = text.toLowerCase();
+      const cmd = canonicalCommand(text.toLowerCase());
       if (state.mode === "chat" && /^\/k(?:\s|$)/i.test(text)) {
         if (text.slice(2).trim() === "") {
           dispatch({
@@ -158,21 +253,24 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
       if (cmd === "/quit" || cmd === "/exit") {
         engine?.stop();
         exit();
-      } else if (
-        cmd === "/chat" ||
-        cmd === "/voice" ||
-        cmd === "/status" ||
-        cmd === "/settings" ||
-        cmd === "/s"
-      ) {
-        switchMode(cmd === "/s" ? "settings" : (cmd.slice(1) as Mode));
+      } else if (cmd === "/chat" || cmd === "/voice" || cmd === "/settings") {
+        dispatch({ type: "clear_info" });
+        switchMode(cmd.slice(1) as InteractiveMode);
         if (cmd === "/voice" && !state.voiceRunning && !noModel) {
           dispatch({ type: "voice_started" });
           engine?.send({ cmd: "voice_start" });
         }
+      } else if (cmd === "/status") {
+        showInfo("status");
+      } else if (cmd === "/context") {
+        showInfo("context");
       } else if (cmd === "/listen") {
-        dispatch({ type: "voice_started" });
-        engine?.send({ cmd: "voice_start" });
+        dispatch({ type: "clear_info" });
+        switchMode("voice");
+        if (!state.voiceRunning && !noModel) {
+          dispatch({ type: "voice_started" });
+          engine?.send({ cmd: "voice_start" });
+        }
       } else if (cmd === "/stop") {
         engine?.send({ cmd: "voice_stop" });
       } else if (cmd.startsWith("/memory compact")) {
@@ -185,6 +283,8 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
               | "status"
               | "cancel",
           });
+          dispatch({ type: "show_info", view: "memory" });
+          engine?.send({ cmd: "memory" });
         } else {
           dispatch({
             type: "system_message",
@@ -192,13 +292,20 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
           });
         }
       } else if (cmd === "/memory") {
-        engine?.send({ cmd: "memory" });
-      } else if (cmd === "/proposals") {
+        showInfo("memory");
+      } else if (cmd === "/memory proposals") {
+        dispatch({ type: "clear_info" });
         engine?.send({ cmd: "memory_proposals" });
       } else if (cmd === "/usage") {
-        engine?.send({ cmd: "usage" });
+        showInfo("usage");
       } else if (cmd === "/help") {
+        dispatch({ type: "clear_info" });
         setShowHelp(true);
+      } else if (/^\/k(?:\s|$)/i.test(text)) {
+        dispatch({
+          type: "system_message",
+          text: "/k chỉ dùng trong chat — gõ /chat rồi thử lại",
+        });
       } else {
         dispatch({
           type: "system_message",
@@ -210,7 +317,7 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
     if (state.mode !== "chat") {
       dispatch({
         type: "system_message",
-        text: "đang ở chế độ chỉ xem — gõ /chat để trò chuyện",
+        text: "đang ở voice mode — gõ /chat nếu muốn gửi tin nhắn văn bản",
       });
       return;
     }
@@ -268,36 +375,17 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
         </Box>
       ) : null}
 
-      {state.mode === "status" ? (
-        <Box paddingX={1} marginBottom={1} flexDirection="column">
-          {state.profiles.length === 0 ? (
-            <Spinner label="đang quét profile…" />
-          ) : (
-            state.profiles.map((p) => (
-              <Box key={p.key}>
-                <Box width={18} flexShrink={0}>
-                  <Text bold color={COLOR.alt}>
-                    {p.key}
-                  </Text>
-                </Box>
-                <Box width={9} flexShrink={0}>
-                  <Text color={p.status === "ok" ? COLOR.good : COLOR.warn}>
-                    {p.status}
-                  </Text>
-                </Box>
-                <Text color={COLOR.muted} wrap="truncate-end">
-                  {p.asr} {ICON.dot} {p.llm} {ICON.dot} {p.tts}
-                  {p.voice ? `/${p.voice}` : ""}
-                </Text>
-              </Box>
-            ))
-          )}
-          {state.knowledgeIndex ? (
-            <Text color={COLOR.muted}>
-              knowledge · {state.knowledgeIndex.sparse_state} · dense {state.knowledgeIndex.dense_state} · {state.knowledgeIndex.documents} docs / {state.knowledgeIndex.chunks} chunks
-            </Text>
-          ) : null}
-        </Box>
+      {state.activeInfo ? (
+        <InformationPanel
+          view={state.activeInfo}
+          width={cols - 2}
+          context={state.context}
+          memory={state.memorySnapshot}
+          usage={state.usageSnapshot}
+          profiles={state.profiles}
+          knowledge={state.knowledgeIndex}
+          memoryCompaction={state.memoryCompactionStatus}
+        />
       ) : null}
 
       {state.chatBusy ? (
@@ -325,7 +413,9 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
         />
       ) : null}
 
-      {state.mode === "chat" && state.timeline.length === 0 ? (
+      {state.mode === "chat" &&
+      state.timeline.length === 0 &&
+      state.activeInfo === null ? (
         <Empty
           icon={ICON.bird}
           title="No messages yet."
@@ -333,7 +423,7 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
         />
       ) : null}
 
-      {state.proposals.length > 0 ? (
+      {state.proposalsOpen ? (
         <MemoryProposalInbox
           proposals={state.proposals}
           error={state.memoryActionError}
@@ -418,34 +508,50 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
       ) : null}
 
       {state.mode !== "settings" ? (
-        <Box paddingX={1}>
-          <Panel title={state.mode} width={cols - 2} height={2} focused>
-            <Box>
-              <Text color={COLOR.accent}>{`${ICON.pointer} `}</Text>
-              <Box flexGrow={1}>
-                <TextInput
-                  focus={rawInput && !showHelp}
-                  value={input}
-                  onChange={onPromptChange}
-                  onSubmit={onSubmit}
-                  placeholder={
-                    state.mode === "voice"
-                      ? "voice loop: /stop, /listen, /chat, /help…"
-                      : state.chatBusy
-                        ? "SoCa đang soạn câu trả lời…"
-                        : "nhập tin nhắn hoặc /lệnh…"
-                  }
-                />
+        <>
+          {commandPaletteOpen ? (
+            <CommandPalette
+              commands={filteredCommands}
+              selectedIndex={commandIndex}
+              width={cols - 2}
+            />
+          ) : null}
+          <Box paddingX={1}>
+            <Panel title={state.mode} width={cols - 2} height={2} focused>
+              <Box>
+                <Text color={COLOR.accent}>{`${ICON.pointer} `}</Text>
+                <Box flexGrow={1}>
+                  <TextInput
+                    focus={
+                      rawInput &&
+                      !showHelp &&
+                      !state.proposalsOpen
+                    }
+                    value={input}
+                    onChange={onPromptChange}
+                    onSubmit={onSubmit}
+                    placeholder={
+                      state.mode === "voice"
+                        ? "voice loop: /stop, /listen, /chat, /help…"
+                        : state.chatBusy
+                          ? "SoCa đang soạn câu trả lời…"
+                          : "nhập tin nhắn hoặc /lệnh…"
+                    }
+                  />
+                </Box>
               </Box>
-            </Box>
-          </Panel>
-        </Box>
+            </Panel>
+          </Box>
+        </>
+      ) : null}
+      {state.mode !== "settings" ? (
+        <SessionTokenMeter stats={state.context?.session ?? null} />
       ) : null}
       <StatusBar
         hints={hints}
         mode={state.mode}
         profile={state.profile}
-        memoryOn={!noModel}
+        memoryOn={(state.context?.session ?? null) !== null}
         llm={llm}
         remote={state.llmConfig?.backend === "remote"}
       />

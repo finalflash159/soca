@@ -8,6 +8,7 @@ export interface EngineCommand {
     | "voice_stop"
     | "memory"
     | "memory_compact"
+    | "context"
     | "usage"
     | "llm_providers"
     | "llm_models"
@@ -17,7 +18,6 @@ export interface EngineCommand {
     | "memory_proposals"
     | "memory_approve"
     | "memory_reject"
-    | "inspect"
     | "quit";
   text?: string;
   max_turns?: number | null;
@@ -139,6 +139,51 @@ export interface MemoryEvent {
   event: "memory";
   enabled: boolean;
   text: string;
+  summary: string;
+  recent: string;
+  stats: SessionMemoryStats | null;
+}
+
+export interface SessionMemoryStats {
+  current_tokens: number;
+  rendered_tokens: number;
+  hard_limit_tokens: number;
+  high_watermark_tokens: number;
+  target_tokens: number;
+  summary_tokens: number;
+  recent_tokens: number;
+  turn_count: number;
+  complete_turn_count: number;
+  summary_generation: number | null;
+  pending_compaction: boolean;
+  worker_state: string;
+}
+
+export interface ContextComponent {
+  id:
+    | "system"
+    | "core_memory"
+    | "working_summary"
+    | "recent_conversation"
+    | "prompt_scaffolding"
+    | "archive_memory"
+    | "knowledge"
+    | "current_input";
+  label: string;
+  tokens: number | null;
+  policy: "always" | "always_when_present" | "on_demand" | "per_turn";
+}
+
+export interface ContextEvent {
+  event: "context";
+  estimated: boolean;
+  token_counter: string;
+  session: SessionMemoryStats | null;
+  resident_prompt_tokens: number;
+  output_reserve_tokens: number;
+  model_context_tokens: number | null;
+  available_dynamic_tokens: number | null;
+  components: ContextComponent[];
 }
 
 export interface MemoryCompactionEvent {
@@ -203,6 +248,7 @@ export interface LlmConfigEvent {
   top_p: number;
   pricing_as_of: string;
   pricing: RemoteModelEvent | null;
+  context_length: number | null;
 }
 
 export interface EngineErrorEvent {
@@ -230,6 +276,7 @@ export type EngineEvent =
   | ChatEvent
   | StatusEvent
   | MemoryEvent
+  | ContextEvent
   | MemoryCompactionEvent
   | UsageEvent
   | LlmProviderEvent
@@ -259,6 +306,7 @@ export function parseEngineEvent(line: string): EngineEvent | null {
       "chat",
       "status",
       "memory",
+      "context",
       "memory_compaction",
       "usage",
       "llm_providers",

@@ -35,7 +35,9 @@ class EvidenceReconciler:
             return EvidenceBundleDecision("consistent", decisions, "one_supported_source")
         # Textual contradiction detection belongs to a frozen later evaluator;
         # source score magnitude is not meaningful across independent corpora.
-        return EvidenceBundleDecision("unknown", decisions, "multiple_supported_sources_unreconciled")
+        return EvidenceBundleDecision(
+            "unknown", decisions, "multiple_supported_sources_unreconciled"
+        )
 
 
 def decide_evidence(
@@ -49,10 +51,14 @@ def decide_evidence(
     if not hits:
         return EvidenceDecision(source, "insufficient", 0, None, "no_hits")
     score = getattr(hits[0], "score", None)
-    try:
-        top_score = float(getattr(score, "total", score))
-    except (TypeError, ValueError):
+    raw_score = getattr(score, "total", score)
+    if raw_score is None:
         top_score = None
+    else:
+        try:
+            top_score = float(raw_score)
+        except (TypeError, ValueError):
+            top_score = None
     return EvidenceDecision(source, "supported", len(hits), top_score, "hits_present")
 
 

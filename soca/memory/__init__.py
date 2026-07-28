@@ -17,7 +17,7 @@ from soca.memory.proposals import MemoryProposal, ProposalStore
 from soca.memory.reflection import BackgroundReflection, ReflectionConfig, ReflectionService
 from soca.memory.retrieved import RetrievedMemory, RetrievedMemoryConfig
 from soca.memory.scoring import MemoryHit, MemoryScore, MemoryScoreConfig
-from soca.memory.session import SessionMemory
+from soca.memory.session import SessionMemory, SessionMemoryStats
 from soca.memory.session_store import SessionCheckpointStore
 from soca.memory.working import (
     CompactionJob,
@@ -57,6 +57,7 @@ __all__ = [
     "MemoryTurn",
     "QueryAwareLongTermMemorySource",
     "SessionMemory",
+    "SessionMemoryStats",
     "SessionCheckpointStore",
     "CompactionJob",
     "ConversationTurn",

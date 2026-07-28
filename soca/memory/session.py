@@ -1,16 +1,33 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 from soca.core.text_budget import truncate
 from soca.memory.base import MemoryRole, MemoryTurn
 from soca.memory.compaction_coordinator import CompactionResult, WorkingMemoryCompactionCoordinator
 from soca.memory.summary import LocalSummaryWorkerProcess, build_production_summary_worker
-from soca.memory.working import WorkingMemory, WorkingMemoryPolicy
+from soca.memory.working import WorkingMemory, WorkingMemoryPolicy, approximate_tokens
 
 RECENT_CONVERSATION_HEADER = "Recent conversation:"
 VALID_ROLES = {"user", "assistant"}
+
+
+@dataclass(frozen=True)
+class SessionMemoryStats:
+    current_tokens: int
+    rendered_tokens: int
+    hard_limit_tokens: int
+    high_watermark_tokens: int
+    target_tokens: int
+    summary_tokens: int
+    recent_tokens: int
+    turn_count: int
+    complete_turn_count: int
+    summary_generation: int | None
+    pending_compaction: bool
+    worker_state: str
 
 
 class SessionMemory:
@@ -146,6 +163,26 @@ class SessionMemory:
         recent_block = "\n".join([header, *reversed(selected)])
         return prefix + separator + recent_block
 
+    def stats(self) -> SessionMemoryStats:
+        snapshot = self.working.snapshot
+        summary_section, recent_section = self.working.render_sections()
+        return SessionMemoryStats(
+            current_tokens=snapshot.token_count,
+            rendered_tokens=approximate_tokens(self.render()),
+            hard_limit_tokens=self.working.policy.hard_limit_tokens,
+            high_watermark_tokens=self.working.policy.high_watermark_tokens,
+            target_tokens=self.working.policy.target_tokens,
+            summary_tokens=approximate_tokens(summary_section),
+            recent_tokens=approximate_tokens(recent_section),
+            turn_count=len(snapshot.turns),
+            complete_turn_count=sum(turn.status == "complete" for turn in snapshot.turns),
+            summary_generation=(
+                snapshot.summary.generation if snapshot.summary is not None else None
+            ),
+            pending_compaction=snapshot.pending_compaction,
+            worker_state=self.summary_worker_state,
+        )
+
     def request_compaction(self) -> CompactionResult:
         current = self._poll_compaction()
         if current.status == "running":
@@ -184,3 +221,6 @@ class SessionMemory:
             return
         self.compaction.cancel()
         self.working.trim_only()
+
+
+__all__ = ["SessionMemory", "SessionMemoryStats"]

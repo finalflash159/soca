@@ -24,6 +24,40 @@ describe("parseEngineEvent", () => {
     expect(event?.event).toBe("llm_catalog");
   });
 
+  it("parses the structured context token breakdown", () => {
+    const event = parseEngineEvent(
+      JSON.stringify({
+        event: "context",
+        estimated: true,
+        token_counter: "utf8_bytes_div_4",
+        session: {
+          current_tokens: 1200,
+          rendered_tokens: 1200,
+          hard_limit_tokens: 16384,
+          high_watermark_tokens: 15000,
+          target_tokens: 12000,
+          summary_tokens: 200,
+          recent_tokens: 1000,
+          turn_count: 4,
+          complete_turn_count: 4,
+          summary_generation: 1,
+          pending_compaction: false,
+          worker_state: "idle",
+        },
+        resident_prompt_tokens: 1400,
+        output_reserve_tokens: 4096,
+        model_context_tokens: 32768,
+        available_dynamic_tokens: 27272,
+        components: [],
+      }),
+    );
+
+    expect(event?.event).toBe("context");
+    if (event?.event === "context") {
+      expect(event.session?.hard_limit_tokens).toBe(16384);
+    }
+  });
+
   it("rejects malformed protocol lines", () => {
     expect(parseEngineEvent("not-json")).toBeNull();
     expect(parseEngineEvent('{"event": 1}')).toBeNull();

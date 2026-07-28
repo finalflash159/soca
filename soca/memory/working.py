@@ -110,9 +110,7 @@ class WorkingMemoryPolicy:
             15_000,
             16_384,
         ):
-            raise ValueError(
-                "working_v2_16k requires target/high/hard = 12000/15000/16384"
-            )
+            raise ValueError("working_v2_16k requires target/high/hard = 12000/15000/16384")
         if (self.summary_budget_tokens, self.recent_budget_tokens) != (256, 512):
             raise ValueError("working_v2_16k requires summary/recent = 256/512")
         if self.minimum_recent_complete_turns != 2 or self.preferred_recent_complete_turns != 4:
@@ -187,7 +185,9 @@ class WorkingMemory:
         self._revision += 1
         return turn
 
-    def finish_turn(self, sequence: int, assistant_text: str, *, status: TurnStatus = "complete") -> None:
+    def finish_turn(
+        self, sequence: int, assistant_text: str, *, status: TurnStatus = "complete"
+    ) -> None:
         if status not in {"complete", "interrupted", "failed"}:
             raise ValueError("finish_turn needs terminal status")
         for index in range(len(self._turns) - 1, -1, -1):
@@ -218,7 +218,9 @@ class WorkingMemory:
         keep = completed[-self.policy.preferred_recent_complete_turns :]
         frozen_sequences = {turn.sequence for turn in keep}
         frozen = tuple(
-            turn for turn in self._turns if turn.status == "complete" and turn.sequence not in frozen_sequences
+            turn
+            for turn in self._turns
+            if turn.status == "complete" and turn.sequence not in frozen_sequences
         )
         if not frozen:
             return None
@@ -248,7 +250,9 @@ class WorkingMemory:
         return True
 
     def cancel_compaction(self, generation: int | None = None) -> bool:
-        if not self._pending_compaction or (generation is not None and generation != self._generation):
+        if not self._pending_compaction or (
+            generation is not None and generation != self._generation
+        ):
             return False
         self._pending_compaction = False
         return True
@@ -260,17 +264,20 @@ class WorkingMemory:
         self._enforce_hard_limit(target=self.policy.target_tokens)
 
     def render(self) -> str:
-        parts: list[str] = []
+        return "\n\n".join(part for part in self.render_sections() if part)
+
+    def render_sections(self) -> tuple[str, str]:
+        """Return summary and recent-turn prompt sections separately."""
+        summary_section = ""
         if self._summary is not None and (rendered_summary := self._summary.render()):
-            parts.append("Earlier conversation state:\n" + rendered_summary)
+            summary_section = "Earlier conversation state:\n" + rendered_summary
         lines: list[str] = []
         for turn in self._turns:
             lines.append("User: " + turn.user_text)
             if turn.assistant_text:
                 lines.append("Assistant: " + turn.assistant_text)
-        if lines:
-            parts.append("Recent conversation:\n" + "\n".join(lines))
-        return "\n\n".join(parts)
+        recent_section = "Recent conversation:\n" + "\n".join(lines) if lines else ""
+        return summary_section, recent_section
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -309,7 +316,9 @@ class WorkingMemory:
                     status=str(value.get("status", "pending")),  # type: ignore[arg-type]
                 )
             )
-        if any(left.sequence >= right.sequence for left, right in zip(turns, turns[1:], strict=False)):
+        if any(
+            left.sequence >= right.sequence for left, right in zip(turns, turns[1:], strict=False)
+        ):
             raise ValueError("checkpoint turn sequences must be monotonic")
         summary_data = payload.get("summary")
         if summary_data is not None:
@@ -339,7 +348,10 @@ class WorkingMemory:
 
     def _enforce_hard_limit(self, *, target: int | None = None) -> None:
         limit = target if target is not None else self.policy.hard_limit_tokens
-        while self._token_count() > limit and len(self._turns) > self.policy.minimum_recent_complete_turns:
+        while (
+            self._token_count() > limit
+            and len(self._turns) > self.policy.minimum_recent_complete_turns
+        ):
             self._turns.pop(0)
             self._revision += 1
 

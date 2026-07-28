@@ -3,7 +3,8 @@
 The Ink TUI (``ui/``) spawns ``soca engine`` and speaks this protocol:
 
 * stdin  — one JSON command per line:
-  ``{"cmd": "status"}`` · ``{"cmd": "chat", "text": "..."}`` ·
+  ``{"cmd": "status"}`` · ``{"cmd": "context"}`` ·
+  ``{"cmd": "chat", "text": "..."}`` ·
   ``{"cmd": "voice_start", "max_turns": null}`` · ``{"cmd": "voice_stop"}`` ·
   ``{"cmd": "llm_providers"}`` · ``{"cmd": "llm_models", "provider": "..."}`` ·
   ``{"cmd": "llm_set_key", "provider": "...", "key": "..."}`` ·
@@ -59,7 +60,10 @@ from soca.llm.providers import (
     get_provider,
     search_models,
 )
-from soca.memory import MemoryCommands, ProposalStore, SessionMemory
+from soca.llm.registry import LLM_MODEL_REGISTRY
+from soca.memory import MarkdownLongTermMemory, MemoryCommands, ProposalStore, SessionMemory
+from soca.memory.working import approximate_tokens
+from soca.prompts import SOCA_RUNTIME_SYSTEM_PROMPT, build_runtime_prompt
 from soca.tts import VALTEC_TTS_CONFIG
 
 PROTOCOL_VERSION = 1
@@ -227,6 +231,7 @@ class SocaEngine:
                 "stack": stack,
             }
         )
+        self._cmd_context()
         if self._settings_warning is not None:
             self._error(self._settings_warning)
 
@@ -237,6 +242,8 @@ class SocaEngine:
             return False
         if cmd == "status":
             self._cmd_status()
+        elif cmd == "context":
+            self._cmd_context()
         elif cmd == "memory":
             self._cmd_memory()
         elif cmd == "memory_compact":
@@ -311,9 +318,13 @@ class SocaEngine:
         ]
         knowledge_index: dict[str, Any] | None = None
         try:
-            knowledge_index = IndexCatalog(default_index_home()).status(
-                CorpusSpec(vault_path=self.text_config.vault),
-            ).as_dict()
+            knowledge_index = (
+                IndexCatalog(default_index_home())
+                .status(
+                    CorpusSpec(vault_path=self.text_config.vault),
+                )
+                .as_dict()
+            )
         except (OSError, RuntimeError, ValueError) as exc:
             LOGGER.debug("Could not inspect knowledge index status: %s", exc)
         self.writer.emit(
@@ -435,8 +446,10 @@ class SocaEngine:
             "top_p": settings.top_p,
             "pricing_as_of": PRICING_TABLE_AS_OF,
             "pricing": active_model,
+            "context_length": self._model_context_length(),
         }
         self.writer.emit(payload)
+        self._cmd_context()
 
     def _active_remote_model(self, settings: LlmSettings) -> RemoteModelInfo | None:
         if settings.backend != "remote":
@@ -477,8 +490,7 @@ class SocaEngine:
                 "event": "llm_catalog",
                 "provider": provider.key,
                 "models": [
-                    _model_protocol_payload(model)
-                    for model in search_models(catalog, query)
+                    _model_protocol_payload(model) for model in search_models(catalog, query)
                 ],
                 "pricing_as_of": PRICING_TABLE_AS_OF,
             }
@@ -568,8 +580,7 @@ class SocaEngine:
         # Startup can emit llm_config before this fetch is ready. Refresh only
         # its pricing field once the cache is available.
         if purpose != "key" and (
-            self.llm_settings.backend == "remote"
-            and self.llm_settings.provider_key == provider.key
+            self.llm_settings.backend == "remote" and self.llm_settings.provider_key == provider.key
         ):
             self._emit_llm_config()
 
@@ -632,10 +643,144 @@ class SocaEngine:
 
     def _cmd_memory(self) -> None:
         if self.session_memory is None:
-            self.writer.emit({"event": "memory", "enabled": False, "text": ""})
+            self.writer.emit(
+                {
+                    "event": "memory",
+                    "enabled": False,
+                    "text": "",
+                    "summary": "",
+                    "recent": "",
+                    "stats": None,
+                }
+            )
             return
+        summary, recent = self.session_memory.working.render_sections()
         rendered = self.session_memory.render().strip()
-        self.writer.emit({"event": "memory", "enabled": True, "text": rendered})
+        self.writer.emit(
+            {
+                "event": "memory",
+                "enabled": True,
+                "text": rendered,
+                "summary": summary,
+                "recent": recent,
+                "stats": dataclasses.asdict(self.session_memory.stats()),
+            }
+        )
+
+    def _cmd_context(self) -> None:
+        stats = self.session_memory.stats() if self.session_memory is not None else None
+        core_memory = self._core_memory_text()
+        core_section = f"Long-term memory:\n{core_memory}" if core_memory else ""
+        summary_section = ""
+        recent_section = ""
+        if self.session_memory is not None:
+            summary_section, recent_section = self.session_memory.working.render_sections()
+        memory_prompt = "\n\n".join(
+            part for part in (core_section, summary_section, recent_section) if part
+        )
+        resident_prompt = build_runtime_prompt(
+            user_text="",
+            memory_prompt_text=memory_prompt,
+        )
+        system_tokens = approximate_tokens(SOCA_RUNTIME_SYSTEM_PROMPT.strip())
+        core_tokens = approximate_tokens(core_section)
+        summary_tokens = approximate_tokens(summary_section)
+        recent_tokens = approximate_tokens(recent_section)
+        resident_tokens = approximate_tokens(resident_prompt)
+        accounted = system_tokens + core_tokens + summary_tokens + recent_tokens
+        components = [
+            {
+                "id": "system",
+                "label": "System instructions",
+                "tokens": system_tokens,
+                "policy": "always",
+            },
+            {
+                "id": "core_memory",
+                "label": "Core memory (memory/profile.md)",
+                "tokens": core_tokens,
+                "policy": "always",
+            },
+            {
+                "id": "working_summary",
+                "label": "Working summary",
+                "tokens": summary_tokens,
+                "policy": "always_when_present",
+            },
+            {
+                "id": "recent_conversation",
+                "label": "Recent conversation",
+                "tokens": recent_tokens,
+                "policy": "always_when_present",
+            },
+            {
+                "id": "prompt_scaffolding",
+                "label": "Prompt labels / separators",
+                "tokens": max(0, resident_tokens - accounted),
+                "policy": "always",
+            },
+            {
+                "id": "archive_memory",
+                "label": "Archive memory retrieval",
+                "tokens": None,
+                "policy": "on_demand",
+            },
+            {
+                "id": "knowledge",
+                "label": "Knowledge retrieval",
+                "tokens": None,
+                "policy": "on_demand",
+            },
+            {
+                "id": "current_input",
+                "label": "Current user input",
+                "tokens": None,
+                "policy": "per_turn",
+            },
+        ]
+        model_context = self._model_context_length()
+        output_reserve = self.llm_settings.max_tokens
+        available = (
+            max(0, model_context - resident_tokens - output_reserve)
+            if model_context is not None
+            else None
+        )
+        self.writer.emit(
+            {
+                "event": "context",
+                "estimated": True,
+                "token_counter": "utf8_bytes_div_4",
+                "session": dataclasses.asdict(stats) if stats is not None else None,
+                "resident_prompt_tokens": resident_tokens,
+                "output_reserve_tokens": output_reserve,
+                "model_context_tokens": model_context,
+                "available_dynamic_tokens": available,
+                "components": components,
+            }
+        )
+
+    def _core_memory_text(self) -> str:
+        vault = self.text_config.vault
+        if not vault.is_dir():
+            return ""
+        try:
+            return MarkdownLongTermMemory(
+                vault,
+                max_chars=self.text_config.profile_chars,
+            ).read_profile()
+        except (OSError, UnicodeError, ValueError):
+            return ""
+
+    def _model_context_length(self) -> int | None:
+        if self.text_config.llm_model_is_override:
+            config = LLM_MODEL_REGISTRY.get(self.text_config.llm_model)
+            return config.context_window if config is not None else None
+        settings = self.llm_settings
+        if settings.backend == "local":
+            config = LLM_MODEL_REGISTRY.get(settings.model_id)
+            return config.context_window if config is not None else None
+        active = self._active_remote_model(settings)
+        return active.context_length if active is not None else None
 
     def _cmd_memory_compact(self, action: str) -> None:
         if self.session_memory is None:
@@ -660,6 +805,7 @@ class SocaEngine:
                 "detail": result.detail,
             }
         )
+        self._cmd_context()
 
     def _memory_commands(self) -> MemoryCommands | None:
         vault = self.text_config.vault
@@ -711,7 +857,9 @@ class SocaEngine:
                     "proposal_id": proposal_id,
                     "action": "approved" if action == "approve" else "rejected",
                     "ok": result.status in {"approved", "rejected"},
-                    "error_code": None if result.status in {"approved", "rejected"} else result.status,
+                    "error_code": None
+                    if result.status in {"approved", "rejected"}
+                    else result.status,
                 }
             )
         except (OSError, ValueError, KeyError) as exc:
@@ -793,13 +941,13 @@ class SocaEngine:
                 except (OSError, ValueError):
                     pending_count = 0
                 self.writer.emit(
-                        {
-                            "event": "router_trace",
-                            "tier": trace.tool_router_tier,
-                            "tool": trace.tool_calls[-1].name if trace.tool_calls else None,
-                            "reason": trace.tool_router_reason,
-                            "latency_ms": trace.stage_latencies_ms.get("tool_router", 0.0),
-                        }
+                    {
+                        "event": "router_trace",
+                        "tier": trace.tool_router_tier,
+                        "tool": trace.tool_calls[-1].name if trace.tool_calls else None,
+                        "reason": trace.tool_router_reason,
+                        "latency_ms": trace.stage_latencies_ms.get("tool_router", 0.0),
+                    }
                 )
                 knowledge_hits = trace.knowledge_hits[:16]
                 if knowledge_hits:
@@ -808,7 +956,8 @@ class SocaEngine:
                             "event": "retrieval_trace",
                             "query": result.frame.text if result.frame is not None else "",
                             "tier": trace.tool_router_tier
-                            if trace.tool_router_tier in {"deterministic", "semantic", "llm", "none"}
+                            if trace.tool_router_tier
+                            in {"deterministic", "semantic", "llm", "none"}
                             else "none",
                             "latency_ms": trace.stage_latencies_ms.get("knowledge", 0.0),
                             "columns": [
@@ -842,20 +991,29 @@ class SocaEngine:
                             {
                                 "id": str(getattr(hit.document, "id", ""))[:120],
                                 "corpus": "profile",
-                                "relevance": float(getattr(getattr(hit, "score", None), "relevance", 0.0)),
-                                "recency": float(getattr(getattr(hit, "score", None), "recency", 0.0)),
-                                "importance": float(getattr(getattr(hit, "score", None), "importance", 0.0)),
+                                "relevance": float(
+                                    getattr(getattr(hit, "score", None), "relevance", 0.0)
+                                ),
+                                "recency": float(
+                                    getattr(getattr(hit, "score", None), "recency", 0.0)
+                                ),
+                                "importance": float(
+                                    getattr(getattr(hit, "score", None), "importance", 0.0)
+                                ),
                                 "total": float(getattr(getattr(hit, "score", None), "total", 0.0)),
                             }
                             for hit in trace.memory_hits[:16]
                         ],
                         "compacted_turn_count": 0,
-                        "recent_turn_count": len(self.session_memory.turns) if self.session_memory is not None else 0,
+                        "recent_turn_count": len(self.session_memory.turns)
+                        if self.session_memory is not None
+                        else 0,
                         "background_status": "idle",
                         "episodic_enabled": False,
                         "pending_proposal_count": pending_count,
                     }
                 )
+            self._cmd_context()
         except Exception as exc:  # noqa: BLE001 - protocol boundary must not crash
             self.writer.emit({"event": "chat", "type": "error", "text": str(exc)})
         finally:
@@ -993,6 +1151,8 @@ class SocaEngine:
                     }
                 )
             self._track_usage(event.usage)
+            if event.type == "done":
+                self._cmd_context()
         if self.voice_stop_event is not None:
             self.voice_stop_event.set()
 
