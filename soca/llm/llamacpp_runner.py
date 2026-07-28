@@ -22,7 +22,7 @@ from .message_format import (
     uses_completion_prompt,
 )
 from .output_cleaning import StreamingOutputCleaner, clean_model_output
-from .registry import DEFAULT_LLM_MODEL_KEY, get_model_config
+from .registry import DEFAULT_LLM_MODEL_KEY, LLMModelConfig, get_model_config
 
 
 class LocalLlamaCppLLM:
@@ -30,13 +30,14 @@ class LocalLlamaCppLLM:
         self,
         model_key: str = DEFAULT_LLM_MODEL_KEY,
         model_path: str | Path | None = None,
+        model_config: LLMModelConfig | None = None,
         n_ctx: int | None = None,
         n_threads: int = 4,
         n_gpu_layers: int = -1,
         seed: int = 42,
         verbose: bool = False,
     ) -> None:
-        self.config = get_model_config(model_key)
+        self.config = model_config or get_model_config(model_key)
         self.model_key = model_key
         self.model_path = Path(model_path or self.config.local_path)
 

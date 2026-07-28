@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from soca.llm import LLMResult, StructuredLLMEngine
+from soca.llm.registry import LLMModelConfig
 from soca.memory.working import CompactionJob, WorkingSummaryArtifact
 
 
@@ -28,53 +29,97 @@ def default_summary_model_root() -> Path:
 @dataclass(frozen=True)
 class SummaryModelSpec:
     key: str
+    hf_repo: str
     revision: str
     filename: str
+    expected_sha256: str
+    expected_bytes: int
     quantization: str
     license_note: str
-    answer_model_key: str | None = None
+    prompt_style: str
+    context_window: int = 4096
+    chat_format: str | None = None
+    append_no_think: bool = False
 
     def path(self, root: Path | None = None) -> Path:
         base = root or default_summary_model_root()
         return base / self.key / self.revision / self.filename
 
+    def runtime_config(self) -> LLMModelConfig:
+        """Build an ephemeral runtime config without registering an answer model."""
+        return LLMModelConfig(
+            model_key=self.key,
+            hf_repo=self.hf_repo,
+            filename=self.filename,
+            local_dir_name=f"summary/{self.key}/{self.revision}",
+            prompt_style=self.prompt_style,
+            role="summary_benchmark_candidate",
+            context_window=self.context_window,
+            license_note=self.license_note,
+            source_url=f"https://huggingface.co/{self.hf_repo}",
+            chat_format=self.chat_format,
+            append_no_think=self.append_no_think,
+            strip_reasoning=self.append_no_think,
+        )
+
 
 SUMMARY_MODEL_REGISTRY: dict[str, SummaryModelSpec] = {
     "arcee_vylinh_3b_q4_k_m": SummaryModelSpec(
         key="arcee_vylinh_3b_q4_k_m",
-        revision="QuantFactory-Arcee-VyLinh-GGUF",
+        hf_repo="QuantFactory/Arcee-VyLinh-GGUF",
+        revision="f60b2ce826bea8f661e3f595e42d69d42bc8766d",
         filename="Arcee-VyLinh.Q4_K_M.gguf",
+        expected_sha256="571bce74377ddf3055f9610c6eee4f7218f0e5c8a48664a8530f735a9ad285ba",
+        expected_bytes=1929903072,
         quantization="Q4_K_M",
         license_note="Community GGUF; require explicit provenance review before release.",
-        answer_model_key="arcee_vylinh_3b_q4_k_m",
+        prompt_style="qwen_chat",
     ),
     "qwen3_1_7b_q8_0": SummaryModelSpec(
         key="qwen3_1_7b_q8_0",
-        revision="Qwen-Qwen3-1.7B-GGUF",
+        hf_repo="Qwen/Qwen3-1.7B-GGUF",
+        revision="90862c4b9d2787eaed51d12237eafdfe7c5f6077",
         filename="Qwen3-1.7B-Q8_0.gguf",
+        expected_sha256="061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a",
+        expected_bytes=1834426016,
         quantization="Q8_0",
         license_note="Apache-2.0 upstream; benchmark candidate only.",
+        prompt_style="qwen_chat_no_think",
+        append_no_think=True,
     ),
     "gemma3_4b_it_qat_q4_0": SummaryModelSpec(
         key="gemma3_4b_it_qat_q4_0",
-        revision="google-gemma-3-4b-it-qat-q4_0-gguf",
+        hf_repo="google/gemma-3-4b-it-qat-q4_0-gguf",
+        revision="15f73f5eee9c28f53afefef5723e29680c2fc78a",
         filename="gemma-3-4b-it-q4_0.gguf",
+        expected_sha256="76aed0a8285b83102f18b5d60e53c70d09eb4e9917a20ce8956bd546452b56e2",
+        expected_bytes=3155051328,
         quantization="QAT_Q4_0",
         license_note="Gemma terms apply; benchmark candidate only.",
+        prompt_style="gemma_chat",
+        context_window=8192,
     ),
     "sailor2_1b_chat_q4": SummaryModelSpec(
         key="sailor2_1b_chat_q4",
-        revision="bartowski-Sailor2-1B-Chat-GGUF",
+        hf_repo="bartowski/Sailor2-1B-Chat-GGUF",
+        revision="9f8154a0ffdf04bb7f29e4f6c3cb938b9178dba3",
         filename="Sailor2-1B-Chat-Q4_0.gguf",
+        expected_sha256="0d58dfe5d5950f7fb30e985ed1c34e66f0abc693827b410ba2e3c65a32794bc9",
+        expected_bytes=631940064,
         quantization="Q4_0",
         license_note="SEA resource-floor candidate only.",
+        prompt_style="qwen_chat",
     ),
     "sailor2_8b_chat_q4_k_m": SummaryModelSpec(
         key="sailor2_8b_chat_q4_k_m",
-        revision="bartowski-Sailor2-8B-Chat-GGUF",
+        hf_repo="bartowski/Sailor2-8B-Chat-GGUF",
+        revision="10972d4314c4f4f332b07c327103b85e9027234a",
         filename="Sailor2-8B-Chat-Q4_K_M.gguf",
+        expected_sha256="1a6aaadd6f6ef9c2290d66b348ebcbd6fdec542834cde622498fbd467d966103",
+        expected_bytes=5242934496,
         quantization="Q4_K_M",
         license_note="Vietnamese quality ceiling; resource-tier gated.",
+        prompt_style="qwen_chat",
     ),
 }
 
@@ -192,13 +237,12 @@ def _child_summary_main(
             os.environ.pop(key, None)
     started = time.perf_counter()
     try:
-        if spec.answer_model_key is None:
-            raise RuntimeError("candidate has no llama-cpp runtime adapter")
         from soca.llm import LocalLlamaCppLLM
 
         engine = LocalLlamaCppLLM(
-            model_key=spec.answer_model_key,
+            model_key=spec.key,
             model_path=model_path,
+            model_config=spec.runtime_config(),
             n_ctx=4096,
             n_gpu_layers=-1,
         )
@@ -261,7 +305,10 @@ class LocalSummaryWorkerProcess:
         connection = self._connection
         if not isinstance(connection, Connection) or not connection.poll():
             return None
-        payload = connection.recv()
+        try:
+            payload = connection.recv()
+        except EOFError:
+            payload = {"ok": False, "error": "worker_exited_without_payload"}
         connection.close()
         self._connection = None
         if self._process is not None:

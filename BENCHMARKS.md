@@ -1407,3 +1407,37 @@ uv run python eval/eval_summary_bakeoff.py \
   --model-path models/arcee-vylinh-gguf/Arcee-VyLinh.Q4_K_M.gguf \
   --limit 5 --output eval/results/summary_arcee_smoke.json
 ```
+
+### Provisioned summary-candidate warm captures
+
+On 2026-07-28 all five declared summary weights were explicitly provisioned
+under ignored `models/summary/<candidate>/<immutable-HF-revision>/`.  The
+provisioner pins repository revision, file byte count and SHA-256, verifies the
+result, then sets the GGUF file to `0600`; the runtime never invokes it or
+downloads a weight.  Gemma required the account owner to accept its Hugging
+Face terms and provide `HF_TOKEN` locally; that token is only read into the
+provisioning process and never written to output.
+
+The following `summary_session_vi_v1` runs use Metal, 8 threads,
+`n_ctx=4096`, `temperature=0`, `max_tokens=384`, and one warm process for all
+200 synthetic rows.  Artifacts in `eval/results/` are gitignored and contain
+only synthetic fixture IDs/safe metrics.  They are **not cold-process release
+measurements**.
+
+| Candidate | Schema valid | Forbidden-leak records | Unexpected-item records | p50 / p95 ms | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Arcee-VyLinh 3B Q4_K_M | 100% | not captured by old smoke evaluator | not captured by old smoke evaluator | 2143 / 2877 | No winner; strict exact field recall 0.000 |
+| Qwen3 1.7B Q8_0 | 100% | not captured by old smoke evaluator | not captured by old smoke evaluator | 1715 / 3024 | No winner; strict exact field recall 0.000 |
+| Gemma 3 4B IT QAT Q4_0 | 100% | 11.5% | 96.0% | 2831 / 4132 | Fails zero-leak gate |
+| Sailor2 1B Chat Q4_0 | 59.0% | 0.0% | 100.0% | 2529 / 4119 | Fails schema-valid gate (82/200 errors) |
+| Sailor2 8B Chat Q4_K_M | 100% | 1.5% | 100.0% | 3956 / 5271 | Fails zero-leak gate; peak RSS observed ~6.4 GB |
+
+`field_recall_mean` was deliberately not used for the decision: the current
+synthetic labels demand literal wording while valid summaries paraphrase the
+same fact (for example, a user constraint).  The evaluator now reports
+per-field strict recall, unexpected structured items, and forbidden-claim
+leaks; the fixture still needs accepted semantic variants/atomic annotations
+before a quality score can be a release gate.  This does **not** excuse the
+observed forbidden leaks or schema failures.  No candidate has passed all
+quality, rolling, cold-process, or target-16-GiB gates, so the approved mode
+remains `trim_only`.
