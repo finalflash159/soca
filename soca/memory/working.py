@@ -71,9 +71,26 @@ class WorkingSummaryArtifact:
         ):
             if any(not isinstance(value, str) or not value.strip() for value in values):
                 raise ValueError("working summary fields must contain non-empty strings")
+        if approximate_tokens(self.render()) > 256:
+            raise ValueError("working summary artifact exceeds 256-token content budget")
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
+
+    def render(self) -> str:
+        sections: list[str] = []
+        if self.summary:
+            sections.append("Summary:\n" + self.summary)
+        for label, values in (
+            ("User constraints", self.user_constraints),
+            ("Active decisions", self.decisions),
+            ("Corrections", self.corrections),
+            ("Open items", self.open_items),
+            ("Continuity references", self.continuity_refs),
+        ):
+            if values:
+                sections.append(label + ":\n" + "\n".join(f"- {value}" for value in values))
+        return "\n".join(sections)
 
 
 @dataclass(frozen=True)
@@ -238,8 +255,8 @@ class WorkingMemory:
 
     def render(self) -> str:
         parts: list[str] = []
-        if self._summary is not None and self._summary.summary:
-            parts.append("Earlier conversation summary:\n" + self._summary.summary)
+        if self._summary is not None and (rendered_summary := self._summary.render()):
+            parts.append("Earlier conversation state:\n" + rendered_summary)
         lines: list[str] = []
         for turn in self._turns:
             lines.append("User: " + turn.user_text)

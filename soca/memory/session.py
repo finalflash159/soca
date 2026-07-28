@@ -85,22 +85,28 @@ class SessionMemory:
         raw = self.working.render()
         if len(raw) <= self.max_chars:
             return raw
-        # Retain the newest bounded conversation block for legacy character
-        # callers. WorkingMemory remains the source of truth and is token-bounded.
-        lines = raw.splitlines()
+        marker = "\n\n" + RECENT_CONVERSATION_HEADER + "\n"
+        if marker in raw:
+            earlier, recent = raw.split(marker, maxsplit=1)
+        elif raw.startswith(RECENT_CONVERSATION_HEADER + "\n"):
+            earlier, recent = "", raw.removeprefix(RECENT_CONVERSATION_HEADER + "\n")
+        else:
+            return raw[: self.max_chars]
+        prefix = earlier
+        separator = "\n\n" if prefix else ""
+        header = RECENT_CONVERSATION_HEADER
+        used = len(prefix) + len(separator) + len(header)
         selected: list[str] = []
-        used = len(RECENT_CONVERSATION_HEADER)
-        for line in reversed(lines):
-            if line in {RECENT_CONVERSATION_HEADER, "Earlier conversation summary:"}:
-                continue
+        for line in reversed(recent.splitlines()):
             cost = len(line) + 1
             if used + cost > self.max_chars:
                 continue
             selected.append(line)
             used += cost
         if not selected:
-            return ""
-        return "\n".join([RECENT_CONVERSATION_HEADER, *reversed(selected)])
+            return prefix[: self.max_chars]
+        recent_block = "\n".join([header, *reversed(selected)])
+        return prefix + separator + recent_block
 
     def request_compaction(self) -> CompactionResult:
         return self.compaction.request(manual=True)

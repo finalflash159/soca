@@ -27,6 +27,10 @@ def test_working_memory_compaction_uses_complete_turns_and_cas() -> None:
     snapshot = memory.snapshot
     assert snapshot.summary == artifact
     assert [turn.sequence for turn in snapshot.turns] == [3, 4, 5, 6]
+    rendered = memory.render()
+    assert "Earlier conversation state:" in rendered
+    assert "Active decisions:" in rendered
+    assert "Giữ các quyết định trước đó." in rendered
 
 
 def test_working_memory_does_not_include_undelivered_assistant_suffix() -> None:
@@ -41,3 +45,18 @@ def test_working_memory_job_is_not_created_before_high_watermark() -> None:
     memory = WorkingMemory(token_counter=lambda _: 12)
     _complete(memory, "xin chào", "chào bạn")
     assert memory.prepare_compaction() is None
+
+
+def test_working_summary_budget_covers_structured_fields() -> None:
+    try:
+        WorkingSummaryArtifact(
+            version=1,
+            generation=1,
+            source_through_sequence=1,
+            summary="",
+            open_items=("việc rất dài " * 300,),
+        )
+    except ValueError as exc:
+        assert "256-token content budget" in str(exc)
+    else:
+        raise AssertionError("oversized structured state must be rejected")

@@ -1,6 +1,6 @@
 import pytest
 
-from soca.memory import MemoryContextBuilder, MemoryTurn, SessionMemory
+from soca.memory import MemoryContextBuilder, MemoryTurn, SessionMemory, WorkingSummaryArtifact
 
 
 def test_session_memory_renders_recent_conversation():
@@ -55,6 +55,30 @@ def test_session_memory_enforces_render_character_budget_and_keeps_newest():
     assert len(rendered) <= 80
     assert "câu mới" in rendered
     assert "câu cũ" not in rendered
+
+
+def test_session_memory_character_budget_keeps_structured_earlier_state():
+    memory = SessionMemory(max_turns=5, max_chars=220, max_turn_chars=80)
+    for index in range(6):
+        turn = memory.working.begin_turn(f"user {index}")
+        memory.working.finish_turn(turn.sequence, f"assistant {index}")
+    job = memory.working.prepare_compaction(force=True)
+    assert job is not None
+    artifact = WorkingSummaryArtifact(
+        version=1,
+        generation=job.generation,
+        source_through_sequence=job.frozen_turns[-1].sequence,
+        summary="Giữ trạng thái cũ.",
+        decisions=("Dùng TTS local.",),
+    )
+    assert memory.working.publish_summary(job, artifact)
+
+    rendered = memory.render()
+
+    assert len(rendered) <= 220
+    assert "Earlier conversation state:" in rendered
+    assert "Dùng TTS local." in rendered
+    assert "user 5" in rendered
 
 
 def test_session_memory_truncates_individual_turns():

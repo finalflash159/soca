@@ -14,7 +14,8 @@ from soca.memory.working import WorkingMemory
 
 class _StructuredEngine:
     def generate_structured(self, prompt: str, **kwargs: object) -> LLMResult:
-        assert "Previous summary:" in prompt
+        assert "PREVIOUS_SUMMARY_JSON:" in prompt
+        assert "FROZEN_TURNS_JSON:" in prompt
         assert kwargs["max_tokens"] == 384
         return LLMResult(
             text=json.dumps(
@@ -37,7 +38,17 @@ class _StructuredEngine:
 
 
 def test_summary_registry_is_separate_and_summary_job_uses_structured_local_contract() -> None:
+    assert "qwen3_0_6b_q8_0" in SUMMARY_MODEL_REGISTRY
     assert "qwen3_1_7b_q8_0" in SUMMARY_MODEL_REGISTRY
+    assert "qwen25_3b_instruct_q4_k_m" in SUMMARY_MODEL_REGISTRY
+    assert "qwen3_4b_q4_k_m" in SUMMARY_MODEL_REGISTRY
+    assert "qwen3_4b_instruct_2507_q4_k_m" in SUMMARY_MODEL_REGISTRY
+    assert "qwen3_8b_q4_k_m" not in SUMMARY_MODEL_REGISTRY
+    assert "qwen3_14b_q4_k_m" not in SUMMARY_MODEL_REGISTRY
+    assert "arcee_vylinh_3b_q4_k_m" not in SUMMARY_MODEL_REGISTRY
+    assert "gemma3_4b_it_qat_q4_0" not in SUMMARY_MODEL_REGISTRY
+    assert "sailor2_1b_chat_q4" not in SUMMARY_MODEL_REGISTRY
+    assert "sailor2_8b_chat_q4_k_m" not in SUMMARY_MODEL_REGISTRY
     memory = WorkingMemory(token_counter=lambda _: 1000)
     for index in range(6):
         turn = memory.begin_turn(f"user {index}")
@@ -57,7 +68,7 @@ def test_unprovisioned_summary_worker_never_auto_downloads_or_stays_loaded(tmp_p
         memory.finish_turn(turn.sequence, f"assistant {index}")
     job = memory.prepare_compaction()
     assert job is not None
-    worker = LocalSummaryWorkerProcess(SUMMARY_MODEL_REGISTRY["arcee_vylinh_3b_q4_k_m"], model_root=tmp_path)
+    worker = LocalSummaryWorkerProcess(SUMMARY_MODEL_REGISTRY["qwen3_1_7b_q8_0"], model_root=tmp_path)
     assert worker.start(job) is False
     assert worker.status.state == "idle"
     assert default_summary_model_root().name == "summary"

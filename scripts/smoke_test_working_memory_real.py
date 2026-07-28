@@ -49,6 +49,7 @@ def main() -> int:
         checkpoint = SessionCheckpointStore(directory)
         path = checkpoint.save(memory)
         restored = checkpoint.load(memory.thread_id)
+        rendered = memory.render()
         payload = {
             "accepted": accepted.status,
             "final": result.status,
@@ -56,14 +57,24 @@ def main() -> int:
             "summary_published": memory.snapshot.summary is not None,
             "checkpoint_mode": oct(path.stat().st_mode & 0o777),
             "checkpoint_round_trip": restored is not None and restored.snapshot.summary == memory.snapshot.summary,
+            "rendered_state_present": "Earlier conversation state:" in rendered,
+            "render_round_trip": restored is not None and restored.render() == rendered,
         }
     encoded = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(encoded, encoding="utf-8")
+        args.output.chmod(0o600)
     else:
         print(encoded, end="")
-    return 0 if payload["final"] == "published" and payload["checkpoint_round_trip"] and payload["worker_state_after_job"] == "idle" else 2
+    passed = (
+        payload["final"] == "published"
+        and payload["checkpoint_round_trip"]
+        and payload["rendered_state_present"]
+        and payload["render_round_trip"]
+        and payload["worker_state_after_job"] == "idle"
+    )
+    return 0 if passed else 2
 
 
 if __name__ == "__main__":
