@@ -180,15 +180,14 @@ Durable memory is never written automatically.
 
 - Episodic summaries persist **only** when `episodic_memory_enabled=true` and the
   user has given explicit consent; raw transcripts are never stored.
-- `reflection.py` runs in the background and produces **immutable proposals**;
-  the LLM cannot approve its own writes.
-- Approval/rejection is a deterministic application command
-  (`commands.py`) keyed by the exact pending proposal ID — not an LLM-callable
-  tool.
+- Proposal and approval primitives (`proposals.py`, `commands.py`) are retained
+  for an explicitly provisioned future capture workflow; no production chat or
+  voice runtime currently creates a proposal or writes durable memory.
+- If a pending proposal is provisioned externally, approval/rejection is a
+  deterministic application command keyed by its exact ID — never an
+  LLM-callable tool.
 - Approved notes land under `<vault>/memory/captured/<uuid>.md` with restrictive
   permissions; `private/`, dot-directories, and symlinks are never indexed.
-- `memory.propose_note` may create only a pending proposal. It is a local-state
-  tool with human approval still required; it never writes an approved note.
 
 See the memory lifecycle and compaction numbers in
 [BENCHMARKS.md → P2.3](../BENCHMARKS.md).

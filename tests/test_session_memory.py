@@ -44,6 +44,21 @@ class _ImmediateSummaryWorker:
         return running
 
 
+class _FailOnceSummaryWorker(_ImmediateSummaryWorker):
+    def __init__(self) -> None:
+        super().__init__()
+        self._failed_once = False
+
+    def poll(self):
+        if self.job is None:
+            return None
+        if not self._failed_once:
+            self._failed_once = True
+            self.job = None
+            return {"ok": False, "error": "transient worker failure"}
+        return super().poll()
+
+
 def test_session_memory_renders_recent_conversation():
     memory = SessionMemory()
     memory.append("user", "Tôi muốn ăn sáng lành mạnh.")
@@ -187,6 +202,37 @@ def test_session_memory_automatically_runs_selected_summary_worker() -> None:
     assert memory.working.snapshot.pending_compaction is False
     assert memory.working.snapshot.summary is not None
     assert "Dùng summary local." in rendered
+
+
+def test_session_memory_retries_auto_compaction_after_a_transient_summary_failure() -> None:
+    worker = _FailOnceSummaryWorker()
+    memory = SessionMemory(
+        max_chars=100_000,
+        max_turn_chars=10_000,
+        summary_worker=cast(LocalSummaryWorkerProcess, cast(Any, worker)),
+    )
+    turn_text = "x" * 6_000  # approximately 1,500 tokens per message
+    for _ in range(5):
+        memory.append("user", turn_text)
+        memory.append("assistant", turn_text)
+
+    assert worker.start_count == 1
+    assert memory.compaction_status().status == "failed"
+    token_count_after_fallback = memory.stats().current_tokens
+
+    # The failure remains visible for the UI, but observing it again must not
+    # repeatedly discard older turns.  Subsequent growth can cross 15K and
+    # schedule a new async summary job.
+    assert memory.compaction_status().status == "failed"
+    assert memory.stats().current_tokens == token_count_after_fallback
+    for _ in range(3):
+        memory.append("user", turn_text)
+        memory.append("assistant", turn_text)
+        if worker.start_count == 2:
+            break
+
+    assert worker.start_count == 2
+    assert memory.compaction_status().status == "published"
 
 
 def test_memory_context_builder_combines_profile_and_session():

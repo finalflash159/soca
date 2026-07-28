@@ -35,8 +35,13 @@ def validate_grounded_answer(
         return AnswerValidationDecision("not_applicable", (), (), "no_evidence_context")
     if not found:
         return AnswerValidationDecision("missing", tuple(expected), (), "no_provenance_label")
-    if len(found) != len(set(found)):
-        return AnswerValidationDecision("invalid", tuple(expected), found, "duplicate_label")
+    if len(found) != len(expected):
+        return AnswerValidationDecision(
+            "partial",
+            tuple(expected),
+            found,
+            "partial_provenance_labels",
+        )
     return AnswerValidationDecision("valid", tuple(expected), found, "labels_present")
 
 

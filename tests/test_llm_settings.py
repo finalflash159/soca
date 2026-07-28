@@ -47,6 +47,33 @@ def test_load_migrates_the_old_implicit_token_default(tmp_path) -> None:
     assert load_settings(path).max_tokens == DEFAULT_MAX_TOKENS
 
 
+@pytest.mark.parametrize("legacy_max_tokens", [1, 200, 512, 1_024, 2_047])
+def test_load_migrates_positive_legacy_token_values_without_losing_selection(
+    tmp_path, legacy_max_tokens: int
+) -> None:
+    path = tmp_path / "llm.json"
+    path.write_text(
+        json.dumps(
+            {
+                "backend": "remote",
+                "model_id": "z-ai/glm-5.2",
+                "provider_key": "openrouter",
+                "max_tokens": legacy_max_tokens,
+                "temperature": 0.2,
+                "top_p": 0.95,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(path)
+
+    assert settings.max_tokens == MIN_MAX_TOKENS
+    assert settings.backend == "remote"
+    assert settings.provider_key == "openrouter"
+    assert settings.model_id == "z-ai/glm-5.2"
+
+
 def test_rejects_unknown_backend() -> None:
     with pytest.raises(ValueError, match="backend"):
         LlmSettings(backend="cloud")

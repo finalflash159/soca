@@ -199,13 +199,23 @@ def _settings_from_payload(payload: object, path: Path) -> LlmSettings:
     if unknown:
         fields = ", ".join(sorted(unknown))
         raise ValueError(f"LLM settings tại {path} có trường không hỗ trợ: {fields}.")
-    # Settings files created before the UI exposed generation controls contain
-    # the old implicit 160-token default. Migrate that implicit value so a
-    # long grounded answer or a reasoning model cannot consume the entire
-    # budget before its answer.
+    # Older releases accepted every positive integer.  Keep the selected
+    # provider/model on upgrade by making legacy values satisfy the current UI
+    # contract instead of rejecting the whole persisted settings file.
+    #
+    # 160 was the old implicit default, so upgrade it to the new default.  Any
+    # other explicit positive value below the new minimum is clamped to that
+    # minimum; malformed, zero, negative, and boolean values still fail
+    # validation normally.
     normalized = dict(payload)
     if normalized.get("max_tokens") == _LEGACY_DEFAULT_MAX_TOKENS:
         normalized["max_tokens"] = DEFAULT_MAX_TOKENS
+    elif (
+        isinstance(normalized.get("max_tokens"), int)
+        and not isinstance(normalized.get("max_tokens"), bool)
+        and 0 < normalized["max_tokens"] < MIN_MAX_TOKENS
+    ):
+        normalized["max_tokens"] = MIN_MAX_TOKENS
     for field_name in _SETTINGS_FIELDS:
         if field_name not in normalized:
             normalized[field_name] = getattr(DEFAULT_SETTINGS, field_name)

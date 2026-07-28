@@ -85,6 +85,11 @@ class SessionMemory:
             self._summary_worker,
         )
         self._pending_sequences: list[int] = []
+        # A completed async failure remains visible through the coordinator so
+        # the UI can report it.  Its deterministic trim fallback, however,
+        # must run only once: repeatedly trimming keeps the prompt below the
+        # auto-compaction watermark forever and prevents a later retry.
+        self._trimmed_failure_generation: int | None = None
         if turns is not None:
             for turn in turns:
                 self.append(turn.role, turn.text)
@@ -134,6 +139,7 @@ class SessionMemory:
             self._summary_worker,
         )
         self._pending_sequences.clear()
+        self._trimmed_failure_generation = None
 
     def render(self) -> str:
         self._poll_compaction()
@@ -212,8 +218,12 @@ class SessionMemory:
 
     def _poll_compaction(self) -> CompactionResult:
         result = self.compaction.status()
-        if result.status == "failed":
+        if (
+            result.status == "failed"
+            and result.generation != self._trimmed_failure_generation
+        ):
             self.working.trim_only()
+            self._trimmed_failure_generation = result.generation
         return result
 
     def _enforce_hard_limit(self) -> None:
