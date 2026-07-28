@@ -31,6 +31,15 @@ def test_baseline_resolves_former_quality_stack_with_valtec(tmp_path: Path) -> N
     assert config.tts_voice == "NF"
 
 
+def test_voice_semantic_policy_uses_the_shared_turn_catalog(tmp_path: Path) -> None:
+    config = resolve_voice_runtime_config(
+        profile_key="baseline", vault=tmp_path, semantic_router_enabled=True
+    )
+    assert config.semantic_router_in_voice is True
+    assert config.semantic_router_examples is not None
+    assert config.semantic_router_examples.name == "turn_routing_vi.jsonl"
+
+
 @pytest.mark.parametrize("profile_key", ["quality", "edge"])
 def test_removed_runtime_profiles_are_rejected(
     profile_key: str,

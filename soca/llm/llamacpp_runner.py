@@ -22,7 +22,7 @@ from .message_format import (
     uses_completion_prompt,
 )
 from .output_cleaning import StreamingOutputCleaner, clean_model_output
-from .registry import DEFAULT_LLM_MODEL_KEY, get_model_config
+from .registry import DEFAULT_LLM_MODEL_KEY, LLMModelConfig, get_model_config
 
 
 class LocalLlamaCppLLM:
@@ -30,23 +30,23 @@ class LocalLlamaCppLLM:
         self,
         model_key: str = DEFAULT_LLM_MODEL_KEY,
         model_path: str | Path | None = None,
+        model_config: LLMModelConfig | None = None,
         n_ctx: int | None = None,
-        n_threads: int = 4,
+        n_threads: int | None = 4,
         n_gpu_layers: int = -1,
         seed: int = 42,
         verbose: bool = False,
     ) -> None:
-        self.config = get_model_config(model_key)
+        self.config = model_config or get_model_config(model_key)
         self.model_key = model_key
         self.model_path = Path(model_path or self.config.local_path)
 
         if not self.model_path.exists():
             raise FileNotFoundError(
-                f"Model file not found: {self.model_path}\n"
-                f"Run: {self.config.download_command}"
+                f"Model file not found: {self.model_path}\nRun: {self.config.download_command}"
             )
 
-        self.n_ctx = n_ctx or min(self.config.context_window, 4096)
+        self.n_ctx = n_ctx or self.config.context_window
 
         llama_kwargs: dict[str, Any] = {
             "model_path": str(self.model_path),
@@ -89,7 +89,10 @@ class LocalLlamaCppLLM:
             return choice.get("text") or ""
 
         delta = choice.get("delta") or {}
-        return delta.get("content") or ""
+        if isinstance(delta, dict) and delta.get("content"):
+            return delta["content"]
+        message = choice.get("message") or {}
+        return message.get("content") or "" if isinstance(message, dict) else ""
 
     def _stream_chunks(
         self,
@@ -101,24 +104,30 @@ class LocalLlamaCppLLM:
     ) -> Iterator[dict]:
         if uses_completion_prompt(self.config):
             prompt = build_completion_prompt(user_msg, self.config, inject_persona)
-            yield from cast(Iterator[dict[str, Any]], self.llm(
-                prompt,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                stop=list(self.config.stop_sequences),
-                stream=True,
-            ))
+            yield from cast(
+                Iterator[dict[str, Any]],
+                self.llm(
+                    prompt,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    stop=list(self.config.stop_sequences),
+                    stream=True,
+                ),
+            )
             return
 
         messages = build_chat_messages(user_msg, self.config, inject_persona)
-        yield from cast(Iterator[dict[str, Any]], self.llm.create_chat_completion(
-            messages=cast(Any, messages),
-            max_tokens=max_tokens,
-            temperature=temperature,
-            top_p=top_p,
-            stream=True,
-        ))
+        yield from cast(
+            Iterator[dict[str, Any]],
+            self.llm.create_chat_completion(
+                messages=cast(Any, messages),
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                stream=True,
+            ),
+        )
 
     def _prompt_for_metrics(self, user_msg: str, inject_persona: bool) -> str:
         if uses_completion_prompt(self.config):
@@ -183,7 +192,9 @@ class LocalLlamaCppLLM:
         usage = response.get("usage", {}) if isinstance(response, dict) else {}
         n_prompt = usage.get("prompt_tokens") if isinstance(usage, dict) else None
         n_completion = usage.get("completion_tokens") if isinstance(usage, dict) else None
-        n_prompt = n_prompt if isinstance(n_prompt, int) else len(self.llm.tokenize(prompt.encode()))
+        n_prompt = (
+            n_prompt if isinstance(n_prompt, int) else len(self.llm.tokenize(prompt.encode()))
+        )
         n_completion = (
             n_completion
             if isinstance(n_completion, int)

@@ -351,6 +351,16 @@ class VoiceMonitorController:
         if interrupt_event is not None:
             stream_kwargs["interrupt_event"] = interrupt_event
 
+        progress_setter = getattr(bundle.assistant_runtime, "set_progress_callback", None)
+        if callable(progress_setter):
+            progress_setter(
+                lambda stage: queue.put(
+                    VoiceMonitorEvent(
+                        "progress",
+                        metadata={"stage": str(stage)},
+                    )
+                )
+            )
         try:
             for event in bundle.pipeline.turn_streaming(audio, **stream_kwargs):
                 metadata = dict(event.metadata or {})
@@ -382,6 +392,8 @@ class VoiceMonitorController:
 
                 queue.put(_to_monitor_event(event, usage=usage))
         finally:
+            if callable(progress_setter):
+                progress_setter(None)
             if self._supports_barge_in:
                 self.player.stop()  # close duplex stream so the recorder reclaims the mic
 

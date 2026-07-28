@@ -8,6 +8,7 @@ from soca.memory.base import (
 )
 from soca.memory.commands import MemoryCommandResult, MemoryCommands
 from soca.memory.compaction import CompactionConfig, WorkingMemory, WorkingMemorySnapshot
+from soca.memory.compaction_coordinator import CompactionResult, WorkingMemoryCompactionCoordinator
 from soca.memory.composite import CompositeMemoryConfig, CompositeMemorySource
 from soca.memory.context import MemoryContext, MemoryContextBuilder
 from soca.memory.episodes import EpisodeStore, MemoryEpisode
@@ -16,7 +17,14 @@ from soca.memory.proposals import MemoryProposal, ProposalStore
 from soca.memory.reflection import BackgroundReflection, ReflectionConfig, ReflectionService
 from soca.memory.retrieved import RetrievedMemory, RetrievedMemoryConfig
 from soca.memory.scoring import MemoryHit, MemoryScore, MemoryScoreConfig
-from soca.memory.session import SessionMemory
+from soca.memory.session import SessionMemory, SessionMemoryStats
+from soca.memory.session_store import SessionCheckpointStore
+from soca.memory.working import (
+    CompactionJob,
+    ConversationTurn,
+    WorkingMemoryPolicy,
+    WorkingSummaryArtifact,
+)
 
 __all__ = [
     "LongTermMemorySource",
@@ -25,6 +33,8 @@ __all__ = [
     "MemoryContextBuilder",
     "MemoryCommandResult",
     "MemoryCommands",
+    "CompactionResult",
+    "WorkingMemoryCompactionCoordinator",
     "CompactionConfig",
     "CompositeMemoryConfig",
     "CompositeMemorySource",
@@ -47,5 +57,11 @@ __all__ = [
     "MemoryTurn",
     "QueryAwareLongTermMemorySource",
     "SessionMemory",
+    "SessionMemoryStats",
+    "SessionCheckpointStore",
+    "CompactionJob",
+    "ConversationTurn",
+    "WorkingMemoryPolicy",
+    "WorkingSummaryArtifact",
     "SessionMemorySource",
 ]

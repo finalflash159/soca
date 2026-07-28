@@ -7,6 +7,8 @@ export interface EngineCommand {
     | "voice_start"
     | "voice_stop"
     | "memory"
+    | "memory_compact"
+    | "context"
     | "usage"
     | "llm_providers"
     | "llm_models"
@@ -16,7 +18,6 @@ export interface EngineCommand {
     | "memory_proposals"
     | "memory_approve"
     | "memory_reject"
-    | "inspect"
     | "quit";
   text?: string;
   max_turns?: number | null;
@@ -25,7 +26,10 @@ export interface EngineCommand {
   key?: string;
   backend?: "local" | "remote";
   model?: string;
+  max_tokens?: number;
+  reasoning_enabled?: boolean;
   proposal_id?: string;
+  action?: "request" | "status" | "cancel";
 }
 
 export interface HelloEvent {
@@ -102,6 +106,26 @@ export interface RetrievalTraceEvent {
   fused: Array<{ path: string; picked: boolean }>;
 }
 
+export type TurnProgressPhase =
+  | "preparing"
+  | "analyzing"
+  | "routing"
+  | "memory"
+  | "retrieval"
+  | "tool"
+  | "synthesis"
+  | "validation"
+  | "speech"
+  | "complete";
+
+export interface TurnProgressEvent {
+  event: "turn_progress";
+  surface: "chat" | "voice";
+  phase: TurnProgressPhase;
+  operation: string;
+  status: "active" | "done";
+}
+
 export interface ChatEvent {
   event: "chat";
   type: "start" | "loading" | "ready" | "done" | "error";
@@ -131,12 +155,78 @@ export interface StatusEvent {
     documents: number;
     chunks: number;
   } | null;
+  runtime_components?: RuntimeComponentStatus[];
+}
+
+export interface RuntimeComponentStatus {
+  id: string;
+  label: string;
+  status: "loaded" | "ready" | "configured" | "disabled" | "missing" | "degraded";
+  detail: string;
 }
 
 export interface MemoryEvent {
   event: "memory";
   enabled: boolean;
   text: string;
+  summary: string;
+  recent: string;
+  stats: SessionMemoryStats | null;
+}
+
+export interface SessionMemoryStats {
+  current_tokens: number;
+  rendered_tokens: number;
+  hard_limit_tokens: number;
+  high_watermark_tokens: number;
+  target_tokens: number;
+  summary_tokens: number;
+  recent_tokens: number;
+  turn_count: number;
+  complete_turn_count: number;
+  summary_generation: number | null;
+  pending_compaction: boolean;
+  worker_state: string;
+}
+
+export interface ContextComponent {
+  id:
+    | "system"
+    | "core_memory"
+    | "working_summary"
+    | "recent_conversation"
+    | "prompt_scaffolding"
+    | "archive_memory"
+    | "knowledge"
+    | "current_input";
+  label: string;
+  tokens: number | null;
+  policy: "always" | "always_when_present" | "on_demand" | "per_turn";
+}
+
+export interface ContextEvent {
+  event: "context";
+  estimated: boolean;
+  token_counter: string;
+  session: SessionMemoryStats | null;
+  resident_prompt_tokens: number;
+  output_reserve_tokens: number;
+  model_context_tokens: number | null;
+  available_dynamic_tokens: number | null;
+  components: ContextComponent[];
+}
+
+export interface MemoryCompactionEvent {
+  event: "memory_compaction";
+  status: string;
+  generation?: number | null;
+  detail?: string;
+  before_tokens?: number | null;
+  after_tokens?: number | null;
+  compacted_turns?: number;
+  complete_turns?: number;
+  minimum_complete_turns?: number | null;
+  elapsed_ms?: number | null;
 }
 
 export interface UsageEvent {
@@ -166,6 +256,9 @@ export interface RemoteModelEvent {
   price_prompt_per_1m: number | null;
   price_completion_per_1m: number | null;
   pricing_source: "live" | "table" | "unknown";
+  max_output_tokens?: number | null;
+  reasoning_supported?: boolean | null;
+  reasoning_mandatory?: boolean;
 }
 
 export interface LlmCatalogEvent {
@@ -190,10 +283,16 @@ export interface LlmConfigEvent {
   provider: string;
   model: string;
   max_tokens: number;
+  effective_max_tokens?: number;
+  reasoning_enabled?: boolean;
+  effective_reasoning_enabled?: boolean | null;
+  reasoning_supported?: boolean | null;
+  reasoning_mandatory?: boolean;
   temperature: number;
   top_p: number;
   pricing_as_of: string;
   pricing: RemoteModelEvent | null;
+  context_length: number | null;
 }
 
 export interface EngineErrorEvent {
@@ -218,9 +317,12 @@ export type EngineEvent =
   | MemoryProposalEvent
   | MemoryActionEvent
   | RetrievalTraceEvent
+  | TurnProgressEvent
   | ChatEvent
   | StatusEvent
   | MemoryEvent
+  | ContextEvent
+  | MemoryCompactionEvent
   | UsageEvent
   | LlmProviderEvent
   | LlmCatalogEvent
@@ -246,9 +348,12 @@ export function parseEngineEvent(line: string): EngineEvent | null {
       "memory_proposals",
       "memory_action",
       "retrieval_trace",
+      "turn_progress",
       "chat",
       "status",
       "memory",
+      "context",
+      "memory_compaction",
       "usage",
       "llm_providers",
       "llm_catalog",

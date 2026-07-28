@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterator, Mapping
-from typing import Any
+from typing import Any, Literal
 
 from soca.prompts import SOCA_LLM_SYSTEM_PROMPT, split_embedded_system_prompt
 
@@ -69,9 +69,7 @@ def _map_error(exc: Exception, provider: LLMProvider) -> RemoteLLMError:
     label = provider.label
 
     if status == 401 or status == 403 or "Authentication" in name or "Permission" in name:
-        return RemoteLLMError(
-            f"API key {label} sai hoặc hết hạn.", category="auth"
-        )
+        return RemoteLLMError(f"API key {label} sai hoặc hết hạn.", category="auth")
     if status == 429 or "RateLimit" in name:
         return RemoteLLMError(
             f"{label} đã hết quota hoặc bị giới hạn tốc độ (rate limit).",
@@ -95,6 +93,8 @@ class RemoteOpenAILLM:
         client: Any | None = None,
         timeout: float = DEFAULT_TIMEOUT_S,
         max_retries: int = DEFAULT_MAX_RETRIES,
+        reasoning_enabled: bool | None = None,
+        reasoning_parameter: Literal["reasoning", "reasoning_effort"] | None = None,
     ) -> None:
         if not model.strip():
             raise ValueError("model must not be empty")
@@ -103,8 +103,12 @@ class RemoteOpenAILLM:
 
         self.provider = provider
         self.model = model
-        self._client = client if client is not None else _build_client(
-            provider, api_key, timeout=timeout, max_retries=max_retries
+        self.reasoning_enabled = reasoning_enabled
+        self.reasoning_parameter = reasoning_parameter
+        self._client = (
+            client
+            if client is not None
+            else _build_client(provider, api_key, timeout=timeout, max_retries=max_retries)
         )
 
     # -- validation ---------------------------------------------------------
@@ -201,22 +205,26 @@ class RemoteOpenAILLM:
                 "temperature": temperature,
                 "top_p": top_p,
                 "stream": False,
-                **self._openrouter_generation_options(),
+                **self._generation_options(),
             },
         )
 
-    def _openrouter_generation_options(self) -> dict[str, Any]:
-        """Disable hidden reasoning by default for ordinary SoCa turns.
+    def _generation_options(self) -> dict[str, Any]:
+        """Return only capability-verified reasoning controls.
 
-        OpenRouter counts reasoning tokens against the same completion budget.
-        With the old 160-token default, reasoning models could spend the whole
-        budget before producing ``message.content``. This is an adapter
-        default, not a prompt rule: providers that do not support the field
-        receive no extra request parameter.
+        Unknown capability means provider/model default. This is deliberately
+        safer than sending a guessed "off" value: some reasoning endpoints make
+        reasoning mandatory, while non-reasoning endpoints may reject the
+        parameter entirely.
         """
-        if self.provider.key != "openrouter":
+        if self.reasoning_enabled is None or self.reasoning_parameter is None:
             return {}
-        return {"extra_body": {"reasoning": {"effort": "none"}}}
+        if self.reasoning_parameter == "reasoning":
+            reasoning = (
+                {"enabled": True, "exclude": True} if self.reasoning_enabled else {"effort": "none"}
+            )
+            return {"extra_body": {"reasoning": reasoning}}
+        return {"extra_body": {"reasoning_effort": "medium" if self.reasoning_enabled else "none"}}
 
     def generate_structured(
         self,
@@ -253,14 +261,14 @@ class RemoteOpenAILLM:
                 },
             },
         }
+        extra_body = dict(self._generation_options().get("extra_body", {}))
         if self.provider.key == "openrouter":
-            request["extra_body"] = {
-                "reasoning": {"effort": "none"},
-                "provider": {
-                    "require_parameters": True,
-                    "data_collection": "deny" if zero_data_retention else "allow",
-                }
+            extra_body["provider"] = {
+                "require_parameters": True,
+                "data_collection": "deny" if zero_data_retention else "allow",
             }
+        if extra_body:
+            request["extra_body"] = extra_body
         return self._create_non_streaming_result(messages, request)
 
     def generate_stream(
@@ -283,7 +291,7 @@ class RemoteOpenAILLM:
                 top_p=top_p,
                 stream=True,
                 stream_options={"include_usage": True},
-                **self._openrouter_generation_options(),
+                **self._generation_options(),
             )
             for chunk in stream:
                 text = _chunk_delta_text(chunk)

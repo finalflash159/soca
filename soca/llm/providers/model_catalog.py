@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from .pricing_table import lookup_pricing
 from .provider_registry import LLMProvider
@@ -42,6 +42,10 @@ class RemoteModelInfo:
     # "live" (from provider API) | "table" (static table) | "unknown".
     pricing_source: str
     supported_parameters: tuple[str, ...] = ()
+    max_output_tokens: int | None = None
+    reasoning_supported: bool | None = None
+    reasoning_mandatory: bool = False
+    reasoning_parameter: Literal["reasoning", "reasoning_effort"] | None = None
 
     def supports(self, parameter: str) -> bool:
         return parameter in self.supported_parameters
@@ -117,6 +121,10 @@ def _to_model_info(provider: LLMProvider, raw: object) -> RemoteModelInfo:
         if isinstance(raw_parameters, list)
         else ()
     )
+    max_output_tokens = _max_output_tokens(raw)
+    reasoning_supported, reasoning_mandatory, reasoning_parameter = _reasoning_capability(
+        raw, supported_parameters
+    )
 
     return RemoteModelInfo(
         id=model_id,
@@ -126,6 +134,10 @@ def _to_model_info(provider: LLMProvider, raw: object) -> RemoteModelInfo:
         price_completion_per_1m=completion_per_1m,
         pricing_source=source,
         supported_parameters=supported_parameters,
+        max_output_tokens=max_output_tokens,
+        reasoning_supported=reasoning_supported,
+        reasoning_mandatory=reasoning_mandatory,
+        reasoning_parameter=reasoning_parameter,
     )
 
 
@@ -169,6 +181,47 @@ def _context_length(raw: Mapping[str, Any]) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         return None
     return value
+
+
+def _positive_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def _max_output_tokens(raw: Mapping[str, Any]) -> int | None:
+    direct = _positive_int(raw.get("max_completion_tokens"))
+    if direct is None:
+        direct = _positive_int(raw.get("max_output_tokens"))
+    if direct is None:
+        direct = _positive_int(raw.get("output_token_limit"))
+    if direct is None:
+        direct = _positive_int(raw.get("outputTokenLimit"))
+    top_provider = raw.get("top_provider")
+    if direct is None and isinstance(top_provider, Mapping):
+        direct = _positive_int(top_provider.get("max_completion_tokens"))
+    return direct
+
+
+def _reasoning_capability(
+    raw: Mapping[str, Any],
+    supported_parameters: tuple[str, ...],
+) -> tuple[
+    bool | None,
+    bool,
+    Literal["reasoning", "reasoning_effort"] | None,
+]:
+    reasoning = raw.get("reasoning")
+    mandatory = reasoning.get("mandatory") is True if isinstance(reasoning, Mapping) else False
+    if "reasoning" in supported_parameters or isinstance(reasoning, Mapping):
+        return True, mandatory, "reasoning"
+    if "reasoning_effort" in supported_parameters:
+        return True, mandatory, "reasoning_effort"
+    # Some provider catalogs explicitly publish a boolean capability.
+    capabilities = raw.get("capabilities")
+    if isinstance(capabilities, Mapping) and capabilities.get("reasoning") is False:
+        return False, False, None
+    return None, False, None
 
 
 def _default_http_get(url: str, headers: dict[str, str]) -> object:

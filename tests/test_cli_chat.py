@@ -90,12 +90,12 @@ def test_chat_reuses_one_runtime_across_multiple_turns(monkeypatch, tmp_path: Pa
     assert "SoCa · chat" in result.output
     assert "Route: free_chat" in result.output
     assert "Phản hồi số 1." in result.output
-    # The second turn misses the semantic examples and exercises the LLM
-    # router's JSON/repair fallback before the free-chat generation.
-    assert "Phản hồi số 4." in result.output
+    # Capability routing is embedding-only for both chat and voice until its
+    # separate LLM-router privacy/latency gate is benchmarked.
+    assert "Phản hồi số 2." in result.output
     assert len(FakeChatLLM.instances) == 1
     assert FakeChatLLM.instances[0].model_key == "arcee_vylinh_3b_q4_k_m"
-    assert len(FakeChatLLM.instances[0].calls) == 4
+    assert len(FakeChatLLM.instances[0].calls) == 2
 
 
 def test_chat_llm_override_controls_runtime_model(monkeypatch, tmp_path: Path) -> None:

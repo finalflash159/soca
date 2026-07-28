@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
 from typing import Protocol
 
@@ -43,6 +44,19 @@ def build_llm_engine(
             f"Chưa có API key cho {provider.label}. Hãy nhập key trước khi chọn provider này.",
             category="auth",
         )
+    kwargs = {
+        "reasoning_enabled": settings.effective_reasoning_enabled,
+        "reasoning_parameter": settings.model_reasoning_parameter,
+    }
+    try:
+        parameters = inspect.signature(remote_factory).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    accepts_kwargs = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()
+    )
+    if accepts_kwargs or all(name in parameters for name in kwargs):
+        return remote_factory(provider, settings.model_id, api_key, **kwargs)
     return remote_factory(provider, settings.model_id, api_key)
 
 

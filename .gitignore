@@ -20,6 +20,7 @@ models/
 
 # Eval outputs
 eval/results/
+eval/data/summary_public/
 benchmarks/raw/
 *.csv
 

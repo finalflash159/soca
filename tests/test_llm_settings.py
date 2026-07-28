@@ -11,6 +11,8 @@ import pytest
 from soca.config.llm_settings import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_SETTINGS,
+    MAX_MAX_TOKENS,
+    MIN_MAX_TOKENS,
     LlmSettings,
     load_settings,
     save_settings,
@@ -45,6 +47,33 @@ def test_load_migrates_the_old_implicit_token_default(tmp_path) -> None:
     assert load_settings(path).max_tokens == DEFAULT_MAX_TOKENS
 
 
+@pytest.mark.parametrize("legacy_max_tokens", [1, 200, 512, 1_024, 2_047])
+def test_load_migrates_positive_legacy_token_values_without_losing_selection(
+    tmp_path, legacy_max_tokens: int
+) -> None:
+    path = tmp_path / "llm.json"
+    path.write_text(
+        json.dumps(
+            {
+                "backend": "remote",
+                "model_id": "z-ai/glm-5.2",
+                "provider_key": "openrouter",
+                "max_tokens": legacy_max_tokens,
+                "temperature": 0.2,
+                "top_p": 0.95,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(path)
+
+    assert settings.max_tokens == MIN_MAX_TOKENS
+    assert settings.backend == "remote"
+    assert settings.provider_key == "openrouter"
+    assert settings.model_id == "z-ai/glm-5.2"
+
+
 def test_rejects_unknown_backend() -> None:
     with pytest.raises(ValueError, match="backend"):
         LlmSettings(backend="cloud")
@@ -63,12 +92,18 @@ def test_remote_requires_a_model_id() -> None:
 def test_rejects_out_of_range_generation_params() -> None:
     with pytest.raises(ValueError, match="max_tokens"):
         LlmSettings(max_tokens=0)
+    with pytest.raises(ValueError, match="max_tokens"):
+        LlmSettings(max_tokens=MIN_MAX_TOKENS - 1)
+    with pytest.raises(ValueError, match="max_tokens"):
+        LlmSettings(max_tokens=MAX_MAX_TOKENS + 1)
     with pytest.raises(ValueError, match="temperature"):
         LlmSettings(temperature=-0.1)
     with pytest.raises(ValueError, match="top_p"):
         LlmSettings(top_p=0)
     with pytest.raises(ValueError, match="top_p"):
         LlmSettings(top_p=1.5)
+    with pytest.raises(ValueError, match="reasoning_supported"):
+        LlmSettings(model_reasoning_supported=1)  # type: ignore[arg-type]
 
 
 # -- immutability / with_* copies -------------------------------------------
@@ -87,10 +122,16 @@ def test_with_methods_return_new_copies() -> None:
 
 def test_with_generation_returns_new_copy() -> None:
     base = LlmSettings()
-    tuned = base.with_generation(max_tokens=256, temperature=0.5, top_p=0.9)
+    tuned = base.with_generation(
+        max_tokens=8192,
+        reasoning_enabled=True,
+        temperature=0.5,
+        top_p=0.9,
+    )
 
-    assert base.max_tokens != 256
-    assert tuned.max_tokens == 256
+    assert base.max_tokens != 8192
+    assert tuned.max_tokens == 8192
+    assert tuned.reasoning_enabled is True
     assert tuned.temperature == 0.5
     assert tuned.top_p == 0.9
 
@@ -114,7 +155,8 @@ def test_save_then_load_round_trips(tmp_path) -> None:
         backend="remote",
         provider_key="openrouter",
         model_id="openai/gpt-4o-mini",
-        max_tokens=200,
+        max_tokens=8192,
+        reasoning_enabled=True,
         temperature=0.3,
         top_p=0.8,
     )
@@ -123,6 +165,29 @@ def test_save_then_load_round_trips(tmp_path) -> None:
     loaded = load_settings(path)
 
     assert loaded == original
+
+
+def test_effective_generation_respects_model_capabilities() -> None:
+    requested = LlmSettings(
+        backend="remote",
+        model_id="reasoning/model",
+        max_tokens=500_000,
+        reasoning_enabled=False,
+        model_max_output_tokens=65_536,
+        model_reasoning_supported=True,
+        model_reasoning_mandatory=True,
+        model_reasoning_parameter="reasoning",
+    )
+
+    assert requested.max_tokens == 500_000
+    assert requested.effective_max_tokens == 65_536
+    assert requested.effective_reasoning_enabled is True
+
+
+def test_unknown_reasoning_capability_uses_model_default() -> None:
+    settings = LlmSettings(reasoning_enabled=True)
+
+    assert settings.effective_reasoning_enabled is None
 
 
 def test_saved_file_is_owner_only_readable(tmp_path) -> None:

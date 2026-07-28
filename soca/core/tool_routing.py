@@ -10,6 +10,13 @@ from soca.tools import ToolCall, ToolSpec
 
 ToolRouterMode = Literal["deterministic", "llm", "cascade"]
 RouterResponseMode = Literal["prompt_json", "json_schema"]
+TurnDisposition = Literal[
+    "direct_tool",
+    "retrieval_request",
+    "smalltalk",
+    "out_of_scope",
+    "unresolved",
+]
 
 
 @dataclass(frozen=True)
@@ -80,10 +87,21 @@ class RouterOutputError(ValueError):
 
 @dataclass(frozen=True)
 class ToolRouterDecision:
-    """Observable router result, including a reason for a deliberate ``none``."""
+    """Observable capability decision, independent from executable tools.
+
+    A ``call`` is intentionally populated only for a direct, allow-listed
+    capability.  Retrieval is a disposition plus a source set; it is resolved
+    by ``AssistantRuntime`` so a source can be ``both`` without inventing a
+    fake executable tool.
+    """
 
     call: ToolCall | None = None
     reason: str = "no_match"
+    disposition: TurnDisposition = "unresolved"
+    sources: tuple[str, ...] = ()
+    scores: dict[str, float] = field(default_factory=dict)
+    runner_up: str | None = None
+    margin: float | None = None
 
 
 def build_tool_decision_schema(specs: tuple[ToolSpec, ...]) -> dict[str, Any]:

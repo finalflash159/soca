@@ -3,7 +3,8 @@
 The Ink TUI (``ui/``) spawns ``soca engine`` and speaks this protocol:
 
 * stdin  — one JSON command per line:
-  ``{"cmd": "status"}`` · ``{"cmd": "chat", "text": "..."}`` ·
+  ``{"cmd": "status"}`` · ``{"cmd": "context"}`` ·
+  ``{"cmd": "chat", "text": "..."}`` ·
   ``{"cmd": "voice_start", "max_turns": null}`` · ``{"cmd": "voice_stop"}`` ·
   ``{"cmd": "llm_providers"}`` · ``{"cmd": "llm_models", "provider": "..."}`` ·
   ``{"cmd": "llm_set_key", "provider": "...", "key": "..."}`` ·
@@ -59,7 +60,10 @@ from soca.llm.providers import (
     get_provider,
     search_models,
 )
-from soca.memory import MemoryCommands, ProposalStore, SessionMemory
+from soca.llm.registry import LLM_MODEL_REGISTRY
+from soca.memory import MarkdownLongTermMemory, MemoryCommands, ProposalStore, SessionMemory
+from soca.memory.working import approximate_tokens
+from soca.prompts import SOCA_RUNTIME_SYSTEM_PROMPT, build_runtime_prompt
 from soca.tts import VALTEC_TTS_CONFIG
 
 PROTOCOL_VERSION = 1
@@ -81,6 +85,30 @@ def _memory_protocol_mode(
     if mode == "retrieved" or (mode == "blob" and isinstance(hit_count, int) and hit_count > 0):
         return "retrieved"
     return "blob"
+
+
+def _progress_phase_for_stage(stage: str) -> str:
+    """Collapse internal runtime stages into stable UI-facing phases."""
+
+    if stage == "input_guardrail":
+        return "analyzing"
+    if stage in {"tool_router", "knowledge_intent"}:
+        return "routing"
+    if stage in {"memory_context", "memory_archive_context"} or stage.startswith("tool:memory."):
+        return "memory"
+    if stage == "knowledge_context" or stage.startswith("tool:knowledge."):
+        return "retrieval"
+    if stage.startswith("tool:"):
+        return "tool"
+    if stage == "llm":
+        return "synthesis"
+    if stage in {
+        "output_guardrail",
+        "tool_input_guardrail",
+        "tool_output_guardrail",
+    }:
+        return "validation"
+    return "analyzing"
 
 
 class LlmSecretStore(Protocol):
@@ -141,6 +169,9 @@ def _model_protocol_payload(model: RemoteModelInfo) -> dict[str, Any]:
         "price_prompt_per_1m": model.price_prompt_per_1m,
         "price_completion_per_1m": model.price_completion_per_1m,
         "pricing_source": model.pricing_source,
+        "max_output_tokens": model.max_output_tokens,
+        "reasoning_supported": model.reasoning_supported,
+        "reasoning_mandatory": model.reasoning_mandatory,
     }
 
 
@@ -227,6 +258,7 @@ class SocaEngine:
                 "stack": stack,
             }
         )
+        self._cmd_context()
         if self._settings_warning is not None:
             self._error(self._settings_warning)
 
@@ -237,8 +269,12 @@ class SocaEngine:
             return False
         if cmd == "status":
             self._cmd_status()
+        elif cmd == "context":
+            self._cmd_context()
         elif cmd == "memory":
             self._cmd_memory()
+        elif cmd == "memory_compact":
+            self._cmd_memory_compact(str(command.get("action") or "request"))
         elif cmd == "memory_proposals":
             self._cmd_memory_proposals()
         elif cmd == "memory_approve":
@@ -281,6 +317,8 @@ class SocaEngine:
             catalog_threads = tuple(self._catalog_threads)
         for thread in catalog_threads:
             thread.join(timeout=1.0)
+        if self.session_memory is not None:
+            self.session_memory.close()
         self.writer.emit({"event": "bye"})
 
     def _error(self, message: str, **extra: Any) -> None:
@@ -293,6 +331,7 @@ class SocaEngine:
         from soca.knowledge.index.persistence import default_index_home
         from soca.knowledge.indexing.catalog import IndexCatalog
         from soca.knowledge.indexing.identity import CorpusSpec
+        from soca.knowledge.indexing.models import load_model
 
         profiles = [
             {
@@ -306,10 +345,25 @@ class SocaEngine:
             for item in collect_runtime_profile_readiness()
         ]
         knowledge_index: dict[str, Any] | None = None
+        embedding_model: object | None = None
         try:
-            knowledge_index = IndexCatalog(default_index_home()).status(
-                CorpusSpec(vault_path=self.text_config.vault),
-            ).as_dict()
+            # Catalog status is model-specific for dense generations. Passing
+            # no fingerprint makes an existing ready generation look absent.
+            # Match the CLI/index lifecycle status path without allowing a
+            # status command to download a model.
+            try:
+                embedding_model = load_model("fastembed-e5-small", allow_download=False)
+                embedding_fingerprint = getattr(embedding_model, "embedding_fingerprint", None)
+            except (ImportError, FileNotFoundError, OSError, RuntimeError, ValueError):
+                embedding_fingerprint = None
+            knowledge_index = (
+                IndexCatalog(default_index_home())
+                .status(
+                    CorpusSpec(vault_path=self.text_config.vault),
+                    embedding_fingerprint=embedding_fingerprint,
+                )
+                .as_dict()
+            )
         except (OSError, RuntimeError, ValueError) as exc:
             LOGGER.debug("Could not inspect knowledge index status: %s", exc)
         self.writer.emit(
@@ -317,8 +371,159 @@ class SocaEngine:
                 "event": "status",
                 "profiles": profiles,
                 "knowledge_index": knowledge_index,
+                "runtime_components": self._runtime_component_statuses(
+                    embedding_model=embedding_model,
+                    knowledge_index=knowledge_index,
+                ),
             }
         )
+
+    def _runtime_component_statuses(
+        self,
+        *,
+        embedding_model: object | None,
+        knowledge_index: dict[str, Any] | None,
+    ) -> list[dict[str, str]]:
+        """Describe configured runtime dependencies without eagerly loading them."""
+
+        from soca.asr.registry import get_asr_model_config
+        from soca.core.smart_turn import _MODEL_FILE as SMART_TURN_MODEL_FILE
+        from soca.llm.registry import get_model_config
+        from soca.memory.summary import default_summary_model_root, production_summary_model_spec
+
+        components: list[dict[str, str]] = []
+
+        def add(component_id: str, label: str, status: str, detail: str) -> None:
+            components.append(
+                {"id": component_id, "label": label, "status": status, "detail": detail}
+            )
+
+        settings = self.llm_settings
+        if self.no_model:
+            add("chat_llm", "Chat LLM", "disabled", "engine started with --no-model")
+        elif settings.backend == "remote":
+            key_state = "ready" if self.secret_store.has_key(settings.provider_key) else "missing"
+            add(
+                "chat_llm",
+                "Chat LLM",
+                key_state,
+                f"remote · {settings.provider_key}:{settings.model_id}",
+            )
+        else:
+            local_config = get_model_config(settings.model_id)
+            local_state = "loaded" if self.text_bundle is not None else (
+                "ready" if local_config.local_path.is_file() else "missing"
+            )
+            add("chat_llm", "Chat LLM", local_state, f"local · {settings.model_id}")
+
+        voice_bundle = self.voice_controller.bundle if self.voice_controller is not None else None
+        if self.voice_config is None or self.no_model:
+            add("voice_asr", "Voice ASR", "disabled", "voice runtime not configured")
+            add("voice_llm", "Voice LLM", "disabled", "voice runtime not configured")
+            add("tts", "TTS", "disabled", "voice runtime not configured")
+            add("smart_turn", "SmartTurn", "disabled", "adaptive endpoint unavailable")
+            add("vad", "VAD", "disabled", "voice runtime not configured")
+            add("asr_guards", "ASR guards", "disabled", "voice runtime not configured")
+        else:
+            asr_config = get_asr_model_config(self.voice_config.asr_model)
+            asr_ready = asr_config.encoder_path.is_file() and asr_config.decoder_path.is_file()
+            add(
+                "voice_asr",
+                "Voice ASR",
+                "loaded" if voice_bundle is not None else ("ready" if asr_ready else "missing"),
+                f"{self.voice_config.asr_model} · ONNX Runtime",
+            )
+            voice_llm_config = get_model_config(self.voice_config.llm_model)
+            voice_llm_ready = voice_llm_config.local_path.is_file()
+            add(
+                "voice_llm",
+                "Voice LLM",
+                "loaded" if voice_bundle is not None else ("ready" if voice_llm_ready else "missing"),
+                f"local · {self.voice_config.llm_model}",
+            )
+            try:
+                from soca.tts.valtec.artifacts import resolve_current_valtec_release
+
+                resolve_current_valtec_release()
+                tts_state = "loaded" if voice_bundle is not None else "ready"
+            except (FileNotFoundError, KeyError, OSError, TypeError, ValueError):
+                tts_state = "missing"
+            add("tts", "TTS", tts_state, f"{VALTEC_TTS_CONFIG.key}/{self.voice_config.tts_voice}")
+
+            smart_turn_path = (
+                Path(__file__).resolve().parents[2]
+                / "models"
+                / "smart-turn-v3-onnx"
+                / SMART_TURN_MODEL_FILE
+            )
+            if not self.voice_config.adaptive_endpoint:
+                smart_state = "disabled"
+            elif voice_bundle is not None and voice_bundle.turn_detector is not None:
+                smart_state = "loaded"
+            else:
+                smart_state = "ready" if smart_turn_path.is_file() else "missing"
+            add("smart_turn", "SmartTurn", smart_state, SMART_TURN_MODEL_FILE)
+            add(
+                "vad",
+                "VAD",
+                "loaded" if voice_bundle is not None else "configured",
+                "Silero VAD · lazy" if voice_bundle is None else "Silero VAD",
+            )
+            data_asr = Path(__file__).resolve().parents[2] / "data" / "asr"
+            boh_path = data_asr / "boh" / f"{self.voice_config.asr_model}_vi_boh_v1.json"
+            calibration_path = data_asr / "threshold_calibration.json"
+            guard_state = "ready" if boh_path.is_file() and calibration_path.is_file() else "degraded"
+            add(
+                "asr_guards",
+                "ASR guards",
+                guard_state,
+                f"BoH {'+' if boh_path.is_file() else '-'} confidence {'+' if calibration_path.is_file() else '-'}",
+            )
+
+        if self.session_memory is None:
+            add("summary", "Working summary", "disabled", "session memory disabled")
+            add("memory", "Archive memory", "disabled", "session memory disabled")
+        else:
+            summary_spec = production_summary_model_spec()
+            summary_path = summary_spec.path(default_summary_model_root())
+            if self.session_memory.summary_model_key is None:
+                add("summary", "Working summary", "disabled", "worker disabled")
+            elif self.session_memory.summary_worker_state == "running":
+                summary_state = "loaded"
+                add("summary", "Working summary", summary_state, f"local · {summary_spec.key} · lazy")
+            else:
+                summary_state = "ready" if summary_path.is_file() else "missing"
+                add("summary", "Working summary", summary_state, f"local · {summary_spec.key} · lazy")
+            add(
+                "memory",
+                "Archive memory",
+                "configured",
+                f"{self.text_config.memory_mode}/{self.text_config.memory_retrieval_mode}",
+            )
+
+        embedding_detail = "fastembed-e5-small · provisioned"
+        embedding_state = "ready" if embedding_model is not None else "missing"
+        if knowledge_index is not None:
+            embedding_detail += f" · dense {knowledge_index.get('dense_state', 'unknown')}"
+        add("embedding", "Embedding", embedding_state, embedding_detail)
+
+        if self.text_config.semantic_router_enabled:
+            router_state = "loaded" if self.text_bundle is not None else "configured"
+            add(
+                "semantic_router",
+                "Semantic router",
+                router_state,
+                f"threshold {self.text_config.semantic_router_threshold:.2f} · lazy",
+            )
+        else:
+            add("semantic_router", "Semantic router", "disabled", "disabled by config")
+        add(
+            "tool_router",
+            "Tool router",
+            "loaded" if self.text_bundle is not None else "configured",
+            f"text:{self.text_config.tool_router_mode}",
+        )
+        return components
 
     # --- remote LLM configuration ---------------------------------------------
 
@@ -388,14 +593,38 @@ class SocaEngine:
         if not isinstance(provider_key, str) or not isinstance(model_id, str):
             self._error("LLM provider và model phải là chuỗi.")
             return
+        max_tokens = command.get("max_tokens", self.llm_settings.max_tokens)
+        reasoning_enabled = command.get("reasoning_enabled", self.llm_settings.reasoning_enabled)
+        if isinstance(max_tokens, bool) or not isinstance(max_tokens, int):
+            self._error("Max output tokens phải là số nguyên.")
+            return
+        if not isinstance(reasoning_enabled, bool):
+            self._error("Reasoning phải là true hoặc false.")
+            return
+        model_info = (
+            self._remote_model_info(provider_key, model_id) if backend == "remote" else None
+        )
         try:
             settings = LlmSettings(
                 backend=backend,
                 provider_key=provider_key,
                 model_id=model_id,
-                max_tokens=self.llm_settings.max_tokens,
+                max_tokens=max_tokens,
+                reasoning_enabled=reasoning_enabled,
                 temperature=self.llm_settings.temperature,
                 top_p=self.llm_settings.top_p,
+                model_max_output_tokens=(
+                    model_info.max_output_tokens if model_info is not None else None
+                ),
+                model_reasoning_supported=(
+                    model_info.reasoning_supported if model_info is not None else None
+                ),
+                model_reasoning_mandatory=(
+                    model_info.reasoning_mandatory if model_info is not None else False
+                ),
+                model_reasoning_parameter=(
+                    model_info.reasoning_parameter if model_info is not None else None
+                ),
             )
         except ValueError as exc:
             self._error(str(exc))
@@ -427,12 +656,19 @@ class SocaEngine:
             "provider": settings.provider_key,
             "model": settings.model_id,
             "max_tokens": settings.max_tokens,
+            "effective_max_tokens": settings.effective_max_tokens,
+            "reasoning_enabled": settings.reasoning_enabled,
+            "effective_reasoning_enabled": settings.effective_reasoning_enabled,
+            "reasoning_supported": settings.model_reasoning_supported,
+            "reasoning_mandatory": settings.model_reasoning_mandatory,
             "temperature": settings.temperature,
             "top_p": settings.top_p,
             "pricing_as_of": PRICING_TABLE_AS_OF,
             "pricing": active_model,
+            "context_length": self._model_context_length(),
         }
         self.writer.emit(payload)
+        self._cmd_context()
 
     def _active_remote_model(self, settings: LlmSettings) -> RemoteModelInfo | None:
         if settings.backend != "remote":
@@ -445,6 +681,20 @@ class SocaEngine:
         if catalog is None:
             return None
         return next((model for model in catalog if model.id == settings.model_id), None)
+
+    def _remote_model_info(
+        self,
+        provider_key: str,
+        model_id: str,
+    ) -> RemoteModelInfo | None:
+        api_key = self.secret_store.get_key(provider_key)
+        if not api_key:
+            return None
+        provider = get_provider(provider_key)
+        catalog = self._cached_catalog(provider, api_key)
+        if catalog is None:
+            return None
+        return next((model for model in catalog if model.id == model_id), None)
 
     @staticmethod
     def _catalog_fingerprint(api_key: str) -> str:
@@ -473,8 +723,7 @@ class SocaEngine:
                 "event": "llm_catalog",
                 "provider": provider.key,
                 "models": [
-                    _model_protocol_payload(model)
-                    for model in search_models(catalog, query)
+                    _model_protocol_payload(model) for model in search_models(catalog, query)
                 ],
                 "pricing_as_of": PRICING_TABLE_AS_OF,
             }
@@ -556,6 +805,8 @@ class SocaEngine:
         with self._catalog_lock:
             self._catalog_cache[provider.key] = (fingerprint, list(catalog))
 
+        self._refresh_active_model_capabilities(provider, catalog)
+
         if purpose == "key":
             self._complete_key_validation(provider, api_key, fingerprint)
         elif purpose in {"models", "config"}:
@@ -564,10 +815,36 @@ class SocaEngine:
         # Startup can emit llm_config before this fetch is ready. Refresh only
         # its pricing field once the cache is available.
         if purpose != "key" and (
-            self.llm_settings.backend == "remote"
-            and self.llm_settings.provider_key == provider.key
+            self.llm_settings.backend == "remote" and self.llm_settings.provider_key == provider.key
         ):
             self._emit_llm_config()
+
+    def _refresh_active_model_capabilities(
+        self,
+        provider: LLMProvider,
+        catalog: list[RemoteModelInfo],
+    ) -> None:
+        settings = self.llm_settings
+        if settings.backend != "remote" or settings.provider_key != provider.key:
+            return
+        model = next((item for item in catalog if item.id == settings.model_id), None)
+        if model is None:
+            return
+        refreshed = settings.with_model_capabilities(
+            max_output_tokens=model.max_output_tokens,
+            reasoning_supported=model.reasoning_supported,
+            reasoning_mandatory=model.reasoning_mandatory,
+            reasoning_parameter=model.reasoning_parameter,
+        )
+        if refreshed == settings:
+            return
+        try:
+            self.llm_settings_saver(refreshed)
+        except ValueError:
+            LOGGER.warning("Could not persist refreshed model capabilities", exc_info=True)
+            return
+        self.llm_settings = refreshed
+        self.text_bundle = None
 
     def _key_validation_is_current(self, provider_key: str, fingerprint: str) -> bool:
         with self._catalog_lock:
@@ -628,10 +905,166 @@ class SocaEngine:
 
     def _cmd_memory(self) -> None:
         if self.session_memory is None:
-            self.writer.emit({"event": "memory", "enabled": False, "text": ""})
+            self.writer.emit(
+                {
+                    "event": "memory",
+                    "enabled": False,
+                    "text": "",
+                    "summary": "",
+                    "recent": "",
+                    "stats": None,
+                }
+            )
             return
+        summary, recent = self.session_memory.working.render_sections()
         rendered = self.session_memory.render().strip()
-        self.writer.emit({"event": "memory", "enabled": True, "text": rendered})
+        self.writer.emit(
+            {
+                "event": "memory",
+                "enabled": True,
+                "text": rendered,
+                "summary": summary,
+                "recent": recent,
+                "stats": dataclasses.asdict(self.session_memory.stats()),
+            }
+        )
+
+    def _cmd_context(self) -> None:
+        stats = self.session_memory.stats() if self.session_memory is not None else None
+        core_memory = self._core_memory_text()
+        core_section = f"Long-term memory:\n{core_memory}" if core_memory else ""
+        summary_section = ""
+        recent_section = ""
+        if self.session_memory is not None:
+            summary_section, recent_section = self.session_memory.working.render_sections()
+        memory_prompt = "\n\n".join(
+            part for part in (core_section, summary_section, recent_section) if part
+        )
+        resident_prompt = build_runtime_prompt(
+            user_text="",
+            memory_prompt_text=memory_prompt,
+        )
+        system_tokens = approximate_tokens(SOCA_RUNTIME_SYSTEM_PROMPT.strip())
+        core_tokens = approximate_tokens(core_section)
+        summary_tokens = approximate_tokens(summary_section)
+        recent_tokens = approximate_tokens(recent_section)
+        resident_tokens = approximate_tokens(resident_prompt)
+        accounted = system_tokens + core_tokens + summary_tokens + recent_tokens
+        components = [
+            {
+                "id": "system",
+                "label": "System instructions",
+                "tokens": system_tokens,
+                "policy": "always",
+            },
+            {
+                "id": "core_memory",
+                "label": "Core memory (memory/profile.md)",
+                "tokens": core_tokens,
+                "policy": "always",
+            },
+            {
+                "id": "working_summary",
+                "label": "Working summary",
+                "tokens": summary_tokens,
+                "policy": "always_when_present",
+            },
+            {
+                "id": "recent_conversation",
+                "label": "Recent conversation",
+                "tokens": recent_tokens,
+                "policy": "always_when_present",
+            },
+            {
+                "id": "prompt_scaffolding",
+                "label": "Prompt labels / separators",
+                "tokens": max(0, resident_tokens - accounted),
+                "policy": "always",
+            },
+            {
+                "id": "archive_memory",
+                "label": "Archive memory retrieval",
+                "tokens": None,
+                "policy": "on_demand",
+            },
+            {
+                "id": "knowledge",
+                "label": "Knowledge retrieval",
+                "tokens": None,
+                "policy": "on_demand",
+            },
+            {
+                "id": "current_input",
+                "label": "Current user input",
+                "tokens": None,
+                "policy": "per_turn",
+            },
+        ]
+        model_context = self._model_context_length()
+        output_reserve = self.llm_settings.effective_max_tokens
+        available = (
+            max(0, model_context - resident_tokens - output_reserve)
+            if model_context is not None
+            else None
+        )
+        self.writer.emit(
+            {
+                "event": "context",
+                "estimated": True,
+                "token_counter": "utf8_bytes_div_4",
+                "session": dataclasses.asdict(stats) if stats is not None else None,
+                "resident_prompt_tokens": resident_tokens,
+                "output_reserve_tokens": output_reserve,
+                "model_context_tokens": model_context,
+                "available_dynamic_tokens": available,
+                "components": components,
+            }
+        )
+
+    def _core_memory_text(self) -> str:
+        vault = self.text_config.vault
+        if not vault.is_dir():
+            return ""
+        try:
+            return MarkdownLongTermMemory(
+                vault,
+                max_chars=self.text_config.profile_chars,
+            ).read_profile()
+        except (OSError, UnicodeError, ValueError):
+            return ""
+
+    def _model_context_length(self) -> int | None:
+        if self.text_config.llm_model_is_override:
+            config = LLM_MODEL_REGISTRY.get(self.text_config.llm_model)
+            return config.context_window if config is not None else None
+        settings = self.llm_settings
+        if settings.backend == "local":
+            config = LLM_MODEL_REGISTRY.get(settings.model_id)
+            return config.context_window if config is not None else None
+        active = self._active_remote_model(settings)
+        return active.context_length if active is not None else None
+
+    def _cmd_memory_compact(self, action: str) -> None:
+        if self.session_memory is None:
+            self.writer.emit(
+                {"event": "memory_compaction", "status": "disabled", "detail": "memory disabled"}
+            )
+            return
+        if action == "status":
+            result = self.session_memory.compaction_status()
+        elif action == "cancel":
+            result = self.session_memory.cancel_compaction()
+        elif action == "request":
+            result = self.session_memory.request_compaction()
+        else:
+            self._error("memory compact action must be request, status, or cancel")
+            return
+        self.writer.emit({"event": "memory_compaction", **dataclasses.asdict(result)})
+        if result.status == "accepted":
+            self._cmd_context()
+        elif result.status not in {"running", "idle"}:
+            self._cmd_memory()
+            self._cmd_context()
 
     def _memory_commands(self) -> MemoryCommands | None:
         vault = self.text_config.vault
@@ -683,7 +1116,9 @@ class SocaEngine:
                     "proposal_id": proposal_id,
                     "action": "approved" if action == "approve" else "rejected",
                     "ok": result.status in {"approved", "rejected"},
-                    "error_code": None if result.status in {"approved", "rejected"} else result.status,
+                    "error_code": None
+                    if result.status in {"approved", "rejected"}
+                    else result.status,
                 }
             )
         except (OSError, ValueError, KeyError) as exc:
@@ -719,6 +1154,31 @@ class SocaEngine:
         with self._usage_lock:
             self.session_usage = self.session_usage.add(usage)
 
+    def _emit_turn_progress(
+        self,
+        surface: str,
+        phase: str,
+        *,
+        operation: str = "",
+        status: str = "active",
+    ) -> None:
+        self.writer.emit(
+            {
+                "event": "turn_progress",
+                "surface": surface,
+                "phase": phase,
+                "operation": operation,
+                "status": status,
+            }
+        )
+
+    def _emit_runtime_progress(self, surface: str, stage: str) -> None:
+        self._emit_turn_progress(
+            surface,
+            _progress_phase_for_stage(stage),
+            operation=stage,
+        )
+
     # --- chat -------------------------------------------------------------------
 
     def _cmd_chat(self, text: str) -> None:
@@ -740,11 +1200,28 @@ class SocaEngine:
     def _chat_worker(self, text: str) -> None:
         try:
             self.writer.emit({"event": "chat", "type": "start", "text": text})
+            self._emit_turn_progress(
+                "chat",
+                "preparing",
+                operation="runtime",
+            )
             bundle = self._ensure_text_bundle()
             normalized_text, metadata = normalize_text_turn(text)
-            result = bundle.runtime.run_text_turn(
-                normalized_text, source="engine_chat", metadata=metadata
+            progress_setter = getattr(bundle.runtime, "set_progress_callback", None)
+            if callable(progress_setter):
+                progress_setter(lambda stage: self._emit_runtime_progress("chat", str(stage)))
+            self._emit_turn_progress(
+                "chat",
+                "analyzing",
+                operation="normalize_input",
             )
+            try:
+                result = bundle.runtime.run_text_turn(
+                    normalized_text, source="engine_chat", metadata=metadata
+                )
+            finally:
+                if callable(progress_setter):
+                    progress_setter(None)
             usage = TurnUsage.from_runtime_result(result)
             self._track_usage(usage)
             self.writer.emit(
@@ -765,13 +1242,13 @@ class SocaEngine:
                 except (OSError, ValueError):
                     pending_count = 0
                 self.writer.emit(
-                        {
-                            "event": "router_trace",
-                            "tier": trace.tool_router_tier,
-                            "tool": trace.tool_calls[-1].name if trace.tool_calls else None,
-                            "reason": trace.tool_router_reason,
-                            "latency_ms": trace.stage_latencies_ms.get("tool_router", 0.0),
-                        }
+                    {
+                        "event": "router_trace",
+                        "tier": trace.tool_router_tier,
+                        "tool": trace.tool_calls[-1].name if trace.tool_calls else None,
+                        "reason": trace.tool_router_reason,
+                        "latency_ms": trace.stage_latencies_ms.get("tool_router", 0.0),
+                    }
                 )
                 knowledge_hits = trace.knowledge_hits[:16]
                 if knowledge_hits:
@@ -780,7 +1257,8 @@ class SocaEngine:
                             "event": "retrieval_trace",
                             "query": result.frame.text if result.frame is not None else "",
                             "tier": trace.tool_router_tier
-                            if trace.tool_router_tier in {"deterministic", "semantic", "llm", "none"}
+                            if trace.tool_router_tier
+                            in {"deterministic", "semantic", "llm", "none"}
                             else "none",
                             "latency_ms": trace.stage_latencies_ms.get("knowledge", 0.0),
                             "columns": [
@@ -814,23 +1292,33 @@ class SocaEngine:
                             {
                                 "id": str(getattr(hit.document, "id", ""))[:120],
                                 "corpus": "profile",
-                                "relevance": float(getattr(getattr(hit, "score", None), "relevance", 0.0)),
-                                "recency": float(getattr(getattr(hit, "score", None), "recency", 0.0)),
-                                "importance": float(getattr(getattr(hit, "score", None), "importance", 0.0)),
+                                "relevance": float(
+                                    getattr(getattr(hit, "score", None), "relevance", 0.0)
+                                ),
+                                "recency": float(
+                                    getattr(getattr(hit, "score", None), "recency", 0.0)
+                                ),
+                                "importance": float(
+                                    getattr(getattr(hit, "score", None), "importance", 0.0)
+                                ),
                                 "total": float(getattr(getattr(hit, "score", None), "total", 0.0)),
                             }
                             for hit in trace.memory_hits[:16]
                         ],
                         "compacted_turn_count": 0,
-                        "recent_turn_count": len(self.session_memory.turns) if self.session_memory is not None else 0,
+                        "recent_turn_count": len(self.session_memory.turns)
+                        if self.session_memory is not None
+                        else 0,
                         "background_status": "idle",
                         "episodic_enabled": False,
                         "pending_proposal_count": pending_count,
                     }
                 )
+            self._cmd_context()
         except Exception as exc:  # noqa: BLE001 - protocol boundary must not crash
             self.writer.emit({"event": "chat", "type": "error", "text": str(exc)})
         finally:
+            self._emit_turn_progress("chat", "complete", status="done")
             self._chat_lock.release()
 
     def _ensure_text_bundle(self) -> TextRuntimeBundle:
@@ -842,7 +1330,7 @@ class SocaEngine:
         # SecretStore. Fall back for builders with a narrower signature (tests).
         runtime_config = dataclasses.replace(
             self.text_config,
-            max_tokens=self.llm_settings.max_tokens,
+            max_tokens=self.llm_settings.effective_max_tokens,
             temperature=self.llm_settings.temperature,
             top_p=self.llm_settings.top_p,
         )
@@ -880,6 +1368,9 @@ class SocaEngine:
             max_turns=config.session_turns,
             max_chars=config.session_chars,
             max_turn_chars=config.turn_chars,
+            summary_enabled=not self.no_model,
+            summary_threads=config.llm_threads,
+            summary_gpu_layers=config.llm_gpu_layers,
         )
 
     # --- voice ------------------------------------------------------------------
@@ -961,7 +1452,25 @@ class SocaEngine:
                         "pending_proposal_count": 0,
                     }
                 )
+            elif event.type == "progress":
+                stage = str(event.metadata.get("stage") or "")
+                self._emit_runtime_progress("voice", stage)
+            elif event.type == "recorded":
+                self._emit_turn_progress(
+                    "voice",
+                    "analyzing",
+                    operation="speech_recognition",
+                )
+            elif event.type in {"tts", "audio"}:
+                self._emit_turn_progress(
+                    "voice",
+                    "speech",
+                    operation="text_to_speech",
+                )
             self._track_usage(event.usage)
+            if event.type == "done":
+                self._emit_turn_progress("voice", "complete", status="done")
+                self._cmd_context()
         if self.voice_stop_event is not None:
             self.voice_stop_event.set()
 

@@ -16,6 +16,7 @@ class KnowledgeCitation:
     title: str
     line_start: int | None = None
     line_end: int | None = None
+    source: str = "knowledge"
 
 
 @dataclass(frozen=True)

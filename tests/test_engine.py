@@ -183,6 +183,13 @@ def test_engine_chat_roundtrip_emits_done_with_response() -> None:
     assert len(done) == 1
     assert done[0]["text"] == "echo: xin chào"
     assert done[0]["route"] == "free_chat"
+    progress = [e for e in capture.events() if e["event"] == "turn_progress"]
+    assert [event["phase"] for event in progress] == [
+        "preparing",
+        "analyzing",
+        "complete",
+    ]
+    assert progress[-1]["status"] == "done"
 
 
 @dataclass
@@ -295,6 +302,10 @@ def test_engine_memory_and_usage_commands() -> None:
         capture.wait_for('"done"')
         yield '{"cmd": "memory"}\n'
         capture.wait_for('"memory"')
+        yield '{"cmd": "context"}\n'
+        capture.wait_for('"resident_prompt_tokens"')
+        yield '{"cmd": "memory_compact", "action": "status"}\n'
+        capture.wait_for('"memory_compaction"')
         yield '{"cmd": "usage"}\n'
         capture.wait_for('"usage"')
         yield '{"cmd": "quit"}\n'
@@ -312,5 +323,29 @@ def test_engine_memory_and_usage_commands() -> None:
     events = capture.events()
     memory = next(e for e in events if e["event"] == "memory")
     assert memory["enabled"] is True
+    assert memory["stats"]["hard_limit_tokens"] == 16_384
+    contexts = [e for e in events if e["event"] == "context"]
+    context = contexts[-1]
+    assert context["estimated"] is True
+    assert context["token_counter"] == "utf8_bytes_div_4"
+    assert context["session"]["high_watermark_tokens"] == 15_000
+    assert context["model_context_tokens"] == 32_768
+    assert context["output_reserve_tokens"] == 4_096
+    assert {component["id"] for component in context["components"]} >= {
+        "system",
+        "core_memory",
+        "working_summary",
+        "recent_conversation",
+        "knowledge",
+        "archive_memory",
+        "current_input",
+    }
+    knowledge = next(
+        component for component in context["components"] if component["id"] == "knowledge"
+    )
+    assert knowledge["tokens"] is None
+    assert knowledge["policy"] == "on_demand"
+    compaction = next(e for e in events if e["event"] == "memory_compaction")
+    assert compaction["status"] == "idle"
     usage = next(e for e in events if e["event"] == "usage")
     assert usage["turns"] == 1

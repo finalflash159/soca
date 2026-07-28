@@ -1359,3 +1359,198 @@ floor + read-speech VAD; grows under stronger echo).
 - Backchannel is a synthetic 400 ms FLEURS head, not recorded "vâng/dạ".
 - Tier 1 synth uses one echo level (alpha 0.5) and MIT RIRs only; a full SER
   curve + OpenSLR simulated RIRs would strengthen the acoustic claim.
+
+---
+
+## P4 — Local working-memory summary bake-off (not yet a release decision)
+
+The compaction path is deliberately held at `trim_only` until a local candidate
+passes the held-out quality and cold-process resource gates.  The benchmark
+fixtures are committed synthetic data, not user transcripts:
+
+- `eval/prompts/summary_session_vi_v1.jsonl`: 200 records, eight semantic
+  families, family-level train/validation/test split;
+- `eval/prompts/summary_rolling_vi_v1.jsonl`: 40 multi-generation correction
+  and decision chains;
+- the full candidate protocol is zero-shot constrained JSON generation at
+  `n_ctx=4096`, `temperature=0`, `max_tokens=384`.
+
+### Arcee-VyLinh 3B Q4_K_M smoke capture
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-07-28 |
+| Machine | MacBook M4 Pro, macOS 15.7.4 arm64, Python 3.11.14 |
+| Runtime | `llama-cpp-python 0.3.16`, Metal, `n_gpu_layers=-1`, 8 threads |
+| Model | `Arcee-VyLinh.Q4_K_M.gguf` (local, already provisioned) |
+| Input | first 5 synthetic `constraints` records only |
+| Process mode | one warm process; **not** cold-per-job |
+| Schema-valid rate | 5/5 (100%) |
+| Structured-field recall | 0.000 (0/5) |
+| Latency p50 / p95 | 1981.8 / 2200.0 ms |
+| Raw artifact | `eval/results/summary_arcee_smoke_20260728.json` (gitignored; no raw transcript persisted) |
+
+**Decision:** this is a failure, not a winner.  Although grammar-constrained
+JSON was valid, the candidate misplaced the explicit user constraint into other
+fields and retained synthetic situation labels.  The run is only a runtime
+smoke: it is too small, warm-process, single-family, and has no rolling,
+adversarial, resource-cleanup or 16 GiB measurement.  It cannot satisfy the
+quality-first gate; `background_summary` stays disabled and there is no remote
+fallback or automatic model download.
+
+Reproduce the same non-release smoke explicitly (it never downloads weights):
+
+```bash
+uv run python eval/eval_summary_bakeoff.py \
+  --dataset eval/prompts/summary_session_vi_v1.jsonl \
+  --model-key arcee_vylinh_3b_q4_k_m \
+  --model-path models/arcee-vylinh-gguf/Arcee-VyLinh.Q4_K_M.gguf \
+  --limit 5 --output eval/results/summary_arcee_smoke.json
+```
+
+### Provisioned summary-candidate warm captures
+
+On 2026-07-28 all five declared summary weights were explicitly provisioned
+under ignored `models/summary/<candidate>/<immutable-HF-revision>/`.  The
+provisioner pins repository revision, file byte count and SHA-256, verifies the
+result, then sets the GGUF file to `0600`; the runtime never invokes it or
+downloads a weight.  Gemma required the account owner to accept its Hugging
+Face terms and provide `HF_TOKEN` locally; that token is only read into the
+provisioning process and never written to output.
+
+The following `summary_session_vi_v1` runs use Metal, 8 threads,
+`n_ctx=4096`, `temperature=0`, `max_tokens=384`, and one warm process for all
+200 synthetic rows.  Artifacts in `eval/results/` are gitignored and contain
+only synthetic fixture IDs/safe metrics.  They are **not cold-process release
+measurements**.
+
+| Candidate | Schema valid | Forbidden-leak records | Unexpected-item records | p50 / p95 ms | Result |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Arcee-VyLinh 3B Q4_K_M | 100% | not captured by old smoke evaluator | not captured by old smoke evaluator | 2143 / 2877 | No winner; strict exact field recall 0.000 |
+| Qwen3 1.7B Q8_0 | 100% | not captured by old smoke evaluator | not captured by old smoke evaluator | 1715 / 3024 | No winner; strict exact field recall 0.000 |
+| Gemma 3 4B IT QAT Q4_0 | 100% | 11.5% | 96.0% | 2831 / 4132 | Fails zero-leak gate |
+| Sailor2 1B Chat Q4_0 | 59.0% | 0.0% | 100.0% | 2529 / 4119 | Fails schema-valid gate (82/200 errors) |
+| Sailor2 8B Chat Q4_K_M | 100% | 1.5% | 100.0% | 3956 / 5271 | Fails zero-leak gate; peak RSS observed ~6.4 GB |
+
+`field_recall_mean` was deliberately not used for the decision: the current
+synthetic labels demand literal wording while valid summaries paraphrase the
+same fact (for example, a user constraint).  The evaluator now reports
+per-field strict recall, unexpected structured items, and forbidden-claim
+leaks; the fixture still needs accepted semantic variants/atomic annotations
+before a quality score can be a release gate.  This does **not** excuse the
+observed forbidden leaks or schema failures.  No candidate has passed all
+quality, rolling, cold-process, or target-16-GiB gates, so the approved mode
+remains `trim_only`.
+
+### P4.1 — Real-data and structured-state v2 decision
+
+Run date: 2026-07-28. Full design, source provenance, candidate revisions,
+license notes, commands, and failure analysis:
+`docs/12-local-summary-model-selection.md`.
+
+The v1 fixtures and captures above are now **invalidated** for model selection:
+200 single rows contained only eight unique expected payloads, while the
+40-session rolling set had one effective expected state. The files were removed
+from the current tree. V2 contains 200 unique inputs/151 expected states and
+40 distinct four-generation sessions. Negative injection/noise cases
+intentionally share empty expected state.
+
+Public real-data was explicitly provisioned and pinned:
+
+| Dataset | Local rows | Comparative probe per candidate |
+| --- | ---: | ---: |
+| VSoLSCSum-VI | 141 | 8 |
+| SEAHORSE-VI | 64 | 8 |
+| WikiLingua-VI | 64 | 8 |
+| XL-Sum-VI | 64 | 8 |
+| DialogSum-EN control | 64 | 8 |
+
+Public probe (40 records/candidate; overlap is report-only):
+
+| Candidate | Schema | Token F1 | ROUGE-L F1 | Model2Vec cosine |
+| --- | ---: | ---: | ---: | ---: |
+| Qwen3-0.6B Q8_0 | 77.5% | 0.2522 | 0.1719 | 0.6759 on 31 parses |
+| Qwen3-1.7B Q8_0 | 97.5% | 0.2667 | 0.1728 | 0.6746 on 39 parses |
+| Qwen2.5-3B-Instruct Q4_K_M | 100% | **0.2707** | **0.1899** | 0.6655 |
+| Qwen3-4B Q4_K_M | 100% | 0.2524 | 0.1705 | 0.6331 |
+| Qwen3-4B-Instruct-2507 Q4_K_M | 100% | 0.2690 | 0.1713 | **0.6876** |
+
+Final prompt fingerprint: `aa317641bb249d5b`. Only the best finalist,
+Qwen3-4B-Instruct-2507 Q4_K_M, advanced to final-prompt full captures:
+
+| Run | Denominator | Schema | Fact recall | Negative clean | Forbidden surface | p50 / p95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| single state v2 | 200 | 100% | 80.0% | 100% | 0% | 1.508 / 2.787 s |
+| rolling v2 | 40 sessions / 160 generations | 100% | 72.5% | n/a | 0% | 11.111 / 13.863 s/session |
+
+Single family recall: constraints 100%, open items 100%, commitments 96%,
+corrections 92%, decisions 84%, mixed code/path 8%. Rolling ranged from 67.5%
+for correction chains to 82.5% for open-item chains.
+
+Eight cold-process jobs measured:
+
+- outer p50/p95 5.318/6.387 s;
+- child load p50 300 ms; generation p50 2.357 s;
+- max child peak RSS 3,822 MiB;
+- clean exit 8/8 and supervisor-observed stopped 8/8.
+
+The explicit real-flow smoke passed local generation, CAS publication, worker
+idle, private `0600` checkpoint, reload, structured-state render, and render
+round-trip. No worker remained after the run.
+
+**Decision:** resource lifecycle passes on the development machine, quality
+does not. There is no production winner. Keep `trim_only`; retain
+Qwen3-4B-Instruct-2507 only as a research finalist for a typed, ID-addressed
+delta + deterministic merge experiment. Do not add keyword/regex merge rules,
+auto-download, remote fallback, or lower the release gate.
+
+Post-decision disk cleanup removed the four rejected GGUF files (0.6B, 1.7B,
+Qwen2.5-3B, and Qwen3-4B base), reducing `models/summary` from about 9.0 GB to
+2.3 GB. The Instruct-2507 finalist remains; all removed artifacts are
+reprovisionable from pinned registry metadata.
+
+### P4.2 — Production acceptance and 15K auto-compaction
+
+Run date: 2026-07-28. This decision supersedes the P4.1 `trim_only` production
+decision after explicit product-owner acceptance of the measured quality
+trade-off. It does not invalidate the P4.1 measurements.
+
+The selected production model is `Qwen3-4B-Instruct-2507 Q4_K_M`. The revised
+gate is:
+
+- schema 100%, negative-state clean 100%, forbidden surface 0%;
+- single annotated fact recall >= 80%;
+- rolling annotated fact recall >= 70%;
+- child clean exit and stopped-worker rates 100%;
+- peak summary-child RSS <= 8,192 MiB.
+
+The measured 80.0% single recall, 72.5% rolling recall, clean safety metrics,
+and process lifecycle pass this gate. Decision recall 84%, correction recall
+92%, and mixed Vietnamese/code/path placement recall 8% remain documented
+technical debt.
+
+Production wiring:
+
+- `working_v2_16k` target/high/hard = 12,000/15,000/16,384 tokens;
+- automatic and manual compaction use one coordinator in chat, voice, and UI;
+- worker context is allocated per job from 4K through a 32K maximum;
+- selected weight is stored privately under
+  `~/.local/share/soca/models/summary/<key>/<revision>/`;
+- runtime never downloads the weight and falls back to `trim_only` if it is
+  missing, malformed, non-private, or the worker fails.
+
+Real 15K production smoke:
+
+| Metric | Result |
+| --- | ---: |
+| auto-trigger | 15,288 approximate tokens |
+| allocated llama.cpp context | 20,480 tokens |
+| load / generation | 466 ms / 44.78 s |
+| peak child RSS | 6,030 MiB |
+| exit / stopped | 0 / true |
+| publish / checkpoint 0600 / reload / render | pass / pass / pass / pass |
+
+The final full-flow run used the persisted real answer backend
+`openrouter:qwen/qwen3.7-flash`. The local summary was present in the answer
+prompt, the active `TTS B` decision was visible, the provider was called, and
+the returned content was non-empty. No summary process remained afterward.

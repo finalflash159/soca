@@ -23,7 +23,9 @@ def _make_completion(text: str, prompt_tokens: int, completion_tokens: int):
 
 
 def _make_delta(content: str | None):
-    return SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=content))], usage=None)
+    return SimpleNamespace(
+        choices=[SimpleNamespace(delta=SimpleNamespace(content=content))], usage=None
+    )
 
 
 def _make_usage_only(prompt_tokens: int, completion_tokens: int):
@@ -70,17 +72,28 @@ class FakeConnectionError(Exception):
 # ---------------------------------------------------------------------------
 
 
-def _engine(client: FakeClient, *, model: str = "llama-3.1-8b-instant", provider_key: str = "groq"):
+def _engine(
+    client: FakeClient,
+    *,
+    model: str = "llama-3.1-8b-instant",
+    provider_key: str = "groq",
+    reasoning_enabled: bool | None = None,
+    reasoning_parameter: str | None = None,
+):
     return RemoteOpenAILLM(
         provider=get_provider(provider_key),
         model=model,
         api_key="sk-test-key",
         client=client,
+        reasoning_enabled=reasoning_enabled,
+        reasoning_parameter=reasoning_parameter,
     )
 
 
 def test_generate_maps_response_and_usage_into_result():
-    client = FakeClient(completion=_make_completion("Chào bạn.", prompt_tokens=25, completion_tokens=4))
+    client = FakeClient(
+        completion=_make_completion("Chào bạn.", prompt_tokens=25, completion_tokens=4)
+    )
     engine = _engine(client)
 
     result = engine.generate("Xin chào", max_tokens=64)
@@ -118,9 +131,37 @@ def test_generate_without_persona_has_no_forced_system_prompt():
     assert "system" not in roles
 
 
-def test_openrouter_disables_hidden_reasoning_for_ordinary_generation():
+def test_unknown_reasoning_capability_omits_control_for_mandatory_models():
     client = FakeClient(completion=_make_completion("ok", 10, 1))
     engine = _engine(client, provider_key="openrouter")
+
+    engine.generate("Câu hỏi")
+
+    assert "extra_body" not in client.calls[0]
+
+
+def test_reasoning_capability_controls_any_unified_provider():
+    client = FakeClient(completion=_make_completion("ok", 10, 1))
+    engine = _engine(
+        client,
+        provider_key="openrouter",
+        reasoning_enabled=True,
+        reasoning_parameter="reasoning",
+    )
+
+    engine.generate("Câu hỏi")
+
+    assert client.calls[0]["extra_body"] == {"reasoning": {"enabled": True, "exclude": True}}
+
+
+def test_verified_optional_reasoning_can_be_disabled():
+    client = FakeClient(completion=_make_completion("ok", 10, 1))
+    engine = _engine(
+        client,
+        provider_key="openrouter",
+        reasoning_enabled=False,
+        reasoning_parameter="reasoning",
+    )
 
     engine.generate("Câu hỏi")
 
@@ -184,13 +225,13 @@ def test_generate_stream_yields_delta_text_and_requests_usage():
     assert call["stream_options"] == {"include_usage": True}
 
 
-def test_openrouter_stream_disables_hidden_reasoning():
+def test_stream_uses_model_default_when_capability_is_unknown():
     client = FakeClient(stream_chunks=[_make_delta("ok")])
     engine = _engine(client, provider_key="openrouter")
 
     list(engine.generate_stream("Câu hỏi"))
 
-    assert client.calls[0]["extra_body"] == {"reasoning": {"effort": "none"}}
+    assert "extra_body" not in client.calls[0]
 
 
 def test_generate_stream_validates_arguments():

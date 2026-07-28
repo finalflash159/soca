@@ -15,6 +15,10 @@ class RuntimeRoute(Enum):
     TOOL_DIRECT = "tool_direct"
     KNOWLEDGE_DIRECT = "knowledge_direct"
     KNOWLEDGE_LLM = "knowledge_llm"
+    MEMORY_LLM = "memory_llm"
+    MEMORY_DIRECT = "memory_direct"
+    OUT_OF_SCOPE = "out_of_scope"
+    CLARIFICATION = "clarification"
     FREE_CHAT = "free_chat"
     # Backward-compatible alias for older tests/reports that imported the enum name.
     LLM_FALLBACK = "free_chat"
@@ -44,6 +48,14 @@ class RuntimeTrace:
     stage_latencies_ms: dict[str, float] = field(default_factory=dict)
     tool_router_tier: str = "none"
     tool_router_reason: str = "no_match"
+    disposition: str = "unresolved"
+    selected_sources: tuple[str, ...] = ()
+    router_scores: dict[str, float] = field(default_factory=dict)
+    router_runner_up: str | None = None
+    router_margin: float | None = None
+    evidence_decisions: tuple[Any, ...] = ()
+    evidence_bundle: Any | None = None
+    answer_validation: Any | None = None
 
 
 @dataclass(frozen=True)

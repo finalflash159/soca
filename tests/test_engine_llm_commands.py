@@ -125,11 +125,7 @@ def test_llm_providers_reports_all_providers_and_only_key_presence() -> None:
 def test_llm_models_filters_catalog_by_query() -> None:
     capture, _ = _run([{"cmd": "llm_models", "provider": "groq", "query": "qwen"}])
 
-    event = next(
-        item
-        for item in reversed(capture.events())
-        if item["event"] == "llm_catalog"
-    )
+    event = next(item for item in reversed(capture.events()) if item["event"] == "llm_catalog")
     assert event["provider"] == "groq"
     assert [model["id"] for model in event["models"]] == ["qwen/qwen3-32b"]
     assert "supported_parameters" not in event["models"][0]
@@ -232,6 +228,49 @@ def test_llm_select_persists_remote_config_and_emits_active_config() -> None:
     assert event["backend"] == "remote"
     assert event["provider"] == "groq"
     assert event["model"] == "llama-3.1-8b-instant"
+
+
+def test_llm_select_persists_requested_generation_and_caps_effective_output() -> None:
+    model = RemoteModelInfo(
+        id="reasoning/model",
+        label="Reasoning Model",
+        context_length=200_000,
+        price_prompt_per_1m=None,
+        price_completion_per_1m=None,
+        pricing_source="unknown",
+        supported_parameters=("reasoning",),
+        max_output_tokens=32_768,
+        reasoning_supported=True,
+        reasoning_mandatory=True,
+        reasoning_parameter="reasoning",
+    )
+
+    def catalog(provider: LLMProvider, api_key: str) -> list[RemoteModelInfo]:
+        return [model]
+
+    capture, saved = _run(
+        [
+            {"cmd": "llm_models", "provider": "groq"},
+            {
+                "cmd": "llm_select",
+                "backend": "remote",
+                "provider": "groq",
+                "model": "reasoning/model",
+                "max_tokens": 500_000,
+                "reasoning_enabled": False,
+            },
+        ],
+        catalog_fetcher=catalog,
+    )
+
+    selected = saved[-1]
+    assert selected.max_tokens == 500_000
+    assert selected.effective_max_tokens == 32_768
+    assert selected.reasoning_enabled is False
+    assert selected.effective_reasoning_enabled is True
+    event = [item for item in capture.events() if item["event"] == "llm_config"][-1]
+    assert event["effective_max_tokens"] == 32_768
+    assert event["effective_reasoning_enabled"] is True
 
 
 def test_llm_select_invalidates_the_lazy_text_runtime() -> None:

@@ -6,8 +6,8 @@ answers. Three cooperating pieces sit behind the `AssistantRuntime` (see
 
 1. **Hybrid retrieval** — sparse (BM25) and dense (ONNX embeddings) fused with
    Reciprocal Rank Fusion, over a transactional v2 vault index.
-2. **Tool router** — a deterministic → semantic → LLM cascade that decides
-   whether a turn calls a tool, always validated before execution.
+2. **Capability policy** — deterministic overrides followed by an open-set
+   semantic disposition/source decision; retrieval is not an executable tool.
 3. **Retrieved memory** — query-aware long-term memory ranked by relevance,
    recency, and importance, with consent-gated episodic capture.
 
@@ -86,14 +86,13 @@ The synthetic finance note remains explicitly marked as non-personal data. The
 health note is a disclaimer-only guardrail. These notes are in the real local
 vault and are not committed to the repository.
 
-### Voice gating
+### Voice capability policy
 
-Retrieval in the voice loop is gated by `knowledge/intent_gate.py`
-(`RetrievalIntentGate`). Modes: `off`, `intent` (default), `always`. `intent`
-reuses the turn's own query embedding and only retrieves when the max cosine
-similarity clears a threshold — nearly free, and safe because guardrails run
-per-sentence on the LLM route (see
-[streaming architecture](./03-voice-pipeline.md)).
+Chat and voice can construct the same semantic policy from
+`eval/prompts/turn_routing_vi.jsonl`; voice now provisions the same local
+embedder when semantic routing is enabled.  The old `RetrievalIntentGate` is a
+legacy compatibility path, not the target policy.  Semantic voice routing is
+still opt-in until its full paired chat/ASR calibration and TTFA gate pass.
 
 ## Tool router cascade
 
@@ -102,38 +101,35 @@ only proposes; `ToolRuntime` validates and runs.
 
 ```mermaid
 flowchart LR
-    T[text] --> D[DefaultRuntimeToolRouter<br/>explicit commands]
-    D -->|hit| OUT[ToolCall]
-    D -->|miss| S[SemanticToolRouter<br/>embedded route examples]
-    S -->|>= threshold + margin| OUT
-    S -->|miss| L[LLMToolRouter<br/>prompt JSON / JSON schema]
-    L --> P[parse -> validate_arguments -> repair x1]
-    P -->|ok| OUT
-    P -->|fail| D2[fallback: deterministic / free chat]
+    T[text] --> D[explicit override]
+    D -->|direct hit| OUT[allow-listed ToolCall]
+    D -->|miss| S[SemanticTurnRouter<br/>disposition + source set]
+    S -->|direct_tool| OUT
+    S -->|retrieval_request| R[knowledge / memory / both]
+    S -->|smalltalk| CHAT[free chat]
+    S -->|out_of_scope or unresolved| STOP[redirect / clarify]
 ```
 
 | Stage         | Module                         | Notes                                                |
 | ------------- | ------------------------------ | ---------------------------------------------------- |
 | Config/schema | `core/tool_routing.py`         | Frozen config, robust JSON parser, decision schema   |
 | Deterministic | `core/runtime.py`              | Explicit prefixes, scoped read paths, no NL guessing |
-| Semantic      | `core/semantic_tool_router.py` | Route examples + explicit `none`, threshold/margin   |
+| Semantic      | `core/semantic_turn_router.py` | disposition + multi-source examples, threshold/margin |
 | LLM           | `core/llm_tool_router.py`      | Prompt JSON or JSON-schema, one repair, fallback     |
 | Cascade       | `core/router_cascade.py`       | Short-circuits deterministic → semantic → LLM        |
 | Construction  | `core/router_setup.py`         | `build_runtime_tool_router(...)`                     |
 
 Invariants worth remembering:
 
-- **The router never kills a turn.** Parse failure, invalid schema, unknown
-  tool, timeout, rate-limit, and provider errors all degrade to
-  deterministic/free-chat. Only construction-time config errors fail fast.
-- **Text uses the cascade by default.** Semantic is enabled with the checked-in
-  Vietnamese examples and degrades to Tier 0 when its embedding model is absent;
-  voice keeps semantic/LLM routing off until a paired TTFA gate (≤10%) is met.
-- **The executable catalog has five product tools only:**
-  `knowledge.search`, `knowledge.read`, `local_time.now`, `memory.search`, and
-  `memory.propose_note`. There are no weather, device-control, or scheduling
-  tools. Requests for those capabilities remain ordinary free chat and cannot
-  trigger a fake tool call.
+- **`none` is no longer a policy.** `smalltalk`, `out_of_scope`, and
+  `unresolved` have distinct dispositions. OOS never falls through to an answer
+  model and cannot execute a direct tool.
+- **Text and voice use the same semantic contract.** The LLM router tier is
+  intentionally not enabled as a text-only fallback while voice has not passed
+  its privacy/latency gate.
+- **The executable catalog has four product tools only:** `knowledge.search`,
+  `knowledge.read`, `local_time.now`, and `memory.search`. There are no weather,
+  device-control, scheduling, or memory-write tools.
 - **Safety stays in guardrails.** Prompt injection, path traversal, schema,
   side-effect, and unsupported realtime-claim checks remain guardrail
   responsibilities; they are not capability classifiers.
@@ -162,17 +158,21 @@ The stack is in `soca/memory/`:
 | Safe frontmatter parse | `frontmatter.py`                          |
 | Setup + wiring       | `core/memory_setup.py`                      |
 
-Instead of dumping the whole `profile.md` into every prompt,
-`RetrievedMemory.retrieve_profile(query)` retrieves the top-k relevant chunks and
-ranks them by a normalized blend of **relevance**, **recency** (time decay), and
-**importance**. Each score component is kept in the trace for debugging. The
-old blob behavior is still reachable (`memory_mode=blob` →
-`MarkdownLongTermMemory`) and a golden test asserts core-only ≡ blob for
-compatibility.
+Archive retrieval is now explicitly requested by the semantic source decision
+or `memory:` override; it is not run for ordinary smalltalk/free-chat turns.
+`MemoryContextBuilder.build(..., include_archive=False)` contributes only the
+always-on bounded working/profile context. Archive snippets become `[M#]`
+grounded context only when selected.
 
-Working memory is bounded: recent turns stay verbatim while older turns are
-compacted off the hot path (extractive by default; any LLM summary runs in the
-background, never mid-turn while TTFA is pending).
+Working memory is typed as complete `ConversationTurn`s instead of a flat
+message deque. The production `working_v2_16k` policy uses
+target/high/hard limits of 12,000/15,000/16,384 tokens. At the high watermark,
+chat and voice start `Qwen3-4B-Instruct-2507 Q4_K_M` in an isolated local
+process, publish its typed artifact with generation CAS, then unload it.
+Summary context is allocated dynamically from 4K to 32K. A missing or invalid
+private weight falls back to `trim_only`; there is no extractive/regex summary,
+remote summary fallback, or automatic runtime download. `/compact`,
+`status`, and `cancel` share the same coordinator in CLI and UI.
 
 ### Human-in-the-loop capture
 
@@ -180,15 +180,14 @@ Durable memory is never written automatically.
 
 - Episodic summaries persist **only** when `episodic_memory_enabled=true` and the
   user has given explicit consent; raw transcripts are never stored.
-- `reflection.py` runs in the background and produces **immutable proposals**;
-  the LLM cannot approve its own writes.
-- Approval/rejection is a deterministic application command
-  (`commands.py`) keyed by the exact pending proposal ID — not an LLM-callable
-  tool.
+- Proposal and approval primitives (`proposals.py`, `commands.py`) are retained
+  for an explicitly provisioned future capture workflow; no production chat or
+  voice runtime currently creates a proposal or writes durable memory.
+- If a pending proposal is provisioned externally, approval/rejection is a
+  deterministic application command keyed by its exact ID — never an
+  LLM-callable tool.
 - Approved notes land under `<vault>/memory/captured/<uuid>.md` with restrictive
   permissions; `private/`, dot-directories, and symlinks are never indexed.
-- `memory.propose_note` may create only a pending proposal. It is a local-state
-  tool with human approval still required; it never writes an approved note.
 
 See the memory lifecycle and compaction numbers in
 [BENCHMARKS.md → P2.3](../BENCHMARKS.md).

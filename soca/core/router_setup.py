@@ -6,7 +6,7 @@ from dataclasses import replace
 from soca.core.llm_tool_router import LLMToolRouter
 from soca.core.router_cascade import CascadeToolRouter
 from soca.core.runtime import DefaultRuntimeToolRouter, RuntimeToolRouter
-from soca.core.semantic_tool_router import build_semantic_router
+from soca.core.semantic_turn_router import build_semantic_turn_router
 from soca.core.tool_routing import ToolRouterConfig
 from soca.knowledge.retrievers.dense import EmbeddingModel
 from soca.llm import LLMEngine
@@ -37,7 +37,7 @@ def build_runtime_tool_router(
         else config.semantic
     )
     try:
-        semantic_router = build_semantic_router(
+        semantic_router = build_semantic_turn_router(
             tool_runtime=tool_runtime,
             config=semantic_config,
             embedding_model=embedding_model,

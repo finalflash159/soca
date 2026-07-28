@@ -97,8 +97,33 @@ screen is a master–detail:
 - **Remote, no key** — a masked key field; save validates then stores to the keyring.
   A saved provider hides the field entirely (press `r` to replace an expired key).
 - **Model** — the catalog loads on demand and **filters in real time** as you type;
-  each row shows context length, price (live / unknown), and source. Picking a model
-  saves the selection and returns to chat.
+  each row shows context length, price (live / unknown), and source.
+- **Generation** — after choosing a model, output tokens accept digits only and are
+  validated live in the range 2,048–500,000. Reasoning is a persisted user preference.
+  The engine resolves both controls against model metadata before building the runtime.
+- **Reuse** — when a saved configuration exists, it is the first focused panel. `Enter`
+  uses it unchanged; `e` or `↓` opens provider/model configuration.
+
+Requested and effective generation values are intentionally separate. The requested
+output budget remains saved when the user changes models, while the effective budget is
+`min(requested, model.max_completion_tokens)` whenever the catalog publishes that cap.
+Reasoning follows the same model-aware rule:
+
+- mandatory model → effective reasoning is on even if the saved preference is off;
+- verified optional support → send the user's on/off preference;
+- unsupported or unknown capability → omit the parameter and keep the model/provider
+  default rather than guessing.
+
+This uses catalog metadata (`supported_parameters`, `reasoning.mandatory`, and
+`top_provider.max_completion_tokens`) rather than a per-model allowlist. OpenRouter
+currently exposes the richest metadata. Other OpenAI-compatible providers use the same
+settings and resolver; when their `/models` response omits a capability, SoCa preserves
+the user's preference but safely leaves the request parameter unspecified.
+
+References:
+
+- [OpenRouter reasoning controls and mandatory metadata](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens)
+- [OpenRouter model metadata and supported parameters](https://openrouter.ai/docs/guides/overview/models)
 
 The active backend is shown live in the footer (`remote openrouter:<model>` in amber,
 or `local <model>` in green). A persistent warning states that remote sends the

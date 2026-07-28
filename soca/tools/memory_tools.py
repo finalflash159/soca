@@ -51,7 +51,7 @@ class MemorySearchTool:
         if not query:
             raise ValueError("query must not be empty")
         limit = max(1, min(int(arguments.get("limit") or self.max_limit), self.max_limit))
-        context = self.builder.build(query)
+        context = self.builder.build(query, include_archive=True)
         hits = tuple(context.hits)[:limit]
         data_hits = [_hit_payload(hit) for hit in hits]
         if not hits:

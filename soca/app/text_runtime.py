@@ -33,8 +33,8 @@ from soca.knowledge.factory import DenseBackend, RetrievalMode
 from soca.knowledge.retrievers.dense import EmbeddingModel, FastEmbedModel
 from soca.llm import LLMEngine, LocalLlamaCppLLM
 from soca.llm.factory import SecretReader, build_llm_engine
-from soca.memory import ProposalStore, SessionMemory
-from soca.tools import LocalTimeTool, MemoryProposeNoteTool, MemorySearchTool, Tool, ToolRuntime
+from soca.memory import SessionMemory
+from soca.tools import LocalTimeTool, MemorySearchTool, Tool, ToolRuntime
 
 
 def default_text_llm_model_key() -> str:
@@ -43,7 +43,7 @@ def default_text_llm_model_key() -> str:
 
 
 def default_semantic_router_examples() -> Path:
-    return Path(__file__).resolve().parents[2] / "eval" / "prompts" / "tool_router_examples_vi.jsonl"
+    return Path(__file__).resolve().parents[2] / "eval" / "prompts" / "turn_routing_vi.jsonl"
 
 
 @dataclass(frozen=True)
@@ -58,9 +58,9 @@ class TextRuntimeConfig:
     temperature: float = 0.2
     top_p: float = 0.95
     knowledge_limit: int = 3
-    memory_chars: int = 2200
+    memory_chars: int = 64_000
     profile_chars: int = 900
-    session_chars: int = 1300
+    session_chars: int = 60_000
     session_turns: int = 6
     turn_chars: int = 500
     llm_threads: int = 8
@@ -91,9 +91,9 @@ def resolve_text_runtime_config(
     temperature: float = 0.2,
     top_p: float = 0.95,
     knowledge_limit: int = 3,
-    memory_chars: int = 2200,
+    memory_chars: int = 64_000,
     profile_chars: int = 900,
-    session_chars: int = 1300,
+    session_chars: int = 60_000,
     session_turns: int = 6,
     turn_chars: int = 500,
     llm_threads: int = 8,
@@ -234,6 +234,9 @@ def build_text_runtime(
                 max_turns=config.session_turns,
                 max_chars=config.session_chars,
                 max_turn_chars=config.turn_chars,
+                summary_enabled=not config.no_llm,
+                summary_threads=config.llm_threads,
+                summary_gpu_layers=config.llm_gpu_layers,
             )
         )
         memory_setup = build_memory_runtime_setup(
@@ -255,8 +258,6 @@ def build_text_runtime(
         memory_builder = memory_setup.builder
         memory_status = memory_setup.status
         tools.append(MemorySearchTool(memory_builder, max_limit=config.knowledge_limit))
-        if vault.is_dir():
-            tools.append(MemoryProposeNoteTool(ProposalStore(vault / "memory" / ".proposals")))
 
     if config.no_llm:
         llm = None

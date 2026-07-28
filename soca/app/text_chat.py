@@ -29,6 +29,9 @@ CHAT_HELP = "\n".join(
         "/trace                     -> bật/tắt trace",
         "/usage                     -> xem token/latency của session",
         "/memory                    -> xem session memory trong RAM",
+        "/compact                   -> yêu cầu compact working memory",
+        "/compact-status            -> xem trạng thái compact",
+        "/compact-cancel            -> hủy compact đang chạy",
         "/clear                     -> xóa session memory trong RAM",
         "/exit                      -> thoát",
     ]
@@ -105,6 +108,18 @@ def run_text_chat(
                     padding=(0, 1),
                 )
             )
+            continue
+        if user_text in {"/compact", "/compact-status", "/compact-cancel"}:
+            if bundle.session_memory is None:
+                console.print(Text("Memory is disabled.", style=st(WARN)))
+                continue
+            if user_text == "/compact-status":
+                outcome = bundle.session_memory.compaction_status()
+            elif user_text == "/compact-cancel":
+                outcome = bundle.session_memory.cancel_compaction()
+            else:
+                outcome = bundle.session_memory.request_compaction()
+            console.print(Text(f"Compaction: {outcome.status} {outcome.detail}".strip(), style=st(WARN)))
             continue
 
         normalized_text, metadata = normalize_text_turn(user_text)

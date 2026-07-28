@@ -1,10 +1,23 @@
 import type {
+  ContextEvent,
   EngineEvent,
   LlmConfigEvent,
+  MemoryCompactionEvent,
+  MemoryEvent,
   RemoteModelEvent,
+  TurnProgressEvent,
+  UsageEvent,
+  RuntimeComponentStatus,
 } from "./protocol.js";
 
 export type Mode = "chat" | "voice" | "status" | "settings";
+export type InteractiveMode = "chat" | "voice" | "settings";
+export type InfoView =
+  | "status"
+  | "context"
+  | "memory"
+  | "compaction"
+  | "compacted_summary";
 export type VoiceState =
   "loading" | "idle" | "listening" | "processing" | "speaking" | "error";
 
@@ -89,6 +102,7 @@ export interface AppState {
   memoryMode: "blob" | "retrieved" | "degraded";
   memoryHits: number;
   proposals: MemoryProposal[];
+  proposalsOpen: boolean;
   memoryActionError: string;
   retrievalTrace: RetrievalTrace | null;
   llmProviders: LlmProviderStatus[];
@@ -98,6 +112,14 @@ export interface AppState {
   llmKeyPendingProvider: string | null;
   settingsNotice: string;
   knowledgeIndex: KnowledgeIndexStatus | null;
+  runtimeComponents: RuntimeComponentStatus[];
+  activeInfo: InfoView | null;
+  context: ContextEvent | null;
+  memorySnapshot: MemoryEvent | null;
+  usageSnapshot: UsageEvent | null;
+  memoryCompaction: MemoryCompactionEvent | null;
+  turnProgress: TurnProgressEvent | null;
+  progressQueue: TurnProgressEvent[];
 }
 
 export const initialState: AppState = {
@@ -124,6 +146,7 @@ export const initialState: AppState = {
   memoryMode: "blob",
   memoryHits: 0,
   proposals: [],
+  proposalsOpen: false,
   memoryActionError: "",
   retrievalTrace: null,
   llmProviders: [],
@@ -133,6 +156,14 @@ export const initialState: AppState = {
   llmKeyPendingProvider: null,
   settingsNotice: "",
   knowledgeIndex: null,
+  runtimeComponents: [],
+  activeInfo: null,
+  context: null,
+  memorySnapshot: null,
+  usageSnapshot: null,
+  memoryCompaction: null,
+  turnProgress: null,
+  progressQueue: [],
 };
 
 export type Action =
@@ -141,8 +172,11 @@ export type Action =
   | { type: "user_message"; text: string }
   | { type: "system_message"; text: string }
   | { type: "voice_started" }
+  | { type: "show_info"; view: InfoView }
+  | { type: "clear_info" }
   | { type: "clear_timeline" }
-  | { type: "clear_proposals" };
+  | { type: "clear_proposals" }
+  | { type: "advance_progress" };
 
 function push(
   timeline: TimelineEntry[],
@@ -258,6 +292,8 @@ function reduceVoiceCore(
         ...state,
         voiceRunning: false,
         voiceState: "idle",
+        turnProgress: null,
+        progressQueue: [],
         voiceNote: `đã dừng (${typeof turns === "number" ? turns : 0} lượt)`,
         bargeIn: "off",
       };
@@ -268,6 +304,8 @@ function reduceVoiceCore(
         voiceState: "error",
         voiceNote: "lỗi",
         voiceRunning: false,
+        turnProgress: null,
+        progressQueue: [],
         timeline: push(state.timeline, { kind: "error", text: event.text }),
       };
     default:
@@ -298,6 +336,34 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
       };
     case "voice":
       return reduceVoice(state, event);
+    case "turn_progress": {
+      if (event.status === "done") {
+        return {
+          ...state,
+          turnProgress: null,
+          progressQueue: [],
+        };
+      }
+      if (state.turnProgress === null) {
+        return {
+          ...state,
+          turnProgress: event,
+          progressQueue: [],
+        };
+      }
+      if (state.turnProgress.phase === event.phase) {
+        return { ...state, turnProgress: event };
+      }
+      const lastQueued = state.progressQueue.at(-1);
+      const progressQueue =
+        lastQueued?.phase === event.phase
+          ? [...state.progressQueue.slice(0, -1), event]
+          : [...state.progressQueue, event];
+      return {
+        ...state,
+        progressQueue,
+      };
+    }
     case "chat":
       switch (event.type) {
         case "loading":
@@ -308,6 +374,8 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
           return {
             ...state,
             chatBusy: false,
+            turnProgress: null,
+            progressQueue: [],
             lastRoute: event.route ?? "",
             timeline: push(state.timeline, {
               kind: "soca",
@@ -323,6 +391,8 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
           return {
             ...state,
             chatBusy: false,
+            turnProgress: null,
+            progressQueue: [],
             timeline: push(state.timeline, {
               kind: "error",
               text: event.text ?? "lỗi chat",
@@ -336,28 +406,19 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
         ...state,
         profiles: event.profiles,
         knowledgeIndex: event.knowledge_index ?? null,
+        runtimeComponents: event.runtime_components ?? [],
       };
-    case "memory": {
-      const text = event.enabled
-        ? event.text
-          ? `session memory:\n${event.text}`
-          : "session memory: (trống)"
-        : "session memory: đang tắt (--no-memory)";
+    case "context":
+      return { ...state, context: event };
+    case "memory":
+      return { ...state, memorySnapshot: event };
+    case "memory_compaction":
       return {
         ...state,
-        timeline: push(state.timeline, { kind: "system", text }),
+        memoryCompaction: event,
       };
-    }
-    case "usage": {
-      const text =
-        `phiên: ${event.turns} lượt (${event.llm_turns} LLM) ` +
-        `· prompt ${event.prompt_tokens} tok · completion ${event.completion_tokens} tok ` +
-        `· TTFT ~${Math.round(event.mean_ttft_ms)}ms · ${event.mean_tokens_per_second.toFixed(1)} tok/s`;
-      return {
-        ...state,
-        timeline: push(state.timeline, { kind: "system", text }),
-      };
-    }
+    case "usage":
+      return { ...state, usageSnapshot: event };
     case "router_trace":
       return {
         ...state,
@@ -371,7 +432,12 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
         memoryHits: event.hits.length,
       };
     case "memory_proposals":
-      return { ...state, proposals: event.proposals, memoryActionError: "" };
+      return {
+        ...state,
+        proposals: event.proposals,
+        proposalsOpen: true,
+        memoryActionError: "",
+      };
     case "memory_action":
       return event.ok
         ? {
@@ -446,6 +512,9 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
     case "engine_error":
       return {
         ...state,
+        chatBusy: false,
+        turnProgress: null,
+        progressQueue: [],
         settingsNotice: event.message,
         timeline: push(state.timeline, { kind: "error", text: event.message }),
       };
@@ -466,6 +535,8 @@ export function reduce(state: AppState, action: Action): AppState {
       return {
         ...state,
         chatBusy: true,
+        turnProgress: null,
+        progressQueue: [],
         retrievalTrace: null,
         timeline: push(state.timeline, { kind: "user", text: action.text }),
       };
@@ -480,10 +551,25 @@ export function reduce(state: AppState, action: Action): AppState {
         voiceState: "loading",
         voiceNote: "khởi động voice loop…",
       };
+    case "show_info":
+      return { ...state, activeInfo: action.view };
+    case "clear_info":
+      return { ...state, activeInfo: null };
     case "clear_timeline":
       return { ...state, timeline: [] };
     case "clear_proposals":
-      return { ...state, proposals: [], memoryActionError: "" };
+      return {
+        ...state,
+        proposals: [],
+        proposalsOpen: false,
+        memoryActionError: "",
+      };
+    case "advance_progress": {
+      const [next, ...rest] = state.progressQueue;
+      return next
+        ? { ...state, turnProgress: next, progressQueue: rest }
+        : state;
+    }
     default:
       return state;
   }

@@ -36,6 +36,7 @@ describe("MemoryProposalInbox", () => {
       <MemoryProposalInbox
         proposals={proposals}
         error=""
+        width={78}
         onApprove={() => undefined}
         onReject={() => undefined}
         onClose={() => undefined}
@@ -43,6 +44,7 @@ describe("MemoryProposalInbox", () => {
     );
 
     await new Promise((resolve) => setImmediate(resolve));
+    expect(view.lastFrame()).toContain("╭─ memory proposals");
     view.stdin.write("\u001b[B");
     view.stdin.write("\u001b[B");
     await new Promise((resolve) => setImmediate(resolve));
@@ -52,6 +54,7 @@ describe("MemoryProposalInbox", () => {
       <MemoryProposalInbox
         proposals={proposals.slice(0, 2)}
         error=""
+        width={78}
         onApprove={() => undefined}
         onReject={() => undefined}
         onClose={() => undefined}

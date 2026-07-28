@@ -69,6 +69,14 @@ def test_no_memory_disables_session_even_with_vault(tmp_path: Path) -> None:
     assert bundle.memory_status == "disabled"
 
 
+def test_text_runtime_does_not_register_removed_memory_write_tool(tmp_path: Path) -> None:
+    (tmp_path / "wiki").mkdir()
+    (tmp_path / "memory").mkdir()
+    bundle = build_text_runtime(_config(tmp_path, no_llm=True, no_memory=False))
+    assert bundle.runtime.tool_runtime.get("memory.search") is not None
+    assert bundle.runtime.tool_runtime.get("memory.propose_note") is None
+
+
 def test_text_runtime_uses_shared_cached_source_and_k_query_returns_citation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

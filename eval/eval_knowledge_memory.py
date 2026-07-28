@@ -271,15 +271,20 @@ def evaluate_session_window(case: KnowledgeMemoryCase) -> KnowledgeMemorySample:
         role = "user" if index % 2 == 0 else "assistant"
         session.append(role, f"lượt hội thoại số {index}")
     rendered = session.render()
+    complete_turn_count = sum(turn.status == "complete" for turn in session.working.snapshot.turns)
     checks = {
-        "turn_count": len(session.turns) <= (case.expected_max_turns or len(session.turns)),
+        # ``max_turns`` means complete user→assistant conversations now. The
+        # working store must not silently drop individual messages just to make
+        # a flat-message deque look bounded.
+        "turn_count": complete_turn_count <= (case.expected_max_turns or complete_turn_count),
         "render_budget": len(rendered) <= max_render_chars,
     }
     return KnowledgeMemorySample(
         case=case,
         checks=checks,
         details={
-            "turn_count": len(session.turns),
+            "turn_count": complete_turn_count,
+            "message_count": len(session.turns),
             "render_chars": len(rendered),
         },
         latency_ms=(time.perf_counter() - started) * 1000,
