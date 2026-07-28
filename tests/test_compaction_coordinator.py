@@ -89,7 +89,7 @@ def test_manual_compaction_noop_reports_five_turn_requirement() -> None:
     assert result.minimum_complete_turns == 5
 
 
-def test_empty_first_summary_compacts_no_state_turns_successfully() -> None:
+def test_empty_first_summary_preserves_original_turns() -> None:
     memory = WorkingMemory()
     for index in range(5):
         turn = memory.begin_turn(f"user {index}")
@@ -101,14 +101,13 @@ def test_empty_first_summary_compacts_no_state_turns_successfully() -> None:
     coordinator = WorkingMemoryCompactionCoordinator(memory, worker)
 
     accepted = coordinator.request(manual=True)
-    published = coordinator.status()
+    failed = coordinator.status()
 
     assert accepted.status == "accepted"
-    assert published.status == "published"
-    assert published.detail == "no_durable_state"
-    assert len(memory.snapshot.turns) == 2
-    assert memory.snapshot.summary is not None
-    assert memory.snapshot.summary.render() == ""
+    assert failed.status == "failed"
+    assert failed.detail == "empty_continuity_summary"
+    assert len(memory.snapshot.turns) == 5
+    assert memory.snapshot.summary is None
 
 
 def test_empty_rolling_summary_cannot_drop_previous_state() -> None:
@@ -141,7 +140,7 @@ def test_empty_rolling_summary_cannot_drop_previous_state() -> None:
 
     assert accepted.status == "accepted"
     assert failed.status == "failed"
-    assert failed.detail == "empty_summary_dropped_previous_state"
+    assert failed.detail == "empty_continuity_summary"
     assert memory.snapshot.summary is not None
     assert "TTS local" in memory.snapshot.summary.render()
     assert len(memory.snapshot.turns) == 5

@@ -36,7 +36,7 @@ def test_summary_bakeoff_reports_forbidden_and_unexpected_structured_values() ->
     assert assessment["negative_state_case"] is False
 
 
-def test_summary_bakeoff_requires_negative_cases_to_leave_no_state() -> None:
+def test_summary_bakeoff_allows_continuity_prose_but_no_structured_negative_state() -> None:
     artifact = WorkingSummaryArtifact(
         version=1,
         generation=1,
@@ -50,7 +50,7 @@ def test_summary_bakeoff_requires_negative_cases_to_leave_no_state() -> None:
         forbidden_claims=[],
     )
     assert assessment["negative_state_case"] is True
-    assert assessment["negative_state_clean"] is False
+    assert assessment["negative_state_clean"] is True
 
 
 def test_summary_bakeoff_concept_assessment_allows_paraphrase() -> None:

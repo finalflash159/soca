@@ -160,15 +160,13 @@ def _assess_artifact(
     expected_is_empty = not str(expected.get("summary", "")).strip() and not any(
         expected.get(field, []) for field in _STRUCTURED_FIELDS
     )
-    actual_is_empty = not actual.summary.strip() and not any(
-        getattr(actual, field) for field in _STRUCTURED_FIELDS
-    )
+    structured_state_is_empty = not any(getattr(actual, field) for field in _STRUCTURED_FIELDS)
     return {
         "exact_field_recall_by_field": exact_field_recall,
         "unexpected_items": sorted(unexpected),
         "forbidden_surface_matches": forbidden,
         "negative_state_case": expected_is_empty,
-        "negative_state_clean": actual_is_empty if expected_is_empty else None,
+        "negative_state_clean": structured_state_is_empty if expected_is_empty else None,
         **_concept_assessment(required_facts or [], actual),
     }
 

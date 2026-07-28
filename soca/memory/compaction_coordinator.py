@@ -146,15 +146,11 @@ class WorkingMemoryCompactionCoordinator:
             self._last_async_result = result
             self._reset_job()
             return result
-        artifact_is_empty = not artifact.render().strip()
-        previous_has_state = bool(
-            job.previous_summary is not None and job.previous_summary.render().strip()
-        )
-        if artifact_is_empty and previous_has_state:
+        if not artifact.summary.strip():
             self.memory.cancel_compaction(job.generation)
             result = self._result(
                 "failed",
-                detail="empty_summary_dropped_previous_state",
+                detail="empty_continuity_summary",
                 after_tokens=self.memory.snapshot.token_count,
             )
             self._last_async_result = result
@@ -163,7 +159,6 @@ class WorkingMemoryCompactionCoordinator:
         published = self.memory.publish_summary(job, artifact)
         result = self._result(
             "published" if published else "stale",
-            detail="no_durable_state" if published and artifact_is_empty else "",
             after_tokens=self.memory.snapshot.token_count,
         )
         self._last_async_result = result

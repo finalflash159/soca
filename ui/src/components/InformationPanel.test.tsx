@@ -71,19 +71,19 @@ describe("InformationPanel", () => {
         memoryCompaction={{
           event: "memory_compaction",
           status: "failed",
-          detail: "empty_summary_dropped_previous_state",
+          detail: "empty_continuity_summary",
           complete_turns: 5,
           minimum_complete_turns: 5,
         }}
       />,
     );
 
-    expect(panel.lastFrame()).toContain("summary cũ được giữ");
-    expect(panel.lastFrame()).toContain("nguyên.");
+    expect(panel.lastFrame()).toContain("summary rỗng");
+    expect(panel.lastFrame()).toContain("giữ nguyên");
     panel.unmount();
   });
 
-  it("treats an empty first summary as successful no-state compaction", () => {
+  it("reports an empty first summary as failure without deleting history", () => {
     const panel = render(
       <InformationPanel
         view="compaction"
@@ -95,8 +95,8 @@ describe("InformationPanel", () => {
         knowledge={null}
         memoryCompaction={{
           event: "memory_compaction",
-          status: "published",
-          detail: "no_durable_state",
+          status: "failed",
+          detail: "empty_continuity_summary",
           before_tokens: 1200,
           after_tokens: 900,
           compacted_turns: 1,
@@ -105,8 +105,8 @@ describe("InformationPanel", () => {
     );
 
     const frame = panel.lastFrame() ?? "";
-    expect(frame).toContain("Compact hoàn tất");
-    expect(frame).toContain("không chứa state bền vững");
+    expect(frame).toContain("Compact: failed");
+    expect(frame).toContain("lịch sử gốc được giữ nguyên");
     expect(frame).not.toContain("/memory compact show");
     panel.unmount();
   });

@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from soca.llm import LLMResult
 from soca.memory.summary import (
     PRODUCTION_SUMMARY_MODEL_KEY,
     PRODUCTION_SUMMARY_RELEASE_GATE,
     SUMMARY_MODEL_REGISTRY,
     LocalSummaryWorkerProcess,
+    artifact_from_json,
     build_production_summary_worker,
+    build_summary_prompt,
     default_summary_model_root,
     execute_summary_job,
     summary_context_window,
@@ -63,6 +67,34 @@ def test_summary_registry_is_separate_and_summary_job_uses_structured_local_cont
     assert artifact.generation == job.generation
     assert artifact.source_through_sequence == 4
     assert result.text
+
+
+def test_summary_prompt_requires_continuity_even_without_durable_state() -> None:
+    memory = WorkingMemory()
+    for index in range(5):
+        turn = memory.begin_turn(f"Câu hỏi kỹ thuật {index}")
+        memory.finish_turn(turn.sequence, f"Giải thích kỹ thuật {index}")
+    job = memory.prepare_compaction(force=True)
+    assert job is not None
+
+    prompt = build_summary_prompt(job)
+
+    assert "summary không được rỗng" in prompt
+    assert "chủ đề, giải thích chính và điểm đang bàn tới" in prompt
+    with pytest.raises(ValueError, match="empty continuity summary"):
+        artifact_from_json(
+            job,
+            json.dumps(
+                {
+                    "summary": "",
+                    "user_constraints": [],
+                    "decisions": [],
+                    "corrections": [],
+                    "open_items": [],
+                    "continuity_refs": [],
+                }
+            ),
+        )
 
 
 def test_unprovisioned_summary_worker_never_auto_downloads_or_stays_loaded(tmp_path) -> None:

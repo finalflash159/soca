@@ -192,8 +192,8 @@ function compactionDetail(compaction: MemoryCompactionEvent): string {
     worker_exited_without_payload: "Summary worker dừng mà không trả kết quả.",
     invalid_worker_payload: "Summary worker trả payload không hợp lệ.",
     invalid_summary_artifact: "Summary không đạt schema an toàn.",
-    empty_summary_dropped_previous_state:
-      "Model làm rơi state đã compact trước đó; lịch sử và summary cũ được giữ nguyên.",
+    empty_continuity_summary:
+      "Model trả working summary rỗng; lịch sử gốc được giữ nguyên.",
   };
   return detail ? (labels[detail] ?? detail) : "";
 }
@@ -235,7 +235,6 @@ function CompactionBody({
     );
   }
   if (compaction.status === "published") {
-    const noDurableState = compaction.detail === "no_durable_state";
     const saved =
       before !== null &&
       before !== undefined &&
@@ -262,16 +261,10 @@ function CompactionBody({
               : ` · tăng ~${compactTokens(Math.abs(saved))}`}
         </Text>
         <Text color={COLOR.muted}>
-          {noDurableState
-            ? `${compaction.compacted_turns ?? 0} turn cũ không chứa state bền vững cần giữ`
-            : `${compaction.compacted_turns ?? 0} turn cũ đã được thay bằng working summary`}
+          {`${compaction.compacted_turns ?? 0} turn cũ đã được thay bằng working summary`}
           {elapsed === null ? "" : ` · ${elapsed.toFixed(1)}s`}
         </Text>
-        {noDurableState ? (
-          <Text color={COLOR.alt}>Không tạo working summary rỗng trên prompt.</Text>
-        ) : (
-          <Text color={COLOR.alt}>Xem nội dung: /memory compact show</Text>
-        )}
+        <Text color={COLOR.alt}>Xem nội dung: /memory compact show</Text>
       </Box>
     );
   }
@@ -293,28 +286,12 @@ function CompactionBody({
   );
 }
 
-function CompactedSummaryBody({
-  memory,
-  compaction,
-}: {
-  memory: MemoryEvent | null;
-  compaction: MemoryCompactionEvent | null;
-}) {
+function CompactedSummaryBody({ memory }: { memory: MemoryEvent | null }) {
   if (memory === null)
     return <Text color={COLOR.muted}>đang lấy working summary…</Text>;
   if (!memory.enabled)
     return <Text color={COLOR.muted}>session memory đang tắt.</Text>;
   if (!memory.summary) {
-    if (
-      compaction?.status === "published" &&
-      compaction.detail === "no_durable_state"
-    ) {
-      return (
-        <Text color={COLOR.muted}>
-          Lượt compact gần nhất không có state bền vững cần giữ.
-        </Text>
-      );
-    }
     return (
       <Box flexDirection="column">
         <Text color={COLOR.muted}>Chưa có working summary đã compact.</Text>
@@ -439,10 +416,7 @@ export function InformationPanel({
           <CompactionBody compaction={memoryCompaction} />
         ) : null}
         {view === "compacted_summary" ? (
-          <CompactedSummaryBody
-            memory={memory}
-            compaction={memoryCompaction}
-          />
+          <CompactedSummaryBody memory={memory} />
         ) : null}
       </Panel>
     </Box>
