@@ -48,13 +48,7 @@ export const SLASH_COMMANDS: readonly SlashCommandDefinition[] = [
   {
     value: "/context",
     usage: "/context",
-    description: "xem token và thành phần prompt",
-    group: "information",
-  },
-  {
-    value: "/usage",
-    usage: "/usage",
-    description: "xem usage LLM/latency tích lũy",
+    description: "xem context hiện tại + usage phiên (alias: /usage)",
     group: "information",
   },
   {
@@ -79,6 +73,12 @@ export const SLASH_COMMANDS: readonly SlashCommandDefinition[] = [
     value: "/memory compact cancel",
     usage: "/memory compact cancel",
     description: "hủy compact đang chạy",
+    group: "memory",
+  },
+  {
+    value: "/memory compact show",
+    usage: "/memory compact show",
+    description: "xem summary vừa compact",
     group: "memory",
   },
   {
@@ -122,6 +122,7 @@ export const SLASH_COMMANDS: readonly SlashCommandDefinition[] = [
 
 export const COMMAND_ALIASES: Readonly<Record<string, string>> = {
   "/s": "/settings",
+  "/usage": "/context",
   "/exit": "/quit",
 };
 
@@ -138,7 +139,13 @@ export function filterSlashCommands(input: string): SlashCommandDefinition[] {
   if (aliasTarget) {
     return SLASH_COMMANDS.filter((command) => command.value === aliasTarget);
   }
+  const aliasTargets = new Set(
+    Object.entries(COMMAND_ALIASES)
+      .filter(([alias]) => alias.startsWith(normalized))
+      .map(([, target]) => target),
+  );
   return SLASH_COMMANDS.filter((command) => {
+    if (aliasTargets.has(command.value)) return true;
     if (command.value.startsWith(normalized)) return true;
     if (command.argument && normalized.startsWith(`${command.value} `))
       return true;

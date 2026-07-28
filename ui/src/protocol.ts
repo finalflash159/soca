@@ -104,6 +104,26 @@ export interface RetrievalTraceEvent {
   fused: Array<{ path: string; picked: boolean }>;
 }
 
+export type TurnProgressPhase =
+  | "preparing"
+  | "analyzing"
+  | "routing"
+  | "memory"
+  | "retrieval"
+  | "tool"
+  | "synthesis"
+  | "validation"
+  | "speech"
+  | "complete";
+
+export interface TurnProgressEvent {
+  event: "turn_progress";
+  surface: "chat" | "voice";
+  phase: TurnProgressPhase;
+  operation: string;
+  status: "active" | "done";
+}
+
 export interface ChatEvent {
   event: "chat";
   type: "start" | "loading" | "ready" | "done" | "error";
@@ -191,6 +211,12 @@ export interface MemoryCompactionEvent {
   status: string;
   generation?: number | null;
   detail?: string;
+  before_tokens?: number | null;
+  after_tokens?: number | null;
+  compacted_turns?: number;
+  complete_turns?: number;
+  minimum_complete_turns?: number | null;
+  elapsed_ms?: number | null;
 }
 
 export interface UsageEvent {
@@ -273,6 +299,7 @@ export type EngineEvent =
   | MemoryProposalEvent
   | MemoryActionEvent
   | RetrievalTraceEvent
+  | TurnProgressEvent
   | ChatEvent
   | StatusEvent
   | MemoryEvent
@@ -303,6 +330,7 @@ export function parseEngineEvent(line: string): EngineEvent | null {
       "memory_proposals",
       "memory_action",
       "retrieval_trace",
+      "turn_progress",
       "chat",
       "status",
       "memory",

@@ -183,6 +183,13 @@ def test_engine_chat_roundtrip_emits_done_with_response() -> None:
     assert len(done) == 1
     assert done[0]["text"] == "echo: xin chào"
     assert done[0]["route"] == "free_chat"
+    progress = [e for e in capture.events() if e["event"] == "turn_progress"]
+    assert [event["phase"] for event in progress] == [
+        "preparing",
+        "analyzing",
+        "complete",
+    ]
+    assert progress[-1]["status"] == "done"
 
 
 @dataclass

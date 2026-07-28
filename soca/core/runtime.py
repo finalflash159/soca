@@ -239,6 +239,26 @@ class AssistantRuntime:
         self.memory_builder = memory_builder
         self.guardrail_policy = guardrail_policy
         self.options = options or RuntimeOptions()
+        self._progress_callback: Callable[[str], None] | None = None
+
+    def set_progress_callback(self, callback: Callable[[str], None] | None) -> None:
+        """Attach a transient observer for user-visible runtime stages.
+
+        The callback is observational only: failures must never alter the
+        assistant result. Engine/UI adapters use this to expose real work
+        instead of advancing a synthetic timer.
+        """
+
+        self._progress_callback = callback
+
+    def _notify_progress(self, stage: str) -> None:
+        callback = self._progress_callback
+        if callback is None:
+            return
+        try:
+            callback(stage)
+        except Exception:  # noqa: BLE001 - telemetry must not break a turn
+            return
 
     def run_text_turn(
         self,
@@ -495,6 +515,7 @@ class AssistantRuntime:
         first_token_time: float | None = None
         stream: Iterator[str] | None = None
         stream_error: RemoteLLMError | None = None
+        self._notify_progress("llm")
         try:
             stream = self.llm.generate_stream(
                 prompt,
@@ -580,8 +601,10 @@ class AssistantRuntime:
         )
 
         if stream_error is not None or not full_text:
-            message = str(stream_error) if stream_error is not None else (
-                "LLM không trả về nội dung. Hãy tăng max_tokens hoặc chọn model khác."
+            message = (
+                str(stream_error)
+                if stream_error is not None
+                else ("LLM không trả về nội dung. Hãy tăng max_tokens hoặc chọn model khác.")
             )
             yield RuntimeStreamEvent(type="sentence", text=message)
             result = self._result(
@@ -1059,7 +1082,8 @@ class AssistantRuntime:
             return self._result(
                 frame,
                 draft,
-                response_text=memory_context.prompt_text or "Mình chưa tìm thấy ghi chú phù hợp trong memory.",
+                response_text=memory_context.prompt_text
+                or "Mình chưa tìm thấy ghi chú phù hợp trong memory.",
                 route=RuntimeRoute.MEMORY_DIRECT,
                 used_tool=False,
                 used_llm=False,
@@ -1258,6 +1282,7 @@ class AssistantRuntime:
 
     @contextmanager
     def _stage(self, draft: _TraceDraft, name: str):
+        self._notify_progress(name)
         started = time.perf_counter()
         try:
             yield

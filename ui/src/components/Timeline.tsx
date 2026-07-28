@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import { COLOR, ICON } from "../theme.js";
+import { COLOR, ICON, lerpHex } from "../theme.js";
 import type { TimelineEntry } from "../store.js";
 
 /** One finished conversation line; rendered once inside <Static>. */
@@ -19,12 +19,19 @@ export function TimelineLine({ entry }: { entry: TimelineEntry }) {
     case "soca":
       return (
         <Box paddingX={1} marginBottom={1}>
-          <Text>
-            <Text bold color={COLOR.accent}>
-              {ICON.bird}{" "}
+          <Box
+            width="100%"
+            borderStyle="round"
+            borderColor={lerpHex(COLOR.accent, COLOR.border, 0.72)}
+            paddingX={1}
+          >
+            <Text>
+              <Text bold color={COLOR.accent}>
+                {ICON.bird}{" "}
+              </Text>
+              <Text color={COLOR.text}>{entry.text}</Text>
             </Text>
-            <Text color={COLOR.text}>{entry.text}</Text>
-          </Text>
+          </Box>
         </Box>
       );
     case "error":

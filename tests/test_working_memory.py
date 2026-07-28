@@ -47,6 +47,21 @@ def test_working_memory_job_is_not_created_before_high_watermark() -> None:
     assert memory.prepare_compaction() is None
 
 
+def test_manual_compaction_requires_five_complete_turns() -> None:
+    memory = WorkingMemory()
+    for index in range(4):
+        _complete(memory, f"user {index}", f"assistant {index}")
+
+    assert memory.policy.manual_compaction_minimum_complete_turns == 5
+    assert memory.prepare_compaction(force=True) is None
+
+    _complete(memory, "user 4", "assistant 4")
+    job = memory.prepare_compaction(force=True)
+
+    assert job is not None
+    assert [turn.sequence for turn in job.frozen_turns] == [1]
+
+
 def test_working_summary_budget_covers_structured_fields() -> None:
     try:
         WorkingSummaryArtifact(

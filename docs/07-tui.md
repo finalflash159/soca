@@ -45,18 +45,39 @@ Gõ `/` mở toàn bộ lệnh; nhập tiếp lọc theo prefix; `↑/↓` di ch
 lệnh và `Enter` thực thi. `/inspect` cũ đã bị loại vì engine chưa từng có
 implementation tương ứng.
 
-Các lệnh chỉ xem (`/status`, `/context`, `/memory`, `/usage`) không đổi mode và
-không ghi output vào timeline. Chúng mở panel tạm thời trên chat/voice hiện tại;
+Các lệnh chỉ xem (`/status`, `/context`, `/memory`) không đổi mode và không ghi
+output vào timeline. Chúng mở panel trên chat/voice hiện tại;
 bắt đầu nhập nội dung mới sẽ đóng panel ngay. `/settings` và `/memory proposals`
 là interaction surface nên vẫn giữ focus cho tới khi người dùng hoàn tất hoặc
 đóng.
 
 - `/memory` chỉ mô tả working session memory, summary/recent turn và compaction.
-- `/context` mô tả prompt resident, output reserve, model window và các phần
-  query-dependent như knowledge/archive memory.
-- `/usage` là tổng token/latency đã thực sự ghi nhận qua các lượt LLM; nó không
-  phải dung lượng context đang giữ.
+- `/memory compact` mở progress panel và tự poll worker tới trạng thái cuối.
+  Khi hoàn tất panel hiển thị token trước/sau; `/memory compact show` mở riêng
+  working summary đã tạo mà không bung toàn bộ recent conversation. Manual
+  compact bỏ qua ngưỡng 15K nhưng yêu cầu ít nhất 5 lượt hoàn chỉnh để vẫn giữ
+  4 lượt gần nhất; nếu chưa đủ, panel trả `noop` kèm bộ đếm `hiện có X/5`.
+  Artifact rỗng hoặc sai schema không được publish nên lịch sử nguồn không bị
+  xóa.
+- `/context` gộp hai lát cắt liên quan nhưng không đồng nhất: context hiện đang
+  resident (prompt, output reserve, model window và phần query-dependent) và
+  usage LLM tích lũy của phiên (prompt/completion token, TTFT, throughput).
+- `/usage` được giữ làm alias tương thích cho `/context`, không chiếm một mục
+  riêng trong command palette.
 
 Token bar dùng cùng counter bảo thủ `utf8_bytes_div_4` với
 `WorkingMemoryPolicy`, hiển thị `current / hard limit` (mặc định 16.384 token).
 Vì đây không phải tokenizer riêng của model, UI luôn đánh dấu số bằng `~`.
+
+## Turn progress và timeline
+
+Engine phát `turn_progress` từ stage runtime đang chạy thật; UI không dùng timer
+để giả lập tiến độ. Các phase ổn định gồm chuẩn bị, phân tích, định tuyến,
+memory, knowledge retrieval, tool, tổng hợp LLM, validation và TTS. Chat và
+voice dùng chung event này, còn chi tiết nội bộ nằm trong trường `operation`.
+Panel progress đổi accent theo loại công việc và giữ tối đa bốn phase vừa hoàn
+tất để người dùng thấy luồng xử lý mà không làm timeline quá ồn.
+
+Tin nhắn người dùng giữ layout phẳng hiện tại. Mỗi câu trả lời hoàn chỉnh của
+SoCa được đặt trong một khung hairline dùng màu dawn palette đã pha với border
+nền; progress biến mất khi engine phát trạng thái `done`.

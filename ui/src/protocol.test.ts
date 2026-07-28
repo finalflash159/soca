@@ -63,6 +63,47 @@ describe("parseEngineEvent", () => {
     expect(parseEngineEvent('{"event": 1}')).toBeNull();
   });
 
+  it("parses memory compaction progress metrics", () => {
+    const event = parseEngineEvent(
+      JSON.stringify({
+        event: "memory_compaction",
+        status: "published",
+        generation: 2,
+        before_tokens: 1200,
+        after_tokens: 760,
+        compacted_turns: 2,
+        complete_turns: 6,
+        minimum_complete_turns: 5,
+        elapsed_ms: 420,
+      }),
+    );
+
+    expect(event?.event).toBe("memory_compaction");
+    if (event?.event === "memory_compaction") {
+      expect(event.before_tokens).toBe(1200);
+      expect(event.after_tokens).toBe(760);
+      expect(event.minimum_complete_turns).toBe(5);
+    }
+  });
+
+  it("parses a real turn progress phase", () => {
+    const event = parseEngineEvent(
+      JSON.stringify({
+        event: "turn_progress",
+        surface: "chat",
+        phase: "retrieval",
+        operation: "tool:knowledge.search",
+        status: "active",
+      }),
+    );
+
+    expect(event?.event).toBe("turn_progress");
+    if (event?.event === "turn_progress") {
+      expect(event.phase).toBe("retrieval");
+      expect(event.operation).toBe("tool:knowledge.search");
+    }
+  });
+
   it("accepts a large remote catalog event", () => {
     const models = Array.from({ length: 500 }, (_, index) => ({
       id: `provider/model-${index}-${"x".repeat(100)}`,

@@ -292,6 +292,8 @@ def test_metadata_can_request_knowledge_context_for_llm() -> None:
         knowledge_builder=KnowledgeContextBuilder(source),
         memory_builder=memory_builder,
     )
+    stages: list[str] = []
+    runtime.set_progress_callback(stages.append)
 
     result = runtime.run_text_turn(
         "Protein có tác dụng gì?",
@@ -308,6 +310,10 @@ def test_metadata_can_request_knowledge_context_for_llm() -> None:
     assert "Knowledge:" in prompt
     assert "Người dùng thích giải thích kỹ" in prompt
     assert [turn.role for turn in session.turns] == ["user", "assistant"]
+    assert "memory_context" in stages
+    assert "knowledge_context" in stages
+    assert stages.index("memory_context") < stages.index("knowledge_context")
+    assert stages.index("knowledge_context") < stages.index("llm")
 
 
 def test_blocked_turn_does_not_update_session_memory() -> None:
@@ -325,3 +331,19 @@ def test_blocked_turn_does_not_update_session_memory() -> None:
 
     assert result.blocked is True
     assert session.turns == ()
+
+
+def test_progress_callback_observes_real_runtime_stages() -> None:
+    stages: list[str] = []
+    runtime = AssistantRuntime(llm=SpyLLM())
+    runtime.set_progress_callback(stages.append)
+
+    result = runtime.run_text_turn("xin chào")
+
+    assert result.route == RuntimeRoute.FREE_CHAT
+    assert stages == [
+        "input_guardrail",
+        "tool_router",
+        "llm",
+        "output_guardrail",
+    ]

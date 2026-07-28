@@ -2,7 +2,7 @@ import { Box, Text } from "ink";
 import { SLASH_COMMANDS } from "../keymap.js";
 import { COLOR, lerpHex } from "../theme.js";
 
-const CARD_BORDER = lerpHex(COLOR.accent, COLOR.border, 0.55);
+const CARD_BORDER = lerpHex(COLOR.alt, COLOR.border, 0.28);
 
 const GROUPS: Array<{ title: string; hints: Array<[string, string]> }> = [
   {
@@ -35,7 +35,7 @@ export function HelpOverlay() {
       paddingX={2}
       paddingY={1}
     >
-      <Text bold color={COLOR.accent}>
+      <Text bold color={COLOR.alt}>
         SoCa — phím & lệnh
       </Text>
       {GROUPS.map((group) => (

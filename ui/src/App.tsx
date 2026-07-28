@@ -32,6 +32,7 @@ import { Panel, Spinner } from "./components/Primitives.js";
 import { CommandPalette } from "./components/CommandPalette.js";
 import { InformationPanel } from "./components/InformationPanel.js";
 import { SessionTokenMeter } from "./components/SessionTokenMeter.js";
+import { TurnProgress } from "./components/TurnProgress.js";
 
 export interface AppProps {
   /** The mode the user picked on the splash / CLI. */
@@ -116,6 +117,18 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
     return () => engine.stop();
   }, []);
 
+  const compactionActive =
+    state.memoryCompaction?.status === "accepted" ||
+    state.memoryCompaction?.status === "running";
+  useEffect(() => {
+    if (!compactionActive) return;
+    const timer = setInterval(() => {
+      engineRef.current?.send({ cmd: "memory_compact", action: "status" });
+    }, 250);
+    timer.unref?.();
+    return () => clearInterval(timer);
+  }, [compactionActive, state.memoryCompaction?.generation]);
+
   // While the help overlay is open it owns every key: the prompt is blurred
   // (see `focus` below), so any key — Esc, ?, Enter — just closes it. This keeps
   // the toggle reliable and avoids the stray-"?" bug that came from a focused
@@ -165,6 +178,20 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
     { isActive: rawInput && commandPaletteOpen },
   );
 
+  useInput(
+    (_character, key) => {
+      if (key.escape) dispatch({ type: "clear_info" });
+    },
+    {
+      isActive:
+        rawInput &&
+        state.activeInfo !== null &&
+        !commandPaletteOpen &&
+        !showHelp &&
+        !state.proposalsOpen,
+    },
+  );
+
   function onPromptChange(value: string): void {
     // Claude Code convention: "?" on an empty prompt opens the shortcuts panel
     // rather than being typed. Any other input (incl. "?" mid-message) passes
@@ -209,9 +236,14 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
   function showInfo(view: InfoView) {
     dispatch({ type: "show_info", view });
     if (view === "status") engine?.send({ cmd: "status" });
-    else if (view === "context") engine?.send({ cmd: "context" });
-    else if (view === "memory") engine?.send({ cmd: "memory" });
-    else engine?.send({ cmd: "usage" });
+    else if (view === "context") {
+      engine?.send({ cmd: "context" });
+      engine?.send({ cmd: "usage" });
+    } else if (view === "memory" || view === "compacted_summary") {
+      engine?.send({ cmd: "memory" });
+    } else {
+      engine?.send({ cmd: "memory_compact", action: "status" });
+    }
   }
 
   function onSubmit(raw: string) {
@@ -275,7 +307,14 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
         engine?.send({ cmd: "voice_stop" });
       } else if (cmd.startsWith("/memory compact")) {
         const action = cmd.slice("/memory compact".length).trim();
-        if (action === "" || action === "status" || action === "cancel") {
+        if (action === "show") {
+          showInfo("compacted_summary");
+        } else if (
+          action === "" ||
+          action === "status" ||
+          action === "cancel"
+        ) {
+          dispatch({ type: "show_info", view: "compaction" });
           engine?.send({
             cmd: "memory_compact",
             action: (action === "" ? "request" : action) as
@@ -283,12 +322,10 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
               | "status"
               | "cancel",
           });
-          dispatch({ type: "show_info", view: "memory" });
-          engine?.send({ cmd: "memory" });
         } else {
           dispatch({
             type: "system_message",
-            text: "cú pháp: /memory compact [status|cancel]",
+            text: "cú pháp: /memory compact [status|cancel|show]",
           });
         }
       } else if (cmd === "/memory") {
@@ -296,8 +333,6 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
       } else if (cmd === "/memory proposals") {
         dispatch({ type: "clear_info" });
         engine?.send({ cmd: "memory_proposals" });
-      } else if (cmd === "/usage") {
-        showInfo("usage");
       } else if (cmd === "/help") {
         dispatch({ type: "clear_info" });
         setShowHelp(true);
@@ -384,13 +419,19 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
           usage={state.usageSnapshot}
           profiles={state.profiles}
           knowledge={state.knowledgeIndex}
-          memoryCompaction={state.memoryCompactionStatus}
+          memoryCompaction={state.memoryCompaction}
         />
       ) : null}
 
-      {state.chatBusy ? (
+      {state.turnProgress ? (
+        <TurnProgress
+          progress={state.turnProgress}
+          completed={state.completedProgressPhases}
+          width={cols - 2}
+        />
+      ) : state.chatBusy ? (
         <Box paddingX={1}>
-          <Spinner label="SoCa đang soạn…" />
+          <Spinner label="đang gửi yêu cầu…" />
         </Box>
       ) : null}
       {state.notice ? (
@@ -427,6 +468,7 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
         <MemoryProposalInbox
           proposals={state.proposals}
           error={state.memoryActionError}
+          width={cols - 2}
           onApprove={(proposal_id) =>
             engine?.send({ cmd: "memory_approve", proposal_id })
           }
@@ -534,7 +576,7 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
                       state.mode === "voice"
                         ? "voice loop: /stop, /listen, /chat, /help…"
                         : state.chatBusy
-                          ? "SoCa đang soạn câu trả lời…"
+                          ? "đang xử lý lượt hiện tại…"
                           : "nhập tin nhắn hoặc /lệnh…"
                     }
                   />

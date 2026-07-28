@@ -87,6 +87,30 @@ def _memory_protocol_mode(
     return "blob"
 
 
+def _progress_phase_for_stage(stage: str) -> str:
+    """Collapse internal runtime stages into stable UI-facing phases."""
+
+    if stage == "input_guardrail":
+        return "analyzing"
+    if stage in {"tool_router", "knowledge_intent"}:
+        return "routing"
+    if stage in {"memory_context", "memory_archive_context"} or stage.startswith("tool:memory."):
+        return "memory"
+    if stage == "knowledge_context" or stage.startswith("tool:knowledge."):
+        return "retrieval"
+    if stage.startswith("tool:"):
+        return "tool"
+    if stage == "llm":
+        return "synthesis"
+    if stage in {
+        "output_guardrail",
+        "tool_input_guardrail",
+        "tool_output_guardrail",
+    }:
+        return "validation"
+    return "analyzing"
+
+
 class LlmSecretStore(Protocol):
     def get_key(self, provider_key: str) -> str | None: ...
 
@@ -797,15 +821,12 @@ class SocaEngine:
         else:
             self._error("memory compact action must be request, status, or cancel")
             return
-        self.writer.emit(
-            {
-                "event": "memory_compaction",
-                "status": result.status,
-                "generation": result.generation,
-                "detail": result.detail,
-            }
-        )
-        self._cmd_context()
+        self.writer.emit({"event": "memory_compaction", **dataclasses.asdict(result)})
+        if result.status == "accepted":
+            self._cmd_context()
+        elif result.status not in {"running", "idle"}:
+            self._cmd_memory()
+            self._cmd_context()
 
     def _memory_commands(self) -> MemoryCommands | None:
         vault = self.text_config.vault
@@ -895,6 +916,31 @@ class SocaEngine:
         with self._usage_lock:
             self.session_usage = self.session_usage.add(usage)
 
+    def _emit_turn_progress(
+        self,
+        surface: str,
+        phase: str,
+        *,
+        operation: str = "",
+        status: str = "active",
+    ) -> None:
+        self.writer.emit(
+            {
+                "event": "turn_progress",
+                "surface": surface,
+                "phase": phase,
+                "operation": operation,
+                "status": status,
+            }
+        )
+
+    def _emit_runtime_progress(self, surface: str, stage: str) -> None:
+        self._emit_turn_progress(
+            surface,
+            _progress_phase_for_stage(stage),
+            operation=stage,
+        )
+
     # --- chat -------------------------------------------------------------------
 
     def _cmd_chat(self, text: str) -> None:
@@ -916,11 +962,28 @@ class SocaEngine:
     def _chat_worker(self, text: str) -> None:
         try:
             self.writer.emit({"event": "chat", "type": "start", "text": text})
+            self._emit_turn_progress(
+                "chat",
+                "preparing",
+                operation="runtime",
+            )
             bundle = self._ensure_text_bundle()
             normalized_text, metadata = normalize_text_turn(text)
-            result = bundle.runtime.run_text_turn(
-                normalized_text, source="engine_chat", metadata=metadata
+            progress_setter = getattr(bundle.runtime, "set_progress_callback", None)
+            if callable(progress_setter):
+                progress_setter(lambda stage: self._emit_runtime_progress("chat", str(stage)))
+            self._emit_turn_progress(
+                "chat",
+                "analyzing",
+                operation="normalize_input",
             )
+            try:
+                result = bundle.runtime.run_text_turn(
+                    normalized_text, source="engine_chat", metadata=metadata
+                )
+            finally:
+                if callable(progress_setter):
+                    progress_setter(None)
             usage = TurnUsage.from_runtime_result(result)
             self._track_usage(usage)
             self.writer.emit(
@@ -1017,6 +1080,7 @@ class SocaEngine:
         except Exception as exc:  # noqa: BLE001 - protocol boundary must not crash
             self.writer.emit({"event": "chat", "type": "error", "text": str(exc)})
         finally:
+            self._emit_turn_progress("chat", "complete", status="done")
             self._chat_lock.release()
 
     def _ensure_text_bundle(self) -> TextRuntimeBundle:
@@ -1150,8 +1214,24 @@ class SocaEngine:
                         "pending_proposal_count": 0,
                     }
                 )
+            elif event.type == "progress":
+                stage = str(event.metadata.get("stage") or "")
+                self._emit_runtime_progress("voice", stage)
+            elif event.type == "recorded":
+                self._emit_turn_progress(
+                    "voice",
+                    "analyzing",
+                    operation="speech_recognition",
+                )
+            elif event.type in {"tts", "audio"}:
+                self._emit_turn_progress(
+                    "voice",
+                    "speech",
+                    operation="text_to_speech",
+                )
             self._track_usage(event.usage)
             if event.type == "done":
+                self._emit_turn_progress("voice", "complete", status="done")
                 self._cmd_context()
         if self.voice_stop_event is not None:
             self.voice_stop_event.set()

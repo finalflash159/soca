@@ -1,13 +1,29 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Box, Text, useStdout } from "ink";
-import { COLOR, ROLE, SPINNER_FRAMES } from "../theme.js";
+import { COLOR, lerpHex, ROLE, SPINNER_FRAMES } from "../theme.js";
 import { animationsEnabled } from "../capabilities.js";
+
+export type PanelVariant =
+  | "focus"
+  | "idle"
+  | "danger"
+  | "info"
+  | "success"
+  | "busy";
 
 export function Rule({ width }: { width: number }) {
   return <Text color={COLOR.border}>{"─".repeat(Math.max(1, width))}</Text>;
 }
 
-export function Spinner({ label }: { label?: string }) {
+export function Spinner({
+  label,
+  color = COLOR.accent,
+  labelColor = COLOR.muted,
+}: {
+  label?: string;
+  color?: string;
+  labelColor?: string;
+}) {
   const [frame, setFrame] = useState(0);
   useEffect(() => {
     if (!animationsEnabled()) return;
@@ -20,8 +36,8 @@ export function Spinner({ label }: { label?: string }) {
   }, []);
   return (
     <Text>
-      <Text color={COLOR.accent}>{SPINNER_FRAMES[frame]}</Text>
-      {label ? <Text color={COLOR.muted}>{` ${label}`}</Text> : null}
+      <Text color={color}>{SPINNER_FRAMES[frame]}</Text>
+      {label ? <Text color={labelColor}>{` ${label}`}</Text> : null}
     </Text>
   );
 }
@@ -59,15 +75,31 @@ export function Panel({
 }: {
   title: string;
   subtitle?: string;
-  variant?: "focus" | "idle" | "danger";
+  variant?: PanelVariant;
   width: number;
   focused?: boolean;
   height?: number;
   children: ReactNode;
 }) {
   const active = focused || variant === "focus";
+  const idleBorder = lerpHex(COLOR.muted, COLOR.border, 0.48);
+  const roleColor =
+    variant === "danger"
+      ? ROLE.danger
+      : variant === "info"
+        ? ROLE.info
+        : variant === "success"
+          ? ROLE.ok
+          : variant === "busy"
+            ? ROLE.busy
+            : active
+              ? ROLE.focus
+              : ROLE.hairline;
   const color =
-    variant === "danger" ? ROLE.danger : active ? ROLE.focus : ROLE.hairline;
+    variant === "idle" && !focused
+      ? idleBorder
+      : lerpHex(roleColor, COLOR.border, 0.28);
+  const titleColor = variant === "idle" && !focused ? COLOR.muted : roleColor;
   const w = Math.max(12, width);
   const fill = Math.max(
     0,
@@ -79,13 +111,7 @@ export function Panel({
         <Text color={color}>{"╭─ "}</Text>
         <Text
           bold
-          color={
-            active
-              ? ROLE.focus
-              : variant === "danger"
-                ? ROLE.danger
-                : COLOR.muted
-          }
+          color={titleColor}
         >
           {title}
         </Text>

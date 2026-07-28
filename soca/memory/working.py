@@ -118,6 +118,11 @@ class WorkingMemoryPolicy:
         if self.mode not in {"trim_only", "background_summary"}:
             raise ValueError("unknown working summary mode")
 
+    @property
+    def manual_compaction_minimum_complete_turns(self) -> int:
+        """Minimum history needed to compact while preserving recent context."""
+        return self.preferred_recent_complete_turns + 1
+
 
 @dataclass(frozen=True)
 class CompactionJob:
@@ -215,6 +220,10 @@ class WorkingMemory:
         if not force and self._token_count() < self.policy.high_watermark_tokens:
             return None
         completed = [turn for turn in self._turns if turn.status == "complete"]
+        if force and len(completed) < self.policy.manual_compaction_minimum_complete_turns:
+            return None
+        # ``force`` bypasses the token threshold only. Both automatic and
+        # manual compaction preserve the same recent continuity window.
         keep = completed[-self.policy.preferred_recent_complete_turns :]
         frozen_sequences = {turn.sequence for turn in keep}
         frozen = tuple(

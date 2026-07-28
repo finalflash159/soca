@@ -17,11 +17,15 @@ describe("slash command registry", () => {
     expect(filterSlashCommands("/").map((command) => command.value)).not.toContain(
       "/inspect",
     );
+    expect(filterSlashCommands("/").map((command) => command.value)).not.toContain(
+      "/usage",
+    );
   });
 
   it("filters nested commands as the user types", () => {
     expect(filterSlashCommands("/memory compact s").map((item) => item.value)).toEqual([
       "/memory compact status",
+      "/memory compact show",
     ]);
     expect(filterSlashCommands("/cont").map((item) => item.value)).toEqual([
       "/context",
@@ -32,6 +36,10 @@ describe("slash command registry", () => {
     expect(filterSlashCommands("/s").map((item) => item.value)).toEqual([
       "/settings",
     ]);
+    expect(filterSlashCommands("/usage").map((item) => item.value)).toEqual([
+      "/context",
+    ]);
+    expect(canonicalCommand("/usage")).toBe("/context");
     expect(canonicalCommand("/EXIT")).toBe("/quit");
   });
 });

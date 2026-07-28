@@ -2,14 +2,22 @@ import type {
   ContextEvent,
   EngineEvent,
   LlmConfigEvent,
+  MemoryCompactionEvent,
   MemoryEvent,
   RemoteModelEvent,
+  TurnProgressEvent,
+  TurnProgressPhase,
   UsageEvent,
 } from "./protocol.js";
 
 export type Mode = "chat" | "voice" | "status" | "settings";
 export type InteractiveMode = "chat" | "voice" | "settings";
-export type InfoView = "status" | "context" | "memory" | "usage";
+export type InfoView =
+  | "status"
+  | "context"
+  | "memory"
+  | "compaction"
+  | "compacted_summary";
 export type VoiceState =
   "loading" | "idle" | "listening" | "processing" | "speaking" | "error";
 
@@ -108,7 +116,9 @@ export interface AppState {
   context: ContextEvent | null;
   memorySnapshot: MemoryEvent | null;
   usageSnapshot: UsageEvent | null;
-  memoryCompactionStatus: string;
+  memoryCompaction: MemoryCompactionEvent | null;
+  turnProgress: TurnProgressEvent | null;
+  completedProgressPhases: TurnProgressPhase[];
 }
 
 export const initialState: AppState = {
@@ -149,7 +159,9 @@ export const initialState: AppState = {
   context: null,
   memorySnapshot: null,
   usageSnapshot: null,
-  memoryCompactionStatus: "",
+  memoryCompaction: null,
+  turnProgress: null,
+  completedProgressPhases: [],
 };
 
 export type Action =
@@ -277,6 +289,8 @@ function reduceVoiceCore(
         ...state,
         voiceRunning: false,
         voiceState: "idle",
+        turnProgress: null,
+        completedProgressPhases: [],
         voiceNote: `đã dừng (${typeof turns === "number" ? turns : 0} lượt)`,
         bargeIn: "off",
       };
@@ -287,6 +301,8 @@ function reduceVoiceCore(
         voiceState: "error",
         voiceNote: "lỗi",
         voiceRunning: false,
+        turnProgress: null,
+        completedProgressPhases: [],
         timeline: push(state.timeline, { kind: "error", text: event.text }),
       };
     default:
@@ -317,6 +333,28 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
       };
     case "voice":
       return reduceVoice(state, event);
+    case "turn_progress": {
+      if (event.status === "done") {
+        return {
+          ...state,
+          turnProgress: null,
+          completedProgressPhases: [],
+        };
+      }
+      const previous = state.turnProgress?.phase;
+      const completed =
+        previous &&
+        previous !== event.phase &&
+        previous !== "complete" &&
+        !state.completedProgressPhases.includes(previous)
+          ? [...state.completedProgressPhases, previous]
+          : state.completedProgressPhases;
+      return {
+        ...state,
+        turnProgress: event,
+        completedProgressPhases: completed,
+      };
+    }
     case "chat":
       switch (event.type) {
         case "loading":
@@ -327,6 +365,8 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
           return {
             ...state,
             chatBusy: false,
+            turnProgress: null,
+            completedProgressPhases: [],
             lastRoute: event.route ?? "",
             timeline: push(state.timeline, {
               kind: "soca",
@@ -342,6 +382,8 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
           return {
             ...state,
             chatBusy: false,
+            turnProgress: null,
+            completedProgressPhases: [],
             timeline: push(state.timeline, {
               kind: "error",
               text: event.text ?? "lỗi chat",
@@ -363,7 +405,7 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
     case "memory_compaction":
       return {
         ...state,
-        memoryCompactionStatus: `${event.status}${event.detail ? ` · ${event.detail}` : ""}`,
+        memoryCompaction: event,
       };
     case "usage":
       return { ...state, usageSnapshot: event };
@@ -460,6 +502,9 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
     case "engine_error":
       return {
         ...state,
+        chatBusy: false,
+        turnProgress: null,
+        completedProgressPhases: [],
         settingsNotice: event.message,
         timeline: push(state.timeline, { kind: "error", text: event.message }),
       };
@@ -480,6 +525,8 @@ export function reduce(state: AppState, action: Action): AppState {
       return {
         ...state,
         chatBusy: true,
+        turnProgress: null,
+        completedProgressPhases: [],
         retrievalTrace: null,
         timeline: push(state.timeline, { kind: "user", text: action.text }),
       };
