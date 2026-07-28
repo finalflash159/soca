@@ -53,6 +53,8 @@ class RuntimeTrace:
     router_scores: dict[str, float] = field(default_factory=dict)
     router_runner_up: str | None = None
     router_margin: float | None = None
+    evidence_decisions: tuple[Any, ...] = ()
+    evidence_bundle: Any | None = None
 
 
 @dataclass(frozen=True)

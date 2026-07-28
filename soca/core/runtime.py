@@ -6,6 +6,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
+from soca.core.evidence import (
+    EvidenceBundleDecision,
+    EvidenceDecision,
+    EvidenceReconciler,
+    decide_evidence,
+)
 from soca.core.guardrails import (
     DEFAULT_POLICY,
     GuardrailEvent,
@@ -197,6 +203,8 @@ class _TraceDraft:
     router_scores: dict[str, float] = field(default_factory=dict)
     router_runner_up: str | None = None
     router_margin: float | None = None
+    evidence_decisions: list[EvidenceDecision] = field(default_factory=list)
+    evidence_bundle: EvidenceBundleDecision | None = None
 
 
 @dataclass(frozen=True)
@@ -977,6 +985,14 @@ class AssistantRuntime:
             context = self.memory_builder.build(frame.text, include_archive=True)
         draft.memory_hits.extend(context.hits)
         draft.citations.extend(context.citations)
+        draft.evidence_decisions.append(
+            decide_evidence(
+                "memory",
+                context.hits,
+                unavailable=context.degraded_reason == "retrieval_unavailable",
+            )
+        )
+        draft.evidence_bundle = EvidenceReconciler().reconcile(tuple(draft.evidence_decisions))
         draft.memory_mode = context.mode
         draft.memory_degraded_reason = context.degraded_reason
         return context
@@ -1059,6 +1075,8 @@ class AssistantRuntime:
             context = self.knowledge_builder.build(frame.text)
         draft.knowledge_hits.extend(context.hits)
         draft.citations.extend(context.citations)
+        draft.evidence_decisions.append(decide_evidence("knowledge", context.hits))
+        draft.evidence_bundle = EvidenceReconciler().reconcile(tuple(draft.evidence_decisions))
         return context
 
     def _build_knowledge_context(
@@ -1095,6 +1113,8 @@ class AssistantRuntime:
 
         draft.knowledge_hits.extend(context.hits)
         draft.citations.extend(context.citations)
+        draft.evidence_decisions.append(decide_evidence("knowledge", context.hits))
+        draft.evidence_bundle = EvidenceReconciler().reconcile(tuple(draft.evidence_decisions))
         for hit in context.hits:
             draft.guardrail_events.append(
                 check_untrusted_text(hit.snippet, stage=GuardrailStage.RETRIEVAL)
@@ -1156,6 +1176,8 @@ class AssistantRuntime:
             router_scores=draft.router_scores,
             router_runner_up=draft.router_runner_up,
             router_margin=draft.router_margin,
+            evidence_decisions=tuple(draft.evidence_decisions),
+            evidence_bundle=draft.evidence_bundle,
         )
         return RuntimeResult(
             response_text=response_text,
