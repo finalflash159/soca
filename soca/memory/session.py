@@ -1,21 +1,22 @@
 from __future__ import annotations
 
-from collections import deque
 from collections.abc import Iterable
 
 from soca.core.text_budget import truncate
 from soca.memory.base import MemoryRole, MemoryTurn
+from soca.memory.working import WorkingMemory, WorkingMemoryPolicy
 
 RECENT_CONVERSATION_HEADER = "Recent conversation:"
 VALID_ROLES = {"user", "assistant"}
 
 
-def _normalize_text(text: str) -> str:
-    return " ".join(text.strip().split())
-
-
 class SessionMemory:
-    """RAM-only recent conversation memory with deterministic character budgets."""
+    """Compatibility adapter over typed working-memory conversation turns.
+
+    ``append(user)`` opens a turn and the following delivered ``append(assistant)``
+    completes it.  The legacy flat ``turns`` view remains only for display and
+    older integrations; compaction/state ownership lives in ``working``.
+    """
 
     def __init__(
         self,
@@ -23,6 +24,8 @@ class SessionMemory:
         max_turns: int = 6,
         max_chars: int = 1600,
         max_turn_chars: int = 500,
+        *,
+        thread_id: str = "default",
     ) -> None:
         if max_turns <= 0:
             raise ValueError("max_turns must be greater than 0")
@@ -30,73 +33,68 @@ class SessionMemory:
             raise ValueError("max_chars must leave room for the session memory header")
         if max_turn_chars <= 0:
             raise ValueError("max_turn_chars must be greater than 0")
-
         self.max_turns = max_turns
         self.max_chars = max_chars
         self.max_turn_chars = max_turn_chars
-        self._turns: deque[MemoryTurn] = deque()
-
+        self.working = WorkingMemory(thread_id=thread_id, policy=WorkingMemoryPolicy())
+        self._pending_sequences: list[int] = []
         if turns is not None:
             for turn in turns:
                 self.append(turn.role, turn.text)
 
     @property
     def turns(self) -> tuple[MemoryTurn, ...]:
-        return tuple(self._turns)
+        flattened: list[MemoryTurn] = []
+        for turn in self.working.snapshot.turns:
+            flattened.append(MemoryTurn("user", turn.user_text))
+            if turn.assistant_text:
+                flattened.append(MemoryTurn("assistant", turn.assistant_text))
+        return tuple(flattened)
 
     def append(self, role: MemoryRole, text: str) -> None:
         if role not in VALID_ROLES:
             raise ValueError(f"Unsupported memory role: {role}")
-
-        normalized = _normalize_text(text)
+        normalized = " ".join(text.strip().split())
         if not normalized:
             return
-
-        self._turns.append(
-            MemoryTurn(
-                role=role,
-                text=truncate(normalized, self.max_turn_chars),
-            )
-        )
-        self._trim_turn_count()
+        bounded = truncate(normalized, self.max_turn_chars)
+        if role == "user":
+            turn = self.working.begin_turn(bounded)
+            self._pending_sequences.append(turn.sequence)
+            return
+        if not self._pending_sequences:
+            # An assistant response without a user request has no trustworthy
+            # turn ownership, therefore it cannot enter working memory.
+            return
+        sequence = self._pending_sequences.pop(0)
+        self.working.finish_turn(sequence, bounded)
+        # The approved default has no local summary model yet.  It preserves
+        # prompt bounds through deterministic trim-only, never keyword/regex
+        # extraction masquerading as a summary.
+        if self.working.snapshot.token_count >= self.working.policy.high_watermark_tokens:
+            self.working.trim_only()
 
     def clear(self) -> None:
-        self._turns.clear()
+        self.working = WorkingMemory(thread_id=self.working.thread_id, policy=self.working.policy)
+        self._pending_sequences.clear()
 
     def render(self) -> str:
-        if not self._turns:
-            return ""
-
-        selected_lines: list[str] = []
-        used_chars = len(RECENT_CONVERSATION_HEADER)
-
-        for turn in reversed(self._turns):
-            line = self._format_turn(turn)
-            line_cost = len(line) + 1
-            remaining = self.max_chars - used_chars - 1
-
-            if line_cost > remaining:
-                if selected_lines:
-                    continue
-
-                truncated = truncate(line, max(0, remaining))
-                if truncated:
-                    selected_lines.append(truncated)
-                    used_chars += len(truncated) + 1
+        raw = self.working.render()
+        if len(raw) <= self.max_chars:
+            return raw
+        # Retain the newest bounded conversation block for legacy character
+        # callers. WorkingMemory remains the source of truth and is token-bounded.
+        lines = raw.splitlines()
+        selected: list[str] = []
+        used = len(RECENT_CONVERSATION_HEADER)
+        for line in reversed(lines):
+            if line in {RECENT_CONVERSATION_HEADER, "Earlier conversation summary:"}:
                 continue
-
-            selected_lines.append(line)
-            used_chars += line_cost
-
-        if not selected_lines:
+            cost = len(line) + 1
+            if used + cost > self.max_chars:
+                continue
+            selected.append(line)
+            used += cost
+        if not selected:
             return ""
-
-        return "\n".join([RECENT_CONVERSATION_HEADER, *reversed(selected_lines)])
-
-    def _trim_turn_count(self) -> None:
-        while len(self._turns) > self.max_turns:
-            self._turns.popleft()
-
-    def _format_turn(self, turn: MemoryTurn) -> str:
-        label = "User" if turn.role == "user" else "Assistant"
-        return f"{label}: {turn.text}"
+        return "\n".join([RECENT_CONVERSATION_HEADER, *reversed(selected)])

@@ -27,15 +27,20 @@ def test_session_memory_ignores_empty_turns():
     assert memory.render() == ""
 
 
-def test_session_memory_enforces_max_turns():
+def test_session_memory_counts_complete_user_assistant_pairs_as_turns():
     memory = SessionMemory(max_turns=2)
     memory.append("user", "một")
     memory.append("assistant", "hai")
     memory.append("user", "ba")
+    memory.append("assistant", "bốn")
+    memory.append("user", "năm")
 
     assert memory.turns == (
+        MemoryTurn(role="user", text="một"),
         MemoryTurn(role="assistant", text="hai"),
         MemoryTurn(role="user", text="ba"),
+        MemoryTurn(role="assistant", text="bốn"),
+        MemoryTurn(role="user", text="năm"),
     )
 
 
@@ -54,9 +59,10 @@ def test_session_memory_enforces_render_character_budget_and_keeps_newest():
 
 def test_session_memory_truncates_individual_turns():
     memory = SessionMemory(max_turn_chars=20)
+    memory.append("user", "question")
     memory.append("assistant", "a" * 100)
 
-    assert memory.turns[0].text == "a" * 17 + "..."
+    assert memory.turns[1].text == "a" * 17 + "..."
 
 
 def test_session_memory_rejects_unknown_role():
