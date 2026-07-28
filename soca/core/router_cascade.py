@@ -34,7 +34,12 @@ class CascadeToolRouter:
                 self.last_tier = "semantic"
                 self.last_decision = semantic_decision
                 return call
-            if semantic_decision.reason == "semantic_none":
+            if semantic_decision.disposition in {
+                "retrieval_request",
+                "smalltalk",
+                "out_of_scope",
+                "unresolved",
+            }:
                 self.last_tier = "semantic"
                 self.last_decision = semantic_decision
                 return None

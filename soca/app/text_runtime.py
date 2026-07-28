@@ -43,7 +43,7 @@ def default_text_llm_model_key() -> str:
 
 
 def default_semantic_router_examples() -> Path:
-    return Path(__file__).resolve().parents[2] / "eval" / "prompts" / "tool_router_examples_vi.jsonl"
+    return Path(__file__).resolve().parents[2] / "eval" / "prompts" / "turn_routing_vi.jsonl"
 
 
 @dataclass(frozen=True)
