@@ -6,7 +6,6 @@ import type {
   MemoryEvent,
   RemoteModelEvent,
   TurnProgressEvent,
-  TurnProgressPhase,
   UsageEvent,
 } from "./protocol.js";
 
@@ -118,7 +117,7 @@ export interface AppState {
   usageSnapshot: UsageEvent | null;
   memoryCompaction: MemoryCompactionEvent | null;
   turnProgress: TurnProgressEvent | null;
-  completedProgressPhases: TurnProgressPhase[];
+  progressQueue: TurnProgressEvent[];
 }
 
 export const initialState: AppState = {
@@ -161,7 +160,7 @@ export const initialState: AppState = {
   usageSnapshot: null,
   memoryCompaction: null,
   turnProgress: null,
-  completedProgressPhases: [],
+  progressQueue: [],
 };
 
 export type Action =
@@ -173,7 +172,8 @@ export type Action =
   | { type: "show_info"; view: InfoView }
   | { type: "clear_info" }
   | { type: "clear_timeline" }
-  | { type: "clear_proposals" };
+  | { type: "clear_proposals" }
+  | { type: "advance_progress" };
 
 function push(
   timeline: TimelineEntry[],
@@ -290,7 +290,7 @@ function reduceVoiceCore(
         voiceRunning: false,
         voiceState: "idle",
         turnProgress: null,
-        completedProgressPhases: [],
+        progressQueue: [],
         voiceNote: `đã dừng (${typeof turns === "number" ? turns : 0} lượt)`,
         bargeIn: "off",
       };
@@ -302,7 +302,7 @@ function reduceVoiceCore(
         voiceNote: "lỗi",
         voiceRunning: false,
         turnProgress: null,
-        completedProgressPhases: [],
+        progressQueue: [],
         timeline: push(state.timeline, { kind: "error", text: event.text }),
       };
     default:
@@ -338,21 +338,27 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
         return {
           ...state,
           turnProgress: null,
-          completedProgressPhases: [],
+          progressQueue: [],
         };
       }
-      const previous = state.turnProgress?.phase;
-      const completed =
-        previous &&
-        previous !== event.phase &&
-        previous !== "complete" &&
-        !state.completedProgressPhases.includes(previous)
-          ? [...state.completedProgressPhases, previous]
-          : state.completedProgressPhases;
+      if (state.turnProgress === null) {
+        return {
+          ...state,
+          turnProgress: event,
+          progressQueue: [],
+        };
+      }
+      if (state.turnProgress.phase === event.phase) {
+        return { ...state, turnProgress: event };
+      }
+      const lastQueued = state.progressQueue.at(-1);
+      const progressQueue =
+        lastQueued?.phase === event.phase
+          ? [...state.progressQueue.slice(0, -1), event]
+          : [...state.progressQueue, event];
       return {
         ...state,
-        turnProgress: event,
-        completedProgressPhases: completed,
+        progressQueue,
       };
     }
     case "chat":
@@ -366,7 +372,7 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
             ...state,
             chatBusy: false,
             turnProgress: null,
-            completedProgressPhases: [],
+            progressQueue: [],
             lastRoute: event.route ?? "",
             timeline: push(state.timeline, {
               kind: "soca",
@@ -383,7 +389,7 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
             ...state,
             chatBusy: false,
             turnProgress: null,
-            completedProgressPhases: [],
+            progressQueue: [],
             timeline: push(state.timeline, {
               kind: "error",
               text: event.text ?? "lỗi chat",
@@ -504,7 +510,7 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
         ...state,
         chatBusy: false,
         turnProgress: null,
-        completedProgressPhases: [],
+        progressQueue: [],
         settingsNotice: event.message,
         timeline: push(state.timeline, { kind: "error", text: event.message }),
       };
@@ -526,7 +532,7 @@ export function reduce(state: AppState, action: Action): AppState {
         ...state,
         chatBusy: true,
         turnProgress: null,
-        completedProgressPhases: [],
+        progressQueue: [],
         retrievalTrace: null,
         timeline: push(state.timeline, { kind: "user", text: action.text }),
       };
@@ -554,6 +560,12 @@ export function reduce(state: AppState, action: Action): AppState {
         proposalsOpen: false,
         memoryActionError: "",
       };
+    case "advance_progress": {
+      const [next, ...rest] = state.progressQueue;
+      return next
+        ? { ...state, turnProgress: next, progressQueue: rest }
+        : state;
+    }
     default:
       return state;
   }

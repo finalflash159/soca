@@ -230,9 +230,9 @@ describe("App slash command interaction", () => {
       cmd: "chat",
       text: "ghi chú nói gì về Bayes?",
     });
-    expect(view.lastFrame()).toContain("SoCa đang xử lý");
-    expect(view.lastFrame()).toContain("Tra cứu knowledge");
-    expect(view.lastFrame()).toContain("knowledge.search");
+    expect(view.lastFrame()).toContain("Running knowledge.search…");
+    expect(view.lastFrame()).not.toContain("SoCa đang xử lý");
+    expect(view.lastFrame()).not.toContain("✓");
     expect(view.lastFrame()).not.toContain("SoCa đang soạn");
     view.unmount();
   });

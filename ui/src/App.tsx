@@ -129,6 +129,16 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
     return () => clearInterval(timer);
   }, [compactionActive, state.memoryCompaction?.generation]);
 
+  useEffect(() => {
+    if (state.progressQueue.length === 0) return;
+    const timer = setTimeout(
+      () => dispatch({ type: "advance_progress" }),
+      140,
+    );
+    timer.unref?.();
+    return () => clearTimeout(timer);
+  }, [state.progressQueue.length]);
+
   // While the help overlay is open it owns every key: the prompt is blurred
   // (see `focus` below), so any key — Esc, ?, Enter — just closes it. This keeps
   // the toggle reliable and avoids the stray-"?" bug that came from a focused
@@ -424,11 +434,7 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
       ) : null}
 
       {state.turnProgress ? (
-        <TurnProgress
-          progress={state.turnProgress}
-          completed={state.completedProgressPhases}
-          width={cols - 2}
-        />
+        <TurnProgress progress={state.turnProgress} />
       ) : state.chatBusy ? (
         <Box paddingX={1}>
           <Spinner label="đang gửi yêu cầu…" />
