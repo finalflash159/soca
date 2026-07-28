@@ -1,0 +1,16 @@
+{"id":"time-001","family":"local-time","query":"Bây giờ là mấy giờ?","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"time-002","family":"local-time","query":"Cho tôi biết giờ địa phương hiện tại.","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"knowledge-001","family":"study-note","query":"Ghi chú của tôi nói định lý Bayes thế nào?","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"knowledge-002","family":"project-doc","query":"Tài liệu dự án giải thích kiến trúc RAG ra sao?","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"memory-001","family":"personal-decision","query":"Tôi đã chọn TTS nào và vì sao?","disposition":"retrieval_request","sources":["memory"]}
+{"id":"memory-002","family":"personal-budget","query":"Ngân sách ăn uống tháng này của tôi còn bao nhiêu?","disposition":"retrieval_request","sources":["memory"]}
+{"id":"both-001","family":"ambiguous-note-location","query":"Tôi đã ghi gì về ONNX Runtime?","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"both-002","family":"ambiguous-note-location","query":"Trong các ghi chú của tôi có quyết định nào về RAG không?","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"smalltalk-001","family":"greeting","query":"Xin chào SoCa","disposition":"smalltalk","sources":[]}
+{"id":"smalltalk-002","family":"casual-chat","query":"Kể tôi nghe một câu chuyện ngắn vui đi.","disposition":"smalltalk","sources":[]}
+{"id":"oos-001","family":"weather-vs-time","query":"Thời tiết hiện tại ở Hà Nội thế nào?","disposition":"out_of_scope","sources":[]}
+{"id":"oos-002","family":"weather-vs-time","query":"Nhiệt độ bây giờ là bao nhiêu?","disposition":"out_of_scope","sources":[]}
+{"id":"oos-003","family":"device-control","query":"Bật đèn phòng khách giúp tôi.","disposition":"out_of_scope","sources":[]}
+{"id":"oos-004","family":"scheduling","query":"Đặt báo thức lúc bảy giờ sáng mai.","disposition":"out_of_scope","sources":[]}
+{"id":"unresolved-001","family":"underspecified","query":"Cái đó thế nào rồi?","disposition":"unresolved","sources":[]}
+{"id":"unresolved-002","family":"underspecified","query":"Tìm cho tôi cái hôm trước.","disposition":"unresolved","sources":[]}
