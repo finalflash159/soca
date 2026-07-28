@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from pathlib import Path
 
 from soca.core.text_budget import truncate
 from soca.memory.base import MemoryRole, MemoryTurn
 from soca.memory.compaction_coordinator import CompactionResult, WorkingMemoryCompactionCoordinator
+from soca.memory.summary import LocalSummaryWorkerProcess, build_production_summary_worker
 from soca.memory.working import WorkingMemory, WorkingMemoryPolicy
 
 RECENT_CONVERSATION_HEADER = "Recent conversation:"
@@ -23,10 +25,15 @@ class SessionMemory:
         self,
         turns: Iterable[MemoryTurn] | None = None,
         max_turns: int = 6,
-        max_chars: int = 1600,
+        max_chars: int = 60_000,
         max_turn_chars: int = 500,
         *,
         thread_id: str = "default",
+        summary_enabled: bool = True,
+        summary_worker: LocalSummaryWorkerProcess | None = None,
+        summary_model_root: Path | None = None,
+        summary_threads: int | None = None,
+        summary_gpu_layers: int = -1,
     ) -> None:
         if max_turns <= 0:
             raise ValueError("max_turns must be greater than 0")
@@ -37,8 +44,29 @@ class SessionMemory:
         self.max_turns = max_turns
         self.max_chars = max_chars
         self.max_turn_chars = max_turn_chars
-        self.working = WorkingMemory(thread_id=thread_id, policy=WorkingMemoryPolicy())
-        self.compaction = WorkingMemoryCompactionCoordinator(self.working)
+        self._summary_worker = (
+            summary_worker
+            if summary_worker is not None
+            else (
+                build_production_summary_worker(
+                    model_root=summary_model_root,
+                    n_threads=summary_threads,
+                    n_gpu_layers=summary_gpu_layers,
+                )
+                if summary_enabled
+                else None
+            )
+        )
+        self.working = WorkingMemory(
+            thread_id=thread_id,
+            policy=WorkingMemoryPolicy(
+                mode="background_summary" if summary_enabled else "trim_only"
+            ),
+        )
+        self.compaction = WorkingMemoryCompactionCoordinator(
+            self.working,
+            self._summary_worker,
+        )
         self._pending_sequences: list[int] = []
         if turns is not None:
             for turn in turns:
@@ -59,10 +87,12 @@ class SessionMemory:
         normalized = " ".join(text.strip().split())
         if not normalized:
             return
+        self._poll_compaction()
         bounded = truncate(normalized, self.max_turn_chars)
         if role == "user":
             turn = self.working.begin_turn(bounded)
             self._pending_sequences.append(turn.sequence)
+            self._enforce_hard_limit()
             return
         if not self._pending_sequences:
             # An assistant response without a user request has no trustworthy
@@ -70,18 +100,26 @@ class SessionMemory:
             return
         sequence = self._pending_sequences.pop(0)
         self.working.finish_turn(sequence, bounded)
-        # The approved default has no local summary model yet.  It preserves
-        # prompt bounds through deterministic trim-only, never keyword/regex
-        # extraction masquerading as a summary.
+        self._enforce_hard_limit()
         if self.working.snapshot.token_count >= self.working.policy.high_watermark_tokens:
-            self.working.trim_only()
+            result = self.compaction.request()
+            if result.status in {"trim_only", "unavailable", "failed"}:
+                self.working.trim_only()
 
     def clear(self) -> None:
-        self.working = WorkingMemory(thread_id=self.working.thread_id, policy=self.working.policy)
-        self.compaction = WorkingMemoryCompactionCoordinator(self.working)
+        self.compaction.cancel()
+        self.working = WorkingMemory(
+            thread_id=self.working.thread_id,
+            policy=self.working.policy,
+        )
+        self.compaction = WorkingMemoryCompactionCoordinator(
+            self.working,
+            self._summary_worker,
+        )
         self._pending_sequences.clear()
 
     def render(self) -> str:
+        self._poll_compaction()
         raw = self.working.render()
         if len(raw) <= self.max_chars:
             return raw
@@ -109,10 +147,40 @@ class SessionMemory:
         return prefix + separator + recent_block
 
     def request_compaction(self) -> CompactionResult:
+        current = self._poll_compaction()
+        if current.status == "running":
+            return current
         return self.compaction.request(manual=True)
 
     def compaction_status(self) -> CompactionResult:
-        return self.compaction.status()
+        return self._poll_compaction()
 
     def cancel_compaction(self) -> CompactionResult:
         return self.compaction.cancel()
+
+    def close(self) -> None:
+        self.compaction.cancel()
+
+    @property
+    def summary_model_key(self) -> str | None:
+        return self._summary_worker.spec.key if self._summary_worker is not None else None
+
+    @property
+    def summary_worker_state(self) -> str:
+        return self._summary_worker.status.state if self._summary_worker is not None else "disabled"
+
+    @property
+    def summary_telemetry(self) -> dict[str, object] | None:
+        return self.compaction.last_telemetry
+
+    def _poll_compaction(self) -> CompactionResult:
+        result = self.compaction.status()
+        if result.status == "failed":
+            self.working.trim_only()
+        return result
+
+    def _enforce_hard_limit(self) -> None:
+        if self.working.snapshot.token_count <= self.working.policy.hard_limit_tokens:
+            return
+        self.compaction.cancel()
+        self.working.trim_only()

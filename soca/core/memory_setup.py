@@ -26,7 +26,7 @@ def default_memory_index_home() -> Path:
 class MemoryRuntimeConfig:
     mode: MemoryMode = "retrieved"
     top_k: int = 3
-    context_chars: int = 2_200
+    context_chars: int = 64_000
     profile_chars: int = 900
     retrieval_mode: RetrievalMode = "chunk_sparse"
     dense_backend: DenseBackend = "fastembed"

@@ -22,7 +22,11 @@ os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
 from huggingface_hub import hf_hub_download
 from rich.console import Console
 
-from soca.memory.summary import SUMMARY_MODEL_REGISTRY, SummaryModelSpec
+from soca.memory.summary import (
+    SUMMARY_MODEL_REGISTRY,
+    SummaryModelSpec,
+    default_summary_model_root,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _DISK_HEADROOM_BYTES = 512 * 1024 * 1024
@@ -30,7 +34,7 @@ console = Console()
 
 
 def default_model_root() -> Path:
-    return REPO_ROOT / "models" / "summary"
+    return default_summary_model_root()
 
 
 def load_hf_token_from_dotenv(path: Path = REPO_ROOT / ".env") -> bool:

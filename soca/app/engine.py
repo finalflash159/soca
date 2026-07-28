@@ -283,6 +283,8 @@ class SocaEngine:
             catalog_threads = tuple(self._catalog_threads)
         for thread in catalog_threads:
             thread.join(timeout=1.0)
+        if self.session_memory is not None:
+            self.session_memory.close()
         self.writer.emit({"event": "bye"})
 
     def _error(self, message: str, **extra: Any) -> None:
@@ -906,6 +908,9 @@ class SocaEngine:
             max_turns=config.session_turns,
             max_chars=config.session_chars,
             max_turn_chars=config.turn_chars,
+            summary_enabled=not self.no_model,
+            summary_threads=config.llm_threads,
+            summary_gpu_layers=config.llm_gpu_layers,
         )
 
     # --- voice ------------------------------------------------------------------

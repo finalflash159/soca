@@ -95,9 +95,9 @@ class WorkingSummaryArtifact:
 
 @dataclass(frozen=True)
 class WorkingMemoryPolicy:
-    hard_limit_tokens: int = 1024
-    high_watermark_tokens: int = 896
-    target_tokens: int = 768
+    hard_limit_tokens: int = 16_384
+    high_watermark_tokens: int = 15_000
+    target_tokens: int = 12_000
     summary_budget_tokens: int = 256
     recent_budget_tokens: int = 512
     minimum_recent_complete_turns: int = 2
@@ -105,12 +105,18 @@ class WorkingMemoryPolicy:
     mode: SummaryMode = "trim_only"
 
     def __post_init__(self) -> None:
-        if (self.target_tokens, self.high_watermark_tokens, self.hard_limit_tokens) != (768, 896, 1024):
-            raise ValueError("working_v1_4k requires target/high/hard = 768/896/1024")
+        if (self.target_tokens, self.high_watermark_tokens, self.hard_limit_tokens) != (
+            12_000,
+            15_000,
+            16_384,
+        ):
+            raise ValueError(
+                "working_v2_16k requires target/high/hard = 12000/15000/16384"
+            )
         if (self.summary_budget_tokens, self.recent_budget_tokens) != (256, 512):
-            raise ValueError("working_v1_4k requires summary/recent = 256/512")
+            raise ValueError("working_v2_16k requires summary/recent = 256/512")
         if self.minimum_recent_complete_turns != 2 or self.preferred_recent_complete_turns != 4:
-            raise ValueError("working_v1_4k requires minimum/preferred recent turns = 2/4")
+            raise ValueError("working_v2_16k requires minimum/preferred recent turns = 2/4")
         if self.mode not in {"trim_only", "background_summary"}:
             raise ValueError("unknown working summary mode")
 

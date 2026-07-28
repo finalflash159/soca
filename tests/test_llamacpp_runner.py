@@ -70,6 +70,7 @@ def test_chat_model_uses_chat_completion_api(tmp_path: Path) -> None:
 
     fake = FakeLlama.instances[0]
     call = fake.chat_calls[0]
+    assert fake.kwargs["n_ctx"] == 32768
     assert result.text == "Chào bạn."
     assert call["messages"][0]["role"] == "system"
     assert call["messages"][1] == {"role": "user", "content": "Xin chào"}

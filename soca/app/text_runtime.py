@@ -58,9 +58,9 @@ class TextRuntimeConfig:
     temperature: float = 0.2
     top_p: float = 0.95
     knowledge_limit: int = 3
-    memory_chars: int = 2200
+    memory_chars: int = 64_000
     profile_chars: int = 900
-    session_chars: int = 1300
+    session_chars: int = 60_000
     session_turns: int = 6
     turn_chars: int = 500
     llm_threads: int = 8
@@ -91,9 +91,9 @@ def resolve_text_runtime_config(
     temperature: float = 0.2,
     top_p: float = 0.95,
     knowledge_limit: int = 3,
-    memory_chars: int = 2200,
+    memory_chars: int = 64_000,
     profile_chars: int = 900,
-    session_chars: int = 1300,
+    session_chars: int = 60_000,
     session_turns: int = 6,
     turn_chars: int = 500,
     llm_threads: int = 8,
@@ -234,6 +234,9 @@ def build_text_runtime(
                 max_turns=config.session_turns,
                 max_chars=config.session_chars,
                 max_turn_chars=config.turn_chars,
+                summary_enabled=not config.no_llm,
+                summary_threads=config.llm_threads,
+                summary_gpu_layers=config.llm_gpu_layers,
             )
         )
         memory_setup = build_memory_runtime_setup(

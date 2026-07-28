@@ -377,6 +377,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         for value in record["worker_telemetry"]
         if value.get("peak_rss_mb") is not None
     ]
+    context_windows = [
+        int(value["n_ctx"])
+        for record in successful
+        for value in record["worker_telemetry"]
+        if value.get("n_ctx") is not None
+    ]
     cold_payloads = [
         value
         for record in successful
@@ -396,7 +402,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "python": platform.python_version(),
             "threads": args.threads,
             "gpu_layers": args.gpu_layers,
-            "n_ctx": 4096,
+            "n_ctx": 4096 if not args.cold_process else None,
+            "n_ctx_mode": "fixed" if not args.cold_process else "dynamic",
+            "n_ctx_max": candidate.context_window,
             "temperature": 0,
             "max_tokens": 384,
             "git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
@@ -428,6 +436,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "cold_load_latency_ms_p50": _percentile(load_times, 0.50),
             "cold_generation_latency_ms_p50": _percentile(generation_times, 0.50),
             "cold_peak_rss_mb_max": max(peak_rss) if peak_rss else None,
+            "cold_n_ctx_max": max(context_windows) if context_windows else None,
             "cold_clean_exit_rate": (
                 sum(value.get("exit_code") == 0 for value in cold_payloads) / len(cold_payloads)
                 if cold_payloads

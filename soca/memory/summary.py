@@ -17,10 +17,20 @@ from pathlib import Path
 
 from soca.llm import LLMResult, StructuredLLMEngine
 from soca.llm.registry import LLMModelConfig
-from soca.memory.working import CompactionJob, WorkingSummaryArtifact
+from soca.memory.working import (
+    CompactionJob,
+    WorkingSummaryArtifact,
+    approximate_tokens,
+)
+
+SUMMARY_MODEL_ROOT_ENV = "SOCA_SUMMARY_MODEL_ROOT"
+PRODUCTION_SUMMARY_MODEL_KEY = "qwen3_4b_instruct_2507_q4_k_m"
 
 
 def default_summary_model_root() -> Path:
+    configured = os.environ.get(SUMMARY_MODEL_ROOT_ENV, "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
     data_home = os.environ.get("XDG_DATA_HOME")
     base = Path(data_home) if data_home else Path.home() / ".local" / "share"
     return base / "soca" / "models" / "summary"
@@ -53,7 +63,7 @@ class SummaryModelSpec:
             filename=self.filename,
             local_dir_name=f"summary/{self.key}/{self.revision}",
             prompt_style=self.prompt_style,
-            role="summary_benchmark_candidate",
+            role="working_memory_summarizer",
             context_window=self.context_window,
             license_note=self.license_note,
             source_url=f"https://huggingface.co/{self.hf_repo}",
@@ -61,6 +71,46 @@ class SummaryModelSpec:
             append_no_think=self.append_no_think,
             strip_reasoning=self.append_no_think,
         )
+
+
+@dataclass(frozen=True)
+class SummaryReleaseGate:
+    """Product acceptance thresholds for the selected local summarizer."""
+
+    schema_valid_rate: float = 1.0
+    single_fact_recall: float = 0.80
+    rolling_fact_recall: float = 0.70
+    negative_state_clean_rate: float = 1.0
+    forbidden_surface_match_rate: float = 0.0
+    cold_clean_exit_rate: float = 1.0
+    cold_worker_stopped_rate: float = 1.0
+    cold_peak_rss_mb_max: float = 8192.0
+
+    def accepts(
+        self,
+        *,
+        schema_valid_rate: float,
+        single_fact_recall: float,
+        rolling_fact_recall: float,
+        negative_state_clean_rate: float,
+        forbidden_surface_match_rate: float,
+        cold_clean_exit_rate: float,
+        cold_worker_stopped_rate: float,
+        cold_peak_rss_mb_max: float,
+    ) -> bool:
+        return (
+            schema_valid_rate >= self.schema_valid_rate
+            and single_fact_recall >= self.single_fact_recall
+            and rolling_fact_recall >= self.rolling_fact_recall
+            and negative_state_clean_rate >= self.negative_state_clean_rate
+            and forbidden_surface_match_rate <= self.forbidden_surface_match_rate
+            and cold_clean_exit_rate >= self.cold_clean_exit_rate
+            and cold_worker_stopped_rate >= self.cold_worker_stopped_rate
+            and cold_peak_rss_mb_max <= self.cold_peak_rss_mb_max
+        )
+
+
+PRODUCTION_SUMMARY_RELEASE_GATE = SummaryReleaseGate()
 
 
 SUMMARY_MODEL_REGISTRY: dict[str, SummaryModelSpec] = {
@@ -121,8 +171,14 @@ SUMMARY_MODEL_REGISTRY: dict[str, SummaryModelSpec] = {
         quantization="Q4_K_M",
         license_note="Apache-2.0 upstream; Unsloth community GGUF of pure non-thinking Instruct-2507.",
         prompt_style="qwen_chat",
+        context_window=32768,
     ),
 }
+
+
+def production_summary_model_spec() -> SummaryModelSpec:
+    return SUMMARY_MODEL_REGISTRY[PRODUCTION_SUMMARY_MODEL_KEY]
+
 
 SUMMARY_SCHEMA: dict[str, object] = {
     "type": "object",
@@ -238,6 +294,17 @@ def execute_summary_job(
     return artifact_from_json(job, result.text), result
 
 
+def summary_context_window(job: CompactionJob, spec: SummaryModelSpec) -> int:
+    """Size llama.cpp context for this job without allocating the 32K maximum eagerly."""
+
+    prompt_tokens = approximate_tokens(build_summary_prompt(job))
+    required = int(prompt_tokens * 1.25) + 1024
+    rounded = max(4096, ((required + 1023) // 1024) * 1024)
+    if rounded > spec.context_window:
+        raise ValueError("summary compaction input exceeds the selected model context")
+    return rounded
+
+
 @dataclass(frozen=True)
 class SummaryWorkerStatus:
     state: str
@@ -267,11 +334,12 @@ def _child_summary_main(
         from soca.llm import LocalLlamaCppLLM
 
         load_started = time.perf_counter()
+        n_ctx = summary_context_window(job, spec)
         engine = LocalLlamaCppLLM(
             model_key=spec.key,
             model_path=model_path,
             model_config=spec.runtime_config(),
-            n_ctx=4096,
+            n_ctx=n_ctx,
             n_threads=n_threads,
             n_gpu_layers=n_gpu_layers,
         )
@@ -294,6 +362,7 @@ def _child_summary_main(
                 "load_latency_ms": (loaded - load_started) * 1000,
                 "generation_latency_ms": (generated - loaded) * 1000,
                 "peak_rss_mb": peak_rss_mb,
+                "n_ctx": n_ctx,
                 "usage": usage.to_dict(),
             }
         )
@@ -313,14 +382,19 @@ class LocalSummaryWorkerProcess:
         model_root: Path | None = None,
         n_threads: int | None = None,
         n_gpu_layers: int = -1,
+        timeout_seconds: float = 90.0,
     ) -> None:
+        if timeout_seconds <= 0:
+            raise ValueError("summary worker timeout must be positive")
         self.spec = spec
         self.model_root = model_root or default_summary_model_root()
         self.n_threads = n_threads
         self.n_gpu_layers = n_gpu_layers
+        self.timeout_seconds = timeout_seconds
         self._process: mp.Process | None = None
         self._connection: object | None = None
         self._generation: int | None = None
+        self._started_at: float | None = None
 
     @property
     def status(self) -> SummaryWorkerStatus:
@@ -334,7 +408,12 @@ class LocalSummaryWorkerProcess:
         if self._process is not None and self._process.is_alive():
             return False
         path = self.spec.path(self.model_root)
-        if not path.is_file():
+        if (
+            path.is_symlink()
+            or not path.is_file()
+            or path.stat().st_size != self.spec.expected_bytes
+            or path.stat().st_mode & 0o077
+        ):
             return False
         parent, child = mp.Pipe(duplex=False)
         process = mp.Process(
@@ -355,13 +434,26 @@ class LocalSummaryWorkerProcess:
         self._process = process
         self._connection = parent
         self._generation = job.generation
+        self._started_at = time.monotonic()
         return True
 
     def poll(self) -> dict[str, object] | None:
         from multiprocessing.connection import Connection
 
         connection = self._connection
-        if not isinstance(connection, Connection) or not connection.poll():
+        if not isinstance(connection, Connection):
+            return None
+        if not connection.poll():
+            if (
+                self._started_at is not None
+                and time.monotonic() - self._started_at > self.timeout_seconds
+            ):
+                self.cancel()
+                return {
+                    "ok": False,
+                    "error": "worker_timeout",
+                    "worker_stopped": True,
+                }
             return None
         try:
             payload = connection.recv()
@@ -380,30 +472,60 @@ class LocalSummaryWorkerProcess:
             payload["worker_stopped"] = process is not None and not process.is_alive()
         self._process = None
         self._generation = None
+        self._started_at = None
         return payload if isinstance(payload, dict) else {"ok": False, "error": "invalid_worker_payload"}
 
     def cancel(self) -> bool:
-        if self._process is None or not self._process.is_alive():
+        process = self._process
+        if process is None:
             return False
-        self._process.terminate()
-        self._process.join(timeout=1.0)
+        was_alive = process.is_alive()
+        if was_alive:
+            process.terminate()
+        process.join(timeout=1.0)
         if self._connection is not None:
             self._connection.close()  # type: ignore[union-attr]
         self._process = None
         self._connection = None
         self._generation = None
-        return True
+        self._started_at = None
+        return was_alive
+
+
+def build_production_summary_worker(
+    *,
+    model_root: Path | None = None,
+    n_threads: int | None = None,
+    n_gpu_layers: int = -1,
+    timeout_seconds: float = 90.0,
+) -> LocalSummaryWorkerProcess:
+    """Build the approved local-only worker; loading stays lazy per compaction."""
+
+    return LocalSummaryWorkerProcess(
+        production_summary_model_spec(),
+        model_root=model_root,
+        n_threads=n_threads,
+        n_gpu_layers=n_gpu_layers,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 __all__ = [
+    "build_production_summary_worker",
+    "PRODUCTION_SUMMARY_MODEL_KEY",
+    "PRODUCTION_SUMMARY_RELEASE_GATE",
     "SUMMARY_MODEL_REGISTRY",
+    "SUMMARY_MODEL_ROOT_ENV",
     "SUMMARY_SCHEMA",
+    "SummaryReleaseGate",
     "SummaryModelSpec",
+    "summary_context_window",
     "artifact_from_json",
     "build_summary_prompt",
     "default_summary_model_root",
     "execute_summary_job",
     "LocalSummaryWorkerProcess",
+    "production_summary_model_spec",
     "prompt_fingerprint",
     "SummaryWorkerStatus",
 ]

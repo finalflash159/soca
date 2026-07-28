@@ -341,9 +341,9 @@ def profiles_command(show_paths: bool) -> None:
 @click.option("--temperature", type=float, default=0.2, show_default=True)
 @click.option("--top-p", type=float, default=0.95, show_default=True)
 @click.option("--knowledge-limit", type=int, default=3, show_default=True)
-@click.option("--memory-chars", type=int, default=2200, show_default=True)
+@click.option("--memory-chars", type=int, default=64_000, show_default=True)
 @click.option("--profile-chars", type=int, default=900, show_default=True)
-@click.option("--session-chars", type=int, default=1300, show_default=True)
+@click.option("--session-chars", type=int, default=60_000, show_default=True)
 @click.option("--session-turns", type=int, default=6, show_default=True)
 @click.option("--turn-chars", type=int, default=500, show_default=True)
 @click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="cascade", show_default=True)
@@ -444,9 +444,9 @@ def ask(
 @click.option("--temperature", type=float, default=0.2, show_default=True)
 @click.option("--top-p", type=float, default=0.95, show_default=True)
 @click.option("--knowledge-limit", type=int, default=3, show_default=True)
-@click.option("--memory-chars", type=int, default=2200, show_default=True)
+@click.option("--memory-chars", type=int, default=64_000, show_default=True)
 @click.option("--profile-chars", type=int, default=900, show_default=True)
-@click.option("--session-chars", type=int, default=1300, show_default=True)
+@click.option("--session-chars", type=int, default=60_000, show_default=True)
 @click.option("--session-turns", type=int, default=6, show_default=True)
 @click.option("--turn-chars", type=int, default=500, show_default=True)
 @click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="cascade", show_default=True)
@@ -721,9 +721,9 @@ def engine(
         temperature=0.2,
         top_p=0.95,
         knowledge_limit=3,
-        memory_chars=2200,
+        memory_chars=64_000,
         profile_chars=900,
-        session_chars=1300,
+        session_chars=60_000,
         session_turns=6,
         turn_chars=500,
     )
@@ -781,9 +781,9 @@ def engine(
     help="Knowledge vault root containing wiki/ and memory/profile.md.",
 )
 @click.option("--no-memory", is_flag=True, help="Disable profile/session memory.")
-@click.option("--memory-chars", type=int, default=2200, hidden=True)
+@click.option("--memory-chars", type=int, default=64_000, hidden=True)
 @click.option("--profile-chars", type=int, default=900, hidden=True)
-@click.option("--session-chars", type=int, default=1300, hidden=True)
+@click.option("--session-chars", type=int, default=60_000, hidden=True)
 @click.option("--session-turns", type=int, default=6, hidden=True)
 @click.option("--turn-chars", type=int, default=500, hidden=True)
 @click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="deterministic", hidden=True)

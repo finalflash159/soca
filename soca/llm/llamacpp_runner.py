@@ -47,7 +47,7 @@ class LocalLlamaCppLLM:
                 f"Run: {self.config.download_command}"
             )
 
-        self.n_ctx = n_ctx or min(self.config.context_window, 4096)
+        self.n_ctx = n_ctx or self.config.context_window
 
         llama_kwargs: dict[str, Any] = {
             "model_path": str(self.model_path),

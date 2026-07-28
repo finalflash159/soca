@@ -28,7 +28,7 @@ class MemoryContextBuilder:
         self,
         long_term: LongTermMemorySource | None = None,
         session: SessionMemorySource | None = None,
-        max_chars: int = 2200,
+        max_chars: int = 64_000,
         profile_chars: int = 800,
     ) -> None:
         if max_chars <= 0:

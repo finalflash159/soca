@@ -4,10 +4,14 @@ import json
 
 from soca.llm import LLMResult
 from soca.memory.summary import (
+    PRODUCTION_SUMMARY_MODEL_KEY,
+    PRODUCTION_SUMMARY_RELEASE_GATE,
     SUMMARY_MODEL_REGISTRY,
     LocalSummaryWorkerProcess,
+    build_production_summary_worker,
     default_summary_model_root,
     execute_summary_job,
+    summary_context_window,
 )
 from soca.memory.working import WorkingMemory
 
@@ -49,7 +53,7 @@ def test_summary_registry_is_separate_and_summary_job_uses_structured_local_cont
     assert "gemma3_4b_it_qat_q4_0" not in SUMMARY_MODEL_REGISTRY
     assert "sailor2_1b_chat_q4" not in SUMMARY_MODEL_REGISTRY
     assert "sailor2_8b_chat_q4_k_m" not in SUMMARY_MODEL_REGISTRY
-    memory = WorkingMemory(token_counter=lambda _: 1000)
+    memory = WorkingMemory(token_counter=lambda _: 15_000)
     for index in range(6):
         turn = memory.begin_turn(f"user {index}")
         memory.finish_turn(turn.sequence, f"assistant {index}")
@@ -62,7 +66,7 @@ def test_summary_registry_is_separate_and_summary_job_uses_structured_local_cont
 
 
 def test_unprovisioned_summary_worker_never_auto_downloads_or_stays_loaded(tmp_path) -> None:
-    memory = WorkingMemory(token_counter=lambda _: 1000)
+    memory = WorkingMemory(token_counter=lambda _: 15_000)
     for index in range(6):
         turn = memory.begin_turn(f"user {index}")
         memory.finish_turn(turn.sequence, f"assistant {index}")
@@ -72,3 +76,48 @@ def test_unprovisioned_summary_worker_never_auto_downloads_or_stays_loaded(tmp_p
     assert worker.start(job) is False
     assert worker.status.state == "idle"
     assert default_summary_model_root().name == "summary"
+
+
+def test_production_summary_selection_and_revised_release_gate(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("SOCA_SUMMARY_MODEL_ROOT", str(tmp_path))
+    worker = build_production_summary_worker()
+
+    assert worker.spec.key == PRODUCTION_SUMMARY_MODEL_KEY
+    assert worker.model_root == tmp_path
+    memory = WorkingMemory(token_counter=lambda _: 15_000)
+    for index in range(6):
+        turn = memory.begin_turn(f"user {index}")
+        memory.finish_turn(turn.sequence, f"assistant {index}")
+    job = memory.prepare_compaction()
+    assert job is not None
+    assert summary_context_window(job, worker.spec) == 4096
+    assert PRODUCTION_SUMMARY_RELEASE_GATE.accepts(
+        schema_valid_rate=1.0,
+        single_fact_recall=0.80,
+        rolling_fact_recall=0.725,
+        negative_state_clean_rate=1.0,
+        forbidden_surface_match_rate=0.0,
+        cold_clean_exit_rate=1.0,
+        cold_worker_stopped_rate=1.0,
+        cold_peak_rss_mb_max=6031.0,
+    )
+    assert not PRODUCTION_SUMMARY_RELEASE_GATE.accepts(
+        schema_valid_rate=1.0,
+        single_fact_recall=0.79,
+        rolling_fact_recall=0.725,
+        negative_state_clean_rate=1.0,
+        forbidden_surface_match_rate=0.0,
+        cold_clean_exit_rate=1.0,
+        cold_worker_stopped_rate=1.0,
+        cold_peak_rss_mb_max=6031.0,
+    )
+    assert not PRODUCTION_SUMMARY_RELEASE_GATE.accepts(
+        schema_valid_rate=1.0,
+        single_fact_recall=0.80,
+        rolling_fact_recall=0.725,
+        negative_state_clean_rate=1.0,
+        forbidden_surface_match_rate=0.0,
+        cold_clean_exit_rate=1.0,
+        cold_worker_stopped_rate=1.0,
+        cold_peak_rss_mb_max=8193.0,
+    )

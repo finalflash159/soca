@@ -20,6 +20,7 @@ class WorkingMemoryCompactionCoordinator:
         self.memory = memory
         self.worker = worker
         self._job: CompactionJob | None = None
+        self.last_telemetry: dict[str, object] | None = None
 
     def request(self, *, manual: bool = False) -> CompactionResult:
         job = self.memory.prepare_compaction(force=manual)
@@ -42,6 +43,19 @@ class WorkingMemoryCompactionCoordinator:
         payload = self.worker.poll()
         if payload is None:
             return CompactionResult("running", generation=self._job.generation)
+        self.last_telemetry = {
+            key: payload[key]
+            for key in (
+                "latency_ms",
+                "load_latency_ms",
+                "generation_latency_ms",
+                "peak_rss_mb",
+                "n_ctx",
+                "exit_code",
+                "worker_stopped",
+            )
+            if key in payload
+        }
         job = self._job
         self._job = None
         if not payload.get("ok"):

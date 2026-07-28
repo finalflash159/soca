@@ -9,7 +9,7 @@ def _complete(memory: WorkingMemory, user: str, assistant: str) -> None:
 
 
 def test_working_memory_compaction_uses_complete_turns_and_cas() -> None:
-    memory = WorkingMemory(token_counter=lambda text: 1000 if "user 0" in text else 400)
+    memory = WorkingMemory(token_counter=lambda text: 15_000 if "user 0" in text else 400)
     for index in range(6):
         _complete(memory, f"user {index}", f"assistant {index}")
     job = memory.prepare_compaction()

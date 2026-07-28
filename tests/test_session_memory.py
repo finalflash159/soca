@@ -1,6 +1,47 @@
+from types import SimpleNamespace
+from typing import Any, cast
+
 import pytest
 
 from soca.memory import MemoryContextBuilder, MemoryTurn, SessionMemory, WorkingSummaryArtifact
+from soca.memory.summary import LocalSummaryWorkerProcess
+
+
+class _ImmediateSummaryWorker:
+    def __init__(self) -> None:
+        self.job = None
+        self.start_count = 0
+        self.spec = SimpleNamespace(key="test-summary")
+
+    @property
+    def status(self):
+        return SimpleNamespace(state="running" if self.job is not None else "idle")
+
+    def start(self, job) -> bool:
+        self.job = job
+        self.start_count += 1
+        return True
+
+    def poll(self):
+        if self.job is None:
+            return None
+        job = self.job
+        self.job = None
+        return {
+            "ok": True,
+            "artifact": WorkingSummaryArtifact(
+                version=1,
+                generation=job.generation,
+                source_through_sequence=job.frozen_turns[-1].sequence,
+                summary="Trạng thái đã compact.",
+                decisions=("Dùng summary local.",),
+            ).to_dict(),
+        }
+
+    def cancel(self) -> bool:
+        running = self.job is not None
+        self.job = None
+        return running
 
 
 def test_session_memory_renders_recent_conversation():
@@ -104,6 +145,28 @@ def test_session_memory_clear_removes_turns():
 
     assert memory.turns == ()
     assert memory.render() == ""
+
+
+def test_session_memory_automatically_runs_selected_summary_worker() -> None:
+    fake_worker = _ImmediateSummaryWorker()
+    worker = cast(LocalSummaryWorkerProcess, cast(Any, fake_worker))
+    memory = SessionMemory(
+        max_chars=4000,
+        max_turn_chars=500,
+        summary_worker=worker,
+    )
+    for index in range(48):
+        memory.append("user", f"quyết định {index} " + "nội dung " * 55)
+        memory.append("assistant", f"đã ghi nhận {index} " + "phản hồi " * 55)
+
+    rendered = memory.render()
+
+    assert fake_worker.start_count == 1
+    assert memory.summary_model_key == "test-summary"
+    assert memory.summary_worker_state == "idle"
+    assert memory.working.snapshot.pending_compaction is False
+    assert memory.working.snapshot.summary is not None
+    assert "Dùng summary local." in rendered
 
 
 def test_memory_context_builder_combines_profile_and_session():

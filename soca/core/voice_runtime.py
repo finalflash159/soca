@@ -61,9 +61,9 @@ class ResolvedVoiceRuntimeConfig:
     pcm_crossfade_ms: float
     vault: Path
     no_memory: bool = False
-    memory_chars: int = 2200
+    memory_chars: int = 64_000
     profile_chars: int = 900
-    session_chars: int = 1300
+    session_chars: int = 60_000
     session_turns: int = 6
     turn_chars: int = 500
     llm_threads: int = 8
@@ -138,9 +138,9 @@ def resolve_voice_runtime_config(
     first_clause_enabled: bool | None = None,
     vault: str | Path | None = None,
     no_memory: bool = False,
-    memory_chars: int = 2200,
+    memory_chars: int = 64_000,
     profile_chars: int = 900,
-    session_chars: int = 1300,
+    session_chars: int = 60_000,
     session_turns: int = 6,
     turn_chars: int = 500,
     llm_threads: int = 8,
@@ -354,6 +354,8 @@ def build_voice_runtime(
                 max_turns=config.session_turns,
                 max_chars=config.session_chars,
                 max_turn_chars=config.turn_chars,
+                summary_threads=config.llm_threads,
+                summary_gpu_layers=config.llm_gpu_layers,
             )
         )
         memory_setup = build_memory_runtime_setup(
