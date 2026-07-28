@@ -89,7 +89,10 @@ class LocalLlamaCppLLM:
             return choice.get("text") or ""
 
         delta = choice.get("delta") or {}
-        return delta.get("content") or ""
+        if isinstance(delta, dict) and delta.get("content"):
+            return delta["content"]
+        message = choice.get("message") or {}
+        return message.get("content") or "" if isinstance(message, dict) else ""
 
     def _stream_chunks(
         self,
