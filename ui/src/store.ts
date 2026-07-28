@@ -348,6 +348,14 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
         timeline: push(state.timeline, { kind: "system", text }),
       };
     }
+    case "memory_compaction":
+      return {
+        ...state,
+        timeline: push(state.timeline, {
+          kind: "system",
+          text: `memory compact: ${event.status}${event.detail ? ` · ${event.detail}` : ""}`,
+        }),
+      };
     case "usage": {
       const text =
         `phiên: ${event.turns} lượt (${event.llm_turns} LLM) ` +

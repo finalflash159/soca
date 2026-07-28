@@ -295,6 +295,8 @@ def test_engine_memory_and_usage_commands() -> None:
         capture.wait_for('"done"')
         yield '{"cmd": "memory"}\n'
         capture.wait_for('"memory"')
+        yield '{"cmd": "memory_compact", "action": "status"}\n'
+        capture.wait_for('"memory_compaction"')
         yield '{"cmd": "usage"}\n'
         capture.wait_for('"usage"')
         yield '{"cmd": "quit"}\n'
@@ -312,5 +314,7 @@ def test_engine_memory_and_usage_commands() -> None:
     events = capture.events()
     memory = next(e for e in events if e["event"] == "memory")
     assert memory["enabled"] is True
+    compaction = next(e for e in events if e["event"] == "memory_compaction")
+    assert compaction["status"] == "idle"
     usage = next(e for e in events if e["event"] == "usage")
     assert usage["turns"] == 1

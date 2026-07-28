@@ -175,6 +175,22 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
         engine?.send({ cmd: "voice_start" });
       } else if (cmd === "/stop") {
         engine?.send({ cmd: "voice_stop" });
+      } else if (cmd.startsWith("/memory compact")) {
+        const action = cmd.slice("/memory compact".length).trim();
+        if (action === "" || action === "status" || action === "cancel") {
+          engine?.send({
+            cmd: "memory_compact",
+            action: (action === "" ? "request" : action) as
+              | "request"
+              | "status"
+              | "cancel",
+          });
+        } else {
+          dispatch({
+            type: "system_message",
+            text: "cú pháp: /memory compact [status|cancel]",
+          });
+        }
       } else if (cmd === "/memory") {
         engine?.send({ cmd: "memory" });
       } else if (cmd === "/proposals") {

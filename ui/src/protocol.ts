@@ -7,6 +7,7 @@ export interface EngineCommand {
     | "voice_start"
     | "voice_stop"
     | "memory"
+    | "memory_compact"
     | "usage"
     | "llm_providers"
     | "llm_models"
@@ -26,6 +27,7 @@ export interface EngineCommand {
   backend?: "local" | "remote";
   model?: string;
   proposal_id?: string;
+  action?: "request" | "status" | "cancel";
 }
 
 export interface HelloEvent {
@@ -139,6 +141,13 @@ export interface MemoryEvent {
   text: string;
 }
 
+export interface MemoryCompactionEvent {
+  event: "memory_compaction";
+  status: string;
+  generation?: number | null;
+  detail?: string;
+}
+
 export interface UsageEvent {
   event: "usage";
   turns: number;
@@ -221,6 +230,7 @@ export type EngineEvent =
   | ChatEvent
   | StatusEvent
   | MemoryEvent
+  | MemoryCompactionEvent
   | UsageEvent
   | LlmProviderEvent
   | LlmCatalogEvent
@@ -249,6 +259,7 @@ export function parseEngineEvent(line: string): EngineEvent | null {
       "chat",
       "status",
       "memory",
+      "memory_compaction",
       "usage",
       "llm_providers",
       "llm_catalog",

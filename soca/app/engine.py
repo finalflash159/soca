@@ -239,6 +239,8 @@ class SocaEngine:
             self._cmd_status()
         elif cmd == "memory":
             self._cmd_memory()
+        elif cmd == "memory_compact":
+            self._cmd_memory_compact(str(command.get("action") or "request"))
         elif cmd == "memory_proposals":
             self._cmd_memory_proposals()
         elif cmd == "memory_approve":
@@ -632,6 +634,30 @@ class SocaEngine:
             return
         rendered = self.session_memory.render().strip()
         self.writer.emit({"event": "memory", "enabled": True, "text": rendered})
+
+    def _cmd_memory_compact(self, action: str) -> None:
+        if self.session_memory is None:
+            self.writer.emit(
+                {"event": "memory_compaction", "status": "disabled", "detail": "memory disabled"}
+            )
+            return
+        if action == "status":
+            result = self.session_memory.compaction_status()
+        elif action == "cancel":
+            result = self.session_memory.cancel_compaction()
+        elif action == "request":
+            result = self.session_memory.request_compaction()
+        else:
+            self._error("memory compact action must be request, status, or cancel")
+            return
+        self.writer.emit(
+            {
+                "event": "memory_compaction",
+                "status": result.status,
+                "generation": result.generation,
+                "detail": result.detail,
+            }
+        )
 
     def _memory_commands(self) -> MemoryCommands | None:
         vault = self.text_config.vault

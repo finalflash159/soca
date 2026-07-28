@@ -4,6 +4,7 @@ from collections.abc import Iterable
 
 from soca.core.text_budget import truncate
 from soca.memory.base import MemoryRole, MemoryTurn
+from soca.memory.compaction_coordinator import CompactionResult, WorkingMemoryCompactionCoordinator
 from soca.memory.working import WorkingMemory, WorkingMemoryPolicy
 
 RECENT_CONVERSATION_HEADER = "Recent conversation:"
@@ -37,6 +38,7 @@ class SessionMemory:
         self.max_chars = max_chars
         self.max_turn_chars = max_turn_chars
         self.working = WorkingMemory(thread_id=thread_id, policy=WorkingMemoryPolicy())
+        self.compaction = WorkingMemoryCompactionCoordinator(self.working)
         self._pending_sequences: list[int] = []
         if turns is not None:
             for turn in turns:
@@ -76,6 +78,7 @@ class SessionMemory:
 
     def clear(self) -> None:
         self.working = WorkingMemory(thread_id=self.working.thread_id, policy=self.working.policy)
+        self.compaction = WorkingMemoryCompactionCoordinator(self.working)
         self._pending_sequences.clear()
 
     def render(self) -> str:
@@ -98,3 +101,12 @@ class SessionMemory:
         if not selected:
             return ""
         return "\n".join([RECENT_CONVERSATION_HEADER, *reversed(selected)])
+
+    def request_compaction(self) -> CompactionResult:
+        return self.compaction.request(manual=True)
+
+    def compaction_status(self) -> CompactionResult:
+        return self.compaction.status()
+
+    def cancel_compaction(self) -> CompactionResult:
+        return self.compaction.cancel()

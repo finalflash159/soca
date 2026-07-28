@@ -8,6 +8,7 @@ from soca.memory.base import (
 )
 from soca.memory.commands import MemoryCommandResult, MemoryCommands
 from soca.memory.compaction import CompactionConfig, WorkingMemory, WorkingMemorySnapshot
+from soca.memory.compaction_coordinator import CompactionResult, WorkingMemoryCompactionCoordinator
 from soca.memory.composite import CompositeMemoryConfig, CompositeMemorySource
 from soca.memory.context import MemoryContext, MemoryContextBuilder
 from soca.memory.episodes import EpisodeStore, MemoryEpisode
@@ -32,6 +33,8 @@ __all__ = [
     "MemoryContextBuilder",
     "MemoryCommandResult",
     "MemoryCommands",
+    "CompactionResult",
+    "WorkingMemoryCompactionCoordinator",
     "CompactionConfig",
     "CompositeMemoryConfig",
     "CompositeMemorySource",
