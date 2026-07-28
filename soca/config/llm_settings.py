@@ -84,8 +84,16 @@ DEFAULT_SETTINGS = LlmSettings()
 _SETTINGS_FIELDS = frozenset(LlmSettings.__dataclass_fields__)
 
 
-def load_settings(path: Path = DEFAULT_SETTINGS_PATH) -> LlmSettings:
+def default_settings_path() -> Path:
+    """Resolve settings at call time so tests and XDG users stay isolated."""
+    config_home = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(config_home) if config_home else Path.home() / ".config"
+    return base / "soca" / "llm.json"
+
+
+def load_settings(path: Path | None = None) -> LlmSettings:
     """Load settings or return the safe local default when none were saved."""
+    path = path or default_settings_path()
     try:
         raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -100,8 +108,9 @@ def load_settings(path: Path = DEFAULT_SETTINGS_PATH) -> LlmSettings:
     return _settings_from_payload(payload, path)
 
 
-def save_settings(settings: LlmSettings, path: Path = DEFAULT_SETTINGS_PATH) -> None:
+def save_settings(settings: LlmSettings, path: Path | None = None) -> None:
     """Atomically persist non-secret settings with owner-only permissions."""
+    path = path or default_settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     contents = json.dumps(asdict(settings), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
     file_descriptor, temporary_name = tempfile.mkstemp(
@@ -147,6 +156,7 @@ __all__ = [
     "DEFAULT_MAX_TOKENS",
     "DEFAULT_SETTINGS",
     "DEFAULT_SETTINGS_PATH",
+    "default_settings_path",
     "LlmSettings",
     "load_settings",
     "save_settings",

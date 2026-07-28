@@ -41,7 +41,7 @@ class MemoryContextBuilder:
         self.max_chars = max_chars
         self.profile_chars = profile_chars
 
-    def build(self, query: str | None = None, *, include_archive: bool = False) -> MemoryContext:
+    def build(self, query: str | None = None, *, include_archive: bool = True) -> MemoryContext:
         profile = MemoryProfileResult(text="")
         session_text = ""
         parts: list[str] = []
