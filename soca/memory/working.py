@@ -13,6 +13,7 @@ from typing import Literal
 
 TurnStatus = Literal["pending", "complete", "interrupted", "failed"]
 SummaryMode = Literal["trim_only", "background_summary"]
+SUMMARY_CONTENT_BUDGET_TOKENS = 2_048
 
 
 def _normalise(text: str) -> str:
@@ -60,8 +61,10 @@ class WorkingSummaryArtifact:
     def __post_init__(self) -> None:
         if self.version != 1 or self.generation < 0 or self.source_through_sequence < 0:
             raise ValueError("invalid working summary version or sequence")
-        if len(self.summary.split()) > 256:
-            raise ValueError("working summary exceeds 256-token content budget")
+        if len(self.summary.split()) > SUMMARY_CONTENT_BUDGET_TOKENS:
+            raise ValueError(
+                f"working summary exceeds {SUMMARY_CONTENT_BUDGET_TOKENS}-token content budget"
+            )
         for values in (
             self.user_constraints,
             self.decisions,
@@ -71,8 +74,10 @@ class WorkingSummaryArtifact:
         ):
             if any(not isinstance(value, str) or not value.strip() for value in values):
                 raise ValueError("working summary fields must contain non-empty strings")
-        if approximate_tokens(self.render()) > 256:
-            raise ValueError("working summary artifact exceeds 256-token content budget")
+        if approximate_tokens(self.render()) > SUMMARY_CONTENT_BUDGET_TOKENS:
+            raise ValueError(
+                f"working summary artifact exceeds {SUMMARY_CONTENT_BUDGET_TOKENS}-token content budget"
+            )
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -98,7 +103,7 @@ class WorkingMemoryPolicy:
     hard_limit_tokens: int = 16_384
     high_watermark_tokens: int = 15_000
     target_tokens: int = 12_000
-    summary_budget_tokens: int = 256
+    summary_budget_tokens: int = SUMMARY_CONTENT_BUDGET_TOKENS
     recent_budget_tokens: int = 512
     minimum_recent_complete_turns: int = 2
     preferred_recent_complete_turns: int = 2
@@ -112,8 +117,13 @@ class WorkingMemoryPolicy:
             16_384,
         ):
             raise ValueError("working_v2_16k requires target/high/hard = 12000/15000/16384")
-        if (self.summary_budget_tokens, self.recent_budget_tokens) != (256, 512):
-            raise ValueError("working_v2_16k requires summary/recent = 256/512")
+        if (self.summary_budget_tokens, self.recent_budget_tokens) != (
+            SUMMARY_CONTENT_BUDGET_TOKENS,
+            512,
+        ):
+            raise ValueError(
+                "working_v2_16k requires summary/recent = 2048/512"
+            )
         if (
             self.minimum_recent_complete_turns,
             self.preferred_recent_complete_turns,
@@ -374,5 +384,6 @@ __all__ = [
     "WorkingMemoryPolicy",
     "WorkingMemorySnapshot",
     "WorkingSummaryArtifact",
+    "SUMMARY_CONTENT_BUDGET_TOKENS",
     "approximate_tokens",
 ]

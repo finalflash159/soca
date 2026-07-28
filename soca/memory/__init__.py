@@ -20,6 +20,7 @@ from soca.memory.scoring import MemoryHit, MemoryScore, MemoryScoreConfig
 from soca.memory.session import SessionMemory, SessionMemoryStats
 from soca.memory.session_store import SessionCheckpointStore
 from soca.memory.working import (
+    SUMMARY_CONTENT_BUDGET_TOKENS,
     CompactionJob,
     ConversationTurn,
     WorkingMemoryPolicy,
@@ -61,6 +62,7 @@ __all__ = [
     "SessionCheckpointStore",
     "CompactionJob",
     "ConversationTurn",
+    "SUMMARY_CONTENT_BUDGET_TOKENS",
     "WorkingMemoryPolicy",
     "WorkingSummaryArtifact",
     "SessionMemorySource",

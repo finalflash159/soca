@@ -24,7 +24,7 @@ class _StructuredEngine:
     def generate_structured(self, prompt: str, **kwargs: object) -> LLMResult:
         assert "PREVIOUS_SUMMARY_JSON:" in prompt
         assert "FROZEN_TURNS_JSON:" in prompt
-        assert kwargs["max_tokens"] == 384
+        assert kwargs["max_tokens"] == 2_048
         return LLMResult(
             text=json.dumps(
                 {
@@ -36,6 +36,37 @@ class _StructuredEngine:
                     "continuity_refs": [],
                 }
             ),
+            prompt=prompt,
+            n_prompt_tokens=10,
+            n_completion_tokens=10,
+            ttft_ms=1.0,
+            total_latency_ms=2.0,
+            tokens_per_second=5.0,
+        )
+
+
+class _RepairStructuredEngine:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.prompts: list[str] = []
+
+    def generate_structured(self, prompt: str, **kwargs: object) -> LLMResult:
+        self.calls += 1
+        self.prompts.append(prompt)
+        assert kwargs["max_tokens"] == 2_048
+        summary = "từ " * 2_100 if self.calls == 1 else "Bối cảnh đã được compact."
+        text = json.dumps(
+            {
+                "summary": summary,
+                "user_constraints": [],
+                "decisions": [],
+                "corrections": [],
+                "open_items": [],
+                "continuity_refs": [],
+            }
+        )
+        return LLMResult(
+            text=text,
             prompt=prompt,
             n_prompt_tokens=10,
             n_completion_tokens=10,
@@ -97,6 +128,22 @@ def test_summary_prompt_requires_continuity_even_without_durable_state() -> None
         )
 
 
+def test_summary_job_repairs_an_oversized_candidate_before_publishing() -> None:
+    memory = WorkingMemory()
+    for index in range(5):
+        turn = memory.begin_turn(f"Câu hỏi {index}")
+        memory.finish_turn(turn.sequence, f"Trả lời {index}")
+    job = memory.prepare_compaction(force=True)
+    assert job is not None
+    engine = _RepairStructuredEngine()
+
+    artifact, _ = execute_summary_job(job, engine)
+
+    assert engine.calls == 2
+    assert "REPAIR PASS" in engine.prompts[1]
+    assert artifact.summary == "Bối cảnh đã được compact."
+
+
 def test_unprovisioned_summary_worker_never_auto_downloads_or_stays_loaded(tmp_path) -> None:
     memory = WorkingMemory(token_counter=lambda _: 15_000)
     for index in range(6):
@@ -124,7 +171,7 @@ def test_production_summary_selection_and_revised_release_gate(tmp_path, monkeyp
         memory.finish_turn(turn.sequence, f"assistant {index}")
     job = memory.prepare_compaction()
     assert job is not None
-    assert summary_context_window(job, worker.spec) == 4096
+    assert summary_context_window(job, worker.spec) == 5_120
     assert PRODUCTION_SUMMARY_RELEASE_GATE.accepts(
         schema_valid_rate=1.0,
         single_fact_recall=0.80,

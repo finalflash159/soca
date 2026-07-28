@@ -18,6 +18,7 @@ from pathlib import Path
 from soca.llm import LLMResult, StructuredLLMEngine
 from soca.llm.registry import LLMModelConfig
 from soca.memory.working import (
+    SUMMARY_CONTENT_BUDGET_TOKENS,
     CompactionJob,
     WorkingSummaryArtifact,
     approximate_tokens,
@@ -25,6 +26,7 @@ from soca.memory.working import (
 
 SUMMARY_MODEL_ROOT_ENV = "SOCA_SUMMARY_MODEL_ROOT"
 PRODUCTION_SUMMARY_MODEL_KEY = "qwen3_4b_instruct_2507_q4_k_m"
+SUMMARY_OUTPUT_MAX_TOKENS = 2_048
 
 
 def default_summary_model_root() -> Path:
@@ -232,6 +234,8 @@ _SUMMARY_POLICY = (
     "- Không bỏ trống structured field chỉ vì cùng fact đã xuất hiện trong summary.",
     "- Bỏ lời chào, câu xác nhận, sequence number và dữ liệu trích dẫn không tạo state.",
     "- Không suy luận fact, không tạo việc cần làm mới, không thêm lời khuyên.",
+    f"- Tổng nội dung artifact (summary và các array) không quá {SUMMARY_CONTENT_BUDGET_TOKENS} token.",
+    f"- Decoder có hard cap {SUMMARY_OUTPUT_MAX_TOKENS} generated tokens; phải tự rút gọn trước khi xuất, không chờ bị cắt.",
     "MERGE CHECKLIST:",
     "1. Bắt đầu từ toàn bộ entry đang active trong từng field của PREVIOUS_SUMMARY_JSON.",
     "2. Chỉ xóa hoặc thay entry cũ khi frozen turns nói rõ đã sửa, hủy hoặc hoàn tất.",
@@ -242,15 +246,25 @@ _SUMMARY_POLICY = (
 )
 
 
-def build_summary_prompt(job: CompactionJob) -> str:
+def build_summary_prompt(job: CompactionJob, *, repair: bool = False) -> str:
     previous = job.previous_summary.to_dict() if job.previous_summary is not None else None
     frozen = [
         {"sequence": turn.sequence, "user": turn.user_text, "assistant": turn.assistant_text}
         for turn in job.frozen_turns
     ]
+    policy = list(_SUMMARY_POLICY)
+    if repair:
+        policy.extend(
+            [
+                "REPAIR PASS — output trước không đạt contract; không trả lời người dùng.",
+                "Xuất một JSON ngắn hơn và hợp lệ trước khi kết thúc generation.",
+                "Ưu tiên continuity summary, constraint/decision/correction/open item đang active; array không có dữ liệu được để rỗng.",
+                "Không lặp lại câu, không thêm giải thích ngoài JSON và không dùng hết budget nếu không cần.",
+            ]
+        )
     return "\n".join(
         [
-            *_SUMMARY_POLICY,
+            *policy,
             "PREVIOUS_SUMMARY_JSON:",
             json.dumps(previous, ensure_ascii=False),
             "FROZEN_TURNS_JSON:",
@@ -296,24 +310,33 @@ def execute_summary_job(
     job: CompactionJob,
     engine: StructuredLLMEngine,
 ) -> tuple[WorkingSummaryArtifact, LLMResult]:
-    result = engine.generate_structured(
-        build_summary_prompt(job),
-        schema_name="working_summary_v1",
-        schema=SUMMARY_SCHEMA,
-        max_tokens=384,
-        temperature=0.0,
-        top_p=1.0,
-        inject_persona=False,
-        zero_data_retention=True,
-    )
-    return artifact_from_json(job, result.text), result
+    def attempt(*, repair: bool) -> tuple[WorkingSummaryArtifact, LLMResult]:
+        result = engine.generate_structured(
+            build_summary_prompt(job, repair=repair),
+            schema_name="working_summary_v1",
+            schema=SUMMARY_SCHEMA,
+            max_tokens=SUMMARY_OUTPUT_MAX_TOKENS,
+            temperature=0.0,
+            top_p=1.0,
+            inject_persona=False,
+            zero_data_retention=True,
+        )
+        return artifact_from_json(job, result.text), result
+
+    try:
+        return attempt(repair=False)
+    except (RuntimeError, ValueError):
+        # Keep the model loaded and ask it once to repair its own structured
+        # output. This handles malformed/oversized candidates without slicing
+        # fields after the fact and without silently dropping memory state.
+        return attempt(repair=True)
 
 
 def summary_context_window(job: CompactionJob, spec: SummaryModelSpec) -> int:
     """Size llama.cpp context for this job without allocating the 32K maximum eagerly."""
 
     prompt_tokens = approximate_tokens(build_summary_prompt(job))
-    required = int(prompt_tokens * 1.25) + 1024
+    required = int(prompt_tokens * 1.25) + SUMMARY_OUTPUT_MAX_TOKENS + 1024
     rounded = max(4096, ((required + 1023) // 1024) * 1024)
     if rounded > spec.context_window:
         raise ValueError("summary compaction input exceeds the selected model context")
@@ -382,7 +405,9 @@ def _child_summary_main(
             }
         )
     except Exception as exc:  # noqa: BLE001 - child process boundary
-        pipe.send({"ok": False, "error": type(exc).__name__})
+        detail = " ".join(str(exc).split())[:240]
+        error = type(exc).__name__ if not detail else f"{type(exc).__name__}: {detail}"
+        pipe.send({"ok": False, "error": error})
     finally:
         pipe.close()
 
@@ -535,6 +560,7 @@ __all__ = [
     "PRODUCTION_SUMMARY_RELEASE_GATE",
     "SUMMARY_MODEL_REGISTRY",
     "SUMMARY_MODEL_ROOT_ENV",
+    "SUMMARY_OUTPUT_MAX_TOKENS",
     "SUMMARY_SCHEMA",
     "SummaryReleaseGate",
     "SummaryModelSpec",

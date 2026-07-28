@@ -99,9 +99,13 @@ reprovisionable from the pinned registry.
 
 The model-selection generation runs use `llama-cpp-python 0.3.16`, Metal,
 `n_gpu_layers=-1`, eight threads, `n_ctx=4096`, `temperature=0`, and
-grammar-constrained JSON. The final prompt fingerprint is
-`aa317641bb249d5b`; it hashes both policy text and JSON schema, so a prompt edit
-cannot silently reuse an old fingerprint.
+grammar-constrained JSON. The historical bake-off prompt fingerprint was
+`aa317641bb249d5b`. The current production contract fingerprint is
+`ec0c2752896b56ff`; it hashes both policy text and JSON schema, so a prompt edit
+cannot silently reuse an old fingerprint. The current artifact content budget
+and structured decoder cap are both 2,048 tokens. The worker performs one repair
+pass in the same loaded process when a candidate is malformed or exceeds the
+artifact budget; it never slices fields after generation.
 
 The decision order is quality first:
 
@@ -198,7 +202,7 @@ state containing the active `TTS B` decision, and returned non-empty content.
 
 ## Runtime corrections made during the bake-off
 
-- `WorkingSummaryArtifact` now enforces its 256-token budget over prose and all
+- `WorkingSummaryArtifact` now enforces its 2,048-token budget over prose and all
   structured fields, not prose alone.
 - `WorkingMemory.render()` now injects all five structured fields into the
   answer context. Previously it discarded them and rendered only `summary`.

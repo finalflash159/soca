@@ -70,9 +70,20 @@ def test_working_summary_budget_covers_structured_fields() -> None:
             generation=1,
             source_through_sequence=1,
             summary="",
-            open_items=("việc rất dài " * 300,),
+            open_items=("việc rất dài " * 2_100,),
         )
     except ValueError as exc:
-        assert "256-token content budget" in str(exc)
+        assert "2048-token content budget" in str(exc)
     else:
         raise AssertionError("oversized structured state must be rejected")
+
+
+def test_working_summary_accepts_a_summary_larger_than_the_old_256_token_limit() -> None:
+    artifact = WorkingSummaryArtifact(
+        version=1,
+        generation=1,
+        source_through_sequence=1,
+        summary="từ " * 1_500,
+    )
+
+    assert len(artifact.summary.split()) == 1_500

@@ -169,6 +169,9 @@ message deque. The production `working_v2_16k` policy uses
 target/high/hard limits of 12,000/15,000/16,384 tokens. At the high watermark,
 chat and voice start `Qwen3-4B-Instruct-2507 Q4_K_M` in an isolated local
 process, publish its typed artifact with generation CAS, then unload it.
+The summary artifact and decoder output budget are both 2,048 tokens; the model
+is instructed to shorten the structured JSON before reaching the hard decoder
+cap, with one in-process repair pass if the first candidate is invalid.
 Summary context is allocated dynamically from 4K to 32K. A missing or invalid
 private weight falls back to `trim_only`; there is no extractive/regex summary,
 remote summary fallback, or automatic runtime download. `/compact`,

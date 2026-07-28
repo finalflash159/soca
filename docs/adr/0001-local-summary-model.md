@@ -9,6 +9,9 @@
 Select `Qwen3-4B-Instruct-2507 Q4_K_M` as the production local summarizer.
 Enable background summary by default at 15,000 approximate working-memory
 tokens, with target/high/hard limits of 12,000/15,000/16,384.
+The structured summary artifact and decoder output are each capped at 2,048
+tokens. The prompt tells the model to shorten before the decoder cap, and the
+worker gets one repair pass before falling back without deleting raw history.
 
 The worker uses dynamic 4K–32K context, runs in a single-job subprocess, and
 unloads after publication. The application must not auto-download its weight
