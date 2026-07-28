@@ -33,6 +33,7 @@ engine.ts         spawn + đọc/ghi engine child process
 store.ts          reducer: engine events → app state
 App.tsx           layout chính (Static history + composer + footer)
 components/       Logo (bird gradient), Timeline, VoiceStatus, HelpOverlay, Primitives
+imeInput.tsx      raw-mode editor with replacement/backspace + grapheme handling
 ```
 
 > Bản Textual TUI cũ (`soca/app/tui/`) đã gỡ sau khi Ink UI đạt parity voice
@@ -89,3 +90,35 @@ tất để người dùng thấy luồng xử lý mà không làm timeline quá
 Tin nhắn người dùng giữ layout phẳng hiện tại. Mỗi câu trả lời hoàn chỉnh của
 SoCa được đặt trong một khung hairline dùng màu dawn palette đã pha với border
 nền; progress biến mất khi engine phát trạng thái `done`.
+
+## Vietnamese/IME input boundary
+
+Composer của SoCa chạy trong terminal raw mode. Terminal không đưa cho ứng dụng
+các event composition native như browser (`compositionstart/update/end`); tùy
+IME/terminal, ứng dụng có thể nhận ký tự đã commit hoặc một edit stream gồm ký
+tự, backspace và replacement trong cùng một data chunk. Vì vậy `App.tsx` không
+dùng `ink-text-input` nữa mà dùng `imeInput.tsx`:
+
+- input được normalize NFC để chuỗi dựng sẵn và chuỗi tổ hợp hiển thị như nhau;
+- cursor/backspace/delete đi theo grapheme cluster, không theo UTF-16 code unit;
+- backspace/control/ANSI sequence nằm trong chunk replacement không được chèn
+  vào prompt;
+- logic này không biết Telex/VNI và không tự dịch tiếng Việt, tránh xung đột với
+  IME hệ thống hoặc biến các từ tiếng Anh thành tiếng Việt ngoài ý muốn.
+
+Để xem chính xác terminal/IME đang gửi gì mà không bật log mặc định (đặc biệt
+không nên bật khi nhập API key), chạy:
+
+```bash
+SOCA_INPUT_DEBUG=1 uv run soca ui chat
+```
+
+Log `[soca-input]` đi qua stderr và chỉ nên dùng cho chẩn đoán. Nếu lỗi xuất
+hiện cả trong `cat`, shell prompt, Terminal.app/iTerm2 hoặc editor khác thì đó
+là lớp input source/IME/terminal của hệ điều hành, không thể sửa bằng code trong
+SoCa. Kiểm tra input source Vietnamese Telex/VNI, thử Terminal.app và iTerm2
+ngoài SoCa, rồi thử một IME khác; trên macOS vào Keyboard → Text Input → Edit
+để chọn lại input source. Khi test Telex, thứ tự đặt dấu không hoàn toàn tương
+đương giữa các IME: `ddieefu`, `phast`, `hieejn` đặt dấu trước phụ âm cuối; các
+biến thể đặt dấu ở cuối như `ddieeuf`, `phats`, `hieenj` có thể không được IME
+đang dùng hỗ trợ.
