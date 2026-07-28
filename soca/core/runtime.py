@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
+from soca.core.answer_validation import AnswerValidationDecision, validate_grounded_answer
 from soca.core.evidence import (
     EvidenceBundleDecision,
     EvidenceDecision,
@@ -205,6 +206,7 @@ class _TraceDraft:
     router_margin: float | None = None
     evidence_decisions: list[EvidenceDecision] = field(default_factory=list)
     evidence_bundle: EvidenceBundleDecision | None = None
+    answer_validation: AnswerValidationDecision | None = None
 
 
 @dataclass(frozen=True)
@@ -629,6 +631,7 @@ class AssistantRuntime:
             yield RuntimeStreamEvent(type="result", result=result)
             return
 
+        draft.answer_validation = validate_grounded_answer(full_text, tuple(draft.citations))
         self._append_safe_session_turn(frame.text, full_text)
         result = self._result(
             frame,
@@ -765,6 +768,7 @@ class AssistantRuntime:
             )
 
         response_text = tool_result.content.strip()
+        draft.answer_validation = validate_grounded_answer(response_text, citations)
         self._append_safe_session_turn(frame.text, response_text)
         return self._result(
             frame,
@@ -934,6 +938,7 @@ class AssistantRuntime:
                 usage=usage,
             )
 
+        draft.answer_validation = validate_grounded_answer(response_text, citations)
         self._append_safe_session_turn(frame.text, response_text)
         return self._result(
             frame,
@@ -1178,6 +1183,7 @@ class AssistantRuntime:
             router_margin=draft.router_margin,
             evidence_decisions=tuple(draft.evidence_decisions),
             evidence_bundle=draft.evidence_bundle,
+            answer_validation=draft.answer_validation,
         )
         return RuntimeResult(
             response_text=response_text,

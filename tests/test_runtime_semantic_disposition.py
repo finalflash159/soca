@@ -52,4 +52,5 @@ def test_semantic_knowledge_request_builds_context_then_calls_llm() -> None:
     assert result.trace.selected_sources == ("knowledge",)
     assert result.trace.tool_calls == ()
     assert result.trace.evidence_decisions[0].status == "supported"
+    assert result.trace.answer_validation.status == "missing"
     assert "[K1]" in llm.calls[0]["user_msg"]
