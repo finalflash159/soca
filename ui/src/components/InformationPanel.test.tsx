@@ -21,7 +21,7 @@ describe("InformationPanel", () => {
         context={null}
         memory={null}
         usage={null}
-        profiles={[]}
+        stack={{}}
         knowledge={null}
         memoryCompaction={null}
       />,
@@ -33,6 +33,54 @@ describe("InformationPanel", () => {
     panel.unmount();
   });
 
+  it("shows active chat and voice runtimes without a static profile label", () => {
+    const panel = render(
+      <InformationPanel
+        view="status"
+        width={100}
+        context={null}
+        memory={null}
+        usage={null}
+        stack={{
+          asr: "phowhisper_small",
+          llm: "arcee_vylinh_3b_q4_k_m",
+          tts: "valtec_multispeaker",
+          voice: "NF",
+        }}
+        knowledge={{
+          sparse_state: "ready",
+          dense_state: "ready",
+          revision: 1,
+          documents: 6,
+          chunks: 23,
+        }}
+        llmConfig={{
+          event: "llm_config",
+          backend: "remote",
+          provider: "openrouter",
+          model: "some/model",
+          max_tokens: 4096,
+          effective_max_tokens: 4096,
+          reasoning_enabled: false,
+          temperature: 0.2,
+          top_p: 0.95,
+          pricing_as_of: "test",
+          pricing: null,
+          context_length: 32768,
+        }}
+        memoryCompaction={null}
+      />,
+    );
+
+    const frame = panel.lastFrame() ?? "";
+    expect(frame).toContain("Chat runtime");
+    expect(frame).toContain("remote · openrouter · some/model");
+    expect(frame).toContain("Voice runtime");
+    expect(frame).toContain("ASR phowhisper_small");
+    expect(frame).not.toContain("baseline");
+    panel.unmount();
+  });
+
   it("shows the explicit five-turn manual compaction gate", () => {
     const panel = render(
       <InformationPanel
@@ -41,7 +89,7 @@ describe("InformationPanel", () => {
         context={null}
         memory={null}
         usage={null}
-        profiles={[]}
+        stack={{}}
         knowledge={null}
         memoryCompaction={{
           event: "memory_compaction",
@@ -66,7 +114,7 @@ describe("InformationPanel", () => {
         context={null}
         memory={null}
         usage={null}
-        profiles={[]}
+        stack={{}}
         knowledge={null}
         memoryCompaction={{
           event: "memory_compaction",
@@ -91,7 +139,7 @@ describe("InformationPanel", () => {
         context={null}
         memory={null}
         usage={null}
-        profiles={[]}
+        stack={{}}
         knowledge={null}
         memoryCompaction={{
           event: "memory_compaction",
@@ -107,7 +155,7 @@ describe("InformationPanel", () => {
     const frame = panel.lastFrame() ?? "";
     expect(frame).toContain("Compact: failed");
     expect(frame).toContain("lịch sử gốc được giữ nguyên");
-    expect(frame).not.toContain("/memory compact show");
+    expect(frame).not.toContain("/compact-show");
     panel.unmount();
   });
 
@@ -137,7 +185,7 @@ describe("InformationPanel", () => {
           mean_ttft_ms: 6354,
           mean_tokens_per_second: 20.1,
         }}
-        profiles={[]}
+        stack={{}}
         knowledge={null}
         memoryCompaction={null}
       />,

@@ -179,7 +179,7 @@ describe("App slash command interaction", () => {
     await tick();
     expect(view.lastFrame()).toContain("slash commands");
     expect(view.lastFrame()).toContain("/context");
-    expect(view.lastFrame()).toContain("/memory proposals");
+    expect(view.lastFrame()).toContain("/memory-proposals");
     expect(view.lastFrame()).not.toContain("/inspect");
 
     for (let index = 0; index < 4; index += 1) {
@@ -206,7 +206,7 @@ describe("App slash command interaction", () => {
     const view = render(<App target="status" noModel />);
     await tick();
 
-    view.stdin.write("/memory proposals");
+    view.stdin.write("/memory-proposals");
     await tick();
     view.stdin.write("\r");
     await tick();
@@ -241,7 +241,7 @@ describe("App slash command interaction", () => {
     const view = render(<App target="status" noModel />);
     await tick();
 
-    view.stdin.write("/memory compact");
+    view.stdin.write("/compact");
     await tick();
     view.stdin.write("\r");
     await tick();
@@ -253,9 +253,9 @@ describe("App slash command interaction", () => {
     expect(harness.compactionPolls).toBeGreaterThan(0);
     expect(view.lastFrame()).toContain("Compact hoàn tất");
     expect(view.lastFrame()).toContain("~1.20k → ~760 token");
-    expect(view.lastFrame()).toContain("/memory compact show");
+    expect(view.lastFrame()).toContain("/compact-show");
 
-    view.stdin.write("/memory compact show");
+    view.stdin.write("/compact-show");
     await tick();
     view.stdin.write("\r");
     await tick();

@@ -7,6 +7,7 @@ import type {
   RemoteModelEvent,
   TurnProgressEvent,
   UsageEvent,
+  RuntimeComponentStatus,
 } from "./protocol.js";
 
 export type Mode = "chat" | "voice" | "status" | "settings";
@@ -111,6 +112,7 @@ export interface AppState {
   llmKeyPendingProvider: string | null;
   settingsNotice: string;
   knowledgeIndex: KnowledgeIndexStatus | null;
+  runtimeComponents: RuntimeComponentStatus[];
   activeInfo: InfoView | null;
   context: ContextEvent | null;
   memorySnapshot: MemoryEvent | null;
@@ -154,6 +156,7 @@ export const initialState: AppState = {
   llmKeyPendingProvider: null,
   settingsNotice: "",
   knowledgeIndex: null,
+  runtimeComponents: [],
   activeInfo: null,
   context: null,
   memorySnapshot: null,
@@ -403,6 +406,7 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
         ...state,
         profiles: event.profiles,
         knowledgeIndex: event.knowledge_index ?? null,
+        runtimeComponents: event.runtime_components ?? [],
       };
     case "context":
       return { ...state, context: event };

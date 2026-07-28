@@ -155,6 +155,14 @@ export interface StatusEvent {
     documents: number;
     chunks: number;
   } | null;
+  runtime_components?: RuntimeComponentStatus[];
+}
+
+export interface RuntimeComponentStatus {
+  id: string;
+  label: string;
+  status: "loaded" | "ready" | "configured" | "disabled" | "missing" | "degraded";
+  detail: string;
 }
 
 export interface MemoryEvent {

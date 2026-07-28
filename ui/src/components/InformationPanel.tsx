@@ -1,14 +1,15 @@
 import { Box, Text } from "ink";
 import type {
   ContextEvent,
+  LlmConfigEvent,
   MemoryCompactionEvent,
   MemoryEvent,
+  RuntimeComponentStatus,
   UsageEvent,
 } from "../protocol.js";
 import type {
   InfoView,
   KnowledgeIndexStatus,
-  StatusProfile,
 } from "../store.js";
 import { COLOR, ICON, ROLE } from "../theme.js";
 import { compactTokens } from "./SessionTokenMeter.js";
@@ -168,7 +169,7 @@ function MemoryBody({
       </Box>
       <Text color={COLOR.muted}>
         Archive/core memory không nằm ở đây; dùng /context để xem phần prompt và
-        /memory proposals để duyệt ghi nhớ dài hạn.
+        /memory-proposals để duyệt ghi nhớ dài hạn.
       </Text>
     </Box>
   );
@@ -206,7 +207,7 @@ function CompactionBody({
   if (compaction === null) {
     return (
       <Text color={COLOR.muted}>
-        Chưa có lượt compact trong phiên này. Dùng /memory compact để bắt đầu.
+        Chưa có lượt compact trong phiên này. Dùng /compact để bắt đầu.
       </Text>
     );
   }
@@ -264,7 +265,7 @@ function CompactionBody({
           {`${compaction.compacted_turns ?? 0} turn cũ đã được thay bằng working summary`}
           {elapsed === null ? "" : ` · ${elapsed.toFixed(1)}s`}
         </Text>
-        <Text color={COLOR.alt}>Xem nội dung: /memory compact show</Text>
+        <Text color={COLOR.alt}>Xem nội dung: /compact-show</Text>
       </Box>
     );
   }
@@ -295,7 +296,7 @@ function CompactedSummaryBody({ memory }: { memory: MemoryEvent | null }) {
     return (
       <Box flexDirection="column">
         <Text color={COLOR.muted}>Chưa có working summary đã compact.</Text>
-        <Text color={COLOR.alt}>Dùng /memory compact để tạo thủ công.</Text>
+        <Text color={COLOR.alt}>Dùng /compact để tạo thủ công.</Text>
       </Box>
     );
   }
@@ -313,40 +314,75 @@ function CompactedSummaryBody({ memory }: { memory: MemoryEvent | null }) {
 }
 
 function StatusBody({
-  profiles,
+  stack,
   knowledge,
+  llmConfig,
+  runtimeComponents,
 }: {
-  profiles: StatusProfile[];
+  stack: Record<string, string | null>;
   knowledge: KnowledgeIndexStatus | null;
+  llmConfig?: LlmConfigEvent | null;
+  runtimeComponents?: RuntimeComponentStatus[];
 }) {
-  if (profiles.length === 0)
-    return <Text color={COLOR.muted}>đang quét profile…</Text>;
+  if (!llmConfig && Object.keys(stack).length === 0 && knowledge === null)
+    return <Text color={COLOR.muted}>đang lấy runtime status…</Text>;
   return (
     <Box flexDirection="column">
-      {profiles.map((profile) => (
-        <Box key={profile.key}>
-          <Box width={18} flexShrink={0}>
-            <Text bold color={COLOR.alt}>{profile.key}</Text>
-          </Box>
-          <Box width={9} flexShrink={0}>
-            <Text color={profile.status === "ok" ? ROLE.ok : ROLE.busy}>
-              {profile.status}
-            </Text>
-          </Box>
-          <Text color={COLOR.muted} wrap="truncate-end">
-            {profile.asr} {ICON.dot} {profile.llm} {ICON.dot} {profile.tts}
-            {profile.voice ? `/${profile.voice}` : ""}
+      <Box flexDirection="column" marginBottom={1}>
+        <Text bold color={ROLE.focus}>Chat runtime</Text>
+        <Text color={COLOR.text}>
+          {llmConfig
+            ? `${llmConfig.backend}${llmConfig.backend === "remote" ? ` · ${llmConfig.provider}` : ""} · ${llmConfig.model}`
+            : "đang lấy cấu hình LLM…"}
+        </Text>
+      </Box>
+      {stack.asr || stack.tts ? (
+        <Box flexDirection="column" marginBottom={1}>
+          <Text bold color={COLOR.alt}>Voice runtime</Text>
+          <Text color={COLOR.text} wrap="truncate-end">
+            {stack.asr ? `ASR ${stack.asr}` : ""}
+            {stack.llm ? ` · LLM ${stack.llm}` : ""}
+            {stack.tts ? ` · TTS ${stack.tts}` : ""}
+            {stack.voice ? `/${stack.voice}` : ""}
           </Text>
         </Box>
-      ))}
+      ) : null}
       {knowledge ? (
         <Text color={COLOR.muted}>
           knowledge · {knowledge.sparse_state} · dense {knowledge.dense_state} ·{" "}
           {knowledge.documents} docs / {knowledge.chunks} chunks
         </Text>
       ) : null}
+      {runtimeComponents && runtimeComponents.length > 0 ? (
+        <Box marginTop={1} flexDirection="column">
+          <Text bold color={COLOR.accentBright}>Models &amp; harness</Text>
+          {runtimeComponents.map((component) => (
+            <Box key={component.id}>
+              <Box width={19} flexShrink={0}>
+                <Text color={COLOR.text}>{component.label}</Text>
+              </Box>
+              <Box width={11} flexShrink={0}>
+                <Text color={runtimeComponentColor(component.status)}>
+                  {component.status}
+                </Text>
+              </Box>
+              <Text color={COLOR.muted} wrap="truncate-end">
+                {component.detail}
+              </Text>
+            </Box>
+          ))}
+        </Box>
+      ) : null}
     </Box>
   );
+}
+
+function runtimeComponentColor(status: RuntimeComponentStatus["status"]): string {
+  if (status === "loaded" || status === "ready") return ROLE.ok;
+  if (status === "missing") return ROLE.danger;
+  if (status === "degraded") return ROLE.busy;
+  if (status === "disabled") return COLOR.alt;
+  return ROLE.focus;
 }
 
 export function InformationPanel({
@@ -355,8 +391,10 @@ export function InformationPanel({
   context,
   memory,
   usage,
-  profiles,
+  stack,
   knowledge,
+  runtimeComponents,
+  llmConfig,
   memoryCompaction,
 }: {
   view: InfoView;
@@ -364,8 +402,10 @@ export function InformationPanel({
   context: ContextEvent | null;
   memory: MemoryEvent | null;
   usage: UsageEvent | null;
-  profiles: StatusProfile[];
+  stack: Record<string, string | null>;
   knowledge: KnowledgeIndexStatus | null;
+  runtimeComponents?: RuntimeComponentStatus[];
+  llmConfig?: LlmConfigEvent | null;
   memoryCompaction: MemoryCompactionEvent | null;
 }) {
   const titles: Record<InfoView, string> = {
@@ -410,7 +450,12 @@ export function InformationPanel({
         ) : null}
         {view === "memory" ? <MemoryBody memory={memory} /> : null}
         {view === "status" ? (
-          <StatusBody profiles={profiles} knowledge={knowledge} />
+          <StatusBody
+            stack={stack}
+            knowledge={knowledge}
+            llmConfig={llmConfig}
+            runtimeComponents={runtimeComponents}
+          />
         ) : null}
         {view === "compaction" ? (
           <CompactionBody compaction={memoryCompaction} />

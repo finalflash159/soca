@@ -171,7 +171,7 @@ chat and voice start `Qwen3-4B-Instruct-2507 Q4_K_M` in an isolated local
 process, publish its typed artifact with generation CAS, then unload it.
 Summary context is allocated dynamically from 4K to 32K. A missing or invalid
 private weight falls back to `trim_only`; there is no extractive/regex summary,
-remote summary fallback, or automatic runtime download. `/memory compact`,
+remote summary fallback, or automatic runtime download. `/compact`,
 `status`, and `cancel` share the same coordinator in CLI and UI.
 
 ### Human-in-the-loop capture

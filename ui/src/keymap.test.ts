@@ -12,7 +12,7 @@ describe("slash command registry", () => {
       "/context",
     );
     expect(filterSlashCommands("/").map((command) => command.value)).toContain(
-      "/memory proposals",
+      "/memory-proposals",
     );
     expect(filterSlashCommands("/").map((command) => command.value)).not.toContain(
       "/inspect",
@@ -23,9 +23,10 @@ describe("slash command registry", () => {
   });
 
   it("filters nested commands as the user types", () => {
-    expect(filterSlashCommands("/memory compact s").map((item) => item.value)).toEqual([
-      "/memory compact status",
-      "/memory compact show",
+    expect(filterSlashCommands("/compact-").map((item) => item.value)).toEqual([
+      "/compact-status",
+      "/compact-cancel",
+      "/compact-show",
     ]);
     expect(filterSlashCommands("/cont").map((item) => item.value)).toEqual([
       "/context",

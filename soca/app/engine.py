@@ -331,6 +331,7 @@ class SocaEngine:
         from soca.knowledge.index.persistence import default_index_home
         from soca.knowledge.indexing.catalog import IndexCatalog
         from soca.knowledge.indexing.identity import CorpusSpec
+        from soca.knowledge.indexing.models import load_model
 
         profiles = [
             {
@@ -344,11 +345,22 @@ class SocaEngine:
             for item in collect_runtime_profile_readiness()
         ]
         knowledge_index: dict[str, Any] | None = None
+        embedding_model: object | None = None
         try:
+            # Catalog status is model-specific for dense generations. Passing
+            # no fingerprint makes an existing ready generation look absent.
+            # Match the CLI/index lifecycle status path without allowing a
+            # status command to download a model.
+            try:
+                embedding_model = load_model("fastembed-e5-small", allow_download=False)
+                embedding_fingerprint = getattr(embedding_model, "embedding_fingerprint", None)
+            except (ImportError, FileNotFoundError, OSError, RuntimeError, ValueError):
+                embedding_fingerprint = None
             knowledge_index = (
                 IndexCatalog(default_index_home())
                 .status(
                     CorpusSpec(vault_path=self.text_config.vault),
+                    embedding_fingerprint=embedding_fingerprint,
                 )
                 .as_dict()
             )
@@ -359,8 +371,159 @@ class SocaEngine:
                 "event": "status",
                 "profiles": profiles,
                 "knowledge_index": knowledge_index,
+                "runtime_components": self._runtime_component_statuses(
+                    embedding_model=embedding_model,
+                    knowledge_index=knowledge_index,
+                ),
             }
         )
+
+    def _runtime_component_statuses(
+        self,
+        *,
+        embedding_model: object | None,
+        knowledge_index: dict[str, Any] | None,
+    ) -> list[dict[str, str]]:
+        """Describe configured runtime dependencies without eagerly loading them."""
+
+        from soca.asr.registry import get_asr_model_config
+        from soca.core.smart_turn import _MODEL_FILE as SMART_TURN_MODEL_FILE
+        from soca.llm.registry import get_model_config
+        from soca.memory.summary import default_summary_model_root, production_summary_model_spec
+
+        components: list[dict[str, str]] = []
+
+        def add(component_id: str, label: str, status: str, detail: str) -> None:
+            components.append(
+                {"id": component_id, "label": label, "status": status, "detail": detail}
+            )
+
+        settings = self.llm_settings
+        if self.no_model:
+            add("chat_llm", "Chat LLM", "disabled", "engine started with --no-model")
+        elif settings.backend == "remote":
+            key_state = "ready" if self.secret_store.has_key(settings.provider_key) else "missing"
+            add(
+                "chat_llm",
+                "Chat LLM",
+                key_state,
+                f"remote · {settings.provider_key}:{settings.model_id}",
+            )
+        else:
+            local_config = get_model_config(settings.model_id)
+            local_state = "loaded" if self.text_bundle is not None else (
+                "ready" if local_config.local_path.is_file() else "missing"
+            )
+            add("chat_llm", "Chat LLM", local_state, f"local · {settings.model_id}")
+
+        voice_bundle = self.voice_controller.bundle if self.voice_controller is not None else None
+        if self.voice_config is None or self.no_model:
+            add("voice_asr", "Voice ASR", "disabled", "voice runtime not configured")
+            add("voice_llm", "Voice LLM", "disabled", "voice runtime not configured")
+            add("tts", "TTS", "disabled", "voice runtime not configured")
+            add("smart_turn", "SmartTurn", "disabled", "adaptive endpoint unavailable")
+            add("vad", "VAD", "disabled", "voice runtime not configured")
+            add("asr_guards", "ASR guards", "disabled", "voice runtime not configured")
+        else:
+            asr_config = get_asr_model_config(self.voice_config.asr_model)
+            asr_ready = asr_config.encoder_path.is_file() and asr_config.decoder_path.is_file()
+            add(
+                "voice_asr",
+                "Voice ASR",
+                "loaded" if voice_bundle is not None else ("ready" if asr_ready else "missing"),
+                f"{self.voice_config.asr_model} · ONNX Runtime",
+            )
+            voice_llm_config = get_model_config(self.voice_config.llm_model)
+            voice_llm_ready = voice_llm_config.local_path.is_file()
+            add(
+                "voice_llm",
+                "Voice LLM",
+                "loaded" if voice_bundle is not None else ("ready" if voice_llm_ready else "missing"),
+                f"local · {self.voice_config.llm_model}",
+            )
+            try:
+                from soca.tts.valtec.artifacts import resolve_current_valtec_release
+
+                resolve_current_valtec_release()
+                tts_state = "loaded" if voice_bundle is not None else "ready"
+            except (FileNotFoundError, KeyError, OSError, TypeError, ValueError):
+                tts_state = "missing"
+            add("tts", "TTS", tts_state, f"{VALTEC_TTS_CONFIG.key}/{self.voice_config.tts_voice}")
+
+            smart_turn_path = (
+                Path(__file__).resolve().parents[2]
+                / "models"
+                / "smart-turn-v3-onnx"
+                / SMART_TURN_MODEL_FILE
+            )
+            if not self.voice_config.adaptive_endpoint:
+                smart_state = "disabled"
+            elif voice_bundle is not None and voice_bundle.turn_detector is not None:
+                smart_state = "loaded"
+            else:
+                smart_state = "ready" if smart_turn_path.is_file() else "missing"
+            add("smart_turn", "SmartTurn", smart_state, SMART_TURN_MODEL_FILE)
+            add(
+                "vad",
+                "VAD",
+                "loaded" if voice_bundle is not None else "configured",
+                "Silero VAD · lazy" if voice_bundle is None else "Silero VAD",
+            )
+            data_asr = Path(__file__).resolve().parents[2] / "data" / "asr"
+            boh_path = data_asr / "boh" / f"{self.voice_config.asr_model}_vi_boh_v1.json"
+            calibration_path = data_asr / "threshold_calibration.json"
+            guard_state = "ready" if boh_path.is_file() and calibration_path.is_file() else "degraded"
+            add(
+                "asr_guards",
+                "ASR guards",
+                guard_state,
+                f"BoH {'+' if boh_path.is_file() else '-'} confidence {'+' if calibration_path.is_file() else '-'}",
+            )
+
+        if self.session_memory is None:
+            add("summary", "Working summary", "disabled", "session memory disabled")
+            add("memory", "Archive memory", "disabled", "session memory disabled")
+        else:
+            summary_spec = production_summary_model_spec()
+            summary_path = summary_spec.path(default_summary_model_root())
+            if self.session_memory.summary_model_key is None:
+                add("summary", "Working summary", "disabled", "worker disabled")
+            elif self.session_memory.summary_worker_state == "running":
+                summary_state = "loaded"
+                add("summary", "Working summary", summary_state, f"local · {summary_spec.key} · lazy")
+            else:
+                summary_state = "ready" if summary_path.is_file() else "missing"
+                add("summary", "Working summary", summary_state, f"local · {summary_spec.key} · lazy")
+            add(
+                "memory",
+                "Archive memory",
+                "configured",
+                f"{self.text_config.memory_mode}/{self.text_config.memory_retrieval_mode}",
+            )
+
+        embedding_detail = "fastembed-e5-small · provisioned"
+        embedding_state = "ready" if embedding_model is not None else "missing"
+        if knowledge_index is not None:
+            embedding_detail += f" · dense {knowledge_index.get('dense_state', 'unknown')}"
+        add("embedding", "Embedding", embedding_state, embedding_detail)
+
+        if self.text_config.semantic_router_enabled:
+            router_state = "loaded" if self.text_bundle is not None else "configured"
+            add(
+                "semantic_router",
+                "Semantic router",
+                router_state,
+                f"threshold {self.text_config.semantic_router_threshold:.2f} · lazy",
+            )
+        else:
+            add("semantic_router", "Semantic router", "disabled", "disabled by config")
+        add(
+            "tool_router",
+            "Tool router",
+            "loaded" if self.text_bundle is not None else "configured",
+            f"text:{self.text_config.tool_router_mode}",
+        )
+        return components
 
     # --- remote LLM configuration ---------------------------------------------
 

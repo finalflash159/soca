@@ -315,32 +315,20 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
         }
       } else if (cmd === "/stop") {
         engine?.send({ cmd: "voice_stop" });
-      } else if (cmd.startsWith("/memory compact")) {
-        const action = cmd.slice("/memory compact".length).trim();
-        if (action === "show") {
-          showInfo("compacted_summary");
-        } else if (
-          action === "" ||
-          action === "status" ||
-          action === "cancel"
-        ) {
-          dispatch({ type: "show_info", view: "compaction" });
-          engine?.send({
-            cmd: "memory_compact",
-            action: (action === "" ? "request" : action) as
-              | "request"
-              | "status"
-              | "cancel",
-          });
-        } else {
-          dispatch({
-            type: "system_message",
-            text: "cú pháp: /memory compact [status|cancel|show]",
-          });
-        }
+      } else if (cmd === "/compact") {
+        dispatch({ type: "show_info", view: "compaction" });
+        engine?.send({ cmd: "memory_compact", action: "request" });
+      } else if (cmd === "/compact-show") {
+        showInfo("compacted_summary");
+      } else if (cmd === "/compact-status" || cmd === "/compact-cancel") {
+        dispatch({ type: "show_info", view: "compaction" });
+        engine?.send({
+          cmd: "memory_compact",
+          action: cmd === "/compact-status" ? "status" : "cancel",
+        });
       } else if (cmd === "/memory") {
         showInfo("memory");
-      } else if (cmd === "/memory proposals") {
+      } else if (cmd === "/memory-proposals") {
         dispatch({ type: "clear_info" });
         engine?.send({ cmd: "memory_proposals" });
       } else if (cmd === "/help") {
@@ -427,8 +415,10 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
           context={state.context}
           memory={state.memorySnapshot}
           usage={state.usageSnapshot}
-          profiles={state.profiles}
+          stack={state.stack}
           knowledge={state.knowledgeIndex}
+          runtimeComponents={state.runtimeComponents}
+          llmConfig={state.llmConfig}
           memoryCompaction={state.memoryCompaction}
         />
       ) : null}

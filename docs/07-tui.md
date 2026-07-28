@@ -47,13 +47,20 @@ implementation tương ứng.
 
 Các lệnh chỉ xem (`/status`, `/context`, `/memory`) không đổi mode và không ghi
 output vào timeline. Chúng mở panel trên chat/voice hiện tại;
-bắt đầu nhập nội dung mới sẽ đóng panel ngay. `/settings` và `/memory proposals`
+bắt đầu nhập nội dung mới sẽ đóng panel ngay. `/settings` và `/memory-proposals`
 là interaction surface nên vẫn giữ focus cho tới khi người dùng hoàn tất hoặc
 đóng.
 
+`/status` hiển thị runtime đang cấu hình/thực thi, không dùng profile tĩnh làm
+đại diện cho chat: Chat LLM, voice ASR/LLM/TTS, SmartTurn, VAD, ASR guards,
+working-summary worker, archive memory, embedding và các tool router. Model
+được khởi tạo lazy sẽ ghi `configured`/`ready`; chỉ worker đã tạo trong process
+mới ghi `loaded`. Knowledge index hiển thị riêng sparse/dense generation hiện
+tại.
+
 - `/memory` chỉ mô tả working session memory, summary/recent turn và compaction.
-- `/memory compact` mở progress panel và tự poll worker tới trạng thái cuối.
-  Khi hoàn tất panel hiển thị token trước/sau; `/memory compact show` mở riêng
+- `/compact` mở progress panel và tự poll worker tới trạng thái cuối.
+  Khi hoàn tất panel hiển thị token trước/sau; `/compact-show` mở riêng
   working summary đã tạo mà không bung toàn bộ recent conversation. Manual
   compact bỏ qua ngưỡng 15K nhưng yêu cầu ít nhất 5 lượt hoàn chỉnh và luôn giữ
   2 lượt gần nhất; nếu chưa đủ, panel trả `noop` kèm bộ đếm `hiện có X/5`.
