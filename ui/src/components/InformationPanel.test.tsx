@@ -58,7 +58,7 @@ describe("InformationPanel", () => {
     panel.unmount();
   });
 
-  it("explains that an empty summary keeps the original history", () => {
+  it("explains when an empty rolling summary would drop previous state", () => {
     const panel = render(
       <InformationPanel
         view="compaction"
@@ -71,14 +71,43 @@ describe("InformationPanel", () => {
         memoryCompaction={{
           event: "memory_compaction",
           status: "failed",
-          detail: "empty_summary_artifact",
+          detail: "empty_summary_dropped_previous_state",
           complete_turns: 5,
           minimum_complete_turns: 5,
         }}
       />,
     );
 
-    expect(panel.lastFrame()).toContain("lịch sử gốc được giữ nguyên");
+    expect(panel.lastFrame()).toContain("summary cũ được giữ");
+    expect(panel.lastFrame()).toContain("nguyên.");
+    panel.unmount();
+  });
+
+  it("treats an empty first summary as successful no-state compaction", () => {
+    const panel = render(
+      <InformationPanel
+        view="compaction"
+        width={88}
+        context={null}
+        memory={null}
+        usage={null}
+        profiles={[]}
+        knowledge={null}
+        memoryCompaction={{
+          event: "memory_compaction",
+          status: "published",
+          detail: "no_durable_state",
+          before_tokens: 1200,
+          after_tokens: 900,
+          compacted_turns: 1,
+        }}
+      />,
+    );
+
+    const frame = panel.lastFrame() ?? "";
+    expect(frame).toContain("Compact hoàn tất");
+    expect(frame).toContain("không chứa state bền vững");
+    expect(frame).not.toContain("/memory compact show");
     panel.unmount();
   });
 

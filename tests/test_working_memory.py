@@ -14,7 +14,7 @@ def test_working_memory_compaction_uses_complete_turns_and_cas() -> None:
         _complete(memory, f"user {index}", f"assistant {index}")
     job = memory.prepare_compaction()
     assert job is not None
-    assert len(job.frozen_turns) == 2
+    assert len(job.frozen_turns) == 4
     artifact = WorkingSummaryArtifact(
         version=1,
         generation=job.generation,
@@ -26,7 +26,7 @@ def test_working_memory_compaction_uses_complete_turns_and_cas() -> None:
     assert memory.publish_summary(job, artifact) is False
     snapshot = memory.snapshot
     assert snapshot.summary == artifact
-    assert [turn.sequence for turn in snapshot.turns] == [3, 4, 5, 6]
+    assert [turn.sequence for turn in snapshot.turns] == [5, 6]
     rendered = memory.render()
     assert "Earlier conversation state:" in rendered
     assert "Active decisions:" in rendered
@@ -59,7 +59,8 @@ def test_manual_compaction_requires_five_complete_turns() -> None:
     job = memory.prepare_compaction(force=True)
 
     assert job is not None
-    assert [turn.sequence for turn in job.frozen_turns] == [1]
+    assert [turn.sequence for turn in job.frozen_turns] == [1, 2, 3]
+    assert [turn.sequence for turn in memory.snapshot.turns[-2:]] == [4, 5]
 
 
 def test_working_summary_budget_covers_structured_fields() -> None:

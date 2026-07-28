@@ -61,7 +61,7 @@ def test_summary_registry_is_separate_and_summary_job_uses_structured_local_cont
     assert job is not None
     artifact, result = execute_summary_job(job, _StructuredEngine())
     assert artifact.generation == job.generation
-    assert artifact.source_through_sequence == 2
+    assert artifact.source_through_sequence == 4
     assert result.text
 
 
@@ -72,7 +72,9 @@ def test_unprovisioned_summary_worker_never_auto_downloads_or_stays_loaded(tmp_p
         memory.finish_turn(turn.sequence, f"assistant {index}")
     job = memory.prepare_compaction()
     assert job is not None
-    worker = LocalSummaryWorkerProcess(SUMMARY_MODEL_REGISTRY["qwen3_1_7b_q8_0"], model_root=tmp_path)
+    worker = LocalSummaryWorkerProcess(
+        SUMMARY_MODEL_REGISTRY["qwen3_1_7b_q8_0"], model_root=tmp_path
+    )
     assert worker.start(job) is False
     assert worker.status.state == "idle"
     assert default_summary_model_root().name == "summary"

@@ -62,13 +62,13 @@ def test_manual_compaction_reports_before_and_after_tokens() -> None:
 
     assert accepted.status == "accepted"
     assert accepted.before_tokens is not None
-    assert accepted.compacted_turns == 2
+    assert accepted.compacted_turns == 4
     assert accepted.complete_turns == 6
     assert accepted.minimum_complete_turns == 5
     assert published.status == "published"
     assert published.before_tokens == accepted.before_tokens
     assert published.after_tokens == memory.snapshot.token_count
-    assert published.compacted_turns == 2
+    assert published.compacted_turns == 4
     assert published.elapsed_ms is not None
     assert coordinator.status() == published
     assert memory.snapshot.summary is not None
@@ -89,7 +89,7 @@ def test_manual_compaction_noop_reports_five_turn_requirement() -> None:
     assert result.minimum_complete_turns == 5
 
 
-def test_empty_summary_artifact_never_deletes_the_frozen_prefix() -> None:
+def test_empty_first_summary_compacts_no_state_turns_successfully() -> None:
     memory = WorkingMemory()
     for index in range(5):
         turn = memory.begin_turn(f"user {index}")
@@ -101,10 +101,47 @@ def test_empty_summary_artifact_never_deletes_the_frozen_prefix() -> None:
     coordinator = WorkingMemoryCompactionCoordinator(memory, worker)
 
     accepted = coordinator.request(manual=True)
+    published = coordinator.status()
+
+    assert accepted.status == "accepted"
+    assert published.status == "published"
+    assert published.detail == "no_durable_state"
+    assert len(memory.snapshot.turns) == 2
+    assert memory.snapshot.summary is not None
+    assert memory.snapshot.summary.render() == ""
+
+
+def test_empty_rolling_summary_cannot_drop_previous_state() -> None:
+    memory = WorkingMemory()
+    for index in range(5):
+        turn = memory.begin_turn(f"user {index}")
+        memory.finish_turn(turn.sequence, f"assistant {index}")
+    initial_job = memory.prepare_compaction(force=True)
+    assert initial_job is not None
+    assert memory.publish_summary(
+        initial_job,
+        WorkingSummaryArtifact(
+            version=1,
+            generation=initial_job.generation,
+            source_through_sequence=initial_job.frozen_turns[-1].sequence,
+            summary="Quyết định đang hoạt động: dùng TTS local.",
+        ),
+    )
+    for index in range(3):
+        next_turn = memory.begin_turn(f"user next {index}")
+        memory.finish_turn(next_turn.sequence, f"assistant next {index}")
+    worker = cast(
+        LocalSummaryWorkerProcess,
+        cast(Any, _ImmediateWorker(empty=True)),
+    )
+    coordinator = WorkingMemoryCompactionCoordinator(memory, worker)
+
+    accepted = coordinator.request(manual=True)
     failed = coordinator.status()
 
     assert accepted.status == "accepted"
     assert failed.status == "failed"
-    assert failed.detail == "empty_summary_artifact"
+    assert failed.detail == "empty_summary_dropped_previous_state"
+    assert memory.snapshot.summary is not None
+    assert "TTS local" in memory.snapshot.summary.render()
     assert len(memory.snapshot.turns) == 5
-    assert memory.snapshot.summary is None

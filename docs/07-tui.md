@@ -55,10 +55,11 @@ là interaction surface nên vẫn giữ focus cho tới khi người dùng hoà
 - `/memory compact` mở progress panel và tự poll worker tới trạng thái cuối.
   Khi hoàn tất panel hiển thị token trước/sau; `/memory compact show` mở riêng
   working summary đã tạo mà không bung toàn bộ recent conversation. Manual
-  compact bỏ qua ngưỡng 15K nhưng yêu cầu ít nhất 5 lượt hoàn chỉnh để vẫn giữ
-  4 lượt gần nhất; nếu chưa đủ, panel trả `noop` kèm bộ đếm `hiện có X/5`.
-  Artifact rỗng hoặc sai schema không được publish nên lịch sử nguồn không bị
-  xóa.
+  compact bỏ qua ngưỡng 15K nhưng yêu cầu ít nhất 5 lượt hoàn chỉnh và luôn giữ
+  2 lượt gần nhất; nếu chưa đủ, panel trả `noop` kèm bộ đếm `hiện có X/5`.
+  Artifact đúng schema nhưng không có state bền vững là kết quả hợp lệ cho lượt
+  compact đầu tiên và được báo `no_durable_state`. Nếu rolling artifact rỗng
+  làm rơi summary đã có, coordinator từ chối publish và giữ nguyên state cũ.
 - `/context` gộp hai lát cắt liên quan nhưng không đồng nhất: context hiện đang
   resident (prompt, output reserve, model window và phần query-dependent) và
   usage LLM tích lũy của phiên (prompt/completion token, TTFT, throughput).

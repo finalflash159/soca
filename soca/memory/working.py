@@ -101,7 +101,8 @@ class WorkingMemoryPolicy:
     summary_budget_tokens: int = 256
     recent_budget_tokens: int = 512
     minimum_recent_complete_turns: int = 2
-    preferred_recent_complete_turns: int = 4
+    preferred_recent_complete_turns: int = 2
+    manual_compaction_minimum_complete_turns: int = 5
     mode: SummaryMode = "trim_only"
 
     def __post_init__(self) -> None:
@@ -113,15 +114,14 @@ class WorkingMemoryPolicy:
             raise ValueError("working_v2_16k requires target/high/hard = 12000/15000/16384")
         if (self.summary_budget_tokens, self.recent_budget_tokens) != (256, 512):
             raise ValueError("working_v2_16k requires summary/recent = 256/512")
-        if self.minimum_recent_complete_turns != 2 or self.preferred_recent_complete_turns != 4:
-            raise ValueError("working_v2_16k requires minimum/preferred recent turns = 2/4")
+        if (
+            self.minimum_recent_complete_turns,
+            self.preferred_recent_complete_turns,
+            self.manual_compaction_minimum_complete_turns,
+        ) != (2, 2, 5):
+            raise ValueError("working_v2_16k requires minimum/preferred/manual turns = 2/2/5")
         if self.mode not in {"trim_only", "background_summary"}:
             raise ValueError("unknown working summary mode")
-
-    @property
-    def manual_compaction_minimum_complete_turns(self) -> int:
-        """Minimum history needed to compact while preserving recent context."""
-        return self.preferred_recent_complete_turns + 1
 
 
 @dataclass(frozen=True)
