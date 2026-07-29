@@ -464,9 +464,10 @@ class AssistantRuntime:
 
         Yields ``token`` events for each raw LLM token, ``sentence`` events for
         each guardrail-passed chunk ready for TTS, and a final ``result`` event
-        carrying the complete RuntimeResult. Only the LLM route streams
-        token-by-token; tool/knowledge-direct and blocked routes resolve to a
-        fixed text that is chunked and emitted as sentences.
+        carrying the complete RuntimeResult. Free-chat LLM turns stream
+        token-by-token. Retrieval-grounded turns are held until generation,
+        provenance validation, and the bounded repair policy finish; only the
+        validated result is then emitted as sentences for chat/TTS.
 
         ``first_sentence_min_chars`` lets the very first chunk flush at a smaller
         length than the rest, so the first audio reaches the speaker sooner
@@ -665,6 +666,21 @@ class AssistantRuntime:
                 route=RuntimeRoute.BLOCKED,
             )
             yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
+            return
+
+        grounding_policy = self._grounding_policy(draft)
+        if grounding_policy.name != "free_chat":
+            result = self._run_llm_turn(
+                frame,
+                draft,
+                memory_context,
+                knowledge_context,
+                used_tool=used_tool,
+            )
+            yield from self._emit_fixed_result(
+                result,
+                min_sentence_chars=min_sentence_chars,
+            )
             return
 
         try:
