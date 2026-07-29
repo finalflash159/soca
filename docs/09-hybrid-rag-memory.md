@@ -120,7 +120,7 @@ flowchart LR
 | Deterministic | `core/runtime.py`              | Explicit prefixes, scoped read paths, no NL guessing |
 | Semantic      | `core/semantic_turn_router.py` | disposition + multi-source examples, threshold/margin |
 | LLM           | `core/llm_tool_router.py`      | Prompt JSON or JSON-schema, one repair, fallback     |
-| Cascade       | `core/router_cascade.py`       | Short-circuits deterministic → semantic → LLM        |
+| Cascade       | `core/router_cascade.py`       | Short-circuits deterministic → semantic; LLM routing is explicit-only |
 | Construction  | `core/router_setup.py`         | `build_runtime_tool_router(...)`                     |
 
 Invariants worth remembering:

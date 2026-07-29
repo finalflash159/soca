@@ -1790,3 +1790,31 @@ The parity test uses the same route contract with `source="text"` and
 `source="asr"`, verifies the same `retrieval_request`/Knowledge decision, and
 asserts one retrieval call per surface. It is a control-flow regression, not a
 quality benchmark; calibration and real voice latency remain P4/P6 gates.
+
+An additional local embedding capture was run against the existing frozen P0
+route set (66 rows; dataset SHA-256
+`4249290a397a303ec2ec2c9b76ddc2d9a408bfb0607477a14602b71df7f61f58`; no answer
+LLM and no network):
+
+```bash
+python -m eval.eval_full_cascade \
+  --dataset eval/prompts/p0/turn_routing_vi.jsonl \
+  --examples eval/prompts/p0/turn_routing_examples_vi.jsonl \
+  --run-local \
+  --predictions /tmp/soca-p3-route-predictions.jsonl \
+  --output /tmp/soca-p3-route.json
+```
+
+| Metric | Result |
+| --- | ---: |
+| Full disposition accuracy | 48.48% (32/66) |
+| Source exact accuracy | 78.79% (52/66) |
+| Unsupported → executable direct tool | 0/15 |
+| Router latency | p50/p95 recorded in `/tmp/soca-p3-route.json` |
+
+This confirms the important safety property (no unsupported case became a
+real tool call), but also confirms that the current semantic corpus/threshold
+is not a quality release gate: many low-confidence cases correctly fall to
+`unresolved`. P3 therefore wires parity and fail-closed behavior; it does not
+pretend this capture is a calibrated production win. The `/tmp` raw report is
+local-only and is not a repository artifact.
