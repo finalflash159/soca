@@ -372,7 +372,7 @@ def test_stream_semantic_retrieval_holds_output_until_validation() -> None:
     assert [event.type for event in events] == ["sentence", "result"]
     assert llm.stream_calls == []
     assert len(llm.generate_calls) == 1
-    assert source.search_calls == [("Protein có tác dụng gì?", 4)]
+    assert source.search_calls == [("Protein có tác dụng gì?", 16)]
 
 
 def test_grounded_stream_never_emits_uncited_draft_before_repair() -> None:

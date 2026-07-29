@@ -87,6 +87,25 @@ def test_sparse_only_mode_does_not_call_dense_backend(tmp_path: Path) -> None:
     assert batch.diagnostics.dense_state == "absent"
 
 
+def test_hybrid_rejects_a_missing_dense_model_instead_of_using_sparse(
+    tmp_path: Path,
+) -> None:
+    _make_vault(tmp_path)
+    source = _source(
+        tmp_path,
+        tmp_path / "index",
+        model=None,
+        config=HybridConfig(
+            sparse_backend="bm25",
+            fusion="linear",
+            dense_weight=0.75,
+        ),
+    )
+
+    with pytest.raises(DenseUnavailableError, match="has no model"):
+        source.retrieve("bayes", limit=5)
+
+
 def test_hybrid_keeps_two_chunks_from_one_document_as_distinct_hits(tmp_path: Path) -> None:
     _make_vault(tmp_path)
     source = _source(
@@ -126,7 +145,7 @@ def test_dense_retrieval_is_not_blocked_by_a_lexical_miss(tmp_path: Path) -> Non
     assert batch.diagnostics.sparse_state == "absent"
 
 
-def test_dense_construction_failure_degrades_to_sparse_when_enabled(
+def test_dense_construction_failure_raises_in_hybrid_mode(
     tmp_path: Path,
 ) -> None:
     _make_vault(tmp_path)
@@ -135,16 +154,11 @@ def test_dense_construction_failure_degrades_to_sparse_when_enabled(
         tmp_path,
         tmp_path / "index",
         model=model,
-        config=HybridConfig(dense_failure_policy="degrade"),
+        config=HybridConfig(),
     )
 
-    batch = source.retrieve("bayes", limit=5)
-
-    assert batch.hits
-    assert batch.max_dense_score is None
-    assert batch.diagnostics.dense_state == "unavailable"
-    assert batch.diagnostics.unavailable_reason == "dense_index_refresh_failed"
-    assert batch.diagnostics.overall_state == "degraded"
+    with pytest.raises(DenseUnavailableError, match="index refresh failed"):
+        source.retrieve("bayes", limit=5)
 
 
 def test_dense_only_failure_raises_explicit_error(tmp_path: Path) -> None:
@@ -153,14 +167,14 @@ def test_dense_only_failure_raises_explicit_error(tmp_path: Path) -> None:
         tmp_path,
         tmp_path / "index",
         model=FakeEmbeddingModel(fail_documents=True),
-        config=HybridConfig(sparse_enabled=False, dense_failure_policy="raise"),
+        config=HybridConfig(sparse_enabled=False),
     )
 
-    with pytest.raises(DenseUnavailableError, match="dense-only"):
+    with pytest.raises(DenseUnavailableError, match="index refresh failed"):
         source.retrieve("bayes", limit=5)
 
 
-def test_dense_query_failure_degrades_to_sparse(tmp_path: Path) -> None:
+def test_dense_query_failure_raises_instead_of_using_sparse(tmp_path: Path) -> None:
     _make_vault(tmp_path)
     index_home = tmp_path / "index"
     source = _source(
@@ -172,13 +186,8 @@ def test_dense_query_failure_degrades_to_sparse(tmp_path: Path) -> None:
     source.retrieve("bayes", limit=5)
     source._model = FakeEmbeddingModel(fail_queries=True)  # type: ignore[attr-defined]
 
-    batch = source.retrieve("bayes", limit=5)
-
-    assert batch.hits
-    assert batch.max_dense_score is None
-    assert batch.diagnostics.dense_state == "unavailable"
-    assert batch.diagnostics.unavailable_reason == "dense_query_failed"
-    assert batch.diagnostics.overall_state == "degraded"
+    with pytest.raises(DenseUnavailableError, match="query failed"):
+        source.retrieve("bayes", limit=5)
 
 
 @pytest.mark.parametrize("dense_state", ("model_missing", "stale", "incompatible", "failed"))

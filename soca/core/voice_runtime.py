@@ -75,8 +75,8 @@ class ResolvedVoiceRuntimeConfig:
     llm_threads: int = 8
     llm_gpu_layers: int = -1
     knowledge_limit: int = 3
-    knowledge_retrieval_mode: str = "cached_sparse"
-    knowledge_dense_backend: str = "fastembed"
+    knowledge_retrieval_mode: str = "hybrid"
+    knowledge_dense_backend: str = "aiteamvn_v2"
     tool_router_mode: str = "cascade"
     tool_router_response_mode: str = "prompt_json"
     semantic_router_enabled: bool = True
@@ -86,7 +86,7 @@ class ResolvedVoiceRuntimeConfig:
     memory_mode: MemoryMode = "retrieved"
     memory_limit: int = 3
     memory_retrieval_mode: str = "chunk_sparse"
-    memory_dense_backend: str = "fastembed"
+    memory_dense_backend: str = "aiteamvn_v2"
     memory_recency_weight: float = 0.20
     memory_importance_weight: float = 0.10
     memory_recency_half_life_days: float = 30.0
@@ -162,7 +162,7 @@ def resolve_voice_runtime_config(
     memory_mode: str = "retrieved",
     memory_limit: int = 3,
     memory_retrieval_mode: str = "chunk_sparse",
-    memory_dense_backend: str = "fastembed",
+    memory_dense_backend: str = "aiteamvn_v2",
     memory_recency_weight: float = 0.20,
     memory_importance_weight: float = 0.10,
     memory_recency_half_life_days: float = 30.0,
@@ -195,7 +195,7 @@ def resolve_voice_runtime_config(
         raise ValueError("knowledge_limit must be positive")
     if resolved_retrieval not in {"cached_sparse", "hybrid"}:
         raise ValueError("unknown knowledge retrieval mode")
-    if resolved_backend not in {"fastembed", "model2vec"}:
+    if resolved_backend != "aiteamvn_v2":
         raise ValueError("unknown knowledge dense backend")
 
     return ResolvedVoiceRuntimeConfig(

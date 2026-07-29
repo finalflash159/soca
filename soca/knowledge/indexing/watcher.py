@@ -24,10 +24,12 @@ class IndexWatcher:
         self.on_status = on_status
         self._stop = Event()
         self._thread: Thread | None = None
+        self.last_error: Exception | None = None
 
     def reconcile(self) -> IndexStatus:
         self.coordinator.request_sync("watcher")
         status = self.coordinator.status()
+        self.last_error = None
         if self.on_status is not None:
             self.on_status(status)
         return status
@@ -49,7 +51,5 @@ class IndexWatcher:
         while not self._stop.wait(self.interval_seconds):
             try:
                 self.reconcile()
-            except (OSError, RuntimeError, ValueError):
-                # A later reconcile is the correctness fallback; a watcher
-                # failure must never take down the voice/text runtime.
-                continue
+            except (OSError, RuntimeError, ValueError) as exc:
+                self.last_error = exc

@@ -53,8 +53,9 @@ valtec-build = [
     "torch>=2.0",
 ]
 rag = [
-    "fastembed>=0.8,<0.9",
-    "model2vec>=0.8,<0.9",
+    "bm25s>=0.3.10,<0.4",
+    "sentencepiece>=0.2,<0.3",
+    "sentence-transformers>=5.6,<6",
 ]
 rag-eval-vietnamese = [
     "bm25s>=0.3.10,<0.4",

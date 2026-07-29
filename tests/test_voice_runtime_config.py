@@ -15,6 +15,7 @@ from soca.core.knowledge_setup import (
     KnowledgeRuntimeSetup,
     build_knowledge_runtime_setup,
 )
+from soca.knowledge.factory import RetrievalConfig
 
 
 def test_resolver_does_not_accept_tts_model_override() -> None:
@@ -95,6 +96,10 @@ def test_voice_runtime_uses_shared_knowledge_setup(
     shared_setup = build_knowledge_runtime_setup(
         tmp_path,
         knowledge_limit=RuntimeOptions().knowledge_limit,
+        retrieval_config=RetrievalConfig(
+            mode="chunk_sparse",
+            watcher_enabled=False,
+        ),
     )
     setup_calls: list[tuple[Path, int]] = []
 
@@ -137,7 +142,7 @@ def test_voice_runtime_uses_shared_knowledge_setup(
     assert setup_calls == [
         (config.vault, RuntimeOptions().knowledge_limit),
     ]
-    assert bundle.knowledge_status == "enabled"
+    assert bundle.knowledge_status == "enabled:chunk_sparse"
     assert bundle.assistant_runtime.knowledge_builder is shared_setup.builder
     assert bundle.assistant_runtime.tool_runtime.get("knowledge.search") is shared_setup.search_tool
     assert bundle.assistant_runtime.tool_runtime.get("knowledge.read") is shared_setup.read_tool

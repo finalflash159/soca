@@ -48,12 +48,22 @@ class KnowledgeContextBuilder:
         max_chars: int = 2400,
         snippet_chars: int = 700,
         relevance_policy: RelevancePolicy | None = None,
+        candidate_multiplier: int = 4,
+        max_hits_per_document: int = 1,
     ) -> None:
+        if max_hits < 1 or candidate_multiplier < 1 or max_hits_per_document < 1:
+            raise ValueError("knowledge retrieval limits must be positive")
         self.source = source
         self.max_hits = max_hits
         self.max_chars = max_chars
         self.snippet_chars = snippet_chars
         self.relevance_policy = relevance_policy or RelevancePolicy()
+        self.candidate_multiplier = candidate_multiplier
+        self.max_hits_per_document = max_hits_per_document
+
+    @property
+    def candidate_limit(self) -> int:
+        return self.max_hits * self.candidate_multiplier
 
     def build(self, query: str) -> KnowledgeContext:
         retrieve = getattr(self.source, "retrieve", None)
@@ -61,7 +71,7 @@ class KnowledgeContextBuilder:
             from soca.knowledge.hybrid_source import DenseUnavailableError
 
             try:
-                batch = retrieve(query, limit=self.max_hits)
+                batch = retrieve(query, limit=self.candidate_limit)
             except DenseUnavailableError as exc:
                 return self._unavailable_context(query, str(exc) or "dense_unavailable")
             return self.build_from_hits(
@@ -71,7 +81,7 @@ class KnowledgeContextBuilder:
             )
         return self.build_from_hits(
             query,
-            tuple(self.source.search(query, limit=self.max_hits)),
+            tuple(self.source.search(query, limit=self.candidate_limit)),
         )
 
     def build_from_hits(
@@ -81,13 +91,13 @@ class KnowledgeContextBuilder:
         *,
         diagnostics: Any | None = None,
     ) -> KnowledgeContext:
-        hits = hits[: self.max_hits]
+        hits = hits[: self.candidate_limit]
         assessment = assess_relevance(
             query,
             hits,
             policy=self.relevance_policy,
         )
-        hits = assessment.accepted_hits[: self.max_hits]
+        hits = self._diversify(assessment.accepted_hits)
         prompt_parts = [
             UNTRUSTED_KNOWLEDGE_WARNING.strip(),
             f"Evidence status: {assessment.status} ({assessment.reason}).",
@@ -179,6 +189,23 @@ class KnowledgeContextBuilder:
             retrieval_state=_retrieval_state(diagnostics, has_hits=True),
             retrieval_reason=getattr(diagnostics, "unavailable_reason", ""),
         )
+
+    def _diversify(
+        self,
+        hits: tuple[KnowledgeHit, ...],
+    ) -> tuple[KnowledgeHit, ...]:
+        selected: list[KnowledgeHit] = []
+        per_document: dict[str, int] = {}
+        for hit in hits:
+            path = hit.document.path
+            count = per_document.get(path, 0)
+            if count >= self.max_hits_per_document:
+                continue
+            selected.append(hit)
+            per_document[path] = count + 1
+            if len(selected) >= self.max_hits:
+                break
+        return tuple(selected)
 
     def _unavailable_context(self, query: str, reason: str) -> KnowledgeContext:
         prompt_text = "\n\n".join(

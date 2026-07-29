@@ -31,10 +31,10 @@ class RelevancePolicy:
     def for_retrieval_mode(cls, mode: str) -> RelevancePolicy:
         """Return the policy calibrated for one backend score distribution."""
         if mode == "hybrid":
-            # FastEmbed E5 cosine scores on the public Vietnamese corpus were
-            # concentrated above 0.8 even for distractors; 0.85 preserved all
-            # answerable rows while rejecting the unanswerable set.
-            return cls(min_lexical_coverage=0.95, min_dense_score=0.85)
+            # Vietnamese_Embedding_v2 calibration on the public XQuAD
+            # grounding split separates the weakest accepted answerable score
+            # above the strongest unsupported score at 0.52.
+            return cls(min_lexical_coverage=0.95, min_dense_score=0.52)
         return cls(min_lexical_coverage=0.65, min_dense_score=0.55)
 
     def __post_init__(self) -> None:

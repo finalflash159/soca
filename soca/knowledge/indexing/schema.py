@@ -6,7 +6,7 @@ from pathlib import Path
 
 from soca.knowledge.index.persistence import ensure_private_directory
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 PRIVATE_FILE_MODE = stat.S_IRUSR | stat.S_IWUSR
 
 
@@ -153,6 +153,17 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
                 PRIMARY KEY(generation_id, backend_fingerprint),
                 FOREIGN KEY(generation_id) REFERENCES dense_generations(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS dense_generation_pointers (
+                corpus_id TEXT NOT NULL,
+                embedding_fingerprint TEXT NOT NULL,
+                active_generation_id TEXT,
+                previous_generation_id TEXT,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(corpus_id, embedding_fingerprint),
+                FOREIGN KEY(corpus_id) REFERENCES corpora(id) ON DELETE CASCADE,
+                FOREIGN KEY(active_generation_id) REFERENCES dense_generations(id),
+                FOREIGN KEY(previous_generation_id) REFERENCES dense_generations(id)
+            );
             CREATE TABLE IF NOT EXISTS jobs (
                 job_id TEXT PRIMARY KEY,
                 corpus_id TEXT NOT NULL,
@@ -174,11 +185,42 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
                 updated_at TEXT NOT NULL,
                 FOREIGN KEY(corpus_id) REFERENCES corpora(id) ON DELETE CASCADE
             );
-            PRAGMA user_version = 2;
+            PRAGMA user_version = 3;
             """
         )
     elif current == 1:
         raise RuntimeError("index catalog schema v1 cannot be upgraded implicitly")
+    elif current == 2:
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS dense_generation_pointers (
+                corpus_id TEXT NOT NULL,
+                embedding_fingerprint TEXT NOT NULL,
+                active_generation_id TEXT,
+                previous_generation_id TEXT,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(corpus_id, embedding_fingerprint),
+                FOREIGN KEY(corpus_id) REFERENCES corpora(id) ON DELETE CASCADE,
+                FOREIGN KEY(active_generation_id) REFERENCES dense_generations(id),
+                FOREIGN KEY(previous_generation_id) REFERENCES dense_generations(id)
+            );
+            INSERT OR IGNORE INTO dense_generation_pointers(
+                corpus_id, embedding_fingerprint, active_generation_id, updated_at
+            )
+            SELECT corpus_id, embedding_fingerprint, id, COALESCE(completed_at, started_at)
+            FROM (
+                SELECT *,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY corpus_id, embedding_fingerprint
+                        ORDER BY completed_at DESC, started_at DESC
+                    ) AS position
+                FROM dense_generations
+                WHERE state='READY'
+            )
+            WHERE position=1;
+            PRAGMA user_version = 3;
+            """
+        )
 
 
 def catalog_path(index_home: Path) -> Path:

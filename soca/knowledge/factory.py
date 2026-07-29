@@ -1,36 +1,44 @@
 from __future__ import annotations
 
-import logging
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from soca.knowledge.base import KnowledgeSource
 from soca.knowledge.cached_source import CachedMarkdownVaultKnowledgeSource
 from soca.knowledge.hybrid_source import HybridConfig, HybridKnowledgeSource
-from soca.knowledge.retrievers.dense import FastEmbedModel, Model2VecModel
+from soca.knowledge.indexing.models import load_model
 
-LOGGER = logging.getLogger(__name__)
 RetrievalMode = Literal["cached_sparse", "chunk_sparse", "hybrid"]
-DenseBackend = Literal["fastembed", "model2vec"]
+DenseBackend = Literal["aiteamvn_v2"]
 IndexLifecycle = Literal["legacy", "v2"]
 
 
 @dataclass(frozen=True)
 class RetrievalConfig:
-    mode: RetrievalMode = "cached_sparse"
-    dense_backend: DenseBackend = "fastembed"
+    mode: RetrievalMode = "hybrid"
+    dense_backend: str = "aiteamvn_v2"
     rrf_k: int = 60
     per_retriever_limit: int = 12
     lifecycle: IndexLifecycle = "v2"
+    watcher_enabled: bool = True
+    watcher_interval_seconds: float = 2.0
 
     def __post_init__(self) -> None:
         if self.mode not in {"cached_sparse", "chunk_sparse", "hybrid"}:
             raise ValueError("unknown retrieval mode")
-        if self.dense_backend not in {"fastembed", "model2vec"}:
+        if self.mode == "hybrid" and self.dense_backend != "aiteamvn_v2":
             raise ValueError("unknown dense backend")
         if self.lifecycle not in {"legacy", "v2"}:
             raise ValueError("unknown index lifecycle")
+        if not isinstance(self.watcher_enabled, bool):
+            raise ValueError("watcher_enabled must be a boolean")
+        if (
+            isinstance(self.watcher_interval_seconds, bool)
+            or not isinstance(self.watcher_interval_seconds, (int, float))
+            or self.watcher_interval_seconds <= 0
+        ):
+            raise ValueError("watcher interval must be positive")
         if (
             isinstance(self.rrf_k, bool)
             or not isinstance(self.rrf_k, int)
@@ -42,8 +50,10 @@ class RetrievalConfig:
             raise ValueError("retrieval limits must be positive")
 
 
-def _build_model(backend: DenseBackend):
-    return FastEmbedModel() if backend == "fastembed" else Model2VecModel()
+def _build_model(backend: str):
+    if backend != "aiteamvn_v2":
+        raise ValueError("unknown production dense backend")
+    return load_model("aiteamvn-v2")
 
 
 def build_retrieval_source(
@@ -76,26 +86,23 @@ def build_retrieval_source(
             **common,
         )
 
-    try:
-        model = _build_model(resolved.dense_backend)
-    except (ImportError, OSError, RuntimeError, ValueError):
-        LOGGER.warning("Dense retrieval unavailable; using cached sparse", exc_info=True)
-        return build_retrieval_source(
-            vault,
-            include_globs=include_globs,
-            config=replace(resolved, mode="cached_sparse"),
-            index_home=index_home,
-        )
+    model = _build_model(resolved.dense_backend)
 
-    return HybridKnowledgeSource(
+    source = HybridKnowledgeSource(
         vault,
         model=model,
         config=HybridConfig(
             rrf_k=resolved.rrf_k,
             per_retriever_limit=resolved.per_retriever_limit,
+            sparse_backend="bm25",
+            fusion="linear",
+            dense_weight=0.75,
         ),
         **common,
     )
+    if resolved.lifecycle == "v2" and resolved.watcher_enabled:
+        source.activate_watcher(interval_seconds=resolved.watcher_interval_seconds)
+    return source
 
 
 def build_knowledge_source(

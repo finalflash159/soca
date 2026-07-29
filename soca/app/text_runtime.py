@@ -29,7 +29,7 @@ from soca.core.tool_routing import (
 )
 from soca.core.turn import RuntimeResult
 from soca.core.usage import TurnUsage
-from soca.knowledge.factory import DenseBackend, RetrievalMode
+from soca.knowledge.factory import DenseBackend, RetrievalConfig, RetrievalMode
 from soca.knowledge.retrievers.dense import EmbeddingModel, FastEmbedModel
 from soca.llm import LLMEngine, LocalLlamaCppLLM
 from soca.llm.factory import SecretReader, build_llm_engine
@@ -64,6 +64,8 @@ class TextRuntimeConfig:
     temperature: float = 0.2
     top_p: float = 0.95
     knowledge_limit: int = 3
+    knowledge_retrieval_mode: str = "hybrid"
+    knowledge_dense_backend: str = "aiteamvn_v2"
     memory_chars: int = 64_000
     profile_chars: int = 900
     session_chars: int = 60_000
@@ -83,7 +85,7 @@ class TextRuntimeConfig:
     memory_mode: MemoryMode = "retrieved"
     memory_limit: int = 3
     memory_retrieval_mode: str = "chunk_sparse"
-    memory_dense_backend: str = "fastembed"
+    memory_dense_backend: str = "aiteamvn_v2"
     memory_recency_weight: float = 0.20
     memory_importance_weight: float = 0.10
     memory_recency_half_life_days: float = 30.0
@@ -119,7 +121,7 @@ def resolve_text_runtime_config(
     memory_mode: str = "retrieved",
     memory_limit: int = 3,
     memory_retrieval_mode: str = "chunk_sparse",
-    memory_dense_backend: str = "fastembed",
+    memory_dense_backend: str = "aiteamvn_v2",
     memory_recency_weight: float = 0.20,
     memory_importance_weight: float = 0.10,
     memory_recency_half_life_days: float = 30.0,
@@ -142,6 +144,8 @@ def resolve_text_runtime_config(
         temperature=temperature,
         top_p=top_p,
         knowledge_limit=knowledge_limit,
+        knowledge_retrieval_mode=profile.knowledge_retrieval_mode,
+        knowledge_dense_backend=profile.knowledge_dense_backend,
         memory_chars=memory_chars,
         profile_chars=profile_chars,
         session_chars=session_chars,
@@ -229,6 +233,10 @@ def build_text_runtime(
         knowledge = build_knowledge_runtime_setup(
             vault,
             knowledge_limit=config.knowledge_limit,
+            retrieval_config=RetrievalConfig(
+                mode=cast(RetrievalMode, config.knowledge_retrieval_mode),
+                dense_backend=cast(DenseBackend, config.knowledge_dense_backend),
+            ),
         )
         knowledge_builder = knowledge.builder
         tools.extend([knowledge.search_tool, knowledge.read_tool])

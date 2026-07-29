@@ -10,7 +10,7 @@ from soca.app.text_runtime import (
     normalize_text_turn,
 )
 from soca.config.llm_settings import LlmSettings
-from soca.knowledge.cached_source import CachedMarkdownVaultKnowledgeSource
+from soca.knowledge.hybrid_source import HybridKnowledgeSource
 from soca.llm import LLMResult
 from soca.memory import SessionMemory
 
@@ -39,6 +39,7 @@ def _config(vault: Path, **overrides) -> TextRuntimeConfig:
     base = {
         "vault": vault,
         "no_llm": True,  # keep tests model-free
+        "knowledge_retrieval_mode": "chunk_sparse",
     }
     base.update(overrides)
     return TextRuntimeConfig(**base)
@@ -49,6 +50,8 @@ def test_text_runtime_default_llm_follows_default_runtime_profile() -> None:
 
     assert config.profile_key == "baseline"
     assert config.llm_model == "arcee_vylinh_3b_q4_k_m"
+    assert config.knowledge_retrieval_mode == "hybrid"
+    assert config.knowledge_dense_backend == "aiteamvn_v2"
 
 
 def test_session_memory_enabled_without_vault(tmp_path: Path) -> None:
@@ -77,7 +80,7 @@ def test_text_runtime_does_not_register_removed_memory_write_tool(tmp_path: Path
     assert bundle.runtime.tool_runtime.get("memory.propose_note") is None
 
 
-def test_text_runtime_uses_shared_cached_source_and_k_query_returns_citation(
+def test_text_runtime_uses_shared_source_and_k_query_returns_citation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -104,8 +107,8 @@ def test_text_runtime_uses_shared_cached_source_and_k_query_returns_citation(
         metadata=metadata,
     )
 
-    assert bundle.knowledge_status == "enabled"
-    assert isinstance(source, CachedMarkdownVaultKnowledgeSource)
+    assert bundle.knowledge_status == "enabled:chunk_sparse"
+    assert isinstance(source, HybridKnowledgeSource)
     assert search_tool is not None and search_tool.source is source
     assert read_tool is not None and read_tool.source is source
     assert bundle.runtime.options.knowledge_limit == 2

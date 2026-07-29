@@ -98,7 +98,7 @@ def test_retrieval_modes_keep_separate_score_distributions() -> None:
     assert sparse.min_lexical_coverage == 0.65
     assert sparse.min_dense_score == 0.55
     assert hybrid.min_lexical_coverage == 0.95
-    assert hybrid.min_dense_score == 0.85
+    assert hybrid.min_dense_score == 0.52
 
 
 def test_generic_lexical_overlap_is_not_enough_when_sparse_score_is_weak() -> None:

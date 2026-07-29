@@ -106,11 +106,11 @@ class CorpusIdentity:
 @dataclass(frozen=True)
 class ChunkerFingerprint:
     parser_version: str = "markdown-parser-v1"
-    algorithm_version: str = "chunker-v1"
+    algorithm_version: str = "chunker-v2"
     target_tokens: int = 320
     overlap_lines: int = 2
     token_strategy: str = "unicode-word-v1"
-    heading_policy: str = "section-heading-v1"
+    heading_policy: str = "section-heading-content-v2"
     normalization_policy: str = "markdown-text-preserve-v1"
 
     def __post_init__(self) -> None:

@@ -59,7 +59,7 @@ def test_builds_prompt_context_with_warning_and_citations():
     context = builder.build("bữa sáng lành mạnh")
 
     assert source.last_query == "bữa sáng lành mạnh"
-    assert source.last_limit == 3
+    assert source.last_limit == 12
     assert "untrusted references" in context.prompt_text
     assert "[K1] wiki/dinh-duong/goi-y-bua-an.md" in context.prompt_text
     assert "Bữa sáng nên có đạm" in context.prompt_text
@@ -82,6 +82,20 @@ def test_enforces_hit_limit():
     assert [hit.document.path for hit in context.hits] == ["a.md", "b.md"]
     assert len(context.citations) == 2
     assert "[K3]" not in context.prompt_text
+
+
+def test_context_diversifies_chunks_across_documents() -> None:
+    source = FakeKnowledgeSource(
+        [
+            make_hit("a.md", "A", "first section"),
+            make_hit("a.md", "A", "second section"),
+            make_hit("b.md", "B", "independent evidence"),
+        ]
+    )
+
+    context = KnowledgeContextBuilder(source, max_hits=2, max_chars=1000).build("test")
+
+    assert [hit.document.path for hit in context.hits] == ["a.md", "b.md"]
 
 
 def test_enforces_character_budget():

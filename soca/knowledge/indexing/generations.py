@@ -38,6 +38,10 @@ class DenseBuildInProgress(RuntimeError):
     pass
 
 
+class DenseGenerationCorrupt(RuntimeError):
+    pass
+
+
 def _sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -61,6 +65,26 @@ def _load_vector_file(path: Path) -> np.ndarray:
 class DenseGenerationBuilder:
     def __init__(self, catalog: IndexCatalog) -> None:
         self.catalog = catalog
+        self._verified_files: set[tuple[Path, str, int, int, int, int, int]] = set()
+
+    def _verify_checksum(self, path: Path, expected: str) -> None:
+        metadata = path.lstat()
+        identity = (
+            path,
+            expected,
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_size,
+            metadata.st_mtime_ns,
+            metadata.st_ctime_ns,
+        )
+        if identity in self._verified_files:
+            return
+        if _sha256_file(path) != expected:
+            raise DenseGenerationCorrupt("active dense generation checksum mismatch")
+        if path.lstat() != metadata:
+            raise DenseGenerationCorrupt("active dense generation changed during verification")
+        self._verified_files.add(identity)
 
     def load_ready(
         self,
@@ -81,19 +105,22 @@ class DenseGenerationBuilder:
             return None
         path = self.catalog.generation_root(spec.corpus_identity) / row["vector_file"]
         try:
+            self._verify_checksum(path, row["vector_sha256"])
             vectors = _load_vector_file(path)
             rows = self.catalog.generation_rows(row["id"])
             chunk_ids = tuple(item[1] for item in rows)
             if vectors.shape != (len(chunk_ids), row["dimension"]):
-                return None
+                raise DenseGenerationCorrupt("active dense generation shape mismatch")
             return DenseIndex(
                 model_id=model.model_id,
                 source_digest=index.content_digest,
                 chunk_ids=chunk_ids,
                 vectors=np.asarray(vectors, dtype=np.float32),
             )
-        except (OSError, ValueError, EOFError):
-            return None
+        except DenseGenerationCorrupt:
+            raise
+        except (OSError, ValueError, EOFError) as exc:
+            raise DenseGenerationCorrupt("active dense generation is unreadable") from exc
 
     def build(
         self,
@@ -169,9 +196,22 @@ class DenseGenerationBuilder:
                 position for position, input_hash in enumerate(hashes) if input_hash not in old_vectors
             )
             missing = tuple(index.chunks[position].text for position in missing_positions)
+            encoded_batches: list[np.ndarray] = []
+            batch_size = 32
+            for start in range(0, len(missing), batch_size):
+                batch = missing[start : start + batch_size]
+                encoded_batches.append(
+                    np.asarray(model.embed_documents(batch), dtype=np.float32)
+                )
+                self.catalog.update_job_progress(
+                    job,
+                    completed=min(start + len(batch), len(missing)),
+                    reused=len(index.chunks) - len(missing_positions),
+                    lease_seconds=lease_seconds,
+                )
             encoded = (
-                np.asarray(model.embed_documents(missing), dtype=np.float32)
-                if missing
+                np.concatenate(encoded_batches, axis=0)
+                if encoded_batches
                 else np.empty((0, 0), dtype=np.float32)
             )
             if missing:

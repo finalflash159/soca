@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Literal
 
 from soca.knowledge.factory import (
-    DenseBackend,
     RetrievalConfig,
     RetrievalMode,
     build_retrieval_source,
@@ -30,7 +29,7 @@ class MemoryRuntimeConfig:
     context_chars: int = 64_000
     profile_chars: int = 900
     retrieval_mode: RetrievalMode = "chunk_sparse"
-    dense_backend: DenseBackend = "fastembed"
+    dense_backend: str = "aiteamvn_v2"
     relevance_weight: float = 0.70
     recency_weight: float = 0.20
     importance_weight: float = 0.10
@@ -41,6 +40,8 @@ class MemoryRuntimeConfig:
             raise ValueError("unknown memory mode")
         if self.retrieval_mode not in {"chunk_sparse", "hybrid"}:
             raise ValueError("unknown memory retrieval mode")
+        if self.dense_backend != "aiteamvn_v2":
+            raise ValueError("unknown memory dense backend")
         if isinstance(self.top_k, bool) or not isinstance(self.top_k, int) or self.top_k < 1:
             raise ValueError("memory top_k must be positive")
         if self.context_chars < 1 or self.profile_chars < 1:

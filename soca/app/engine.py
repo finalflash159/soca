@@ -336,7 +336,7 @@ class SocaEngine:
             # Match the CLI/index lifecycle status path without allowing a
             # status command to download a model.
             try:
-                embedding_model = load_model("fastembed-e5-small", allow_download=False)
+                embedding_model = load_model("aiteamvn-v2", allow_download=False)
                 embedding_fingerprint = getattr(embedding_model, "embedding_fingerprint", None)
             except (ImportError, FileNotFoundError, OSError, RuntimeError, ValueError):
                 embedding_fingerprint = None
@@ -499,7 +499,7 @@ class SocaEngine:
                 f" · session {self.session_memory.persistence}",
             )
 
-        embedding_detail = "fastembed-e5-small · provisioned"
+        embedding_detail = "aiteamvn-v2 · provisioned"
         embedding_state = "ready" if embedding_model is not None else "missing"
         if knowledge_index is not None:
             embedding_detail += f" · dense {knowledge_index.get('dense_state', 'unknown')}"

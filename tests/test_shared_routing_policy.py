@@ -79,8 +79,8 @@ def test_chat_and_voice_use_the_same_retrieval_policy(tmp_path: Path) -> None:
     assert voice_result.trace is not None
     assert chat_result.trace.disposition == voice_result.trace.disposition == "retrieval_request"
     assert chat_result.trace.selected_sources == voice_result.trace.selected_sources == ("knowledge",)
-    assert chat_source.search_calls == [(query, 4)]
-    assert voice_source.search_calls == [(query, 4)]
+    assert chat_source.search_calls == [(query, 16)]
+    assert voice_source.search_calls == [(query, 16)]
     assert "[K1]" in chat_llm.calls[0]["user_msg"]
     assert "[K1]" in voice_llm.calls[0]["user_msg"]
 

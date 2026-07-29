@@ -66,8 +66,23 @@ def test_single_line_larger_than_target_still_makes_progress() -> None:
 
     chunks = chunk_markdown(document, target_tokens=32, overlap_lines=2)
 
-    assert [(chunk.line_start, chunk.line_end) for chunk in chunks] == [(1, 1), (2, 2)]
-    assert chunks[1].text == oversized_line
+    assert [(chunk.line_start, chunk.line_end) for chunk in chunks] == [(1, 2)]
+    assert chunks[0].text == f"# Large\n{oversized_line}"
+
+
+def test_chunker_does_not_emit_heading_only_parent_sections() -> None:
+    document = _document(
+        "# Probability\n"
+        "## Bayes\n"
+        "### Formula\n"
+        "Posterior combines prior and likelihood."
+    )
+
+    chunks = chunk_markdown(document)
+
+    assert [chunk.text for chunk in chunks] == [
+        "### Formula\nPosterior combines prior and likelihood."
+    ]
 
 
 def test_chunk_text_matches_its_one_based_source_line_range() -> None:

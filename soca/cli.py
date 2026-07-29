@@ -26,7 +26,14 @@ from soca.core import (
 from soca.knowledge.index.persistence import default_index_home
 from soca.knowledge.indexing.coordinator import IndexCoordinator
 from soca.knowledge.indexing.identity import CorpusSpec
-from soca.knowledge.indexing.models import MODEL_REGISTRY, load_model, model_spec, model_status
+from soca.knowledge.indexing.models import (
+    MODEL_REGISTRY,
+    install_model,
+    load_model,
+    model_spec,
+    model_status,
+)
+from soca.knowledge.indexing.watcher import IndexWatcher
 from soca.knowledge.markdown_vault import MarkdownVaultKnowledgeSource
 from soca.knowledge.retrievers.dense import default_model_home
 from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
@@ -95,7 +102,7 @@ def knowledge_index_group() -> None:
 @click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
 @click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
 @click.option("--index-home", type=click.Path(path_type=Path), default=None)
-@click.option("--model", "model_key", type=click.Choice([item.key for item in MODEL_REGISTRY]), default="fastembed-e5-small", show_default=True)
+@click.option("--model", "model_key", type=click.Choice([item.key for item in MODEL_REGISTRY]), default="aiteamvn-v2", show_default=True)
 @click.option("--json", "as_json", is_flag=True, help="Print machine-readable status.")
 def knowledge_index_status(vault: Path, corpus: str, index_home: Path | None, model_key: str, as_json: bool) -> None:
     """Show sparse/dense/model state without downloading or embedding."""
@@ -120,7 +127,7 @@ def knowledge_index_status(vault: Path, corpus: str, index_home: Path | None, mo
 @click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
 @click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
 @click.option("--index-home", type=click.Path(path_type=Path), default=None)
-@click.option("--dense/--sparse-only", default=False, show_default=True)
+@click.option("--dense/--sparse-only", default=True, show_default=True)
 @click.option("--verify-content", is_flag=True, help="Read all files even when stat metadata is unchanged.")
 def knowledge_index_build(vault: Path, corpus: str, index_home: Path | None, dense: bool, verify_content: bool) -> None:
     """Synchronize sparse and optionally build a dense generation."""
@@ -147,7 +154,7 @@ def _run_index_build(
         vault,
         corpus,
         index_home=index_home,
-        model_key="fastembed-e5-small" if dense else None,
+        model_key="aiteamvn-v2" if dense else None,
     )
     try:
         report = coordinator.build_blocking(
@@ -218,6 +225,96 @@ def knowledge_index_gc(vault: Path, corpus: str, index_home: Path | None, apply:
         click.echo(("deleted " if apply else "candidate ") + candidate)
 
 
+@knowledge_index_group.command("inspect")
+@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
+@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option("--index-home", type=click.Path(path_type=Path), default=None)
+def knowledge_index_inspect(vault: Path, corpus: str, index_home: Path | None) -> None:
+    """Print generations, pointers and jobs for operator inspection."""
+    coordinator = _index_context(vault, corpus, index_home=index_home)
+    click.echo(json.dumps(coordinator.inspect(), ensure_ascii=False, sort_keys=True))
+
+
+@knowledge_index_group.command("migrate")
+@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
+@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option("--index-home", type=click.Path(path_type=Path), default=None)
+def knowledge_index_migrate(vault: Path, corpus: str, index_home: Path | None) -> None:
+    """Import a valid v1 sparse snapshot and reconcile it with the vault."""
+    coordinator = _index_context(vault, corpus, index_home=index_home)
+    result = coordinator.sync_sparse(verify_content=True)
+    click.echo(
+        json.dumps(
+            {
+                "revision": result.revision,
+                "changed": result.changed,
+                "documents": len(result.index.records),
+                "chunks": len(result.index.chunks),
+            },
+            sort_keys=True,
+        )
+    )
+
+
+@knowledge_index_group.command("rollback")
+@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
+@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option("--index-home", type=click.Path(path_type=Path), default=None)
+def knowledge_index_rollback(vault: Path, corpus: str, index_home: Path | None) -> None:
+    """Swap the active generation with the compatible previous generation."""
+    coordinator = _index_context(
+        vault,
+        corpus,
+        index_home=index_home,
+        model_key="aiteamvn-v2",
+    )
+    try:
+        generation = coordinator.rollback()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps({"active_generation": generation}, sort_keys=True))
+
+
+@knowledge_index_group.command("watch")
+@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
+@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option("--index-home", type=click.Path(path_type=Path), default=None)
+@click.option("--interval", type=click.FloatRange(min=0.25), default=2.0, show_default=True)
+def knowledge_index_watch(
+    vault: Path,
+    corpus: str,
+    index_home: Path | None,
+    interval: float,
+) -> None:
+    """Continuously reconcile sparse and dense generations."""
+    import time
+
+    coordinator = _index_context(
+        vault,
+        corpus,
+        index_home=index_home,
+        model_key="aiteamvn-v2",
+    )
+    watcher = IndexWatcher(
+        coordinator,
+        interval_seconds=interval,
+        on_status=lambda status: click.echo(
+            json.dumps(status.as_dict(), ensure_ascii=False, sort_keys=True)
+        ),
+    )
+    watcher.reconcile()
+    watcher.start()
+    try:
+        while True:
+            if watcher.last_error is not None:
+                raise click.ClickException(str(watcher.last_error))
+            time.sleep(min(interval, 1.0))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        watcher.stop()
+
+
 @knowledge_group.group("model")
 def knowledge_model_group() -> None:
     """Provision and verify embedding model artifacts explicitly."""
@@ -238,7 +335,7 @@ def knowledge_model_list(as_json: bool) -> None:
 
 
 @knowledge_model_group.command("status")
-@click.argument("key", required=False, default="fastembed-e5-small")
+@click.argument("key", required=False, default="aiteamvn-v2")
 @click.option("--json", "as_json", is_flag=True)
 def knowledge_model_status(key: str, as_json: bool) -> None:
     try:
@@ -253,18 +350,18 @@ def knowledge_model_status(key: str, as_json: bool) -> None:
 
 
 @knowledge_model_group.command("install")
-@click.argument("key", required=False, default="fastembed-e5-small")
+@click.argument("key", required=False, default="aiteamvn-v2")
 def knowledge_model_install(key: str) -> None:
     """Download a declared model; this is the only command with network intent."""
     try:
-        load_model(key, allow_download=True)
+        install_model(key)
     except (ImportError, FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise click.ClickException(str(exc)) from exc
     click.echo(f"installed {key}")
 
 
 @knowledge_model_group.command("verify")
-@click.argument("key", required=False, default="fastembed-e5-small")
+@click.argument("key", required=False, default="aiteamvn-v2")
 def knowledge_model_verify(key: str) -> None:
     payload = model_status(key)
     if payload.get("state") != "installed":
@@ -273,15 +370,14 @@ def knowledge_model_verify(key: str) -> None:
 
 
 @knowledge_model_group.command("remove")
-@click.argument("key", required=False, default="fastembed-e5-small")
+@click.argument("key", required=False, default="aiteamvn-v2")
 @click.option("--apply", is_flag=True, help="Actually remove only the exact model cache candidates.")
 def knowledge_model_remove(key: str, apply: bool) -> None:
     try:
         spec = model_spec(key)
     except KeyError as exc:
         raise click.ClickException(str(exc)) from exc
-    cache = (default_model_home() / spec.cache_subdirectory).resolve()
-    candidates = tuple(path for path in cache.glob("*") if spec.model_id.replace("/", "--") in path.name)
+    candidates = ((default_model_home() / spec.cache_subdirectory).resolve(),)
     for path in candidates:
         if apply:
             if path.is_dir() and not path.is_symlink():
@@ -366,7 +462,7 @@ def profiles_command(show_paths: bool) -> None:
 @click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", show_default=True)
 @click.option("--memory-limit", type=int, default=3, show_default=True)
 @click.option("--memory-retrieval", type=click.Choice(["chunk_sparse", "hybrid"]), default="chunk_sparse", show_default=True)
-@click.option("--memory-dense-backend", type=click.Choice(["fastembed", "model2vec"]), default="fastembed", show_default=True)
+@click.option("--memory-dense-backend", type=click.Choice(["aiteamvn_v2"]), default="aiteamvn_v2", show_default=True)
 @click.option("--trace/--no-trace", default=False, show_default=True)
 @click.option("--usage", is_flag=True, help="Show LLM token/latency usage after the turn.")
 def ask(
@@ -484,7 +580,7 @@ def ask(
 @click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", show_default=True)
 @click.option("--memory-limit", type=int, default=3, show_default=True)
 @click.option("--memory-retrieval", type=click.Choice(["chunk_sparse", "hybrid"]), default="chunk_sparse", show_default=True)
-@click.option("--memory-dense-backend", type=click.Choice(["fastembed", "model2vec"]), default="fastembed", show_default=True)
+@click.option("--memory-dense-backend", type=click.Choice(["aiteamvn_v2"]), default="aiteamvn_v2", show_default=True)
 @click.option("--trace/--no-trace", default=False, show_default=True)
 @click.option(
     "--usage", is_flag=True, help="Show per-turn usage line; /usage shows session totals."
@@ -661,7 +757,7 @@ def build_text_runtime_config(
     memory_mode: str = "retrieved",
     memory_limit: int = 3,
     memory_retrieval_mode: str = "chunk_sparse",
-    memory_dense_backend: str = "fastembed",
+    memory_dense_backend: str = "aiteamvn_v2",
 ) -> TextRuntimeConfig:
     try:
         return resolve_text_runtime_config(
@@ -895,7 +991,7 @@ def engine(
 @click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", hidden=True)
 @click.option("--memory-limit", type=int, default=3, hidden=True)
 @click.option("--memory-retrieval", type=click.Choice(["chunk_sparse", "hybrid"]), default="chunk_sparse", hidden=True)
-@click.option("--memory-dense-backend", type=click.Choice(["fastembed", "model2vec"]), default="fastembed", hidden=True)
+@click.option("--memory-dense-backend", type=click.Choice(["aiteamvn_v2"]), default="aiteamvn_v2", hidden=True)
 @click.option("--max-tokens", type=int, default=None, hidden=True)
 @click.option("--temperature", type=float, default=None, hidden=True)
 @click.option("--top-p", type=float, default=None, hidden=True)
