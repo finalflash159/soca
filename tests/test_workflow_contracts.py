@@ -75,6 +75,44 @@ def test_stream_without_result_emits_failed_terminal_not_complete() -> None:
     assert events[-1].payload["error_code"] == "missing_terminal_result"
 
 
+def test_stream_exception_emits_failed_terminal() -> None:
+    def failing_source():
+        yield RuntimeStreamEvent(type="token", text="partial")
+        raise RuntimeError("boom")
+
+    events = list(iter_workflow_events(failing_source()))
+
+    assert events[-1].kind == "terminal"
+    assert events[-1].payload["status"] == "failed"
+    assert events[-1].payload["error_code"] == "stream_error"
+    assert events[-1].payload["metadata"] == {"exception_type": "RuntimeError"}
+
+
+def test_terminal_metadata_cannot_overwrite_canonical_fields() -> None:
+    stream = WorkflowEventStream()
+    event = stream.emit_terminal(
+        TerminalOutcome(
+            status=TerminalStatus.SUCCEEDED,
+            response_text="ok",
+            route="free_chat",
+            error_code=None,
+            metadata={
+                "status": "failed",
+                "response_text": "wrong",
+                "route": "wrong",
+                "error_code": "wrong",
+            },
+        )
+    )
+
+    assert event.state == TurnState.COMPLETED
+    assert event.payload["status"] == "succeeded"
+    assert event.payload["response_text"] == "ok"
+    assert event.payload["route"] == "free_chat"
+    assert event.payload["error_code"] is None
+    assert event.payload["metadata"]["status"] == "failed"
+
+
 def test_duplicate_stream_results_are_rejected_instead_of_emitting_two_terminals() -> None:
     result = RuntimeResult(response_text="ok", route=RuntimeRoute.FREE_CHAT)
     source = iter(

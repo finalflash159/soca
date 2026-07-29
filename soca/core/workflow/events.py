@@ -68,7 +68,7 @@ class WorkflowEventStream:
                 "response_text": outcome.response_text,
                 "route": outcome.route,
                 "error_code": outcome.error_code,
-                **dict(outcome.metadata),
+                "metadata": dict(outcome.metadata),
             },
             terminal=True,
         )

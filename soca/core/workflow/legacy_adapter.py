@@ -6,6 +6,7 @@ from soca.core.turn import RuntimeResult, RuntimeStreamEvent
 
 from .contracts import TerminalOutcome, TerminalStatus, TurnState
 from .events import WorkflowEvent, WorkflowEventStream
+from .errors import DuplicateTerminalError
 
 
 def terminal_from_runtime_result(result: RuntimeResult) -> TerminalOutcome:
@@ -37,16 +38,29 @@ def iter_runtime_events(
         return
 
     saw_result = False
-    for event in source:
-        if event.type == "result" and event.result is not None:
-            saw_result = True
-            yield stream.emit_terminal(terminal_from_runtime_result(event.result))
-            continue
-        yield stream.emit(
-            "update",
-            TurnState.SYNTHESIZING,
-            {"type": event.type, "text": event.text},
-        )
+    try:
+        for event in source:
+            if event.type == "result" and event.result is not None:
+                saw_result = True
+                yield stream.emit_terminal(terminal_from_runtime_result(event.result))
+                continue
+            yield stream.emit(
+                "update",
+                TurnState.SYNTHESIZING,
+                {"type": event.type, "text": event.text},
+            )
+    except Exception as exc:  # noqa: BLE001 - adapter must close the event contract
+        if isinstance(exc, DuplicateTerminalError):
+            raise
+        if stream.terminal_outcome is None:
+            yield stream.emit_terminal(
+                TerminalOutcome(
+                    status=TerminalStatus.FAILED,
+                    error_code="stream_error",
+                    metadata={"exception_type": type(exc).__name__},
+                )
+            )
+        return
 
     if not saw_result:
         yield stream.emit_terminal(
