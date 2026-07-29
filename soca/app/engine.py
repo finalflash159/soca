@@ -1197,6 +1197,7 @@ class SocaEngine:
         thread.start()
 
     def _chat_worker(self, text: str) -> None:
+        terminal_emitted = False
         try:
             self.writer.emit({"event": "chat", "type": "start", "text": text})
             self._emit_turn_progress(
@@ -1233,6 +1234,8 @@ class SocaEngine:
                     "usage": usage,
                 }
             )
+            terminal_emitted = True
+            self._emit_turn_progress("chat", "complete", status="done")
             trace = result.trace
             if trace is not None:
                 commands = self._memory_commands()
@@ -1315,9 +1318,13 @@ class SocaEngine:
                 )
             self._cmd_context()
         except Exception as exc:  # noqa: BLE001 - protocol boundary must not crash
-            self.writer.emit({"event": "chat", "type": "error", "text": str(exc)})
+            if not terminal_emitted:
+                self.writer.emit({"event": "chat", "type": "error", "text": str(exc)})
+            else:
+                LOGGER.exception("chat worker failed after terminal result")
         finally:
-            self._emit_turn_progress("chat", "complete", status="done")
+            # Worker cleanup is not a product terminal. An exception before a
+            # result therefore emits chat:error, but never chat completion.
             self._chat_lock.release()
 
     def _ensure_text_bundle(self) -> TextRuntimeBundle:
