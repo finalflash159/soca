@@ -328,3 +328,6 @@ def test_stream_usage_uses_engine_token_counter_when_available() -> None:
     # Uses count_tokens (6) instead of the whitespace fallback (1 word).
     assert result.usage.completion_tokens == len("abcdef")
     assert result.usage.prompt_tokens > 0
+    assert result.trace is not None
+    assert result.trace.prompt_manifest is not None
+    assert result.trace.prompt_manifest["observed_prompt_token_source"] == "stream_engine"

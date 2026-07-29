@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import pytest
+
 from soca.core import AssistantRuntime, RuntimeOptions
 from soca.core.workflow import (
     ActionPlan,
@@ -72,6 +74,7 @@ class StaticPlanner:
 @dataclass
 class RepairLLM:
     responses: list[str]
+    max_tokens_seen: list[int] = field(default_factory=list)
 
     def generate(
         self,
@@ -81,7 +84,8 @@ class RepairLLM:
         top_p: float = 0.95,
         inject_persona: bool = True,
     ):
-        del user_msg, max_tokens, temperature, top_p, inject_persona
+        del user_msg, temperature, top_p, inject_persona
+        self.max_tokens_seen.append(max_tokens)
         from soca.llm import LLMResult
 
         return LLMResult(
@@ -382,6 +386,46 @@ def test_structured_planner_repairs_once_and_debits_each_model_call() -> None:
 
     assert plan.steps[0].call.name == "knowledge.search"
     assert calls == 2
+
+
+def test_structured_planner_clamps_output_to_model_capability() -> None:
+    runtime = ToolRuntime([ScriptedTool([])])
+    valid = (
+        '{"steps":[],"final_instruction":"ok",'
+        '"rationale":"no action"}'
+    )
+    llm = RepairLLM([valid])
+    from soca.core.workflow import StructuredWorkflowPlanner
+
+    planner = StructuredWorkflowPlanner(
+        llm,
+        runtime,
+        max_tokens=256,
+        model_context_window=2_048,
+        model_max_output_tokens=64,
+    )
+
+    planner.plan("Trả lời ngắn gọn")
+
+    assert llm.max_tokens_seen == [64]
+    assert planner.last_prompt_manifest is not None
+    assert planner.last_prompt_manifest["provider_prompt_tokens"] == 1
+
+
+def test_structured_planner_blocks_known_context_overflow_before_model_call() -> None:
+    runtime = ToolRuntime([ScriptedTool([])])
+    llm = RepairLLM([])
+    from soca.core.workflow import PlanOutputError, StructuredWorkflowPlanner
+
+    planner = StructuredWorkflowPlanner(
+        llm,
+        runtime,
+        model_context_window=64,
+    )
+
+    with pytest.raises(PlanOutputError, match="context_budget_exceeded"):
+        planner.plan("Tìm ghi chú")
+    assert llm.max_tokens_seen == []
 
 
 def test_runner_budget_covers_planner_repair_calls() -> None:

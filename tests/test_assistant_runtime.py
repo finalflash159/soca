@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from soca.core import AssistantRuntime, RuntimeRoute
+from soca.core import AssistantRuntime, RuntimeOptions, RuntimeRoute
 from soca.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
 from soca.llm import LLMResult
 from soca.memory import MemoryContextBuilder, RetrievedMemory, SessionMemory
@@ -101,6 +101,11 @@ class SpyLLM:
         inject_persona: bool = True,
     ) -> Iterator[str]:
         yield self.generate(user_msg, max_tokens, temperature, top_p, inject_persona).text
+
+
+class TokenCountingSpyLLM(SpyLLM):
+    def count_tokens(self, text: str) -> int:
+        return len(text.split())
 
 
 def test_blocks_private_path_before_tool_or_llm() -> None:
@@ -347,3 +352,58 @@ def test_progress_callback_observes_real_runtime_stages() -> None:
         "llm",
         "output_guardrail",
     ]
+
+
+def test_known_small_model_context_blocks_before_provider_call() -> None:
+    llm = SpyLLM()
+    runtime = AssistantRuntime(
+        llm=llm,
+        options=RuntimeOptions(
+            max_tokens=4_096,
+            model_context_window=64,
+        ),
+    )
+
+    result = runtime.run_text_turn("xin chào")
+
+    assert result.blocked is True
+    assert "context" in result.response_text.lower()
+    assert llm.calls == []
+    assert result.trace is not None
+    assert result.trace.prompt_manifest is None
+
+
+def test_model_context_manifest_clamps_output_reserve() -> None:
+    llm = SpyLLM()
+    runtime = AssistantRuntime(
+        llm=llm,
+        options=RuntimeOptions(
+            max_tokens=4_096,
+            model_context_window=2_048,
+        ),
+    )
+
+    result = runtime.run_text_turn("xin chào")
+
+    assert result.blocked is False
+    assert llm.calls[0]["max_tokens"] < 4_096
+    assert result.trace is not None
+    manifest = result.trace.prompt_manifest
+    assert manifest is not None
+    assert manifest["model_id"] == "unknown"
+    assert manifest["prompt_tokens"] <= manifest["input_budget_tokens"]
+    assert manifest["provider_prompt_tokens"] == 10
+    assert manifest["provider_completion_tokens"] == 5
+
+
+def test_prompt_manifest_uses_active_engine_token_counter() -> None:
+    llm = TokenCountingSpyLLM()
+    runtime = AssistantRuntime(llm=llm)
+
+    result = runtime.run_text_turn("xin chào")
+
+    assert result.trace is not None
+    manifest = result.trace.prompt_manifest
+    assert manifest is not None
+    assert manifest["token_counter"] == "engine"
+    assert manifest["prompt_tokens"] == len(llm.calls[0]["user_msg"].split())
