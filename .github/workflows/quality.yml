@@ -30,4 +30,4 @@ jobs:
       - name: Lint
         run: uv run ruff check soca tests eval
       - name: Test
-        run: uv run pytest -q
+        run: uv run pytest -q -m "not real_model"
