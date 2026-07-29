@@ -392,6 +392,8 @@ def run_profile_eval(
         session_chars=args.session_chars,
         session_turns=args.session_turns,
         turn_chars=args.turn_chars,
+        knowledge_retrieval_mode=getattr(args, "knowledge_retrieval_mode", None),
+        knowledge_dense_backend=getattr(args, "knowledge_dense_backend", "fastembed"),
     )
     load_started = time.perf_counter()
     try:

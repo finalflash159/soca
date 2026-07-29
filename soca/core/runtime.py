@@ -263,6 +263,12 @@ class _TraceDraft:
 
 
 @dataclass(frozen=True)
+class _SemanticContextPlan:
+    memory_context: MemoryContext | None
+    knowledge_context: KnowledgeContext | None
+
+
+@dataclass(frozen=True)
 class _PreparedToolTurn:
     result: ToolResult
     citations: tuple[KnowledgeCitation, ...]
@@ -491,9 +497,27 @@ class AssistantRuntime:
             yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
             return
 
-        special = self._run_semantic_disposition(frame, draft, decision)
-        if special is not None:
+        special = self._prepare_semantic_disposition(frame, draft, decision)
+        if isinstance(special, RuntimeResult):
             yield from self._emit_fixed_result(special, min_sentence_chars=min_sentence_chars)
+            return
+        if isinstance(special, _SemanticContextPlan):
+            if self.llm is not None:
+                yield from self._stream_llm_turn(
+                    frame,
+                    draft,
+                    special.memory_context,
+                    special.knowledge_context,
+                    min_sentence_chars=min_sentence_chars,
+                    first_sentence_min_chars=first_sentence_min_chars,
+                    first_clause_enabled=first_clause_enabled,
+                    first_clause_min_chars=first_clause_min_chars,
+                    first_clause_min_words=first_clause_min_words,
+                    first_clause_max_scan_chars=first_clause_max_scan_chars,
+                )
+                return
+            result = self._finish_semantic_context_turn(frame, draft, special)
+            yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
             return
 
         memory_context = self._build_memory_context(frame, draft)
@@ -1472,6 +1496,24 @@ class AssistantRuntime:
         draft: _TraceDraft,
         decision: ToolRouterDecision,
     ) -> RuntimeResult | None:
+        prepared = self._prepare_semantic_disposition(frame, draft, decision)
+        if not isinstance(prepared, _SemanticContextPlan):
+            return prepared
+        if self.llm is not None:
+            return self._run_llm_turn(
+                frame,
+                draft,
+                prepared.memory_context,
+                prepared.knowledge_context,
+            )
+        return self._finish_semantic_context_turn(frame, draft, prepared)
+
+    def _prepare_semantic_disposition(
+        self,
+        frame: TurnFrame,
+        draft: _TraceDraft,
+        decision: ToolRouterDecision,
+    ) -> RuntimeResult | _SemanticContextPlan | None:
         if decision.disposition == "out_of_scope":
             return self._blocked_result(
                 frame,
@@ -1514,8 +1556,16 @@ class AssistantRuntime:
                 )
         if "knowledge" in decision.sources:
             knowledge_context = self._build_knowledge_context_from_query(frame, draft)
-        if self.llm is not None:
-            return self._run_llm_turn(frame, draft, memory_context, knowledge_context)
+        return _SemanticContextPlan(memory_context, knowledge_context)
+
+    def _finish_semantic_context_turn(
+        self,
+        frame: TurnFrame,
+        draft: _TraceDraft,
+        prepared: _SemanticContextPlan,
+    ) -> RuntimeResult:
+        knowledge_context = prepared.knowledge_context
+        memory_context = prepared.memory_context
         if knowledge_context is not None:
             return self._result(
                 frame,

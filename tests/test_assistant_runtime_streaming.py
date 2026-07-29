@@ -6,6 +6,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from soca.core import AssistantRuntime, RuntimeRoute
+from soca.core.tool_routing import ToolRouterDecision
 from soca.core.turn import RuntimeResult
 from soca.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
 from soca.llm import LLMResult
@@ -91,6 +92,20 @@ class StreamSpyLLM:
             }
         )
         yield from self.tokens
+
+
+class SemanticRetrievalRouter:
+    last_tier = "semantic"
+    last_decision = ToolRouterDecision(
+        reason="semantic_retrieval",
+        disposition="retrieval_request",
+        selected_routes=("retrieval_request",),
+        sources=("knowledge",),
+    )
+
+    def select(self, text: str, *, knowledge_limit: int):
+        del text, knowledge_limit
+        return None
 
 
 def _collect(
@@ -288,6 +303,27 @@ def test_stream_explicit_knowledge_search_synthesizes_with_llm() -> None:
     assert sentences == ["Theo [K1], protein hỗ trợ cơ bắp."]
     assert llm.stream_calls
     assert "Knowledge:" in llm.stream_calls[0]["user_msg"]
+
+
+def test_stream_semantic_retrieval_uses_incremental_llm_path() -> None:
+    source = FakeKnowledgeSource()
+    llm = StreamSpyLLM(["Theo [K1], protein hỗ trợ cơ bắp."])
+    runtime = AssistantRuntime(
+        llm=llm,
+        knowledge_builder=KnowledgeContextBuilder(source),
+        tool_router=SemanticRetrievalRouter(),
+    )
+
+    _, sentences, result, _ = _collect(
+        runtime.stream_text_turn("Protein có tác dụng gì?", min_sentence_chars=8)
+    )
+
+    assert result is not None
+    assert result.route == RuntimeRoute.KNOWLEDGE_LLM
+    assert sentences == ["Theo [K1], protein hỗ trợ cơ bắp."]
+    assert llm.stream_calls
+    assert llm.generate_calls == []
+    assert source.search_calls == [("Protein có tác dụng gì?", 4)]
 
 
 def test_stream_blocked_input_does_not_update_session_memory() -> None:
