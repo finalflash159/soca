@@ -91,6 +91,31 @@ def test_relevance_policy_is_calibratable_without_code_changes() -> None:
     assert assessment.reason == "all_hits_below_floor"
 
 
+def test_generic_lexical_overlap_is_not_enough_when_sparse_score_is_weak() -> None:
+    assessment = assess_relevance(
+        "hệ thống hoạt động hiệu quả",
+        (
+            _hit(
+                "wiki/irrelevant.md",
+                "Hệ thống",
+                "Một hệ thống hoạt động theo các bước chung.",
+                sparse_score=10.0,
+            ),
+            _hit(
+                "wiki/answer.md",
+                "Khác chủ đề",
+                "Hệ thống hoạt động hiệu quả khi các bước được kiểm tra.",
+                sparse_score=100.0,
+            ),
+        ),
+        policy=RelevancePolicy(min_lexical_coverage=0.9, min_sparse_score_ratio=0.75),
+    )
+
+    assert assessment.status == "supported"
+    assert [hit.document.path for hit in assessment.accepted_hits] == ["wiki/answer.md"]
+    assert assessment.rejected_count == 1
+
+
 def test_relevance_gate_preserves_order_across_backend_score_spaces() -> None:
     assessment = assess_relevance(
         "định lý Bayes",

@@ -52,6 +52,9 @@ class RelevanceAssessment:
     top_score: float | None
     margin: float | None
     reason: str
+    query_coverage: float | None = None
+    sparse_top_score: float | None = None
+    dense_top_score: float | None = None
 
 
 def assess_relevance(
@@ -63,6 +66,16 @@ def assess_relevance(
     resolved = policy or RelevancePolicy()
     if not hits:
         return RelevanceAssessment("insufficient", (), 0, None, None, "no_hits")
+
+    query_coverage = max((_lexical_coverage(query, hit) for hit in hits), default=0.0)
+    sparse_top_score = max(
+        (float(hit.sparse_score) for hit in hits if hit.sparse_score is not None),
+        default=None,
+    )
+    dense_top_score = max(
+        (float(hit.dense_score) for hit in hits if hit.dense_score is not None),
+        default=None,
+    )
 
     scored: list[tuple[KnowledgeHit, float | None]] = []
     max_sparse_score = max(
@@ -86,6 +99,9 @@ def assess_relevance(
                 None,
                 None,
                 "all_hits_below_floor",
+                query_coverage,
+                sparse_top_score,
+                dense_top_score,
             )
         return RelevanceAssessment(
             "weak",
@@ -94,6 +110,9 @@ def assess_relevance(
             None,
             None,
             "legacy_unscored_hits",
+            query_coverage,
+            sparse_top_score,
+            dense_top_score,
         )
 
     accepted = tuple(hit for hit, signal in explicit if signal is not None)
@@ -108,6 +127,9 @@ def assess_relevance(
             top_score,
             margin,
             "all_hits_below_floor",
+            query_coverage,
+            sparse_top_score,
+            dense_top_score,
         )
 
     status = "supported"
@@ -122,6 +144,9 @@ def assess_relevance(
         top_score,
         margin,
         reason,
+        query_coverage,
+        sparse_top_score,
+        dense_top_score,
     )
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from threading import RLock
 from typing import Literal
@@ -58,9 +58,33 @@ class HybridConfig:
 
 
 @dataclass(frozen=True)
+class RetrievalDiagnostics:
+    """Backend-local retrieval signals for the evidence contract."""
+
+    sparse_state: str = "absent"
+    dense_state: str = "absent"
+    index_state: str = "unknown"
+    sparse_top_score: float | None = None
+    dense_top_score: float | None = None
+    sparse_separation: float | None = None
+    dense_separation: float | None = None
+    query_coverage: float | None = None
+    unavailable_reason: str = ""
+
+    @property
+    def overall_state(self) -> str:
+        if self.unavailable_reason:
+            return "degraded"
+        if self.sparse_state == "absent" and self.dense_state in {"absent", "missing"}:
+            return "unavailable"
+        return "ready"
+
+
+@dataclass(frozen=True)
 class RetrievalBatch:
     hits: tuple[KnowledgeHit, ...]
     max_dense_score: float | None
+    diagnostics: RetrievalDiagnostics = field(default_factory=RetrievalDiagnostics)
 
 
 class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
@@ -94,6 +118,7 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
         self._config = config or HybridConfig()
         self._vault_index: VaultIndex | None = None
         self._dense_index: DenseIndex | None = None
+        self._last_dense_failure_reason = ""
         self._sparse_index: VaultIndex | None = None
         self._sparse: SparseChunkRetriever | None = None
         self._index_lock = RLock()
@@ -122,6 +147,7 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
         self,
     ) -> tuple[VaultIndex, DenseIndex | None, SparseChunkRetriever | None]:
         with self._index_lock:
+            self._last_dense_failure_reason = ""
             vault_index = self._vault_indexer.refresh(previous=self._vault_index)
             dense_index = self._dense_index
             self._ensure_dense_model_available()
@@ -141,6 +167,7 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
                         exc_info=True,
                     )
                     dense_index = None
+                    self._last_dense_failure_reason = "dense_index_refresh_failed"
             else:
                 dense_index = None
 
@@ -175,6 +202,11 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
         rank_lists: list[list[RankedHit]] = []
         sparse_scores: dict[str, float] = {}
         dense_scores: dict[str, float] = {}
+        sparse_state = "ready" if sparse is not None else "absent"
+        dense_state = self._legacy_dense_state(dense_index, vault_index)
+        unavailable_reason = self._last_dense_failure_reason
+        if unavailable_reason:
+            dense_state = "unavailable"
         retriever_limit = max(limit, self._config.per_retriever_limit)
         if sparse is not None:
             sparse_hits = sparse.rank(query, limit=retriever_limit)
@@ -192,6 +224,8 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
                 if self._dense_must_raise:
                     raise DenseUnavailableError("dense-only query failed") from exc
                 LOGGER.warning("Dense query failed; using sparse retrieval", exc_info=True)
+                dense_state = "unavailable"
+                unavailable_reason = "dense_query_failed"
             else:
                 dense_hits = list(dense_ranking.hits)
                 rank_lists.append(dense_hits)
@@ -204,6 +238,9 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
             max_dense_score,
             sparse_scores=sparse_scores,
             dense_scores=dense_scores,
+            sparse_state=sparse_state,
+            dense_state=dense_state,
+            unavailable_reason=unavailable_reason,
         )
 
     def _retrieve_v2(self, query: str, *, limit: int) -> RetrievalBatch:
@@ -222,6 +259,8 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
             rank_lists.append(sparse_hits)
             sparse_scores = {hit.chunk_id: hit.score for hit in sparse_hits}
         max_dense_score: float | None = None
+        dense_state = _enum_value(snapshot.dense_state)
+        unavailable_reason = ""
         if (
             self._config.dense_enabled
             and snapshot.dense_state == DenseState.READY
@@ -237,6 +276,8 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
                 if self._dense_must_raise:
                     raise DenseUnavailableError("dense-only query failed") from exc
                 LOGGER.warning("Dense query failed; using sparse retrieval", exc_info=True)
+                dense_state = "unavailable"
+                unavailable_reason = "dense_query_failed"
             else:
                 dense_hits = list(dense_ranking.hits)
                 rank_lists.append(dense_hits)
@@ -248,6 +289,9 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
             max_dense_score,
             sparse_scores=sparse_scores,
             dense_scores=dense_scores,
+            sparse_state="ready" if self._config.sparse_enabled else "absent",
+            dense_state=dense_state if self._config.dense_enabled else "absent",
+            unavailable_reason=unavailable_reason,
         )
 
     @property
@@ -267,6 +311,9 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
         *,
         sparse_scores: dict[str, float],
         dense_scores: dict[str, float],
+        sparse_state: str,
+        dense_state: str,
+        unavailable_reason: str,
     ) -> RetrievalBatch:
         hits: list[KnowledgeHit] = []
         for chunk_id, score in fused:
@@ -299,7 +346,49 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
                     fusion_score=score,
                 )
             )
-        return RetrievalBatch(tuple(hits), max_dense_score)
+        return RetrievalBatch(
+            tuple(hits),
+            max_dense_score,
+            RetrievalDiagnostics(
+                sparse_state=sparse_state,
+                dense_state=dense_state,
+                index_state="ready" if vault_index.chunks else "empty",
+                sparse_top_score=_top_score(sparse_scores),
+                dense_top_score=_top_score(dense_scores),
+                sparse_separation=_score_separation(sparse_scores),
+                dense_separation=_score_separation(dense_scores),
+                unavailable_reason=unavailable_reason,
+            ),
+        )
+
+    def _legacy_dense_state(
+        self,
+        dense_index: DenseIndex | None,
+        vault_index: VaultIndex,
+    ) -> str:
+        if not self._config.dense_enabled:
+            return "absent"
+        if self._model is None:
+            return "missing"
+        if not vault_index.chunks:
+            return "absent"
+        return "ready" if dense_index is not None else "unavailable"
 
     def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
         return list(self.retrieve(query, limit=limit).hits)
+
+
+def _enum_value(value: object) -> str:
+    candidate = getattr(value, "value", value)
+    return str(candidate)
+
+
+def _top_score(scores: dict[str, float]) -> float | None:
+    return next(iter(scores.values()), None)
+
+
+def _score_separation(scores: dict[str, float]) -> float | None:
+    values = tuple(scores.values())
+    if len(values) < 2:
+        return None
+    return float(values[0] - values[1])

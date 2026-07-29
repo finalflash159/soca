@@ -12,6 +12,16 @@ EvidenceStatus = Literal[
     "insufficient",
     "unavailable",
 ]
+EvidenceSourceState = Literal[
+    "ready",
+    "empty",
+    "degraded",
+    "missing",
+    "stale",
+    "unavailable",
+    "unknown",
+]
+EvidenceRelation = Literal["consistent", "conflicting", "unknown"]
 
 
 @dataclass(frozen=True)
@@ -23,6 +33,27 @@ class EvidenceDecision:
     margin: float | None
     rejected_count: int
     reason: str
+    source_state: EvidenceSourceState = "unknown"
+    query_coverage: float | None = None
+    score_separation: float | None = None
+    sparse_top_score: float | None = None
+    dense_top_score: float | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "source": self.source,
+            "status": self.status,
+            "hit_count": self.hit_count,
+            "top_score": self.top_score,
+            "margin": self.margin,
+            "rejected_count": self.rejected_count,
+            "reason": self.reason,
+            "source_state": self.source_state,
+            "query_coverage": self.query_coverage,
+            "score_separation": self.score_separation,
+            "sparse_top_score": self.sparse_top_score,
+            "dense_top_score": self.dense_top_score,
+        }
 
 
 @dataclass(frozen=True)
@@ -31,11 +62,27 @@ class EvidenceBundleDecision:
     decisions: tuple[EvidenceDecision, ...]
     reason: str
 
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "decisions": [decision.as_dict() for decision in self.decisions],
+            "reason": self.reason,
+        }
+
 
 class EvidenceReconciler:
     """Reconcile source-local decisions without comparing raw corpus scores."""
 
-    def reconcile(self, decisions: tuple[EvidenceDecision, ...]) -> EvidenceBundleDecision:
+    def reconcile(
+        self,
+        decisions: tuple[EvidenceDecision, ...],
+        *,
+        relation: EvidenceRelation = "unknown",
+    ) -> EvidenceBundleDecision:
+        if relation == "conflicting":
+            return EvidenceBundleDecision("conflicting", decisions, "evaluator_found_conflict")
+        if relation == "consistent":
+            return EvidenceBundleDecision("consistent", decisions, "evaluator_found_consistency")
         supported = tuple(item for item in decisions if item.status == "supported")
         if not supported:
             return EvidenceBundleDecision("unknown", decisions, "no_supported_source")
@@ -58,6 +105,11 @@ def decide_evidence(
     top_score: float | None = None,
     margin: float | None = None,
     rejected_count: int = 0,
+    source_state: EvidenceSourceState = "unknown",
+    query_coverage: float | None = None,
+    score_separation: float | None = None,
+    sparse_top_score: float | None = None,
+    dense_top_score: float | None = None,
 ) -> EvidenceDecision:
     if unavailable:
         return EvidenceDecision(
@@ -68,6 +120,11 @@ def decide_evidence(
             None,
             rejected_count,
             "retrieval_unavailable",
+            "unavailable",
+            query_coverage,
+            score_separation,
+            sparse_top_score,
+            dense_top_score,
         )
     if not hits:
         return EvidenceDecision(
@@ -78,6 +135,11 @@ def decide_evidence(
             margin,
             rejected_count,
             reason or "no_hits",
+            source_state,
+            query_coverage,
+            score_separation,
+            sparse_top_score,
+            dense_top_score,
         )
     if top_score is None:
         score = getattr(hits[0], "score", None)
@@ -94,6 +156,11 @@ def decide_evidence(
         margin,
         rejected_count,
         reason or "hits_present",
+        source_state,
+        query_coverage,
+        score_separation,
+        sparse_top_score,
+        dense_top_score,
     )
 
 
@@ -102,5 +169,7 @@ __all__ = [
     "EvidenceDecision",
     "EvidenceReconciler",
     "EvidenceStatus",
+    "EvidenceSourceState",
+    "EvidenceRelation",
     "decide_evidence",
 ]

@@ -75,6 +75,12 @@ class PromptContextAssembler:
             rejected_hit_count=evidence_context.rejected_hit_count,
             top_relevance=evidence_context.top_relevance,
             relevance_margin=evidence_context.relevance_margin,
+            score_separation=evidence_context.score_separation,
+            query_coverage=evidence_context.query_coverage,
+            sparse_top_score=evidence_context.sparse_top_score,
+            dense_top_score=evidence_context.dense_top_score,
+            retrieval_state=evidence_context.retrieval_state,
+            retrieval_reason=evidence_context.retrieval_reason,
             core_text=core_working.core_text if plan.include_core else "",
             archive_text=archive_text,
         )

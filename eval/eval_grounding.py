@@ -88,8 +88,18 @@ def run_benchmark(
         records: list[dict[str, Any]] = []
         for row in rows:
             started = time.perf_counter()
-            raw_hits = source.search(row["query"], limit=5)
-            context = builder.build_from_hits(row["query"], tuple(raw_hits))
+            retrieve = getattr(source, "retrieve", None)
+            if callable(retrieve):
+                batch = retrieve(row["query"], limit=5)
+                raw_hits = tuple(batch.hits)
+                context = builder.build_from_hits(
+                    row["query"],
+                    raw_hits,
+                    diagnostics=batch.diagnostics,
+                )
+            else:
+                raw_hits = tuple(source.search(row["query"], limit=5))
+                context = builder.build_from_hits(row["query"], raw_hits)
             raw_paths = list(dict.fromkeys(hit.document.path for hit in raw_hits))
             accepted_paths = list(dict.fromkeys(hit.document.path for hit in context.hits))
             records.append(
@@ -100,6 +110,11 @@ def run_benchmark(
                     "accepted_paths": accepted_paths,
                     "evidence_status": context.evidence_status,
                     "evidence_reason": context.evidence_reason,
+                    "retrieval_state": context.retrieval_state,
+                    "query_coverage": context.query_coverage,
+                    "score_separation": context.score_separation,
+                    "sparse_top_score": context.sparse_top_score,
+                    "dense_top_score": context.dense_top_score,
                     "latency_ms": (time.perf_counter() - started) * 1000,
                 }
             )

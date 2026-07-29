@@ -36,6 +36,12 @@ class MemoryContext:
     rejected_hit_count: int = 0
     top_relevance: float | None = None
     relevance_margin: float | None = None
+    score_separation: float | None = None
+    query_coverage: float | None = None
+    sparse_top_score: float | None = None
+    dense_top_score: float | None = None
+    retrieval_state: str = "unknown"
+    retrieval_reason: str = ""
     core_text: str = ""
     archive_text: str = ""
 
@@ -156,24 +162,44 @@ class MemoryContextBuilder:
                 rejected_hit_count = assessment.rejected_count
                 top_relevance = assessment.top_score
                 relevance_margin = assessment.margin
+                score_separation = assessment.margin
+                query_coverage = assessment.query_coverage
+                sparse_top_score = assessment.sparse_top_score
+                dense_top_score = assessment.dense_top_score
             elif accepted_hits:
                 evidence_status = _memory_status(profile.evidence_status)
                 evidence_reason = profile.evidence_reason or "legacy_memory_hits"
                 rejected_hit_count = profile.rejected_hit_count
                 top_relevance = profile.top_relevance
                 relevance_margin = profile.relevance_margin
+                score_separation = profile.score_separation
+                query_coverage = profile.query_coverage
+                sparse_top_score = profile.sparse_top_score
+                dense_top_score = profile.dense_top_score
             else:
                 evidence_status = "insufficient"
                 evidence_reason = profile.evidence_reason or "no_hits"
                 rejected_hit_count = profile.rejected_hit_count
                 top_relevance = profile.top_relevance
                 relevance_margin = profile.relevance_margin
+                score_separation = profile.score_separation
+                query_coverage = profile.query_coverage
+                sparse_top_score = profile.sparse_top_score
+                dense_top_score = profile.dense_top_score
         else:
-            evidence_status = "weak" if archive_profile_text else "insufficient"
-            evidence_reason = "profile_blob" if archive_profile_text else "no_hits"
+            if profile.degraded_reason == "retrieval_unavailable":
+                evidence_status = "unavailable"
+                evidence_reason = "retrieval_unavailable"
+            else:
+                evidence_status = "weak" if archive_profile_text else "insufficient"
+                evidence_reason = "profile_blob" if archive_profile_text else "no_hits"
             rejected_hit_count = 0
             top_relevance = None
             relevance_margin = None
+            score_separation = None
+            query_coverage = profile.query_coverage
+            sparse_top_score = profile.sparse_top_score
+            dense_top_score = profile.dense_top_score
         return MemoryContext(
             profile_text=core_profile_text or archive_profile_text,
             session_text=session_text,
@@ -187,6 +213,20 @@ class MemoryContextBuilder:
             rejected_hit_count=rejected_hit_count,
             top_relevance=top_relevance,
             relevance_margin=relevance_margin,
+            score_separation=score_separation,
+            query_coverage=query_coverage,
+            sparse_top_score=sparse_top_score,
+            dense_top_score=dense_top_score,
+            retrieval_state=(
+                "unavailable"
+                if profile.degraded_reason == "retrieval_unavailable"
+                else "ready" if accepted_hits or archive_profile_text else "empty"
+            ),
+            retrieval_reason=(
+                profile.degraded_reason
+                if profile.degraded_reason == "retrieval_unavailable"
+                else ""
+            ),
             core_text=core_profile_text if include_core else "",
             archive_text=archive_profile_text if include_archive else "",
         )
@@ -226,4 +266,4 @@ def _format_retrieved_hits(hits: tuple[object, ...]) -> str:
 
 
 def _memory_status(value: str) -> str:
-    return value if value in {"supported", "weak", "insufficient"} else "weak"
+    return value if value in {"supported", "weak", "insufficient", "unavailable"} else "weak"
