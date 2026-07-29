@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -113,6 +114,21 @@ class FakeRetrievedMemory:
         )
 
 
+class EmptyRetrievedMemory:
+    def read_profile(self) -> str:
+        return ""
+
+    def retrieve_profile(self, query: str) -> MemoryProfileResult:
+        del query
+        return MemoryProfileResult(
+            text="",
+            mode="retrieved",
+            evidence_status="insufficient",
+            evidence_reason="no_hits",
+            retrieval_state="empty",
+        )
+
+
 class SpyLLM:
     def __init__(self, text: str = "Đây là câu trả lời.") -> None:
         self.text = text
@@ -179,6 +195,47 @@ class SequenceLLM(SpyLLM):
     ) -> LLMResult:
         self.text = self.responses.pop(0)
         return super().generate(user_msg, max_tokens, temperature, top_p, inject_persona)
+
+
+class StructuredRepairLLM(SequenceLLM):
+    def __init__(self, first_response: str, structured_response: str) -> None:
+        super().__init__([first_response])
+        self.structured_response = structured_response
+        self.structured_calls: list[dict[str, Any]] = []
+
+    def generate_structured(
+        self,
+        user_msg: str,
+        *,
+        schema_name: str,
+        schema: Mapping[str, Any],
+        max_tokens: int,
+        temperature: float = 0.0,
+        top_p: float = 1.0,
+        inject_persona: bool = False,
+        zero_data_retention: bool = True,
+    ) -> LLMResult:
+        self.structured_calls.append(
+            {
+                "user_msg": user_msg,
+                "schema_name": schema_name,
+                "schema": schema,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "top_p": top_p,
+                "inject_persona": inject_persona,
+                "zero_data_retention": zero_data_retention,
+            }
+        )
+        return LLMResult(
+            text=self.structured_response,
+            prompt=user_msg,
+            n_prompt_tokens=10,
+            n_completion_tokens=5,
+            ttft_ms=1.0,
+            total_latency_ms=2.0,
+            tokens_per_second=100.0,
+        )
 
 
 def test_blocks_private_path_before_tool_or_llm() -> None:
@@ -273,12 +330,62 @@ def test_llm_repair_retries_once_when_citations_are_missing() -> None:
     assert result.trace.answer_repair_attempted is True
     assert result.trace.answer_repair_succeeded is True
     assert len(llm.calls) == 2
+    repair_prompt = llm.calls[1]["user_msg"]
+    assert "Nhãn citation hợp lệ duy nhất cho lượt này: [K1]." in repair_prompt
+    assert repair_prompt.rstrip().endswith("Câu trả lời đã sửa:")
     assert result.usage is not None
     assert result.usage.prompt_tokens == 20
     assert result.usage.completion_tokens == 10
 
 
-def test_llm_repair_skips_second_call_when_repair_prompt_cannot_fit() -> None:
+def test_structured_repair_requires_model_to_select_a_valid_citation() -> None:
+    source = FakeKnowledgeSource()
+    llm = StructuredRepairLLM(
+        "Protein hỗ trợ duy trì cơ bắp.",
+        '{"answer":"Protein hỗ trợ duy trì cơ bắp.","citations":["[K1]"]}',
+    )
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        knowledge_builder=KnowledgeContextBuilder(source),
+    )
+
+    result = runtime.run_text_turn("wiki: chất đạm")
+
+    assert result.response_text == "Protein hỗ trợ duy trì cơ bắp. [K1]"
+    assert result.trace is not None
+    assert result.trace.answer_validation.status == "valid"
+    assert result.trace.answer_repair_succeeded is True
+    assert llm.structured_calls[0]["schema"]["properties"]["citations"]["items"]["enum"] == ["[K1]"]
+
+
+def test_llm_blocks_grounded_answer_when_single_repair_still_has_no_citation() -> None:
+    source = FakeKnowledgeSource()
+    llm = SequenceLLM(
+        [
+            "Protein hỗ trợ duy trì cơ bắp.",
+            "Protein vẫn hỗ trợ duy trì cơ bắp.",
+        ]
+    )
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        knowledge_builder=KnowledgeContextBuilder(source),
+    )
+
+    result = runtime.run_text_turn("wiki: chất đạm")
+
+    assert result.blocked is True
+    assert result.route == RuntimeRoute.BLOCKED
+    assert "dẫn nguồn chưa hợp lệ" in result.response_text
+    assert result.trace is not None
+    assert result.trace.answer_repair_attempted is True
+    assert result.trace.answer_repair_succeeded is False
+    assert result.trace.answer_validation.status == "missing"
+    assert len(llm.calls) == 2
+
+
+def test_llm_blocks_uncited_answer_when_repair_prompt_cannot_fit() -> None:
     source = FakeKnowledgeSource()
     llm = SequenceLLM(
         [
@@ -292,17 +399,21 @@ def test_llm_repair_skips_second_call_when_repair_prompt_cannot_fit() -> None:
         knowledge_builder=KnowledgeContextBuilder(source),
         options=RuntimeOptions(
             max_tokens=64,
-            model_context_window=300,
+            model_context_window=350,
             context_safety_margin_tokens=0,
         ),
     )
 
     result = runtime.run_text_turn("wiki: " + ("Bayes " * 90))
 
-    assert result.response_text == "Protein hỗ trợ duy trì cơ bắp."
+    assert result.blocked is True
+    assert result.route == RuntimeRoute.BLOCKED
+    assert "dẫn nguồn chưa hợp lệ" in result.response_text
     assert result.trace is not None
     assert result.trace.answer_repair_attempted is True
     assert result.trace.answer_repair_succeeded is False
+    assert result.trace.answer_policy == "grounded"
+    assert result.trace.answer_validation.status == "missing"
     assert len(llm.calls) == 1
 
 
@@ -317,9 +428,7 @@ def test_filtered_knowledge_citations_do_not_include_rejected_hits() -> None:
 
     result = runtime.run_text_turn("wiki: định lý Bayes")
 
-    assert [citation.path for citation in result.citations] == [
-        "wiki/dinh-duong/chat-dam.md"
-    ]
+    assert [citation.path for citation in result.citations] == ["wiki/dinh-duong/chat-dam.md"]
     assert "wiki/onnx.md" not in llm.calls[0]["user_msg"]
 
 
@@ -341,6 +450,11 @@ def test_explicit_memory_search_synthesizes_retrieved_context_with_llm() -> None
     assert "Memory:" in llm.calls[0]["user_msg"]
     assert "Chọn TTS local vì riêng tư" in llm.calls[0]["user_msg"]
     assert result.trace.evidence_decisions[-1].status == "weak"
+    assert result.trace.answer_policy == "grounded"
+    assert result.trace.evidence_status == "weak"
+    assert result.trace.citation_count == 1
+    assert result.trace.memory_access_plan.archive_mode == "semantic"
+    assert result.trace.memory_access_plan.reason == "explicit_memory_search"
 
 
 def test_empty_knowledge_search_result_does_not_require_citation() -> None:
@@ -374,6 +488,26 @@ def test_empty_knowledge_search_passes_empty_context_to_llm() -> None:
     assert "No local knowledge notes found." in llm.calls[0]["user_msg"]
     assert "grounding" in llm.calls[0]["user_msg"]
     assert "chưa đủ thông tin" in result.response_text
+
+
+def test_empty_memory_search_passes_abstention_policy_to_llm() -> None:
+    llm = SpyLLM(text="Mình chưa tìm thấy đủ thông tin trong memory.")
+    builder = MemoryContextBuilder(long_term=EmptyRetrievedMemory())
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([MemorySearchTool(builder)]),
+    )
+
+    result = runtime.run_text_turn("memory: quyết định không tồn tại")
+
+    assert result.route == RuntimeRoute.MEMORY_LLM
+    assert result.trace is not None
+    assert result.trace.used_tool is True
+    assert result.trace.answer_policy == "abstain"
+    assert result.trace.evidence_status == "insufficient"
+    assert result.trace.citation_count == 0
+    assert "Không có bằng chứng cục bộ đủ dùng" in llm.calls[0]["user_msg"]
+    assert "No local memory notes found" in llm.calls[0]["user_msg"]
 
 
 def test_empty_llm_response_is_not_rendered_as_success() -> None:

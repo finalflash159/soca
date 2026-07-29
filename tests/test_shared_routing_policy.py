@@ -57,8 +57,8 @@ def _router(tmp_path: Path):
 def test_chat_and_voice_use_the_same_retrieval_policy(tmp_path: Path) -> None:
     chat_source = FakeKnowledgeSource()
     voice_source = FakeKnowledgeSource()
-    chat_llm = SpyLLM()
-    voice_llm = SpyLLM()
+    chat_llm = SpyLLM(text="Theo [K1], ghi chú nói về Bayes.")
+    voice_llm = SpyLLM(text="Theo [K1], ghi chú nói về Bayes.")
     chat_runtime = AssistantRuntime(
         llm=chat_llm,
         knowledge_builder=KnowledgeContextBuilder(chat_source),

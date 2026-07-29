@@ -17,6 +17,7 @@ from soca.core import (
     VoicePipeline,
 )
 from soca.core.audio_join import crossfade_pcm
+from soca.memory import MemoryAccessPlan
 from soca.tts import TTSResult
 
 
@@ -183,12 +184,55 @@ def test_runtime_summary_includes_memory_degradation() -> None:
             memory_degraded_reason="retrieval_unavailable",
         ),
     )
-    pipeline = VoicePipeline(asr=FakeASR("xin chào"), llm=object(), tts=SpyTTS(), assistant_runtime=runtime)
+    pipeline = VoicePipeline(
+        asr=FakeASR("xin chào"), llm=object(), tts=SpyTTS(), assistant_runtime=runtime
+    )
 
     event = pipeline._runtime_summary_event(runtime_result)
 
     assert event.metadata["memory_mode"] == "degraded"
     assert event.metadata["memory_degraded_reason"] == "retrieval_unavailable"
+
+
+def test_runtime_summary_includes_grounding_contract() -> None:
+    runtime = SpyStreamingRuntime(["Câu trả lời đủ dài."])
+    plan = MemoryAccessPlan(
+        archive_mode="semantic",
+        archive_query="quyết định TTS",
+        reason="semantic_source_selection",
+    )
+    runtime_result = RuntimeResult(
+        response_text="Câu trả lời đủ dài [M1].",
+        route=RuntimeRoute.MEMORY_LLM,
+        trace=RuntimeTrace(
+            route=RuntimeRoute.MEMORY_LLM,
+            evidence_status="supported",
+            answer_policy="grounded",
+            answer_policy_reason="supported_evidence",
+            grounding_policy_version="grounding-v1",
+            citation_count=1,
+            memory_access_plan=plan,
+        ),
+    )
+    pipeline = VoicePipeline(
+        asr=FakeASR("xin chào"),
+        llm=object(),
+        tts=SpyTTS(),
+        assistant_runtime=runtime,
+    )
+
+    event = pipeline._runtime_summary_event(runtime_result)
+
+    assert event.metadata["evidence_status"] == "supported"
+    assert event.metadata["answer_policy"] == "grounded"
+    assert event.metadata["citation_count"] == 1
+    assert event.metadata["memory_access_plan"] == {
+        "include_core": True,
+        "include_working": True,
+        "archive_mode": "semantic",
+        "archive_query": "quyết định TTS",
+        "reason": "semantic_source_selection",
+    }
 
 
 def test_pipeline_stream_first_tts_carries_ttfa_metric() -> None:
@@ -384,8 +428,7 @@ def test_session_writes_first_chunk_before_second_synthesis_finishes() -> None:
     assert tts.calls == 2
     assert session.finished is True
     assert any(
-        event.type == "audio" and "audible_ttfa_ms" in (event.metadata or {})
-        for event in events
+        event.type == "audio" and "audible_ttfa_ms" in (event.metadata or {}) for event in events
     )
 
 

@@ -59,6 +59,12 @@ class RuntimeTrace:
     router_margin: float | None = None
     evidence_decisions: tuple[Any, ...] = ()
     evidence_bundle: Any | None = None
+    evidence_status: str = "not_requested"
+    memory_access_plan: Any | None = None
+    answer_policy: str = "free_chat"
+    answer_policy_reason: str = "no_retrieval_evidence"
+    grounding_policy_version: str = ""
+    citation_count: int = 0
     answer_validation: Any | None = None
     answer_repair_attempted: bool = False
     answer_repair_succeeded: bool = False

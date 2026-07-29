@@ -36,6 +36,19 @@ class _ShadowGroundedness:
 _CITATION_LIKE_RE = re.compile(r"\[(?P<token>[KMkm][A-Za-z0-9]*)\]")
 
 
+def expected_citation_labels(
+    citations: tuple[KnowledgeCitation, ...],
+) -> tuple[str, ...]:
+    labels: list[str] = []
+    counters = {"knowledge": 0, "memory": 0}
+    for citation in citations:
+        source = citation.source if citation.source in counters else "knowledge"
+        counters[source] += 1
+        prefix = "K" if source == "knowledge" else "M"
+        labels.append(f"[{prefix}{counters[source]}]")
+    return tuple(labels)
+
+
 def validate_grounded_answer(
     text: str,
     citations: tuple[KnowledgeCitation, ...],
@@ -47,17 +60,10 @@ def validate_grounded_answer(
     Citation labels are deterministic. Claim entailment stays shadow-only until
     a held-out human calibration set establishes an acceptable judge.
     """
-    expected: list[str] = []
-    counters = {"knowledge": 0, "memory": 0}
-    for citation in citations:
-        source = citation.source if citation.source in counters else "knowledge"
-        counters[source] += 1
-        expected.append(f"[{'K' if source == 'knowledge' else 'M'}{counters[source]}]")
+    expected = expected_citation_labels(citations)
     if not expected:
         return AnswerValidationDecision("not_applicable", (), (), "no_evidence_context")
-    mentioned = tuple(
-        f"[{match.group('token')}]" for match in _CITATION_LIKE_RE.finditer(text)
-    )
+    mentioned = tuple(f"[{match.group('token')}]" for match in _CITATION_LIKE_RE.finditer(text))
     shadow = (
         _shadow_groundedness(text, citations, evidence)
         if evidence
@@ -67,7 +73,7 @@ def validate_grounded_answer(
     if unknown:
         return AnswerValidationDecision(
             "invalid",
-            tuple(expected),
+            expected,
             tuple(label for label in mentioned if label in expected),
             "unknown_provenance_label",
             unknown_labels=unknown,
@@ -81,7 +87,7 @@ def validate_grounded_answer(
     if not found:
         return AnswerValidationDecision(
             "missing",
-            tuple(expected),
+            expected,
             (),
             "no_provenance_label",
             groundedness=shadow.status,
@@ -93,7 +99,7 @@ def validate_grounded_answer(
     if len(found) != len(expected):
         return AnswerValidationDecision(
             "partial",
-            tuple(expected),
+            expected,
             found,
             "partial_provenance_labels",
             groundedness=shadow.status,
@@ -105,7 +111,7 @@ def validate_grounded_answer(
         )
     return AnswerValidationDecision(
         "valid",
-        tuple(expected),
+        expected,
         found,
         "labels_present",
         groundedness=shadow.status,
@@ -192,4 +198,8 @@ def _sentences(text: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in re.split(r"[.!?。！？\n]+", text) if part.strip())
 
 
-__all__ = ["AnswerValidationDecision", "validate_grounded_answer"]
+__all__ = [
+    "AnswerValidationDecision",
+    "expected_citation_labels",
+    "validate_grounded_answer",
+]

@@ -1896,3 +1896,32 @@ The answer path was exercised end-to-end with no showcase/demo notes:
 The remote run used the existing `.env` key only in memory; the key and full
 transcript were not written to a result artifact. This is a contract smoke
 capture, not a provider quality comparison.
+
+### P5 — Knowledge/Memory grounding parity
+
+Run date: 2026-07-29. Branch:
+`feat/voice-knowledge-p5-grounding-parity`, based on merged P4 `main` at
+`ba35964`.
+
+Knowledge and archive Memory now share one answer-policy contract. Supported
+evidence enters the LLM prompt and requires source-correct labels (`[K#]` or
+`[M#]`). Empty but healthy retrieval enters the same LLM path with an explicit
+abstention policy. A missing/invalid label triggers at most one repair; engines
+with structured output must select from a per-turn JSON Schema enum generated
+from the selected citations. A failed repair is blocked rather than released.
+There is no domain answer table, factual regex, or runtime-inserted answer.
+
+Real-flow contract smoke:
+
+| Engine | Knowledge answerable | Memory answerable | Memory unanswerable | Interpretation |
+| --- | --- | --- | --- | --- |
+| Local `arcee_vylinh_3b_q4_k_m` | valid `[K1]` after one structured repair | valid `[M1]` after one structured repair | abstain, 0 citations, no repair | offline wiring/fallback only |
+| OpenRouter `google/gemini-3.5-flash-lite` | valid `[K1]`, no repair | valid `[M1]`, no repair | abstain, 0 citations, no repair | primary real-model quality path for P6 |
+
+Remote usage for the three recorded turns was respectively
+`393/61`, `381/24`, and `344/35` prompt/completion tokens. End-to-end
+non-streaming latency was approximately `1833 ms`, `1727 ms`, and `778 ms`.
+These three showcase-vault prompts verify wiring and policy behavior only; they
+are not a retrieval or answer-quality benchmark. P6 uses the sealed public
+evaluation sets and emphasizes remote-model quality. The local 3B result is not
+weighted as equivalent to the remote result.

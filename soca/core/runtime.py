@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -7,7 +8,11 @@ from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any, Literal, Protocol, cast
 
-from soca.core.answer_validation import AnswerValidationDecision, validate_grounded_answer
+from soca.core.answer_validation import (
+    AnswerValidationDecision,
+    expected_citation_labels,
+    validate_grounded_answer,
+)
 from soca.core.context_budget import (
     PromptAssembler,
     PromptBudgetError,
@@ -19,9 +24,15 @@ from soca.core.evidence import (
     EvidenceBundleDecision,
     EvidenceDecision,
     EvidenceReconciler,
+    EvidenceRelation,
     EvidenceSourceState,
     EvidenceStatus,
     decide_evidence,
+)
+from soca.core.grounding_policy import (
+    GroundingTurnPolicy,
+    aggregate_evidence_status,
+    select_grounding_policy,
 )
 from soca.core.guardrails import (
     DEFAULT_POLICY,
@@ -55,7 +66,7 @@ from soca.knowledge import (
     KnowledgeDocument,
     KnowledgeHit,
 )
-from soca.llm import LLMEngine
+from soca.llm import LLMEngine, StructuredLLMEngine
 from soca.llm.providers import RemoteLLMError
 from soca.memory import (
     MemoryAccessPlan,
@@ -64,9 +75,12 @@ from soca.memory import (
     PromptContextAssembler,
 )
 from soca.prompts import (
+    ABSTENTION_GROUNDING_INSTRUCTIONS,
+    JOINT_GROUNDING_INSTRUCTIONS,
     KNOWLEDGE_GROUNDING_INSTRUCTIONS,
     MEMORY_GROUNDING_INSTRUCTIONS,
     SOCA_RUNTIME_SYSTEM_PROMPT,
+    UNAVAILABLE_GROUNDING_INSTRUCTIONS,
 )
 from soca.tools import ToolCall, ToolResult, ToolRuntime
 
@@ -261,6 +275,8 @@ class _TraceDraft:
     answer_validation: AnswerValidationDecision | None = None
     answer_repair_attempted: bool = False
     answer_repair_succeeded: bool = False
+    memory_access_plan: MemoryAccessPlan | None = None
+    answer_policy: GroundingTurnPolicy | None = None
     prompt_manifest: dict[str, Any] | None = None
 
 
@@ -824,18 +840,33 @@ class AssistantRuntime:
             tuple(draft.citations),
             evidence=tuple([*draft.knowledge_hits, *draft.memory_hits]),
         )
+        grounding_policy = self._grounding_policy(draft)
+        if (
+            grounding_policy.validation_action(
+                draft.answer_validation,
+                repair_attempted=True,
+            )
+            == "block"
+        ):
+            yield RuntimeStreamEvent(type="sentence", text=grounding_policy.block_message)
+            result = self._result(
+                frame,
+                draft,
+                response_text=grounding_policy.block_message,
+                route=RuntimeRoute.BLOCKED,
+                used_tool=used_tool,
+                used_llm=True,
+                blocked=True,
+                usage=usage,
+            )
+            yield RuntimeStreamEvent(type="result", result=result)
+            return
         self._append_safe_session_turn(frame.text, full_text)
         result = self._result(
             frame,
             draft,
             response_text=full_text,
-            route=(
-                RuntimeRoute.KNOWLEDGE_LLM
-                if knowledge_context is not None
-                else RuntimeRoute.MEMORY_LLM
-                if memory_context is not None and memory_context.citations
-                else RuntimeRoute.FREE_CHAT
-            ),
+            route=self._llm_route(draft, memory_context, knowledge_context),
             used_tool=used_tool,
             used_llm=True,
             usage=usage,
@@ -933,9 +964,7 @@ class AssistantRuntime:
                     top_score=knowledge_context.top_relevance,
                     margin=knowledge_context.relevance_margin,
                     rejected_count=knowledge_context.rejected_hit_count,
-                    source_state=cast(
-                        EvidenceSourceState, knowledge_context.retrieval_state
-                    ),
+                    source_state=cast(EvidenceSourceState, knowledge_context.retrieval_state),
                     query_coverage=knowledge_context.query_coverage,
                     score_separation=knowledge_context.score_separation,
                     sparse_top_score=knowledge_context.sparse_top_score,
@@ -943,6 +972,13 @@ class AssistantRuntime:
                 )
             )
         elif tool_call.name == "memory.search":
+            draft.memory_access_plan = MemoryAccessPlan(
+                include_core=False,
+                include_working=False,
+                archive_mode="semantic",
+                archive_query=str(tool_call.arguments.get("query") or frame.text),
+                reason="explicit_memory_search",
+            )
             memory_context = self._memory_context_from_tool_result(
                 frame,
                 tool_call,
@@ -960,9 +996,7 @@ class AssistantRuntime:
                     top_score=memory_context.top_relevance,
                     margin=memory_context.relevance_margin,
                     rejected_count=memory_context.rejected_hit_count,
-                    source_state=cast(
-                        EvidenceSourceState, memory_context.retrieval_state
-                    ),
+                    source_state=cast(EvidenceSourceState, memory_context.retrieval_state),
                     query_coverage=memory_context.query_coverage,
                     score_separation=memory_context.score_separation,
                     sparse_top_score=memory_context.sparse_top_score,
@@ -971,9 +1005,7 @@ class AssistantRuntime:
             )
         draft.citations.extend(citations)
         if draft.evidence_decisions:
-            draft.evidence_bundle = EvidenceReconciler().reconcile(
-                tuple(draft.evidence_decisions)
-            )
+            draft.evidence_bundle = EvidenceReconciler().reconcile(tuple(draft.evidence_decisions))
 
         return _PreparedToolTurn(
             result=tool_result,
@@ -1065,15 +1097,11 @@ class AssistantRuntime:
                             line_end = None
                         try:
                             score = float(raw_hit.get("score", 0.0))
-                            retrieval_backend = str(
-                                raw_hit.get("retrieval_backend", "unknown")
-                            )
+                            retrieval_backend = str(raw_hit.get("retrieval_backend", "unknown"))
                             optional_scores: dict[str, float | None] = {}
                             for field in ("sparse_score", "dense_score", "fusion_score"):
                                 value = raw_hit.get(field)
-                                optional_scores[field] = (
-                                    float(value) if value is not None else None
-                                )
+                                optional_scores[field] = float(value) if value is not None else None
                             hits.append(
                                 KnowledgeHit(
                                     document=KnowledgeDocument(
@@ -1150,15 +1178,13 @@ class AssistantRuntime:
                 if not path or not snippet:
                     continue
                 try:
-                            score = float(raw_hit.get("score", 0.0))
-                            optional_scores: dict[str, float | None] = {}
-                            for field in ("sparse_score", "dense_score", "fusion_score"):
-                                value = raw_hit.get(field)
-                                optional_scores[field] = (
-                                    float(value) if value is not None else None
-                                )
-                            memory_hits.append(
-                                KnowledgeHit(
+                    score = float(raw_hit.get("score", 0.0))
+                    optional_scores: dict[str, float | None] = {}
+                    for field in ("sparse_score", "dense_score", "fusion_score"):
+                        value = raw_hit.get(field)
+                        optional_scores[field] = float(value) if value is not None else None
+                    memory_hits.append(
+                        KnowledgeHit(
                             document=KnowledgeDocument(
                                 id=path,
                                 path=path,
@@ -1169,9 +1195,7 @@ class AssistantRuntime:
                             snippet=snippet,
                             line_start=raw_hit.get("line_start"),
                             line_end=raw_hit.get("line_end"),
-                            retrieval_backend=str(
-                                raw_hit.get("retrieval_backend", "memory")
-                            ),
+                            retrieval_backend=str(raw_hit.get("retrieval_backend", "memory")),
                             sparse_score=optional_scores["sparse_score"],
                             dense_score=optional_scores["dense_score"],
                             fusion_score=optional_scores["fusion_score"],
@@ -1187,24 +1211,14 @@ class AssistantRuntime:
                 if raw_status in {"supported", "weak", "insufficient", "unavailable"}
                 else "weak"
             )
-            evidence_reason = str(
-                tool_result.data.get("evidence_reason", "retrieved_hits")
-            )
-            rejected_hit_count = _int_metadata(
-                tool_result.data.get("rejected_hit_count", 0)
-            )
+            evidence_reason = str(tool_result.data.get("evidence_reason", "retrieved_hits"))
+            rejected_hit_count = _int_metadata(tool_result.data.get("rejected_hit_count", 0))
             top_relevance = _float_metadata(tool_result.data.get("top_relevance"))
-            relevance_margin = _float_metadata(
-                tool_result.data.get("relevance_margin")
-            )
+            relevance_margin = _float_metadata(tool_result.data.get("relevance_margin"))
             query_coverage = _float_metadata(tool_result.data.get("query_coverage"))
-            sparse_top_score = _float_metadata(
-                tool_result.data.get("sparse_top_score")
-            )
+            sparse_top_score = _float_metadata(tool_result.data.get("sparse_top_score"))
             dense_top_score = _float_metadata(tool_result.data.get("dense_top_score"))
-            score_separation = _float_metadata(
-                tool_result.data.get("score_separation")
-            )
+            score_separation = _float_metadata(tool_result.data.get("score_separation"))
             retrieval_state = str(tool_result.data.get("retrieval_state", "ready"))
             retrieval_reason = str(tool_result.data.get("retrieval_reason", ""))
             accepted_paths = {hit.document.path for hit in memory_hits}
@@ -1256,9 +1270,7 @@ class AssistantRuntime:
             citations=(),
             mode=str(tool_result.data.get("mode", "retrieved")),
             evidence_status=evidence_status,
-            evidence_reason=str(
-                tool_result.data.get("evidence_reason", retrieval_reason)
-            ),
+            evidence_reason=str(tool_result.data.get("evidence_reason", retrieval_reason)),
             retrieval_state=retrieval_state,
             retrieval_reason=retrieval_reason,
         )
@@ -1342,20 +1354,37 @@ class AssistantRuntime:
             citations,
             evidence=evidence,
         )
-        if answer_validation.status in {"missing", "invalid"} and citations:
-            response_text, llm_result, repaired_usage, answer_validation = (
-                self._repair_answer_once(
-                    prompt,
-                    response_text,
-                    citations,
-                    evidence,
-                    draft,
-                    llm_result,
-                    usage,
-                )
+        grounding_policy = self._grounding_policy(draft)
+        validation_action = grounding_policy.validation_action(
+            answer_validation,
+            repair_attempted=False,
+        )
+        if validation_action == "repair":
+            response_text, llm_result, repaired_usage, answer_validation = self._repair_answer_once(
+                prompt,
+                response_text,
+                citations,
+                evidence,
+                draft,
+                llm_result,
+                usage,
             )
             if repaired_usage is not None:
                 usage = usage.combine(repaired_usage) if usage is not None else repaired_usage
+        validation_action = grounding_policy.validation_action(
+            answer_validation,
+            repair_attempted=draft.answer_repair_attempted,
+        )
+        if validation_action == "block":
+            draft.answer_validation = answer_validation
+            return self._blocked_result(
+                frame,
+                draft,
+                reason=grounding_policy.block_message,
+                route=RuntimeRoute.BLOCKED,
+                llm_result=llm_result,
+                usage=usage,
+            )
 
         with self._stage(draft, "output_guardrail"):
             output_event = check_final_output(
@@ -1383,13 +1412,7 @@ class AssistantRuntime:
             frame,
             draft,
             response_text=response_text,
-            route=(
-                RuntimeRoute.KNOWLEDGE_LLM
-                if knowledge_context is not None
-                else RuntimeRoute.MEMORY_LLM
-                if memory_context is not None and memory_context.citations
-                else RuntimeRoute.FREE_CHAT
-            ),
+            route=self._llm_route(draft, memory_context, knowledge_context),
             used_tool=used_tool,
             used_llm=True,
             llm_result=llm_result,
@@ -1410,15 +1433,22 @@ class AssistantRuntime:
         try:
             llm = self.llm
             if llm is None:
-                return previous_answer, llm_result, usage, validate_grounded_answer(
+                return (
                     previous_answer,
-                    citations,
-                    evidence=evidence,
+                    llm_result,
+                    usage,
+                    validate_grounded_answer(
+                        previous_answer,
+                        citations,
+                        evidence=evidence,
+                    ),
                 )
+            valid_labels = ", ".join(expected_citation_labels(citations))
             repair_instruction = (
                 "Yêu cầu sửa câu trả lời trước khi gửi người dùng:\n"
                 "Viết lại duy nhất câu trả lời cuối. Chỉ dùng bằng chứng đã chọn. "
-                "Mỗi khẳng định dựa trên nguồn phải có citation hợp lệ [K#] hoặc [M#]. "
+                f"Nhãn citation hợp lệ duy nhất cho lượt này: {valid_labels}. "
+                "Mỗi khẳng định dựa trên nguồn phải có ít nhất một nhãn hợp lệ. "
                 "Không thêm thông tin không có trong bằng chứng; nếu bằng chứng không đủ, "
                 "nói rõ là chưa đủ thông tin."
             )
@@ -1442,9 +1472,15 @@ class AssistantRuntime:
                     ),
                     PromptComponent(
                         "previous_answer",
-                        previous_answer,
-                        priority=20,
-                        required=False,
+                        "Câu trả lời cần sửa:\n" + previous_answer,
+                        priority=0,
+                        required=True,
+                    ),
+                    PromptComponent(
+                        "repair_answer_prefix",
+                        "Câu trả lời đã sửa:",
+                        priority=0,
+                        required=True,
                     ),
                 ),
                 requested_output_tokens=self._effective_max_tokens(draft),
@@ -1452,27 +1488,69 @@ class AssistantRuntime:
             if isinstance(draft.prompt_manifest, dict):
                 draft.prompt_manifest["repair_prompt_manifest"] = repair_manifest.to_dict()
             with self._stage(draft, "answer_repair"):
-                repaired_result = llm.generate(
-                    repair_prompt,
-                    max_tokens=repair_manifest.effective_output_tokens,
-                    temperature=0.0,
-                    top_p=1.0,
-                    inject_persona=False,
-                )
+                if isinstance(llm, StructuredLLMEngine):
+                    repaired_result = llm.generate_structured(
+                        repair_prompt,
+                        schema_name="grounded_answer_repair",
+                        schema={
+                            "type": "object",
+                            "properties": {
+                                "answer": {"type": "string", "minLength": 1},
+                                "citations": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string",
+                                        "enum": list(expected_citation_labels(citations)),
+                                    },
+                                    "minItems": 1,
+                                    "uniqueItems": True,
+                                },
+                            },
+                            "required": ["answer", "citations"],
+                            "additionalProperties": False,
+                        },
+                        max_tokens=repair_manifest.effective_output_tokens,
+                        temperature=0.0,
+                        top_p=1.0,
+                        inject_persona=False,
+                    )
+                else:
+                    repaired_result = llm.generate(
+                        repair_prompt,
+                        max_tokens=repair_manifest.effective_output_tokens,
+                        temperature=0.0,
+                        top_p=1.0,
+                        inject_persona=False,
+                    )
         except Exception:  # noqa: BLE001 - bounded repair is best effort
-            return previous_answer, llm_result, usage, validate_grounded_answer(
+            return (
                 previous_answer,
-                citations,
-                evidence=evidence,
+                llm_result,
+                usage,
+                validate_grounded_answer(
+                    previous_answer,
+                    citations,
+                    evidence=evidence,
+                ),
             )
 
         repaired_text = getattr(repaired_result, "text", "").strip()
+        if isinstance(llm, StructuredLLMEngine):
+            repaired_text = _render_structured_grounded_answer(
+                repaired_text,
+                allowed_labels=expected_citation_labels(citations),
+            )
         repaired_usage = LLMUsage.from_llm_result(repaired_result)
         if not repaired_text:
-            return previous_answer, llm_result, usage, validate_grounded_answer(
+            return (
                 previous_answer,
-                citations,
-                evidence=evidence,
+                llm_result,
+                usage,
+                validate_grounded_answer(
+                    previous_answer,
+                    citations,
+                    evidence=evidence,
+                ),
             )
         repaired_validation = validate_grounded_answer(
             repaired_text,
@@ -1483,10 +1561,15 @@ class AssistantRuntime:
             draft.answer_repair_succeeded = True
             self._record_prompt_calibration(draft, repaired_usage, source="answer_repair")
             return repaired_text, repaired_result, repaired_usage, repaired_validation
-        return previous_answer, llm_result, usage, validate_grounded_answer(
+        return (
             previous_answer,
-            citations,
-            evidence=evidence,
+            llm_result,
+            usage,
+            validate_grounded_answer(
+                previous_answer,
+                citations,
+                evidence=evidence,
+            ),
         )
 
     def _build_memory_context(
@@ -1509,6 +1592,10 @@ class AssistantRuntime:
             core_working,
             None,
             plan=MemoryAccessPlan(archive_mode="none"),
+        )
+        draft.memory_access_plan = MemoryAccessPlan(
+            archive_mode="none",
+            reason="core_and_working_default",
         )
         draft.memory_hits.extend(context.hits)
         draft.memory_mode = context.mode
@@ -1601,8 +1688,7 @@ class AssistantRuntime:
                 route=RuntimeRoute.OUT_OF_SCOPE,
             )
         if decision.disposition == "unresolved" and (
-            decision.selected_routes == ("unresolved",)
-            or decision.reason.startswith("semantic_")
+            decision.selected_routes == ("unresolved",) or decision.reason.startswith("semantic_")
         ):
             return self._blocked_result(
                 frame,
@@ -1622,19 +1708,27 @@ class AssistantRuntime:
         memory_context = self._build_memory_context(frame, draft)
         knowledge_context = None
         if "memory" in decision.sources:
+            memory_plan = MemoryAccessPlan(
+                archive_mode="semantic",
+                archive_query=frame.text,
+                reason="semantic_memory_source_selected",
+            )
+            draft.memory_access_plan = memory_plan
             archive_context = self._build_archive_memory_context(frame, draft)
             if memory_context is not None and archive_context is not None:
                 memory_context = self.memory_assembler.assemble(
                     memory_context,
                     archive_context,
-                    plan=MemoryAccessPlan(
-                        archive_mode="semantic",
-                        archive_query=frame.text,
-                        reason="semantic_memory_source_selected",
-                    ),
+                    plan=memory_plan,
                 )
         if "knowledge" in decision.sources:
             knowledge_context = self._build_knowledge_context_from_query(frame, draft)
+        relation = frame.metadata.get("evidence_relation", "unknown")
+        if relation in {"consistent", "conflicting", "unknown"}:
+            draft.evidence_bundle = EvidenceReconciler().reconcile(
+                tuple(draft.evidence_decisions),
+                relation=cast(EvidenceRelation, relation),
+            )
         return _SemanticContextPlan(memory_context, knowledge_context)
 
     def _finish_semantic_context_turn(
@@ -1744,32 +1838,59 @@ class AssistantRuntime:
         memory_context: MemoryContext | None,
         knowledge_context: KnowledgeContext | None,
     ) -> str:
+        grounding_policy = self._grounding_policy(draft)
+        source_set = {decision.source for decision in draft.evidence_decisions}
         components = [
             PromptComponent(
                 "system",
                 SOCA_RUNTIME_SYSTEM_PROMPT.strip(),
                 priority=0,
                 required=True,
-            ),
-            PromptComponent(
-                "current_input",
-                "Câu hỏi hiện tại:\n" + user_text.strip(),
-                priority=0,
-                required=True,
-            ),
-            PromptComponent("answer_prefix", "Trả lời:", priority=0, required=True),
+            )
         ]
+        if len(source_set) > 1:
+            components.append(
+                PromptComponent(
+                    "joint_grounding_policy",
+                    JOINT_GROUNDING_INSTRUCTIONS.strip(),
+                    priority=0,
+                    required=True,
+                )
+            )
+        if grounding_policy.name == "abstain":
+            components.append(
+                PromptComponent(
+                    "answer_policy",
+                    ABSTENTION_GROUNDING_INSTRUCTIONS.strip(),
+                    priority=0,
+                    required=True,
+                )
+            )
+        elif grounding_policy.name == "retrieval_unavailable":
+            components.append(
+                PromptComponent(
+                    "answer_policy",
+                    UNAVAILABLE_GROUNDING_INSTRUCTIONS.strip(),
+                    priority=0,
+                    required=True,
+                )
+            )
         if memory_context is not None and memory_context.prompt_text.strip():
             memory_text = "Memory:\n" + memory_context.prompt_text.strip()
-            if memory_context.citations:
+            memory_retrieval_requested = "memory" in source_set
+            if memory_context.citations or memory_retrieval_requested:
                 memory_text = MEMORY_GROUNDING_INSTRUCTIONS.strip() + "\n\n" + memory_text
             memory_text = (
                 f"Evidence status: {memory_context.evidence_status} "
-                f"({memory_context.evidence_reason}).\n"
-                + memory_text
+                f"({memory_context.evidence_reason}).\n" + memory_text
             )
             components.append(
-                PromptComponent("memory", memory_text, priority=30, required=False)
+                PromptComponent(
+                    "memory",
+                    memory_text,
+                    priority=30,
+                    required=memory_retrieval_requested,
+                )
             )
         if knowledge_context is not None and knowledge_context.prompt_text.strip():
             knowledge_text = (
@@ -1789,6 +1910,22 @@ class AssistantRuntime:
                     required=bool(knowledge_context.citations),
                 )
             )
+        components.extend(
+            (
+                PromptComponent(
+                    "current_input",
+                    "Câu hỏi hiện tại:\n" + user_text.strip(),
+                    priority=0,
+                    required=True,
+                ),
+                PromptComponent(
+                    "answer_prefix",
+                    "Trả lời cuối cùng:",
+                    priority=0,
+                    required=True,
+                ),
+            )
+        )
         capability = capability_from_engine(
             self.llm,
             model_context_window=self.options.model_context_window,
@@ -1805,6 +1942,28 @@ class AssistantRuntime:
         )
         draft.prompt_manifest = manifest.to_dict()
         return prompt
+
+    def _grounding_policy(self, draft: _TraceDraft) -> GroundingTurnPolicy:
+        policy = select_grounding_policy(
+            tuple(draft.evidence_decisions),
+            draft.evidence_bundle,
+        )
+        draft.answer_policy = policy
+        return policy
+
+    def _llm_route(
+        self,
+        draft: _TraceDraft,
+        memory_context: MemoryContext | None,
+        knowledge_context: KnowledgeContext | None,
+    ) -> RuntimeRoute:
+        if knowledge_context is not None:
+            return RuntimeRoute.KNOWLEDGE_LLM
+        if memory_context is not None and any(
+            decision.source == "memory" for decision in draft.evidence_decisions
+        ):
+            return RuntimeRoute.MEMORY_LLM
+        return RuntimeRoute.FREE_CHAT
 
     def _effective_max_tokens(self, draft: _TraceDraft) -> int:
         manifest = draft.prompt_manifest or {}
@@ -1863,6 +2022,7 @@ class AssistantRuntime:
         llm_result: Any | None = None,
         usage: LLMUsage | None = None,
     ) -> RuntimeResult:
+        answer_policy = draft.answer_policy or self._grounding_policy(draft)
         trace = RuntimeTrace(
             route=route,
             guardrail_events=tuple(draft.guardrail_events),
@@ -1889,6 +2049,12 @@ class AssistantRuntime:
             router_margin=draft.router_margin,
             evidence_decisions=tuple(draft.evidence_decisions),
             evidence_bundle=draft.evidence_bundle,
+            evidence_status=aggregate_evidence_status(tuple(draft.evidence_decisions)),
+            memory_access_plan=draft.memory_access_plan,
+            answer_policy=answer_policy.name,
+            answer_policy_reason=answer_policy.reason,
+            grounding_policy_version=answer_policy.version,
+            citation_count=len(draft.citations),
             answer_validation=draft.answer_validation,
             answer_repair_attempted=draft.answer_repair_attempted,
             answer_repair_succeeded=draft.answer_repair_succeeded,
@@ -1976,3 +2142,32 @@ class AssistantRuntime:
             yield
         finally:
             draft.stage_latencies_ms[name] = (time.perf_counter() - started) * 1000
+
+
+def _render_structured_grounded_answer(
+    raw_text: str,
+    *,
+    allowed_labels: tuple[str, ...],
+) -> str:
+    try:
+        payload = json.loads(raw_text)
+    except (json.JSONDecodeError, TypeError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    answer = payload.get("answer")
+    selected = payload.get("citations")
+    if not isinstance(answer, str) or not answer.strip():
+        return ""
+    if not isinstance(selected, list) or not selected:
+        return ""
+    labels: list[str] = []
+    for label in selected:
+        if not isinstance(label, str) or label not in allowed_labels:
+            return ""
+        if label not in labels:
+            labels.append(label)
+    if not labels:
+        return ""
+    missing = [label for label in labels if label not in answer]
+    return " ".join((answer.strip(), *missing))

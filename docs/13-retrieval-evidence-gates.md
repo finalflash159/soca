@@ -1,6 +1,6 @@
 # 13 — Retrieval, evidence gate and answer verification
 
-This note records the current Phase 4 retrieval path. The goal is not to make a
+This note records the current Phase 5 retrieval and grounding path. The goal is not to make a
 model sound fluent at any cost, but to keep a knowledge request on an explicit
 chain:
 
@@ -62,12 +62,27 @@ It also emits a non-blocking shadow claim/evidence overlap score and
 a regex pretending to be a factuality judge and not a production blocking rule.
 
 For non-streaming LLM answers, if citations exist but labels are missing or
-invalid, runtime makes at most one repair call. The repair prompt is limited to
-selected evidence. If repair still fails, the original answer is kept and the
-trace records `answer_repair_attempted/succeeded`; there is no unbounded loop and
-no silent fact insertion. Streaming validates the complete text after streaming,
-but does not repair a sentence already sent to the user. A holdback/controlled
-loop is still a later design task.
+invalid, runtime makes at most one repair call. Engines with structured-output
+support receive a strict JSON Schema whose citation enum is generated from the
+selected evidence for that turn. The model selects the citation; runtime only
+renders the selected valid labels and never inserts a factual answer. Engines
+without structured output receive the same dynamic label set in a plain repair
+prompt. If repair still fails, runtime blocks the answer with a stable safety
+message; it does not release the uncited original.
+
+`GroundingTurnPolicy` freezes the behavior:
+
+| Evidence policy | Citation result | Action |
+| --- | --- | --- |
+| normal grounded | valid or partial | allow |
+| normal grounded | missing or invalid | one repair, then block |
+| Knowledge/Memory conflict disclosure | valid | allow |
+| conflict disclosure | partial, missing or invalid | one repair, then block |
+| abstain / unavailable with no citations | not applicable | allow |
+
+Streaming validates the complete text after streaming, but does not yet prevent
+an earlier factual chunk from reaching the user. Pre-validation holdback is a
+P6 release gate, not something hidden by the non-streaming validator.
 
 ## Showcase corpus boundary
 
@@ -91,18 +106,20 @@ Automated checks on this branch:
 - `uv run pyright soca`: **0 errors, 0 warnings**;
 - showcase fixture: **35 indexed markdown notes**, structure/size/query smoke pass.
 
-Real local flow with `arcee_vylinh_3b_q4_k_m` passed:
+The P5 local wiring smoke with `arcee_vylinh_3b_q4_k_m` passed:
 
 ```text
-knowledge.search → relevance → KnowledgeContext → local LLM
-route=knowledge_llm, tool=true, llm=true, Bayes answer with [K1]
+Knowledge answerable → structured repair → valid [K1]
+Memory answerable    → structured repair → valid [M1]
+Memory unanswerable  → abstain, zero citations, no repair
 ```
 
-Real remote flow with OpenRouter `google/gemini-3.5-flash-lite` passed the same
-path. A no-answer query (`Sao Bắc Cực X9`) produced zero citations, evidence
-`insufficient/no_hits`, and a Vietnamese answer saying there was not enough
-information in the vault. The key was loaded from `.env` and was not written to
-an artifact.
+The P5 remote smoke with OpenRouter `google/gemini-3.5-flash-lite` passed the
+same three paths without repair: valid `[K1]`, valid `[M1]`, then an abstention
+with zero citations. The key was loaded from `.env` and was not written to an
+artifact. Remote is the primary P6 answer-quality target; the small local model
+is retained as a bounded offline/fallback smoke target, not treated as an
+equivalent quality judge.
 
 These are wiring/abstention smoke checks, not release-quality retrieval scores.
 Entailment and citation correctness still need an independent labeled dataset;

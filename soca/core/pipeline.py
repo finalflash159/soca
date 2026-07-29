@@ -5,7 +5,7 @@ import random
 import threading
 import time
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 import numpy as np
@@ -279,6 +279,7 @@ class VoicePipeline:
         """Build the ``runtime`` summary event from a completed RuntimeResult."""
         trace = getattr(runtime_result, "trace", None)
         citations = getattr(runtime_result, "citations", ())
+        memory_access_plan = getattr(trace, "memory_access_plan", None)
         return StreamingEvent(
             type="runtime",
             text=getattr(runtime_result, "response_text", "").strip(),
@@ -304,6 +305,22 @@ class VoicePipeline:
                 "memory_hit_count": len(getattr(trace, "memory_hits", ()) or ()),
                 "memory_mode": getattr(trace, "memory_mode", "blob"),
                 "memory_degraded_reason": getattr(trace, "memory_degraded_reason", ""),
+                "evidence_status": getattr(trace, "evidence_status", "not_requested"),
+                "answer_policy": getattr(trace, "answer_policy", "free_chat"),
+                "answer_policy_reason": getattr(
+                    trace,
+                    "answer_policy_reason",
+                    "no_retrieval_evidence",
+                ),
+                "grounding_policy_version": getattr(
+                    trace,
+                    "grounding_policy_version",
+                    "",
+                ),
+                "citation_count": int(getattr(trace, "citation_count", 0)),
+                "memory_access_plan": (
+                    asdict(memory_access_plan) if memory_access_plan is not None else None
+                ),
                 # LLM telemetry for `soca voice --usage`. Object is fine in metadata;
                 # eval/console read named keys, not the whole dict.
                 "llm_usage": getattr(runtime_result, "usage", None),
@@ -757,9 +774,7 @@ class _TTSPlaybackPump:
                         residual,
                     )
                     if residual.size:
-                        previous_deadline = (
-                            residual_started + len(residual) / session.sample_rate
-                        )
+                        previous_deadline = residual_started + len(residual) / session.sample_rate
                     if residual_result.interrupted:
                         break
                     joiner = TailHoldingCrossfader(
