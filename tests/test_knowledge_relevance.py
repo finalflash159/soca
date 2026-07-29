@@ -89,3 +89,30 @@ def test_relevance_policy_is_calibratable_without_code_changes() -> None:
 
     assert assessment.status == "insufficient"
     assert assessment.reason == "all_hits_below_floor"
+
+
+def test_relevance_gate_preserves_order_across_backend_score_spaces() -> None:
+    assessment = assess_relevance(
+        "định lý Bayes",
+        (
+            _hit(
+                "wiki/lexical.md",
+                "Bayes lexical",
+                "Định lý Bayes cập nhật xác suất.",
+                sparse_score=70.0,
+            ),
+            _hit(
+                "wiki/dense.md",
+                "Bayes paraphrase",
+                "Cập nhật niềm tin sau quan sát mới.",
+                backend="dense",
+                dense_score=0.91,
+            ),
+        ),
+    )
+
+    assert [hit.document.path for hit in assessment.accepted_hits] == [
+        "wiki/lexical.md",
+        "wiki/dense.md",
+    ]
+    assert assessment.margin is None

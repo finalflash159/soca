@@ -96,12 +96,10 @@ def assess_relevance(
             "legacy_unscored_hits",
         )
 
-    explicit.sort(key=lambda item: (-float(item[1]), item[0].document.path, item[0].document.id))
     accepted = tuple(hit for hit, signal in explicit if signal is not None)
     rejected_count = len(hits) - len(accepted)
-    scores = [float(signal) for _, signal in explicit]
-    top_score = scores[0]
-    margin = top_score - scores[1] if len(scores) > 1 else None
+    top_score = float(explicit[0][1])
+    margin = _same_backend_margin(explicit)
     if not accepted:
         return RelevanceAssessment(
             "insufficient",
@@ -125,6 +123,24 @@ def assess_relevance(
         margin,
         reason,
     )
+
+
+def _same_backend_margin(
+    scored: list[tuple[KnowledgeHit, float]],
+) -> float | None:
+    """Compare adjacent signals only when they share a score space.
+
+    Retrieval order is already the backend's ranking. A lexical coverage score,
+    a normalized sparse score and a dense cosine are not interchangeable, so
+    cross-backend subtraction would invent a confidence margin.
+    """
+    if len(scored) < 2:
+        return None
+    first_hit, first_score = scored[0]
+    second_hit, second_score = scored[1]
+    if first_hit.retrieval_backend != second_hit.retrieval_backend:
+        return None
+    return float(first_score) - float(second_score)
 
 
 def _admission_signal(
