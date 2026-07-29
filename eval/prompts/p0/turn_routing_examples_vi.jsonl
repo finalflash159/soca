@@ -1,0 +1,14 @@
+{"id":"ex-time-001","family":"example-time","text":"Bây giờ là mấy giờ?","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"ex-time-002","family":"example-time","text":"Cho tôi biết giờ địa phương hiện tại","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"ex-knowledge-001","family":"example-knowledge","text":"Ghi chú của tôi nói về định lý Bayes thế nào?","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"ex-knowledge-002","family":"example-knowledge","text":"Trong tài liệu dự án có ghi kiến trúc RAG ra sao không?","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"ex-memory-001","family":"example-memory","text":"Tôi đã quyết chọn TTS nào và vì sao?","disposition":"retrieval_request","sources":["memory"]}
+{"id":"ex-memory-002","family":"example-memory","text":"Tôi thường muốn SoCa trả lời theo kiểu nào?","disposition":"retrieval_request","sources":["memory"]}
+{"id":"ex-both-001","family":"example-both","text":"Tôi đã ghi gì về ONNX Runtime?","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"ex-both-002","family":"example-both","text":"Trong các ghi chú của tôi có quyết định nào về RAG không?","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"ex-smalltalk-001","family":"example-smalltalk","text":"Xin chào SoCa","disposition":"smalltalk","sources":[]}
+{"id":"ex-smalltalk-002","family":"example-smalltalk","text":"Kể tôi nghe chuyện vui đi","disposition":"smalltalk","sources":[]}
+{"id":"ex-oos-001","family":"example-oos","text":"Thời tiết hiện tại ở Hà Nội thế nào?","disposition":"out_of_scope","sources":[]}
+{"id":"ex-oos-002","family":"example-oos","text":"Đặt báo thức lúc sáu giờ sáng mai","disposition":"out_of_scope","sources":[]}
+{"id":"ex-unresolved-001","family":"example-unresolved","text":"Cái đó thế nào rồi?","disposition":"unresolved","sources":[]}
+{"id":"ex-unresolved-002","family":"example-unresolved","text":"Tìm cho tôi cái hôm trước","disposition":"unresolved","sources":[]}

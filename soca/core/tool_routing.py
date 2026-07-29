@@ -100,6 +100,7 @@ class ToolRouterDecision:
     disposition: TurnDisposition = "unresolved"
     sources: tuple[str, ...] = ()
     scores: dict[str, float] = field(default_factory=dict)
+    source_scores: dict[str, float] = field(default_factory=dict)
     runner_up: str | None = None
     margin: float | None = None
 

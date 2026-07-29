@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -28,11 +29,19 @@ def _load(path: Path, *, predictions: bool = False) -> tuple[dict[str, Any], ...
                 raise ValueError(f"{path}:{line_number}: row needs a string id")
             if predictions:
                 if row.get("disposition") not in _DISPOSITIONS:
-                    raise ValueError(f"{path}:{line_number}: invalid predicted disposition")
+                    # Keep the loader compatible with the older tool-only
+                    # evaluator, whose captures contain only ``tool``.
+                    if not isinstance(row.get("tool"), str):
+                        raise ValueError(f"{path}:{line_number}: invalid predicted decision")
             else:
-                if not isinstance(row.get("query"), str) or row.get("disposition") not in _DISPOSITIONS:
+                query = row.get("query") or row.get("transcript")
+                has_disposition = row.get("disposition") in _DISPOSITIONS
+                has_legacy_tool = isinstance(row.get("expected_tool"), str)
+                if not isinstance(query, str) or not query.strip() or not (has_disposition or has_legacy_tool):
                     raise ValueError(f"{path}:{line_number}: invalid labelled turn")
-                if not isinstance(row.get("family"), str) or not row["family"]:
+                if has_disposition and (
+                    not isinstance(row.get("family"), str) or not row["family"]
+                ):
                     raise ValueError(f"{path}:{line_number}: semantic family is required")
             sources = row.get("sources", [])
             if not isinstance(sources, list) or not set(sources) <= _SOURCES:
@@ -49,11 +58,44 @@ def _rate(numerator: int, denominator: int) -> float:
     return numerator / denominator if denominator else 0.0
 
 
+def require_exact_prediction_ids(
+    expected_ids: Iterable[str],
+    actual_ids: Iterable[str],
+    *,
+    dataset: Path,
+    predictions: Path,
+) -> None:
+    expected = set(expected_ids)
+    actual = set(actual_ids)
+    if expected == actual:
+        return
+    missing = sorted(expected - actual)
+    extra = sorted(actual - expected)
+    raise ValueError(
+        f"prediction ids must exactly match dataset; dataset={dataset}, predictions={predictions}, "
+        f"missing={missing}, extra={extra}"
+    )
+
+
 def evaluate(dataset: Path, predictions: Path) -> dict[str, Any]:
     """Score one captured policy run against a sealed labelled dataset."""
     expected = _load(dataset)
     actual = {row["id"]: row for row in _load(predictions, predictions=True)}
+    require_exact_prediction_ids(
+        (row["id"] for row in expected),
+        actual,
+        dataset=dataset,
+        predictions=predictions,
+    )
     pairs = [(row, actual[row["id"]]) for row in expected if row["id"] in actual]
+    if not all(row.get("disposition") in _DISPOSITIONS for row, _ in pairs):
+        return {
+            "dataset": str(dataset),
+            "prediction_source": str(predictions),
+            "case_count": len(expected),
+            "scored_count": len(pairs),
+            "coverage": _rate(len(pairs), len(expected)),
+        }
     expected_dispositions = [row["disposition"] for row, _ in pairs]
     actual_dispositions = [row["disposition"] for _, row in pairs]
     exact_sources = sum(
