@@ -1877,3 +1877,16 @@ rewrite answers until a held-out human/model calibration set is available.
 Decision: keep calibrated cached-sparse as the safe default, keep hybrid
 opt-in, and retain all evidence/groundedness signals in telemetry. No raw
 sparse-vs-dense score comparison is used.
+
+**Real-flow capture (public corpus, 2026-07-29)**
+
+The answer path was exercised end-to-end with no showcase/demo notes:
+
+| Engine | Answerable | Unanswerable | Contract result |
+| --- | --- | --- | --- |
+| Local `arcee_vylinh_3b_q4_k_m` | `knowledge.search → relevance → context → LLM`, non-empty answer, one `[K1]`, validation `valid` | LLM received `insufficient/no_hits`, non-empty abstention, zero citations | pass |
+| OpenRouter `google/gemini-3.5-flash-lite` | same route, non-empty answer, one citation, validation `valid` | same `insufficient/no_hits` behavior, zero citations | pass |
+
+The remote run used the existing `.env` key only in memory; the key and full
+transcript were not written to a result artifact. This is a contract smoke
+capture, not a provider quality comparison.
