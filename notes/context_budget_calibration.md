@@ -16,6 +16,8 @@ dùng knowledge demo làm dữ liệu đo.
   buộc; optional memory/evidence bị loại theo priority nếu không đủ input budget.
 - Output reserve được clamp bởi model_max_output_tokens và phần context còn
   lại sau required prompt.
+- Runtime/structured planner dùng admission margin mặc định 128 token; margin
+  tự tăng nếu provider quan sát delta dương lớn hơn margin hiện tại.
 - Manifest ghi prompt_hash, component token count, safety margin, effective
   output, provider-reported prompt/completion token và delta calibration.
 
@@ -36,6 +38,8 @@ uv run pytest -q
 ~~~
 
 Ruff, Pyright và git diff --check đều đạt.
+
+UI gate: npm run typecheck, 49 Vitest tests và npm run build đều đạt.
 
 ## Real remote smoke
 
@@ -61,6 +65,10 @@ Query: wiki: định lý Bayes
 - knowledge component 318 tokens và required=True;
 - manifest prompt estimate 670, provider report 741, delta +71;
 - response có nội dung và citation.
+
+Post-review-fix knowledge smoke vẫn đạt với margin `128`: route
+`knowledge_llm`, tool + LLM đều chạy, prompt estimate `641`, provider report
+`714`, delta `+73`, knowledge required và prompt hash đều có mặt.
 
 ### Controlled workflow planner
 

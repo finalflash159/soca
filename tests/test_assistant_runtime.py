@@ -392,6 +392,7 @@ def test_model_context_manifest_clamps_output_reserve() -> None:
     assert manifest is not None
     assert manifest["model_id"] == "unknown"
     assert manifest["prompt_tokens"] <= manifest["input_budget_tokens"]
+    assert manifest["safety_margin_tokens"] == 128
     assert manifest["provider_prompt_tokens"] == 10
     assert manifest["provider_completion_tokens"] == 5
 

@@ -643,6 +643,7 @@ class SocaEngine:
             return
         self.llm_settings = settings
         self.text_bundle = None
+        self._last_prompt_manifest = None
         self._emit_llm_config()
 
     def _emit_llm_config(self) -> None:
@@ -849,6 +850,7 @@ class SocaEngine:
             return
         self.llm_settings = refreshed
         self.text_bundle = None
+        self._last_prompt_manifest = None
 
     def _key_validation_is_current(self, provider_key: str, fingerprint: str) -> bool:
         with self._catalog_lock:
@@ -959,6 +961,7 @@ class SocaEngine:
                             "included": bool(item.get("included")),
                             "required": bool(item.get("required")),
                             "priority": item.get("priority"),
+                            "policy": "always" if bool(item.get("required")) else "on_demand",
                         }
                     )
             prompt_tokens = manifest.get("prompt_tokens")

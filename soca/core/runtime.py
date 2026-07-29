@@ -84,7 +84,10 @@ class RuntimeOptions:
     turn_workflow: Literal["legacy", "shadow", "controlled"] = "legacy"
     model_context_window: int | None = None
     model_max_output_tokens: int | None = None
-    context_safety_margin_tokens: int = 32
+    # Remote model tokenizers may count provider message wrappers differently
+    # from the client adapter. Keep a conservative admission margin by default;
+    # observed positive deltas can increase it for subsequent turns.
+    context_safety_margin_tokens: int = 128
 
     def __post_init__(self) -> None:
         if self.voice_knowledge_mode not in {"off", "intent", "always"}:
@@ -277,6 +280,7 @@ class AssistantRuntime:
         self.memory_builder = memory_builder
         self.guardrail_policy = guardrail_policy
         self.options = options or RuntimeOptions()
+        self._prompt_safety_margin_tokens = self.options.context_safety_margin_tokens
         self._progress_callback: Callable[[str], None] | None = None
         self._active_goal_store = ActiveGoalStore()
         self._goal_resolver = GoalResolver(self._active_goal_store)
@@ -1298,7 +1302,7 @@ class AssistantRuntime:
         assembler = PromptAssembler(
             capability,
             counter=token_counter_from_engine(self.llm),
-            safety_margin_tokens=self.options.context_safety_margin_tokens,
+            safety_margin_tokens=self._prompt_safety_margin_tokens,
         )
         prompt, manifest = assembler.assemble(
             components,
@@ -1316,8 +1320,8 @@ class AssistantRuntime:
             return min(self.options.max_tokens, self.options.model_max_output_tokens)
         return self.options.max_tokens
 
-    @staticmethod
     def _record_prompt_calibration(
+        self,
         draft: _TraceDraft,
         usage: LLMUsage | None,
         *,
@@ -1331,7 +1335,13 @@ class AssistantRuntime:
             return
         manifest["observed_prompt_tokens"] = usage.prompt_tokens
         manifest["observed_prompt_token_source"] = source
-        manifest["prompt_token_delta"] = usage.prompt_tokens - estimated
+        delta = usage.prompt_tokens - estimated
+        manifest["prompt_token_delta"] = delta
+        if delta > 0:
+            self._prompt_safety_margin_tokens = max(
+                self._prompt_safety_margin_tokens,
+                delta + 16,
+            )
         if source == "llm_result":
             manifest["provider_prompt_tokens"] = usage.prompt_tokens
             manifest["provider_completion_tokens"] = usage.completion_tokens

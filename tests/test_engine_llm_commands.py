@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import threading
 from collections.abc import Callable
@@ -227,6 +228,43 @@ def test_llm_select_persists_remote_config_and_emits_active_config() -> None:
     assert event["backend"] == "remote"
     assert event["provider"] == "groq"
     assert event["model"] == "llama-3.1-8b-instant"
+
+
+def test_llm_select_invalidates_previous_prompt_manifest() -> None:
+    output = io.StringIO()
+    saved: list[LlmSettings] = []
+    engine = SocaEngine(
+        voice_config=None,
+        text_config=TextRuntimeConfig(no_memory=True, vault=Path("/tmp/soca-test-vault")),
+        profile="baseline",
+        no_model=True,
+        writer=_ProtocolWriter(output),
+        llm_settings_loader=lambda: LlmSettings(),
+        llm_settings_saver=saved.append,
+        secret_store=FakeSecrets({"groq": "sk-existing-1234"}),
+        catalog_fetcher=_catalog,
+    )
+    engine._last_prompt_manifest = {
+        "model_id": "old-model",
+        "context_window": 2_048,
+        "effective_output_tokens": 256,
+    }
+
+    try:
+        engine.dispatch(
+            {
+                "cmd": "llm_select",
+                "backend": "remote",
+                "provider": "groq",
+                "model": "llama-3.1-8b-instant",
+            }
+        )
+        events = [json.loads(line) for line in output.getvalue().splitlines()]
+        context = [event for event in events if event["event"] == "context"][-1]
+        assert "prompt_manifest" not in context
+        assert "prompt_hash" not in context
+    finally:
+        engine.shutdown()
 
 
 def test_llm_select_persists_requested_generation_and_caps_effective_output() -> None:

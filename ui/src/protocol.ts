@@ -203,10 +203,15 @@ export interface ContextComponent {
     | "prompt_scaffolding"
     | "archive_memory"
     | "knowledge"
-    | "current_input";
+    | "current_input"
+    | "answer_prefix"
+    | "memory";
   label: string;
   tokens: number | null;
   policy: "always" | "always_when_present" | "on_demand" | "per_turn";
+  included?: boolean;
+  required?: boolean;
+  priority?: number;
 }
 
 export interface ContextEvent {
@@ -218,6 +223,13 @@ export interface ContextEvent {
   output_reserve_tokens: number;
   model_context_tokens: number | null;
   available_dynamic_tokens: number | null;
+  input_budget_tokens?: number | null;
+  prompt_hash?: string | null;
+  prompt_manifest?: Record<string, unknown>;
+  observed_prompt_tokens?: number | null;
+  observed_prompt_token_source?: string | null;
+  provider_prompt_tokens?: number | null;
+  prompt_token_delta?: number | null;
   components: ContextComponent[];
 }
 

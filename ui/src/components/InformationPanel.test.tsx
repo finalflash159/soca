@@ -173,7 +173,26 @@ describe("InformationPanel", () => {
           output_reserve_tokens: 4096,
           model_context_tokens: 32768,
           available_dynamic_tokens: 27272,
-          components: [],
+          components: [
+            {
+              id: "answer_prefix",
+              label: "Prompt scaffolding",
+              tokens: 5,
+              policy: "always",
+              included: true,
+              required: true,
+              priority: 0,
+            },
+            {
+              id: "memory",
+              label: "Memory retrieval",
+              tokens: 40,
+              policy: "on_demand",
+              included: false,
+              required: false,
+              priority: 30,
+            },
+          ],
         }}
         memory={null}
         usage={{
@@ -196,6 +215,9 @@ describe("InformationPanel", () => {
     expect(frame).toContain("1 lượt hội thoại · 1 lần gọi LLM");
     expect(frame).toContain("682 prompt · 128 completion · 810 total");
     expect(frame).toContain("TTFT 6.35 s · 20.1 tok/s");
+    expect(frame).toContain("Prompt scaffolding");
+    expect(frame).toContain("Memory retrieval");
+    expect(frame).not.toContain("undefined");
     expect(frame).not.toContain("ước lượng UTF-8/4");
     expect(frame).not.toContain("bắt đầu nhập");
     expect(frame).not.toContain("Đây là usage tích lũy");

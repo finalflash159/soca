@@ -265,6 +265,7 @@ def test_engine_context_exposes_last_prompt_manifest() -> None:
     assert context["output_reserve_tokens"] == 1_600
     archive = next(item for item in context["components"] if item["id"] == "archive")
     assert archive["included"] is False
+    assert archive["policy"] == "on_demand"
 
 
 def test_engine_chat_exception_does_not_emit_completed_progress() -> None:

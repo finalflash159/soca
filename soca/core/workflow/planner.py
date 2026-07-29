@@ -143,7 +143,7 @@ class StructuredWorkflowPlanner:
         repair_attempts: int = 1,
         model_context_window: int | None = None,
         model_max_output_tokens: int | None = None,
-        context_safety_margin_tokens: int = 32,
+        context_safety_margin_tokens: int = 128,
     ) -> None:
         if max_tokens < 1 or repair_attempts not in {0, 1}:
             raise ValueError("planner limits are invalid")
@@ -154,6 +154,7 @@ class StructuredWorkflowPlanner:
         self.model_context_window = model_context_window
         self.model_max_output_tokens = model_max_output_tokens
         self.context_safety_margin_tokens = context_safety_margin_tokens
+        self._prompt_safety_margin_tokens = context_safety_margin_tokens
         self.last_prompt_manifest: dict[str, Any] | None = None
         self._model_call_hook: Callable[[], None] | None = None
 
@@ -223,7 +224,13 @@ class StructuredWorkflowPlanner:
         manifest["observed_prompt_tokens"] = provider_tokens
         manifest["observed_prompt_token_source"] = "llm_result"
         manifest["provider_prompt_tokens"] = provider_tokens
-        manifest["prompt_token_delta"] = provider_tokens - estimated
+        delta = provider_tokens - estimated
+        manifest["prompt_token_delta"] = delta
+        if delta > 0:
+            self._prompt_safety_margin_tokens = max(
+                self._prompt_safety_margin_tokens,
+                delta + 16,
+            )
         manifest["provider_completion_tokens"] = int(
             getattr(result, "n_completion_tokens", 0) or 0
         )
@@ -280,7 +287,7 @@ class StructuredWorkflowPlanner:
         assembler = PromptAssembler(
             capability,
             counter=token_counter_from_engine(self.llm),
-            safety_margin_tokens=self.context_safety_margin_tokens,
+            safety_margin_tokens=self._prompt_safety_margin_tokens,
         )
         prompt, manifest = assembler.assemble(components, requested_output_tokens=self.max_tokens)
         self.last_prompt_manifest = manifest.to_dict()
