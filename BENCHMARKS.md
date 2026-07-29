@@ -1554,3 +1554,142 @@ The final full-flow run used the persisted real answer backend
 `openrouter:qwen/qwen3.7-flash`. The local summary was present in the answer
 prompt, the active `TTS B` decision was visible, the provider was called, and
 the returned content was non-empty. No summary process remained afterward.
+
+### P0 — Shared chat/voice capability-routing baseline
+
+Run date: 2026-07-29. This is a diagnostic baseline for the next
+`voice_knowledge_gate_plan.vi.md` phase. It does not select production
+thresholds or enable semantic voice routing. The run was made from the clean
+`main` merge at `e549676` plus the P0 evaluator/data changes on branch
+`feat/voice-knowledge-p0-baseline`.
+
+The benchmark is independent of the showcase vault. Routing/source/parity rows
+are SoCa-authored annotations. Grounding uses the checked-in
+`eval/fixtures/real_rag_vault`, whose answerable slice is XQuAD Vietnamese with
+the source/license manifest; the showcase/demo corpus is not used.
+
+**Frozen inputs and hashes**
+
+| Input | Rows | SHA-256 |
+| --- | ---: | --- |
+| `eval/prompts/p0/turn_routing_vi.jsonl` | 66 | `4249290a397a303ec2ec2c9b76ddc2d9a408bfb0607477a14602b71df7f61f58` |
+| `eval/prompts/p0/retrieval_source_vi.jsonl` | 40 | `07ab5450b130197f94d4ff64369c1adbdfb89f0228e011e49176d678dba29ed7` |
+| `eval/prompts/p0/grounding_vi.jsonl` | 20 | `965bbd8c238afdad715700d22e07c7235ec5fb83741a96e60e78e192a68e2791` |
+| `eval/prompts/p0/memory_context_policy_vi.jsonl` | 16 | `394fd431e5ae1484388a7432663dbe12dce46c5e2c26f5bd77465dab491ab95a` |
+| `eval/prompts/p0/voice_parity_vi.jsonl` | 14 | `def361f5f136023493dfcd7013fc2658e5de4652a5f1fa39e280c279992c775d` |
+
+All route/grounding families are grouped into train/validation/test; no family
+crosses a split. The route baseline uses local
+`intfloat/multilingual-e5-small` through FastEmbed, threshold `0.58`, margin
+`0.04`, deterministic → semantic cascade, and no LLM-router fallback. Raw
+scores are retained in the ignored JSONL capture so threshold fitting can be
+done later without rerunning the corpus.
+
+**Current baseline results**
+
+| Metric | Overall | Train | Validation | Test |
+| --- | ---: | ---: | ---: | ---: |
+| Disposition accuracy | 48.48% | 76.19% | 33.33% | 37.50% |
+| Exact source-set accuracy | 78.79% | 90.48% | 76.19% | 70.83% |
+| Unsupported → executable tool | 0/15 (0%) | 0/3 | 0/6 | 0/6 |
+| Direct-tool exact | 5/9 (55.56%) | — | — | — |
+
+The main failure is not an accidental weather tool call: the router abstains as
+`unresolved` too often under the current global margin. Confusion counts are:
+
+```text
+direct_tool→direct_tool 5, direct_tool→unresolved 4
+retrieval_request→retrieval_request 15, retrieval_request→unresolved 12
+smalltalk→smalltalk 4, smalltalk→unresolved 5
+out_of_scope→out_of_scope 2, out_of_scope→unresolved 13
+unresolved→unresolved 6
+```
+
+Source selection is explicitly multi-label rather than binary:
+
+| Expected profile | Correct / total |
+| --- | ---: |
+| knowledge | 2 / 10 |
+| memory | 1 / 10 |
+| both | 7 / 10 |
+| neither | 10 / 10 |
+
+Overall source exact accuracy is 20/40 (50.00%). This is a baseline signal to
+fix the route/source calibration and corpus, not a reason to add substring or
+keyword rules. Source recall was knowledge 20%, memory 10%, both 70%, neither
+100%; predicted-profile precision was 100%, 50%, 100%, and 34.48%
+respectively. The raw source-score distribution from the route capture was
+knowledge mean/p50/p95 `0.8415/0.8346/0.9202` and memory
+`0.8453/0.8401/0.9202`; their overlapping distributions explain why one global
+source floor is not a safe calibration.
+
+**Grounding and parity baseline**
+
+Using cached sparse retrieval plus the production relevance gate over 12
+answerable and 8 unanswerable rows:
+
+| Metric | Result | Wilson 95% interval |
+| --- | ---: | ---: |
+| Answerable path recall@5 | 12/12 (100.00%) | 75.75–100.00% |
+| Unanswerable accepted-evidence rate | 7/8 (87.50%) | 52.91–97.76% |
+| Retrieval+evidence mean / p95 | 60.50 / 68.67 ms | local cached-sparse run |
+
+The 87.50% false-evidence rate is a release blocker and confirms that an empty
+or unrelated vault question cannot be trusted merely because sparse retrieval
+returned snippets. The per-row raw/accepted paths and evidence reasons are in
+`eval/results/voice_knowledge_p0/grounding.json` (ignored local artifact).
+
+On 7 clean/ASR parity pairs, 1 pair changed disposition; parity mismatch is
+14.29%. Disposition accuracy was 78.57% and source exact accuracy 92.86%.
+The mismatch is an ASR-shaped file-mention hard negative becoming unresolved,
+which must be addressed in the shared policy rather than hidden by a voice-only
+regex.
+
+**Commands and decision**
+
+The exact commands and metric definitions are pinned in
+`eval/gates/voice_knowledge_p0.json`. The route evaluator is
+`eval/eval_full_cascade.py`; source selection is
+`eval/eval_source_policy.py`; grounding is `eval/eval_grounding.py`.
+
+Decision: P0 data/schema/baseline gate is complete, but production calibration
+is not. Do not enable natural-language knowledge in voice, do not choose a
+global threshold, and do not add a hardcoded lexical fallback until P1 closes
+the disposition/source contract and the next held-out run reduces
+unresolved-route and false-evidence failures.
+
+**Encoder/aggregation bake-off (same threshold/margin, no fitting)**
+
+| Encoder / aggregation | Disposition | Source exact | Direct tool exact | Test disposition |
+| --- | ---: | ---: | ---: | ---: |
+| E5 asymmetric / max | 48.48% | 78.79% | 55.56% | 37.50% |
+| E5 asymmetric / top-2 mean | 43.94% | 78.79% | 44.44% | 37.50% |
+| E5 asymmetric / centroid | 43.94% | 77.27% | 44.44% | 37.50% |
+| E5 symmetric / max | 48.48% | 78.79% | 66.67% | 33.33% |
+| E5 symmetric / top-2 mean | 42.42% | 78.79% | 66.67% | 33.33% |
+| E5 symmetric / centroid | 34.85% | 74.24% | 22.22% | 20.83% |
+| Model2Vec symmetric / max | 46.97% | 78.79% | 88.89% | 29.17% |
+| Model2Vec symmetric / top-2 mean | 25.76% | 68.18% | 33.33% | 20.83% |
+| Model2Vec symmetric / centroid | 36.36% | 66.67% | 88.89% | 33.33% |
+
+No encoder/aggregation combination passes a production route gate. Model2Vec
+max has a useful direct-tool diagnostic but loses held-out disposition quality;
+it is not a production choice. E5 asymmetric/max remains the compatibility
+baseline only, not a calibrated winner. The raw bake-off predictions are in
+`eval/results/voice_knowledge_p0/bakeoff_*.jsonl` (ignored local artifacts).
+
+**Memory policy baseline**
+
+The model-free policy harness confirms the current split: approved core/profile
+is read on all 16 rows, archive retrieval is called only on the 8 explicit
+archive rows (50% of all rows, 100% of archive cases), six synthetic relevant
+archive hits are injected with 100% harness precision, and the context cost is
+61.3 mean / 50 p50 / 91 p95 approximate tokens. Answer delta is intentionally
+`not_measured`; it needs a paired real answer-LLM run and is a P1/P6 item, not a
+number to invent from a policy-only harness. Report:
+`eval/results/voice_knowledge_p0/memory.json`.
+
+P0 therefore closes schema, family split, hard-negative coverage, raw-score
+capture, encoder/aggregation bake-off, and model-free memory access capture.
+P1 remains blocked on contract calibration, evidence false-positive reduction,
+and a real LLM paired memory answer-delta measurement.
