@@ -24,6 +24,15 @@ def test_profiles_command_lists_only_valtec_runtime_profiles(monkeypatch) -> Non
     assert "valtec_multispeaker" in result.output
 
 
+def test_default_profile_uses_benchmarked_knowledge_retrieval() -> None:
+    from soca.core.profiles import get_voice_runtime_profile
+
+    profile = get_voice_runtime_profile("baseline")
+
+    assert profile.knowledge_retrieval_mode == "hybrid"
+    assert profile.knowledge_dense_backend == "aiteamvn_v2"
+
+
 def test_profiles_command_can_show_artifact_paths() -> None:
     result = CliRunner().invoke(main, ["profiles", "--show-paths"])
 

@@ -14,6 +14,11 @@ def _token_count(text: str) -> int:
     return len(TOKEN_RE.findall(text))
 
 
+def _heading_only(lines: list[str]) -> bool:
+    content = [line for line in lines if line.strip()]
+    return bool(content) and all(HEADING_RE.match(line) for line in content)
+
+
 def _section_ranges(lines: list[str]) -> tuple[tuple[int, int], ...]:
     if not lines:
         return ()
@@ -42,6 +47,8 @@ def _window_ranges(
         while window_end <= end:
             line_tokens = max(1, _token_count(lines[window_end]))
             if window_end > cursor and used_tokens + line_tokens > target_tokens:
+                if _heading_only(lines[cursor:window_end]):
+                    window_end += 1
                 break
             used_tokens += line_tokens
             window_end += 1
@@ -81,7 +88,7 @@ def chunk_markdown(
             overlap_lines=overlap_lines,
         ):
             text = "\n".join(lines[start : end + 1]).strip()
-            if not text:
+            if not text or _heading_only(lines[start : end + 1]):
                 continue
             line_start = start + 1
             line_end = end + 1

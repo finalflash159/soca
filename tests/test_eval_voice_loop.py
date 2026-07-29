@@ -364,13 +364,13 @@ def test_run_profile_eval_forwards_dense_backend(monkeypatch, tmp_path: Path) ->
         session_turns=6,
         turn_chars=500,
         knowledge_retrieval_mode=None,
-        knowledge_dense_backend="model2vec",
+        knowledge_dense_backend="aiteamvn_v2",
     )
 
     result = run_profile_eval("baseline", [], args=args)
 
     assert result["status"] == "skipped_unavailable"
-    assert seen["backend"] == "model2vec"
+    assert seen["backend"] == "aiteamvn_v2"
 
 
 def test_write_outputs_creates_report_and_latest(tmp_path: Path) -> None:

@@ -5,6 +5,7 @@ import pytest
 
 from eval.eval_vector_backend import (
     memory_preflight,
+    ordered_top_k_match,
     stable_exact_top_k,
 )
 
@@ -37,3 +38,11 @@ def test_memory_preflight_rejects_unsafe_allocation() -> None:
             backends=("faiss-hnsw",),
             max_memory_mib=1024,
         )
+
+
+def test_ordered_top_k_match_distinguishes_set_recall_from_rank_parity() -> None:
+    expected = np.asarray([[1, 2, 3], [4, 5, 6]], dtype=np.int64)
+    reordered = np.asarray([[1, 3, 2], [4, 5, 6]], dtype=np.int64)
+
+    assert ordered_top_k_match(expected, expected) == 1.0
+    assert ordered_top_k_match(expected, reordered) == 0.5

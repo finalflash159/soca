@@ -116,7 +116,7 @@ class IndexCoordinator:
         with self._lock:
             sparse = self.sync_sparse(verify_content=verify_content)
             dense_report = None
-            if dense:
+            if dense and sparse.index.chunks:
                 _, dense_report = self.builder.build(
                     self.spec,
                     index=sparse.index,
@@ -136,6 +136,17 @@ class IndexCoordinator:
     def gc(self, *, apply: bool = False) -> tuple[str, ...]:
         return self.catalog.gc(self.spec, apply=apply)
 
-    def request_sync(self, reason: str = "manual") -> SparseSyncResult:
+    def rollback(self) -> str:
+        if self.model is None:
+            raise FileNotFoundError("embedding model is not provisioned")
+        return self.catalog.rollback_generation(
+            self.spec,
+            embedding=embedding_fingerprint_for(self.model),
+        )
+
+    def inspect(self) -> dict[str, object]:
+        return self.catalog.inspect(self.spec)
+
+    def request_sync(self, reason: str = "manual") -> BuildReport:
         del reason
-        return self.sync_sparse()
+        return self.build_blocking(dense=self.model is not None)

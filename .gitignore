@@ -33,6 +33,12 @@ data/asr/*
 data/asr/boh/*
 !data/asr/boh/phowhisper_base_vi_boh_v1.json
 !data/asr/boh/phowhisper_small_vi_boh_v1.json
+!data/benchmarks/
+data/benchmarks/*
+!data/benchmarks/retrieval/
+data/benchmarks/retrieval/*
+!data/benchmarks/retrieval/README.md
+!data/benchmarks/retrieval/sources.lock.json
 
 # Notebook artifacts
 .ipynb_checkpoints/

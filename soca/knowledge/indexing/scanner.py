@@ -79,6 +79,9 @@ def scan_vault(
     *,
     previous: VaultIndex | None = None,
     verify_content: bool = False,
+    force_rechunk: bool = False,
+    target_tokens: int = 320,
+    overlap_lines: int = 2,
 ) -> ScanReport:
     expected_root = str(reader.root.expanduser().resolve())
     if previous is not None and previous.vault_path != expected_root:
@@ -100,6 +103,7 @@ def scan_vault(
         old_record = old_by_path.get(path)
         if (
             old_record is not None
+            and not force_rechunk
             and not verify_content
             and old_record.fingerprint.mtime_ns == mtime_ns
             and old_record.fingerprint.ctime_ns == ctime_ns
@@ -111,7 +115,11 @@ def scan_vault(
         try:
             document = reader.read(path)
             fingerprint = _fingerprint(path, mtime_ns, ctime_ns, size, inode, document)
-            if old_record is not None and old_record.fingerprint.content_sha256 == fingerprint.content_sha256:
+            if (
+                old_record is not None
+                and not force_rechunk
+                and old_record.fingerprint.content_sha256 == fingerprint.content_sha256
+            ):
                 records.append(
                     IndexedFile(
                         fingerprint=fingerprint,
@@ -121,7 +129,11 @@ def scan_vault(
                 )
                 metadata_only += 1
                 continue
-            chunks = chunk_markdown(document)
+            chunks = chunk_markdown(
+                document,
+                target_tokens=target_tokens,
+                overlap_lines=overlap_lines,
+            )
         except (OSError, ValueError) as exc:
             LOGGER.warning("Skipping unreadable knowledge path %s: %s", path, exc)
             continue

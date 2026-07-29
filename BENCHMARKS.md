@@ -1925,3 +1925,170 @@ These three showcase-vault prompts verify wiring and policy behavior only; they
 are not a retrieval or answer-quality benchmark. P6 uses the sealed public
 evaluation sets and emphasizes remote-model quality. The local 3B result is not
 weighted as equivalent to the remote result.
+
+---
+
+## Phase 5 — Production knowledge retrieval
+
+Run date: 2026-07-29 to 2026-07-30. Hardware: MacBook M4 Pro, macOS arm64,
+Python 3.11.14. Harness: `eval/retrieval_bakeoff.py`, wrapped by
+`scripts/run_benchmark.py`. Every run stores private `run.log`, `run.json` and
+`report.json` under `eval/results/retrieval_phase5/<run-id>/`.
+
+### Dataset policy
+
+The model/fusion release decision does not use SoCa's showcase/demo vault.
+Measured classes:
+
+| Dataset | Class | Corpus | Measured queries | Use |
+| --- | --- | ---: | ---: | --- |
+| TVPL | `public_screening` | 10,576 docs / 13,230 chunks | 1,000 | main model/fusion selection |
+| ViRe EduCoQA | `public_screening` | 262 docs / 341 chunks | 50 | cross-domain/reranker |
+| ViRe ALQAC | `public_screening` | 304 docs / 355 chunks | 50 | cross-domain/reranker |
+| private release | `private_release` | private | sealed | regression gate |
+| sanitized release | `sanitized_benchmark` | sanitized | sealed | reproducible release gate |
+
+The harness records `dataset_class` and excludes `demo_smoke` from release
+evidence. Logs and reports are retained locally rather than reducing runs to a
+manually copied table.
+
+### Embedding and fusion winner
+
+Canonical run: `20260730-tvpl-fusion-final`.
+
+| Candidate | Recall@5 | MRR@10 | nDCG@10 | p95/query |
+| --- | ---: | ---: | ---: | ---: |
+| BM25 | 0.700150 | 0.597020 | 0.627799 | 0.383 ms |
+| FastEmbed dense | 0.847233 | 0.750923 | 0.774562 | 3.845 ms |
+| AITeamVN dense | 0.907867 | 0.814555 | 0.837830 | 80.682 ms |
+| BGE-M3 dense | 0.893867 | 0.804133 | 0.827176 | 69.557 ms |
+| BM25 + FastEmbed, RRF | 0.798317 | 0.706575 | 0.734330 | 4.216 ms |
+| BM25 + AITeamVN, RRF | 0.840400 | 0.747556 | 0.777105 | 70.920 ms |
+| BM25 + AITeamVN, linear 0.50 | 0.883317 | 0.796575 | 0.820615 | 70.788 ms |
+| **BM25 + AITeamVN, linear 0.75** | **0.916067** | **0.827538** | **0.848716** | **71.019 ms** |
+| BM25 + BGE-M3, linear 0.75 | 0.895317 | 0.802012 | 0.824377 | 68.821 ms |
+
+Resource run `20260730-resource-aiteamvn-v2`: pinned model about 2.1 GB on
+disk, approximately 3.08 GiB isolated peak RSS, 10.55 document passages/s and
+about 70 ms isolated query p95. The release is accuracy-oriented: the measured
+quality gain justifies this query latency.
+
+Decision: BM25 Lucene + `AITeamVN/Vietnamese_Embedding_v2` + min-max linear
+fusion at dense weight `0.75`.
+
+### Reranker confirmation on the production base
+
+Canonical run: `20260730-aiteamvn-prod-reranker-confirmation`.
+
+| Dataset/candidate | Recall@5 | MRR@10 | nDCG@10 | p95/query |
+| --- | ---: | ---: | ---: | ---: |
+| EduCoQA base | 0.46 | 0.3039 | 0.3612 | 80 ms |
+| + Vietnamese reranker top-10 | 0.48 | 0.3331 | 0.3830 | 2,351 ms |
+| + BGE reranker top-10 | 0.50 | 0.3073 | 0.3648 | 2,401 ms |
+| + BGE reranker top-20 | 0.56 | 0.3438 | 0.4155 | 4,679 ms |
+| ALQAC base | 0.96 | 0.9433 | 0.9569 | 90 ms |
+| + Vietnamese reranker top-10 | 1.00 | 0.9567 | 0.9679 | 1,604 ms |
+| + BGE reranker top-10 | 1.00 | 0.9767 | 0.9826 | 1,747 ms |
+| + BGE reranker top-20 | 1.00 | 0.9767 | 0.9826 | 3,324 ms |
+
+Reranking improves some slices but adds 1.5–4.6 seconds p95 and the gain is not
+stable enough across domains. Production uses no reranker.
+
+### Exact vector backend gate
+
+Canonical runs:
+
+- `20260730-vector-flat-parity-seed6`;
+- `20260730-vector-flat-parity-seed7`;
+- `20260730-vector-flat-parity-seed8`.
+
+Workload: 250,000 normalized vectors × 1024 dimensions, 1,000 queries, k=10.
+
+| Seed | NumPy exact p95 | FAISS Flat p95 | Recall@10 | Ordered top-k | Max score error |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 6 | 8.150 ms | 5.504 ms | 1.0 / 1.0 | 1.0 | 7.45e-8 |
+| 7 | 8.077 ms | 5.266 ms | 1.0 / 1.0 | 1.0 | 7.45e-8 |
+| 8 | 8.001 ms | 5.128 ms | 1.0 / 1.0 | 1.0 | 7.45e-8 |
+
+FAISS saves only 2.6–2.9 ms against a roughly 70 ms query encoder and misses
+the 2× meaningful-speedup release gate. Exact deterministic NumPy is the sole
+production backend. FAISS/HNSW remain evaluation-only.
+
+### Production invariants
+
+- pinned AITeamVN revision, model SHA-256 and tokenizer SHA-256;
+- normalized immutable `.npy` generation is canonical;
+- schema-v3 active/previous pointer swap is atomic;
+- add/edit/delete/rename reconcile incrementally and unchanged passage vectors
+  are reused;
+- model missing, generation absent/stale/failed/corrupt, checksum/dimension
+  mismatch raise visibly;
+- no silent model, sparse, fusion, stale-generation or vector-backend fallback;
+- empty corpus/zero hit remains a valid empty result;
+- rollback is an explicit operator command and only accepts a generation
+  compatible with the current revision/digest;
+- active/previous are protected from GC; other artifacts have a seven-day
+  grace period;
+- catalog/vector/report permissions are private (`0600`, directories `0700`).
+
+The decision is recorded in
+`docs/adr/0004-production-knowledge-retrieval.md`.
+
+### Evidence-floor recalibration
+
+Canonical runs:
+
+- `20260730-aiteamvn-grounding` (old FastEmbed floor `0.85`);
+- `20260730-aiteamvn-grounding-052` (initial AITeamVN floor `0.52`);
+- `20260730-aiteamvn-grounding-final` (final candidate-pool + diversity path).
+
+Corpus/labels are the public XQuAD grounding set frozen in P4: 12 answerable,
+8 deliberately unanswerable. Raw AITeamVN retrieval found 12/12 answerable
+paths. Keeping the old model's `0.85` floor admitted only 1/12, proving that a
+threshold cannot be carried across embedding score spaces.
+
+| Dense floor | Accepted answerable Recall@5 | False evidence | Warm p95 |
+| --- | ---: | ---: | ---: |
+| 0.85 (invalid old floor) | 1/12 (8.3%) | 0/8 | 95.4 ms |
+| **0.52 (production, final path)** | **11/12 (91.7%)** | **0/8** | 95.2 ms |
+
+For this held-out split the strongest unsupported top dense score was
+`0.5042`; the weakest retained answerable score was `0.5377`. The unrecovered
+answerable case scored `0.4629`. The `0.52` operating point deliberately
+prefers no unsupported evidence over forcing 12/12 on this small set. With only
+eight negatives the Wilson 95% upper bound remains 32.44%; this is a transparent
+calibration limitation, not a claim that no-answer detection is solved.
+
+### Real lifecycle and LLM flow
+
+Production indexes built and verified on:
+
+| Vault | Documents | Chunks | Dense rows | Verify |
+| --- | ---: | ---: | ---: | --- |
+| `~/KnowledgeVault` | 6 | 23 | 23 | clean |
+| sanitized rich fixture | 35 | 446 | 446 | clean |
+
+The rich fixture initially exposed two production-path defects that unit
+metrics did not show:
+
+1. flat Markdown sections emitted 37 heading-only chunks;
+2. duplicate chunks from one document could consume all three context slots.
+
+`chunker-v2` removes heading-only sections and persists the changed chunker
+fingerprint. The rebuild reused all 446 surviving vectors and embedded zero
+unchanged rows. Context selection now retrieves a 4× candidate pool and keeps
+one best chunk per document.
+
+Real non-streaming flows after the fixes:
+
+| Engine/query | Route | Evidence/result | Outcome |
+| --- | --- | --- | --- |
+| OpenRouter `google/gemini-3.5-flash-lite`, Bayes | `knowledge_llm` | correct formula/interpretation, `[K2]`, no repair | pass |
+| OpenRouter, explicit unsupported `/k` Roman Empire | `knowledge_llm` | `insufficient`, zero citations | pass |
+| local `arcee_vylinh_3b_q4_k_m`, Bayes | `knowledge_llm` | correct short answer after citation repair | wiring pass; weak model cited the less-direct K1 |
+
+Remote is the answer-quality result. The local 3B run confirms offline wiring
+only and is not counted as equivalent quality. A natural-language unsupported
+query reached `free_chat` because the current semantic router returned
+`ambiguous_margin`; explicit `/k` exercised the retrieval/no-evidence contract.
+Router consolidation remains Phase 6 and is not hidden as a Phase 5 pass.

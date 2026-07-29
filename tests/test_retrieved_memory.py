@@ -72,7 +72,7 @@ def test_retrieved_memory_gates_before_memory_top_k_rerank(tmp_path: Path) -> No
         source,
         MarkdownLongTermMemory(root),
         config=RetrievedMemoryConfig(top_k=1),
-        relevance_policy=RelevancePolicy.for_retrieval_mode("hybrid"),
+        relevance_policy=RelevancePolicy(min_dense_score=0.85),
     )
 
     context = MemoryContextBuilder(long_term=memory).build("what TTS was selected")

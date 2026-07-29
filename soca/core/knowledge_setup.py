@@ -42,5 +42,5 @@ def build_knowledge_runtime_setup(
         ),
         search_tool=KnowledgeSearchTool(source, max_limit=knowledge_limit),
         read_tool=KnowledgeReadTool(source),
-        status="enabled",
+        status=f"enabled:{effective_mode}",
     )

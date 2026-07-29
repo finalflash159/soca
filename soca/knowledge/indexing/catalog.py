@@ -4,8 +4,9 @@ import hashlib
 import json
 import os
 import sqlite3
+import stat
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -125,15 +126,30 @@ class IndexCatalog:
         verify_content: bool = False,
     ) -> SparseSyncResult:
         identity = spec.corpus_identity
+        resolved_chunker = chunker or ChunkerFingerprint()
         previous = self.sparse_index(identity)
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT chunker_fingerprint FROM corpora WHERE id=?",
+                (identity.value,),
+            ).fetchone()
+        finally:
+            connection.close()
+        force_rechunk = (
+            row is not None and row["chunker_fingerprint"] != resolved_chunker.value
+        )
         report: ScanReport = scan_vault(
             reader,
             previous=previous,
             verify_content=verify_content,
+            force_rechunk=force_rechunk,
+            target_tokens=resolved_chunker.target_tokens,
+            overlap_lines=resolved_chunker.overlap_lines,
         )
         changed = previous is None or previous.content_digest != report.index.content_digest
         old_revision = self._revision(identity)
-        if previous is not None and report.index == previous:
+        if previous is not None and report.index == previous and not force_rechunk:
             return SparseSyncResult(
                 index=previous,
                 revision=old_revision,
@@ -144,7 +160,7 @@ class IndexCatalog:
             )
         revision = old_revision + 1 if changed else old_revision
         now = _now()
-        chunker_value = (chunker or ChunkerFingerprint()).value
+        chunker_value = resolved_chunker.value
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
@@ -272,6 +288,39 @@ class IndexCatalog:
         finally:
             connection.close()
 
+    def update_job_progress(
+        self,
+        job: DenseJob,
+        *,
+        completed: int,
+        reused: int,
+        lease_seconds: int = 120,
+    ) -> None:
+        connection = self._connect()
+        try:
+            updated = connection.execute(
+                """
+                UPDATE jobs
+                SET state='BUILDING', completed=?, reused=?, heartbeat_at=?,
+                    lease_expires_at=datetime('now', ?), updated_at=?
+                WHERE job_id=? AND owner_instance_id=?
+                  AND state IN ('CLAIMED', 'BUILDING')
+                """,
+                (
+                    completed,
+                    reused,
+                    _now(),
+                    f"+{lease_seconds} seconds",
+                    _now(),
+                    job.job_id,
+                    job.owner_instance_id,
+                ),
+            )
+            if updated.rowcount != 1:
+                raise RuntimeError("dense build lease is no longer owned")
+        finally:
+            connection.close()
+
     def import_sparse_index(
         self,
         spec: CorpusSpec,
@@ -395,13 +444,23 @@ class IndexCatalog:
             if embedding_fingerprint is not None:
                 dense = connection.execute(
                     """
-                    SELECT * FROM dense_generations
-                    WHERE corpus_id = ? AND embedding_fingerprint = ?
-                    ORDER BY CASE state WHEN 'READY' THEN 0 WHEN 'BUILDING' THEN 1 ELSE 2 END,
-                             started_at DESC LIMIT 1
+                    SELECT g.* FROM dense_generation_pointers p
+                    JOIN dense_generations g ON g.id=p.active_generation_id
+                    WHERE p.corpus_id = ? AND p.embedding_fingerprint = ?
                     """,
                     (identity.value, embedding_fingerprint.value),
                 ).fetchone()
+                if dense is None:
+                    dense = connection.execute(
+                        """
+                        SELECT * FROM dense_generations
+                        WHERE corpus_id = ? AND embedding_fingerprint = ?
+                        ORDER BY
+                            CASE state WHEN 'BUILDING' THEN 0 WHEN 'FAILED' THEN 1 ELSE 2 END,
+                            started_at DESC LIMIT 1
+                        """,
+                        (identity.value, embedding_fingerprint.value),
+                    ).fetchone()
             if dense is None:
                 dense_state = DenseState.ABSENT
             elif dense["state"] == "READY" and dense["source_revision"] == corpus["current_revision"] and dense["source_digest"] == corpus["content_digest"]:
@@ -557,12 +616,38 @@ class IndexCatalog:
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
+            generation = connection.execute(
+                "SELECT * FROM dense_generations WHERE id=? AND corpus_id=? AND state='BUILDING'",
+                (generation_id, spec.corpus_identity.value),
+            ).fetchone()
+            corpus = connection.execute(
+                "SELECT current_revision, content_digest FROM corpora WHERE id=?",
+                (spec.corpus_identity.value,),
+            ).fetchone()
+            if generation is None or corpus is None:
+                raise RuntimeError("generation publish target is no longer valid")
+            if (
+                generation["source_revision"] != corpus["current_revision"]
+                or generation["source_digest"] != corpus["content_digest"]
+            ):
+                raise RuntimeError("generation source changed before publish")
+            if job is not None:
+                owned = connection.execute(
+                    """
+                    SELECT 1 FROM jobs
+                    WHERE job_id=? AND owner_instance_id=?
+                      AND state IN ('CLAIMED', 'BUILDING')
+                    """,
+                    (job.job_id, job.owner_instance_id),
+                ).fetchone()
+                if owned is None:
+                    raise RuntimeError("dense build lease is no longer owned")
             for row_index, chunk_id, input_hash in rows:
                 connection.execute(
                     "INSERT INTO dense_generation_rows(generation_id, row_index, chunk_id, embedding_input_hash) VALUES (?, ?, ?, ?)",
                     (generation_id, row_index, chunk_id, input_hash),
                 )
-            connection.execute(
+            updated = connection.execute(
                 """
                 UPDATE dense_generations
                 SET state='READY', vector_sha256=?, vector_bytes=?, completed_at=?
@@ -570,17 +655,49 @@ class IndexCatalog:
                 """,
                 (vector_sha256, vector_bytes, _now(), generation_id),
             )
+            if updated.rowcount != 1:
+                raise RuntimeError("dense generation was not published")
+            pointer = connection.execute(
+                """
+                SELECT active_generation_id FROM dense_generation_pointers
+                WHERE corpus_id=? AND embedding_fingerprint=?
+                """,
+                (spec.corpus_identity.value, generation["embedding_fingerprint"]),
+            ).fetchone()
+            previous = pointer["active_generation_id"] if pointer is not None else None
+            connection.execute(
+                """
+                DELETE FROM dense_generation_pointers
+                WHERE corpus_id=? AND embedding_fingerprint<>?
+                """,
+                (spec.corpus_identity.value, generation["embedding_fingerprint"]),
+            )
+            connection.execute(
+                """
+                INSERT INTO dense_generation_pointers(
+                    corpus_id, embedding_fingerprint, active_generation_id,
+                    previous_generation_id, updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(corpus_id, embedding_fingerprint) DO UPDATE SET
+                    previous_generation_id=dense_generation_pointers.active_generation_id,
+                    active_generation_id=excluded.active_generation_id,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    spec.corpus_identity.value,
+                    generation["embedding_fingerprint"],
+                    generation_id,
+                    previous,
+                    _now(),
+                ),
+            )
             connection.execute(
                 """
                 UPDATE dense_generations
                 SET state='SUPERSEDED'
-                WHERE corpus_id=? AND state='READY' AND id NOT IN (
-                    SELECT id FROM dense_generations
-                    WHERE corpus_id=? AND state='READY'
-                    ORDER BY completed_at DESC LIMIT 2
-                )
+                WHERE corpus_id=? AND state='READY' AND id NOT IN (?, COALESCE(?, ''))
                 """,
-                (spec.corpus_identity.value, spec.corpus_identity.value),
+                (spec.corpus_identity.value, generation_id, previous),
             )
             if job is not None:
                 connection.execute(
@@ -621,12 +738,13 @@ class IndexCatalog:
         try:
             return connection.execute(
                 """
-                SELECT * FROM dense_generations
-                WHERE corpus_id=? AND source_revision=? AND source_digest=?
-                  AND embedding_fingerprint=? AND state='READY'
-                ORDER BY completed_at DESC LIMIT 1
+                SELECT g.* FROM dense_generation_pointers p
+                JOIN dense_generations g ON g.id=p.active_generation_id
+                WHERE p.corpus_id=? AND p.embedding_fingerprint=?
+                  AND g.source_revision=? AND g.source_digest=?
+                  AND g.state='READY'
                 """,
-                (spec.corpus_identity.value, revision, source_digest, embedding.value),
+                (spec.corpus_identity.value, embedding.value, revision, source_digest),
             ).fetchone()
         finally:
             connection.close()
@@ -653,7 +771,8 @@ class IndexCatalog:
                 """
                 SELECT r.embedding_input_hash, g.vector_file, g.vector_sha256, r.row_index
                 FROM dense_generation_rows r JOIN dense_generations g ON g.id=r.generation_id
-                WHERE g.corpus_id=? AND g.embedding_fingerprint=? AND g.state='READY'
+                WHERE g.corpus_id=? AND g.embedding_fingerprint=?
+                  AND g.state IN ('READY', 'SUPERSEDED')
                 ORDER BY g.completed_at DESC
                 """,
                 (spec.corpus_identity.value, embedding.value),
@@ -674,11 +793,32 @@ class IndexCatalog:
         try:
             errors = list(connection.execute("PRAGMA integrity_check").fetchall())
             problems = [str(row[0]) for row in errors if row[0] != "ok"]
+            foreign_keys = connection.execute("PRAGMA foreign_key_check").fetchall()
+            problems.extend(f"foreign_key:{row[0]}:{row[1]}" for row in foreign_keys)
             corpus = connection.execute("SELECT id FROM corpora WHERE id=?", (identity.value,)).fetchone()
             if corpus is None:
                 return tuple(problems)
+            if stat.S_IMODE(self.db_path.stat().st_mode) != 0o600:
+                problems.append("catalog_permissions")
+            for pointer in connection.execute(
+                """
+                SELECT p.*, active.state AS active_state, previous.state AS previous_state
+                FROM dense_generation_pointers p
+                LEFT JOIN dense_generations active ON active.id=p.active_generation_id
+                LEFT JOIN dense_generations previous ON previous.id=p.previous_generation_id
+                WHERE p.corpus_id=?
+                """,
+                (identity.value,),
+            ):
+                if pointer["active_generation_id"] and pointer["active_state"] != "READY":
+                    problems.append("active_generation_invalid")
+                if pointer["previous_generation_id"] and pointer["previous_state"] not in {
+                    "READY",
+                    "SUPERSEDED",
+                }:
+                    problems.append("previous_generation_invalid")
             for row in connection.execute(
-                "SELECT id, vector_file, vector_sha256, vector_bytes, row_count, dimension FROM dense_generations WHERE corpus_id=? AND state='READY'",
+                "SELECT id, vector_file, vector_sha256, vector_bytes, row_count, dimension FROM dense_generations WHERE corpus_id=? AND state IN ('READY', 'SUPERSEDED')",
                 (identity.value,),
             ):
                 path = self.generation_root(identity) / row["vector_file"]
@@ -688,9 +828,18 @@ class IndexCatalog:
                 if row["vector_bytes"] and path.stat().st_size != row["vector_bytes"]:
                     problems.append(f"generation_size_mismatch:{row['id']}")
                 if row["vector_sha256"]:
-                    digest = hashlib.sha256(path.read_bytes()).hexdigest()
-                    if digest != row["vector_sha256"]:
+                    digest = hashlib.sha256()
+                    with path.open("rb") as handle:
+                        for block in iter(lambda: handle.read(1024 * 1024), b""):
+                            digest.update(block)
+                    if digest.hexdigest() != row["vector_sha256"]:
                         problems.append(f"generation_checksum_mismatch:{row['id']}")
+                row_count = connection.execute(
+                    "SELECT COUNT(*) FROM dense_generation_rows WHERE generation_id=?",
+                    (row["id"],),
+                ).fetchone()[0]
+                if row_count != row["row_count"]:
+                    problems.append(f"generation_rows_mismatch:{row['id']}")
                 try:
                     vectors = np.load(path, allow_pickle=False, mmap_mode="r")
                     if vectors.dtype != np.float32 or vectors.shape != (row["row_count"], row["dimension"]):
@@ -703,14 +852,34 @@ class IndexCatalog:
         finally:
             connection.close()
 
-    def gc(self, spec: CorpusSpec, *, apply: bool = False) -> tuple[str, ...]:
+    def gc(
+        self,
+        spec: CorpusSpec,
+        *,
+        apply: bool = False,
+        grace_days: int = 7,
+    ) -> tuple[str, ...]:
         identity = spec.corpus_identity
         root = self.generation_root(identity)
         connection = self._connect()
         try:
             rows = connection.execute(
-                "SELECT id, vector_file, state FROM dense_generations WHERE corpus_id=? AND state IN ('FAILED', 'SUPERSEDED')",
-                (identity.value,),
+                """
+                SELECT g.id, g.vector_file, g.state
+                FROM dense_generations g
+                LEFT JOIN dense_generation_pointers p
+                  ON p.corpus_id=g.corpus_id
+                 AND p.embedding_fingerprint=g.embedding_fingerprint
+                WHERE g.corpus_id=?
+                  AND g.state IN ('FAILED', 'SUPERSEDED')
+                  AND g.id NOT IN (
+                    COALESCE(p.active_generation_id, ''),
+                    COALESCE(p.previous_generation_id, '')
+                  )
+                  AND COALESCE(g.completed_at, g.started_at)
+                    < datetime('now', ?)
+                """,
+                (identity.value, f"-{grace_days} days"),
             ).fetchall()
             known = {
                 row["vector_file"]
@@ -720,7 +889,14 @@ class IndexCatalog:
                 )
             }
             orphan_files = (
-                tuple(path for path in root.iterdir() if path.is_file() and path.name not in known)
+                tuple(
+                    path
+                    for path in root.iterdir()
+                    if path.is_file()
+                    and path.name not in known
+                    and datetime.fromtimestamp(path.stat().st_mtime, UTC)
+                    < datetime.now(UTC) - timedelta(days=grace_days)
+                )
                 if root.is_dir()
                 else ()
             )
@@ -735,5 +911,116 @@ class IndexCatalog:
                     path.unlink(missing_ok=True)
                 connection.commit()
             return candidates
+        finally:
+            connection.close()
+
+    def rollback_generation(
+        self,
+        spec: CorpusSpec,
+        *,
+        embedding: EmbeddingFingerprint,
+    ) -> str:
+        identity = spec.corpus_identity
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            pointer = connection.execute(
+                """
+                SELECT p.*, g.source_revision, g.source_digest, g.state
+                FROM dense_generation_pointers p
+                JOIN dense_generations g ON g.id=p.previous_generation_id
+                WHERE p.corpus_id=? AND p.embedding_fingerprint=?
+                """,
+                (identity.value, embedding.value),
+            ).fetchone()
+            corpus = connection.execute(
+                "SELECT current_revision, content_digest FROM corpora WHERE id=?",
+                (identity.value,),
+            ).fetchone()
+            if pointer is None or corpus is None:
+                raise RuntimeError("no compatible previous generation")
+            if (
+                pointer["state"] not in {"READY", "SUPERSEDED"}
+                or pointer["source_revision"] != corpus["current_revision"]
+                or pointer["source_digest"] != corpus["content_digest"]
+            ):
+                raise RuntimeError("previous generation is incompatible with the current corpus")
+            old_active = pointer["active_generation_id"]
+            new_active = pointer["previous_generation_id"]
+            connection.execute(
+                """
+                UPDATE dense_generation_pointers
+                SET active_generation_id=?, previous_generation_id=?, updated_at=?
+                WHERE corpus_id=? AND embedding_fingerprint=?
+                """,
+                (new_active, old_active, _now(), identity.value, embedding.value),
+            )
+            connection.execute(
+                "UPDATE dense_generations SET state='READY' WHERE id=?",
+                (new_active,),
+            )
+            if old_active:
+                connection.execute(
+                    "UPDATE dense_generations SET state='SUPERSEDED' WHERE id=?",
+                    (old_active,),
+                )
+            connection.commit()
+            return str(new_active)
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def inspect(self, spec: CorpusSpec) -> dict[str, object]:
+        identity = spec.corpus_identity
+        connection = self._connect()
+        try:
+            generations = [
+                dict(row)
+                for row in connection.execute(
+                    """
+                    SELECT id, source_revision, source_digest,
+                           embedding_fingerprint, state, vector_file,
+                           vector_sha256, vector_bytes, row_count, dimension,
+                           reused_rows, embedded_rows, started_at, completed_at,
+                           error_code
+                    FROM dense_generations
+                    WHERE corpus_id=?
+                    ORDER BY started_at DESC
+                    """,
+                    (identity.value,),
+                )
+            ]
+            pointers = [
+                dict(row)
+                for row in connection.execute(
+                    """
+                    SELECT embedding_fingerprint, active_generation_id,
+                           previous_generation_id, updated_at
+                    FROM dense_generation_pointers
+                    WHERE corpus_id=?
+                    """,
+                    (identity.value,),
+                )
+            ]
+            jobs = [
+                dict(row)
+                for row in connection.execute(
+                    """
+                    SELECT job_id, kind, requested_revision, state, total,
+                           completed, reused, retry_count, error_code,
+                           created_at, updated_at
+                    FROM jobs WHERE corpus_id=? ORDER BY created_at DESC
+                    """,
+                    (identity.value,),
+                )
+            ]
+            return {
+                "status": self.status(spec).as_dict(),
+                "pointers": pointers,
+                "generations": generations,
+                "jobs": jobs,
+            }
         finally:
             connection.close()

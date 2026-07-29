@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "vire": {
+      "kind": "git",
+      "source": "https://github.com/longstnguyen/ViRE.git",
+      "revision": "dfd092cf0750f304f67264455aa91b4723618f51",
+      "dataset_class": "public_screening",
+      "declared_license": "mixed: code MIT; EduCoQA and CSConDa CC BY-NC 4.0; third-party datasets retain original licenses",
+      "license_verified": false,
+      "role": "quality",
+      "destination": "public/vire",
+      "files": [
+        "data/ALQAC.csv",
+        "data/CSConDa.csv",
+        "data/EduCoQA.csv",
+        "data/UIT-ViQuAD2.csv",
+        "data/ViHERMES/contexts.csv",
+        "data/ViHERMES/qa.csv",
+        "data/ViMedAQA_v2.csv",
+        "data/ViNewsQA.csv",
+        "data/ViRHE4QA_v2.csv",
+        "data/ViRe4MRC_v2.csv",
+        "data/VixSTORY/contexts.csv",
+        "data/VixSTORY/qa.csv",
+        "data/VlogQA_2.csv",
+        "data/ZaloLegalQA/all.jsonl",
+        "data/ZaloLegalQA/dataset.csv"
+      ],
+      "sparse_paths": ["data", "README.md"]
+    },
+    "tvpl": {
+      "kind": "huggingface",
+      "source": "GreenNode/TVPL-Retrieval-VN",
+      "revision": "67c901b65bfeb4e4b6e96eb123d1419c68ab90e8",
+      "dataset_class": "public_screening",
+      "declared_license": "CC BY-SA 4.0",
+      "license_verified": true,
+      "role": "quality",
+      "destination": "public/tvpl",
+      "files": [
+        "corpus/corpus-00000-of-00001.parquet",
+        "queries/queries-00000-of-00001.parquet",
+        "qrels/test-00000-of-00001.parquet"
+      ]
+    },
+    "arguana-vn": {
+      "kind": "huggingface",
+      "source": "GreenNode/arguana-vn",
+      "revision": "137122e4a56c03399d31bce35a045f0034242a4c",
+      "dataset_class": "public_screening",
+      "declared_license": "CC BY-SA 4.0",
+      "license_verified": true,
+      "role": "translated_stress",
+      "destination": "public/arguana-vn",
+      "files": [
+        "corpus/test-00000-of-00001.parquet",
+        "data/test-00000-of-00001.parquet",
+        "queries/test-00000-of-00001.parquet",
+        "qrels/test-00000-of-00001.parquet"
+      ]
+    },
+    "scifact-vn": {
+      "kind": "huggingface",
+      "source": "GreenNode/scifact-vn",
+      "revision": "3fe01c71905b40964f70fa93f255505fd5009ea5",
+      "dataset_class": "public_screening",
+      "declared_license": "CC BY-SA 4.0",
+      "license_verified": true,
+      "role": "translated_diagnostic",
+      "destination": "public/scifact-vn",
+      "files": [
+        "corpus/test-00000-of-00001.parquet",
+        "queries/test-00000-of-00001.parquet",
+        "qrels/test-00000-of-00001.parquet"
+      ]
+    },
+    "uvw-2026": {
+      "kind": "huggingface",
+      "source": "undertheseanlp/UVW-2026",
+      "revision": "a0a79294e4568137e25828bb3f2a4cde8546e1fb",
+      "dataset_class": "public_screening",
+      "declared_license": "CC BY-SA 4.0",
+      "license_verified": true,
+      "role": "scale_only",
+      "destination": "public/uvw-2026",
+      "files": ["data/train.jsonl"]
+    },
+    "kubernetes-vi": {
+      "kind": "git",
+      "source": "https://github.com/kubernetes/website.git",
+      "revision": "ac298b38d31f13a9292a969bd09f7ce2c5e9d908",
+      "dataset_class": "sanitized_benchmark",
+      "declared_license": "CC BY 4.0",
+      "license_verified": true,
+      "role": "markdown_corpus",
+      "destination": "sanitized/kubernetes-vi",
+      "include_globs": ["content/vi/docs/**/*.md", "LICENSE"],
+      "sparse_paths": ["content/vi/docs", "LICENSE"]
+    },
+    "rust-tieng-viet": {
+      "kind": "git",
+      "source": "https://github.com/rust-tieng-viet/rust-tieng-viet.github.io.git",
+      "revision": "da494997b7f9289442155725acf89e8350ead116",
+      "dataset_class": "sanitized_benchmark",
+      "declared_license": "MIT",
+      "license_verified": true,
+      "role": "markdown_corpus",
+      "destination": "sanitized/rust-tieng-viet",
+      "include_globs": ["**/*.md", "LICENSE*"],
+      "sparse_paths": ["."]
+    }
+  }
+}

@@ -393,7 +393,7 @@ def run_profile_eval(
         session_turns=args.session_turns,
         turn_chars=args.turn_chars,
         knowledge_retrieval_mode=getattr(args, "knowledge_retrieval_mode", None),
-        knowledge_dense_backend=getattr(args, "knowledge_dense_backend", "fastembed"),
+        knowledge_dense_backend=getattr(args, "knowledge_dense_backend", "aiteamvn_v2"),
     )
     load_started = time.perf_counter()
     try:
@@ -729,7 +729,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--knowledge-retrieval-mode", choices=("cached_sparse", "hybrid"), default=None
     )
     parser.add_argument(
-        "--knowledge-dense-backend", choices=("fastembed", "model2vec"), default="fastembed"
+        "--knowledge-dense-backend", choices=("aiteamvn_v2",), default="aiteamvn_v2"
     )
     parser.add_argument("--asr-model", default=None)
     parser.add_argument("--llm-model", default=None)

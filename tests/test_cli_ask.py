@@ -3,10 +3,13 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from soca.cli import main
 from soca.llm import LLMResult
+
+pytestmark = pytest.mark.usefixtures("sparse_knowledge_profile")
 
 
 class FakeLLM:

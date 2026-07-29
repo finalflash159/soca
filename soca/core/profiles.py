@@ -27,8 +27,8 @@ class VoiceRuntimeProfile:
     pcm_crossfade_enabled: bool = True
     pcm_crossfade_ms: float = 12.0
     knowledge_limit: int = 3
-    knowledge_retrieval_mode: str = "cached_sparse"
-    knowledge_dense_backend: str = "fastembed"
+    knowledge_retrieval_mode: str = "hybrid"
+    knowledge_dense_backend: str = "aiteamvn_v2"
 
 
 DEFAULT_VOICE_RUNTIME_PROFILE_KEY = "baseline"
@@ -78,6 +78,6 @@ def validate_voice_runtime_profiles() -> list[str]:
             errors.append(f"{key}: knowledge_limit must be positive")
         if profile.knowledge_retrieval_mode not in {"cached_sparse", "hybrid"}:
             errors.append(f"{key}: unknown knowledge retrieval mode")
-        if profile.knowledge_dense_backend not in {"fastembed", "model2vec"}:
+        if profile.knowledge_dense_backend != "aiteamvn_v2":
             errors.append(f"{key}: unknown knowledge dense backend")
     return errors

@@ -1,6 +1,9 @@
 # Vector-search backend research
 
-> Research date: 2026-07-28. This note compares storage/search engines only. Embedding-model quality is evaluated separately in [`docs/10-vietnamese-rag-model-selection.md`](../docs/10-vietnamese-rag-model-selection.md).
+> Research date: 2026-07-28; production gate updated 2026-07-30. This note
+> compares storage/search engines only. Embedding-model quality is evaluated
+> separately in
+> [`docs/10-vietnamese-rag-model-selection.md`](../docs/10-vietnamese-rag-model-selection.md).
 
 ## Scope
 
@@ -13,7 +16,17 @@ A vector database does not solve the first question automatically. The planned d
 
 ## Candidate assessment
 
-| Backend | Search | Persistence/update notes | Decision | | --- | --- | --- | --- | | NumPy `.npy` | Exact | Existing mmap format; generation rebuild | Default v2 baseline after replacing full sort | | FAISS `IndexFlatIP` | Exact | Reconstruct from `.npy`; all vectors resident in RAM | Primary exact candidate | | FAISS `IndexHNSWFlat` | Approximate | Graph overhead; no remove support | Benchmark gate only | | USearch HNSW | Approximate | Save/load/mmap view and remove API | Benchmark gate only | | hnswlib | Approximate | Soft delete/update; `ef` reset after load | Secondary candidate; PyPI packaging risk | | sqlite-vec | Exact scan | Pre-v1 SQLite extension | Do not adopt yet | | DuckDB VSS | Approximate | Persistent HNSW remains experimental | Reject for production | | LanceDB | Exact/indexed | Own table/version/compaction lifecycle | Revisit for much larger corpora | | Qdrant | Vector database | Local mode or server; local snapshots unavailable | Revisit for service/multi-client mode |
+| Backend | Search | Persistence/update notes | Decision |
+| --- | --- | --- | --- |
+| NumPy `.npy` | Exact | Canonical mmap generation | Production |
+| FAISS `IndexFlatIP` | Exact | Reconstruct from `.npy`; resident RAM | Evaluation only |
+| FAISS `IndexHNSWFlat` | Approximate | Graph overhead; no remove support | Evaluation only |
+| USearch HNSW | Approximate | Save/load/mmap view and remove API | Evaluation only |
+| hnswlib | Approximate | Soft delete/update; `ef` reset after load | Rejected now |
+| sqlite-vec | Exact scan | Pre-v1 SQLite extension | Rejected now |
+| DuckDB VSS | Approximate | Persistent HNSW remains experimental | Rejected |
+| LanceDB | Exact/indexed | Own table/version/compaction lifecycle | Revisit at service scale |
+| Qdrant | Vector database | Local/server lifecycle | Revisit at multi-client scale |
 
 ## Primary-source findings
 
@@ -42,16 +55,23 @@ At 50,000 vectors × 384 dimensions:
 
 At 50,000 vectors × 1024 dimensions, FAISS Flat remained close to 1.5 ms p95 and NumPy exact remained below 2 ms p95.
 
-These results reject “add HNSW now” but do not reject ANN permanently. Random vectors have a different geometry from E5 or Vietnamese_Embedding_v2. The production gate requires at least 1,000 real query vectors, exact ground truth, Recall@1/5/10, end-to-end RAG metrics, peak RSS, build time, and cold-load time.
+The final scale gate used 250,000 normalized 1024-dimensional vectors and 1,000
+queries for three seeds. NumPy p95 was `8.150 / 8.077 / 8.001 ms`; FAISS Flat
+was `5.504 / 5.266 / 5.128 ms`. Both had Recall@10 and exact ordered-top-k
+match `1.0`, with maximum score error `7.45e-8`. FAISS saved under 3 ms while
+the selected Vietnamese query encoder costs about 70 ms p95, so the native
+dependency does not improve end-to-end latency enough.
 
 ## Decision
 
-1. Fix the current full Python sort before adding a dependency.
-1. Keep exact search as the v2 default while the target corpus remains within the measured latency and memory budget.
-1. Keep FAISS Flat as the primary optional exact candidate.
-1. Adopt HNSW only if exact p95 or memory exceeds a recorded budget and ANN achieves Recall@10 at least 0.99, end-to-end nDCG regression no worse than 0.005, and at least a 2× latency improvement.
-1. Never re-embed documents merely because the search backend changes.
-1. Never load a native search artifact before validating its provenance, expected size, and checksum.
+1. Deterministic NumPy exact top-k is the only production backend.
+2. FAISS Flat/HNSW and USearch stay in eval/research, not a runtime fallback.
+3. Reconsider ANN only after the production corpus exceeds the measured exact
+   budget and a new benchmark shows Recall@10 at least `0.99`, nDCG regression
+   no worse than `0.005`, and at least 2× p95 speedup.
+4. Never re-embed documents merely because the search backend changes.
+5. Never load a native search artifact before validating provenance, expected
+   size and checksum.
 
 ## Sources
 

@@ -41,32 +41,33 @@ flowchart TD
 
 The retriever stack lives in `soca/knowledge/`:
 
-| Concern              | Module                                   |
-| -------------------- | ---------------------------------------- |
-| Sparse (BM25) chunks | `retrievers/sparse_chunk.py`             |
-| Sparse whole-doc     | `retrievers/sparse_document.py`          |
-| Dense embeddings     | `retrievers/dense.py` (fastembed / ONNX) |
-| Rank fusion          | `retrievers/rrf.py`                      |
-| Fusion source        | `hybrid_source.py`                       |
-| Cached vault index   | `cached_source.py`, `index/`             |
-| Factory + config     | `factory.py` (`build_retrieval_source`)  |
+| Concern | Module |
+| --- | --- |
+| Production BM25 | `retrievers/bm25.py` |
+| Production dense | `retrievers/dense.py` (`VietnameseEmbeddingV2Model`) |
+| Linear fusion | `retrievers/linear.py` |
+| Exact vector top-k | `indexing/vector.py` |
+| Fusion source | `hybrid_source.py` |
+| Transactional lifecycle | `indexing/` |
+| Factory + config | `factory.py` (`build_retrieval_source`) |
 
 `build_retrieval_source(vault, include_globs, config=RetrievalConfig(mode=...))`
-selects `cached_sparse`, `chunk_sparse`, or `hybrid`; the `RetrievalConfig`
-default uses the v2 lifecycle. There is no standalone `dense` mode. Sparse
-sync is transactional and dense document embedding is an explicit index-build
-operation, never part of `search()`/`retrieve()`. A query loads only a READY
-generation whose corpus revision and embedding fingerprint match exactly;
-otherwise it serves sparse-only and exposes the stale/missing state. Chunks
-are line-anchored, so `KnowledgeCitation` carries `line_start`/`line_end` back
-to the UI.
+selects `cached_sparse`, `chunk_sparse`, or `hybrid`; production defaults to
+`hybrid`, lifecycle v2/schema v3, BM25 plus
+`AITeamVN/Vietnamese_Embedding_v2`, linear fusion with dense weight `0.75`.
+There is no standalone production dense mode. Sparse sync is transactional and
+`search()`/`retrieve()` never embeds documents. A query loads only the active
+READY generation whose corpus revision and complete embedding fingerprint
+match exactly. Missing, stale, failed or corrupt dense state raises visibly;
+production never silently serves sparse-only. Chunks are line-anchored, so
+`KnowledgeCitation` carries `line_start`/`line_end` back to the UI.
 
 The lifecycle/operations details are in
 [11 — index lifecycle](./11-index-lifecycle.md).
 
-**RRF** scores a document as `Σ 1/(k + rank)` across the sparse and dense rank
-lists (`k=60`). When the embedding model is unavailable the source degrades to
-sparse-only — the pre-P2 behavior — so retrieval never hard-fails.
+Production min-max normalizes sparse and dense candidate scores independently,
+then computes `0.25 × sparse + 0.75 × dense`. RRF, FastEmbed, BGE-M3,
+rerankers and ANN backends remain benchmark/research variants only.
 
 Historical pre-guard numbers on real XQuAD-Vietnamese (1,193 questions) are in
 [BENCHMARKS.md → P2.1](../BENCHMARKS.md). The current guarded model comparison,

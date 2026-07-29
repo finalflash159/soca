@@ -275,7 +275,6 @@ def _build_source(
             rrf_k=rrf_k,
             sparse_enabled=variant != "dense",
             dense_enabled=variant != "chunk_sparse",
-            dense_failure_policy="raise" if variant in {"dense", "hybrid"} else "degrade",
         ),
     )
 

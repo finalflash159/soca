@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import math
 import os
 from dataclasses import dataclass
@@ -8,12 +9,16 @@ from typing import Protocol
 
 import numpy as np
 
-from soca.knowledge.indexing.identity import EmbeddingFingerprint
+from soca.knowledge.indexing.identity import EmbeddingFingerprint, sha256_file
 from soca.knowledge.indexing.vector import stable_exact_top_k
 from soca.knowledge.retriever import RankedHit
 
 FASTEMBED_E5_MODEL = "intfloat/multilingual-e5-small"
 MODEL2VEC_MODEL = "minishlab/potion-multilingual-128M"
+AITEAMVN_V2_MODEL = "AITeamVN/Vietnamese_Embedding_v2"
+AITEAMVN_V2_REVISION = "18b44161e041bf1d3a333ab5144b5b7b93f914d2"
+AITEAMVN_V2_MODEL_SHA256 = "2fa082ead5ade68225327b913339bbd5aa1e14bcd7888ff9b09d69752a8d1cee"
+AITEAMVN_V2_TOKENIZER_SHA256 = "5df1f55d60c9705a501ab9a75550728625740741fe4be308dac4806c16b7d51d"
 E5_QUERY_PREFIX = "query: "
 E5_PASSAGE_PREFIX = "passage: "
 _CUSTOM_E5_REGISTERED = False
@@ -63,6 +68,76 @@ class EmbeddingModel(Protocol):
     def embed_documents(self, texts: tuple[str, ...]) -> np.ndarray: ...
 
     def embed_query(self, text: str) -> np.ndarray: ...
+
+
+def production_embedding_fingerprint() -> EmbeddingFingerprint:
+    return EmbeddingFingerprint(
+        adapter="sentence_transformers",
+        adapter_version="runtime-v1",
+        model_id=AITEAMVN_V2_MODEL,
+        model_revision=AITEAMVN_V2_REVISION,
+        artifact_digest=AITEAMVN_V2_MODEL_SHA256,
+        tokenizer_digest=AITEAMVN_V2_TOKENIZER_SHA256,
+        dimension=1024,
+        pooling="mean",
+        normalize=True,
+        max_length=8192,
+    )
+
+
+class VietnameseEmbeddingV2Model:
+    def __init__(self, *, model_home: Path | None = None) -> None:
+        root = (model_home or default_model_home()) / "knowledge" / "aiteamvn_v2"
+        manifest_path = root / ".soca-model.json"
+        if not manifest_path.is_file():
+            raise FileNotFoundError(f"production embedding manifest is missing: {manifest_path}")
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        expected = {
+            "schema_version": 1,
+            "repo_id": AITEAMVN_V2_MODEL,
+            "revision": AITEAMVN_V2_REVISION,
+            "model_sha256": AITEAMVN_V2_MODEL_SHA256,
+            "tokenizer_sha256": AITEAMVN_V2_TOKENIZER_SHA256,
+        }
+        if any(payload.get(key) != value for key, value in expected.items()):
+            raise ValueError("production embedding manifest does not match the pinned model")
+        if sha256_file(root / "model.safetensors") != AITEAMVN_V2_MODEL_SHA256:
+            raise ValueError("production embedding model checksum mismatch")
+        if sha256_file(root / "tokenizer.json") != AITEAMVN_V2_TOKENIZER_SHA256:
+            raise ValueError("production embedding tokenizer checksum mismatch")
+        from sentence_transformers import SentenceTransformer
+
+        self._root = root
+        self._model = SentenceTransformer(
+            str(root),
+            device="cpu",
+            local_files_only=True,
+            trust_remote_code=False,
+        )
+
+    @property
+    def model_id(self) -> str:
+        return f"sentence_transformers:{AITEAMVN_V2_MODEL}"
+
+    @property
+    def embedding_fingerprint(self) -> EmbeddingFingerprint:
+        return production_embedding_fingerprint()
+
+    def embed_documents(self, texts: tuple[str, ...]) -> np.ndarray:
+        if not texts:
+            return np.empty((0, 0), dtype=np.float32)
+        vectors = self._model.encode(
+            list(texts),
+            convert_to_numpy=True,
+            normalize_embeddings=False,
+            show_progress_bar=False,
+        )
+        return _normalize_rows(np.asarray(vectors), expected_rows=len(texts))
+
+    def embed_query(self, text: str) -> np.ndarray:
+        if not text.strip():
+            raise ValueError("query must not be empty")
+        return self.embed_documents((text,))[0]
 
 
 class FastEmbedModel:
