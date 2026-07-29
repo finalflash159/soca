@@ -4,7 +4,6 @@ from pathlib import Path
 
 from soca.knowledge import MarkdownVaultKnowledgeSource
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SHOWCASE_VAULT = ROOT / "eval" / "fixtures" / "knowledge_vault"
 
@@ -17,13 +16,14 @@ def test_showcase_vault_has_realistic_demo_slices() -> None:
 
     paths = source.iter_paths()
 
-    assert len(paths) >= 18
+    assert len(paths) >= 16
     assert {
         "wiki/learning/notes/bayes-theorem.md",
         "wiki/life/project/tts-decision.md",
         "wiki/life/finance/food-budget-2026-07.md",
         "wiki/life/health/safety-boundaries.md",
     }.issubset(paths)
+    assert not any(path.startswith("wiki/dinh-duong/") for path in paths)
     assert all(path.startswith("wiki/") for path in paths)
 
 
