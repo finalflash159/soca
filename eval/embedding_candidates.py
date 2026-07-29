@@ -9,7 +9,9 @@ from soca.knowledge.retrievers.dense import EmbeddingModel, default_model_home
 EVAL_CANDIDATES = {
     "aiteamvn_bge_m3": "AITeamVN/Vietnamese_Embedding",
     "aiteamvn_v2": "AITeamVN/Vietnamese_Embedding_v2",
+    "bge_m3": "BAAI/bge-m3",
     "bkai_phobert_seg": "bkai-foundation-models/vietnamese-bi-encoder",
+    "gte_multilingual": "Alibaba-NLP/gte-multilingual-base",
 }
 
 # The v2 weights are also mirrored under this ID.  Keep the model's canonical
@@ -18,6 +20,8 @@ EVAL_CANDIDATES = {
 EVAL_CANDIDATE_FALLBACKS = {
     "aiteamvn_v2": ("thanhtantran/Vietnamese_Embedding_v2",),
 }
+
+EVAL_CANDIDATE_REMOTE_CODE = frozenset({"gte_multilingual"})
 
 
 def _normalize(vectors: np.ndarray, *, rows: int) -> np.ndarray:
@@ -50,7 +54,12 @@ class VietnameseEvalEmbedding:
             raise FileNotFoundError(f"eval model is not provisioned at {path}")
         from sentence_transformers import SentenceTransformer
 
-        self._model = SentenceTransformer(str(path), local_files_only=True)
+        self._model = SentenceTransformer(
+            str(path),
+            device="cpu",
+            local_files_only=True,
+            trust_remote_code=candidate in EVAL_CANDIDATE_REMOTE_CODE,
+        )
 
     @property
     def model_id(self) -> str:

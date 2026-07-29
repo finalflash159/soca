@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "models": {
+    "gte_multilingual": {
+      "role": "embedding",
+      "repo_id": "Alibaba-NLP/gte-multilingual-base",
+      "revision": "9bbca17d9273fd0d03d5725c7a4b0f6b45142062",
+      "license": "Apache-2.0",
+      "trust_remote_code": true,
+      "remote_code_dependencies": {
+        "Alibaba-NLP/new-impl": "40ced75c3017eb27626c9d4ea981bde21a2662f4"
+      }
+    },
+    "bge_m3": {
+      "role": "embedding",
+      "repo_id": "BAAI/bge-m3",
+      "revision": "5617a9f61b028005a4858fdac845db406aefb181",
+      "license": "MIT",
+      "trust_remote_code": false,
+      "required_file_sha256": {
+        "pytorch_model.bin": "b5e0ce3470abf5ef3831aa1bd5553b486803e83251590ab7ff35a117cf6aad38"
+      }
+    },
+    "rerank_mmarco_minilm": {
+      "role": "reranker",
+      "repo_id": "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1",
+      "revision": "1427fd652930e4ba29e8149678df786c240d8825",
+      "license": "Apache-2.0",
+      "trust_remote_code": false
+    },
+    "rerank_gte_multilingual": {
+      "role": "reranker",
+      "repo_id": "Alibaba-NLP/gte-multilingual-reranker-base",
+      "revision": "8215cf04918ba6f7b6a62bb44238ce2953d8831c",
+      "license": "Apache-2.0",
+      "trust_remote_code": true,
+      "remote_code_dependencies": {
+        "Alibaba-NLP/new-impl": "40ced75c3017eb27626c9d4ea981bde21a2662f4"
+      }
+    },
+    "rerank_aiteamvn": {
+      "role": "reranker",
+      "repo_id": "AITeamVN/Vietnamese_Reranker",
+      "revision": "f536976248403314225d7fdfdbc87f0e9516a54e",
+      "license": "Apache-2.0",
+      "trust_remote_code": false
+    },
+    "rerank_bge_m3": {
+      "role": "reranker",
+      "repo_id": "BAAI/bge-reranker-v2-m3",
+      "revision": "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+      "license": "Apache-2.0",
+      "trust_remote_code": false
+    }
+  }
+}
