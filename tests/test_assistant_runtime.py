@@ -61,6 +61,31 @@ class EmptyKnowledgeSource(FakeKnowledgeSource):
         return []
 
 
+class DistractorKnowledgeSource(FakeKnowledgeSource):
+    def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
+        self.search_calls.append((query, limit))
+        relevant = KnowledgeHit(
+            document=self.document,
+            score=4.0,
+            snippet="Định lý Bayes cập nhật xác suất khi có bằng chứng mới.",
+            retrieval_backend="lexical_custom",
+            sparse_score=4.0,
+        )
+        distractor = KnowledgeHit(
+            document=KnowledgeDocument(
+                id="onnx",
+                path="wiki/onnx.md",
+                title="ONNX Runtime",
+                text="ONNX Runtime chạy model.",
+            ),
+            score=1.0,
+            snippet="ONNX Runtime chạy model.",
+            retrieval_backend="lexical_custom",
+            sparse_score=1.0,
+        )
+        return [relevant, distractor][:limit]
+
+
 class FailingMemorySource(FakeKnowledgeSource):
     def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
         raise RuntimeError("memory index unavailable")
@@ -245,6 +270,23 @@ def test_llm_repair_retries_once_when_citations_are_missing() -> None:
     assert result.trace.answer_repair_attempted is True
     assert result.trace.answer_repair_succeeded is True
     assert len(llm.calls) == 2
+
+
+def test_filtered_knowledge_citations_do_not_include_rejected_hits() -> None:
+    source = DistractorKnowledgeSource()
+    llm = SpyLLM(text="Theo [K1], định lý Bayes cập nhật xác suất.")
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        knowledge_builder=KnowledgeContextBuilder(source),
+    )
+
+    result = runtime.run_text_turn("wiki: định lý Bayes")
+
+    assert [citation.path for citation in result.citations] == [
+        "wiki/dinh-duong/chat-dam.md"
+    ]
+    assert "wiki/onnx.md" not in llm.calls[0]["user_msg"]
 
 
 def test_explicit_memory_search_synthesizes_retrieved_context_with_llm() -> None:

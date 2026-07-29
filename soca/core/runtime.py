@@ -843,7 +843,6 @@ class AssistantRuntime:
             )
 
         citations = self._citations_from_tool_result(tool_result)
-        draft.citations.extend(citations)
         knowledge_context = None
         memory_context = None
         if tool_call.name.startswith("knowledge."):
@@ -853,6 +852,7 @@ class AssistantRuntime:
                 tool_result,
                 citations,
             )
+            citations = knowledge_context.citations
             draft.knowledge_hits.extend(knowledge_context.hits)
             for hit in knowledge_context.hits:
                 draft.guardrail_events.append(
@@ -876,6 +876,7 @@ class AssistantRuntime:
                 tool_result,
                 citations,
             )
+            citations = memory_context.citations
             draft.memory_hits.extend(memory_context.hits)
             draft.evidence_decisions.append(
                 decide_evidence(
@@ -888,6 +889,7 @@ class AssistantRuntime:
                     rejected_count=memory_context.rejected_hit_count,
                 )
             )
+        draft.citations.extend(citations)
         if draft.evidence_decisions:
             draft.evidence_bundle = EvidenceReconciler().reconcile(
                 tuple(draft.evidence_decisions)
