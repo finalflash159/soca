@@ -1700,3 +1700,51 @@ P0 therefore closes schema, family split, hard-negative coverage, raw-score
 capture, encoder/aggregation bake-off, and model-free memory access capture.
 P1 remains blocked on contract calibration, evidence false-positive reduction,
 and a real LLM paired memory answer-delta measurement.
+
+### P1 — Disposition/source contract and calibration candidate
+
+Run date: 2026-07-29. Branch: `feat/voice-knowledge-p1-contract-calibration`,
+based on merged P0 `main` at `33eef8b`. This phase does not enable a new
+production default.
+
+P1a changes the production route-example schema from the ambiguous
+`tool:"none"` shape to:
+
+```json
+{"route":"retrieval_request","handler":null,"arguments":{},"sources":["knowledge"]}
+```
+
+`direct_tool` is the only route allowed to name a handler. `smalltalk`,
+`out_of_scope`, and `unresolved` have no handler or source. Retrieval sources
+are an explicit multi-label profile: `knowledge`, `memory`, `both`, or
+`neither`. P0 fixtures remain backward-compatible and frozen; only the
+production `eval/prompts/turn_routing_vi.jsonl` catalog uses the new schema.
+Trace payloads now include disposition, handler, selected routes, source
+profile inputs, all route/source scores, runner-up, margin, and reason without
+logging memory text.
+
+P1b calibration uses only the 42 route rows and 28 source rows in train plus
+validation. The 24 route test rows and 12 source test rows remain sealed and
+are not used for fitting. Candidate artifact SHA-256:
+`dc7f68862f072a2243983bd7859a514298dbf5c3e6cc34cba10c6d1a1f378324`.
+
+| Candidate metric | Fit result | Release interpretation |
+| --- | ---: | --- |
+| Route disposition accuracy | 26/42 (61.90%) | fails quality gate |
+| Unsupported → direct tool | 0/8 | passes fit safety check only |
+| Source profile exact accuracy | 14/28 (50.00%) | fails quality gate |
+| Final test usage | 0 rows | sealed |
+
+The fitted artifact selected route thresholds
+`direct_tool=0.890477`, `retrieval_request=0.865770`,
+`smalltalk=0.884843`, `out_of_scope=0.939997`, `unresolved=0.896812`,
+with route margin `0.0`; source thresholds are
+`knowledge=0.865064`, `memory=0.868267`, with source margin `0.0`.
+These numbers are diagnostic, not a production recommendation. The candidate
+is explicitly recorded as `release_candidate_not_enabled`; P1 cannot pass with
+the current small/noisy route-source corpus, so no semantic default or voice
+behavior was changed.
+
+Exact command and gate policy:
+`eval/gates/voice_knowledge_p1.json` and
+`eval/results/voice_knowledge_p1/router_calibration.json` (ignored artifact).
