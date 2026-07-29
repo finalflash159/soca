@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from eval.baseline_cases import assert_quality_eligible, load_cases
+from eval.remediation_eval import build_dataset_manifest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_CASES = REPO_ROOT / "eval" / "prompts" / "remediation_workflow_vi.jsonl"
@@ -47,3 +48,13 @@ def test_loader_rejects_explicit_demo_derivative(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="derived from demo"):
         load_cases(path, quality_suite=True)
+
+
+def test_manifest_contains_provenance_and_dataset_breakdown() -> None:
+    manifest = build_dataset_manifest((WORKFLOW_CASES, RAG_CASES))
+
+    assert manifest["schema_version"] == "soca-remediation-dataset-manifest-v1"
+    assert manifest["case_count"] == 7
+    assert manifest["artifact"]["suite"] == "remediation_baseline"
+    assert all(dataset["dataset_classes"] for dataset in manifest["datasets"])
+    assert all("sha256" in item for item in manifest["artifact"]["data_files"])
