@@ -4,6 +4,7 @@ import math
 from dataclasses import dataclass
 
 from soca.knowledge import KnowledgeDocument, KnowledgeHit, KnowledgeSource
+from soca.knowledge.relevance import assess_relevance
 from soca.memory.base import LongTermMemorySource, MemoryProfileResult
 from soca.memory.episodes import EpisodeStore
 from soca.memory.scoring import MemoryScoreConfig, rerank_memory_hits
@@ -46,9 +47,25 @@ class CompositeMemorySource:
         hits = list(self._profile_source.search(normalized, limit=self._config.candidate_limit))
         hits.extend(self._episode_hits(normalized))
         if not hits:
-            return MemoryProfileResult(text="", mode="retrieved")
+            return MemoryProfileResult(
+                text="",
+                mode="retrieved",
+                evidence_status="insufficient",
+                evidence_reason="no_hits",
+            )
+        assessment = assess_relevance(normalized, tuple(hits))
+        if not assessment.accepted_hits:
+            return MemoryProfileResult(
+                text="",
+                mode="retrieved",
+                evidence_status=assessment.status,
+                evidence_reason=assessment.reason,
+                rejected_hit_count=assessment.rejected_count,
+                top_relevance=assessment.top_score,
+                relevance_margin=assessment.margin,
+            )
         ranked = rerank_memory_hits(
-            tuple(hits),
+            assessment.accepted_hits,
             top_k=self._config.top_k,
             config=self._config.score,
         )
@@ -56,7 +73,16 @@ class CompositeMemorySource:
             f"[M{index}] {hit.document.path}\n{hit.snippet}"
             for index, hit in enumerate(ranked, start=1)
         )
-        return MemoryProfileResult(text=text, hits=ranked, mode="retrieved")
+        return MemoryProfileResult(
+            text=text,
+            hits=ranked,
+            mode="retrieved",
+            evidence_status=assessment.status,
+            evidence_reason=assessment.reason,
+            rejected_hit_count=assessment.rejected_count,
+            top_relevance=assessment.top_score,
+            relevance_margin=assessment.margin,
+        )
 
     def _episode_hits(self, query: str) -> list[KnowledgeHit]:
         terms = set(query.casefold().split())
@@ -79,6 +105,7 @@ class CompositeMemorySource:
                     ),
                     score=float(overlap) / math.sqrt(max(1, len(terms))),
                     snippet=text,
+                    retrieval_backend="memory_episode",
                 )
             )
         return result

@@ -18,6 +18,11 @@ class MemoryProfileResult:
     hits: tuple[object, ...] = ()
     mode: str = "blob"
     degraded_reason: str = ""
+    evidence_status: str = "insufficient"
+    evidence_reason: str = "no_hits"
+    rejected_hit_count: int = 0
+    top_relevance: float | None = None
+    relevance_margin: float | None = None
 
 
 class LongTermMemorySource(Protocol):
