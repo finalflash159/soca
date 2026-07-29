@@ -10,7 +10,7 @@ import numpy as np
 from soca.app.engine import _memory_protocol_mode, run_engine
 from soca.app.text_runtime import TextRuntimeBundle, TextRuntimeConfig
 from soca.core import ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
-from soca.core.turn import RuntimeResult, RuntimeRoute
+from soca.core.turn import RuntimeResult, RuntimeRoute, RuntimeTrace
 
 
 class ProtocolCapture:
@@ -158,6 +158,44 @@ class _FakeAssistantRuntime:
         return RuntimeResult(response_text=f"echo: {text}", route=RuntimeRoute.FREE_CHAT)
 
 
+class _ManifestAssistantRuntime:
+    def run_text_turn(self, text: str, *, source: str, metadata: dict) -> RuntimeResult:
+        trace = RuntimeTrace(
+            route=RuntimeRoute.FREE_CHAT,
+            prompt_manifest={
+                "model_id": "test-model",
+                "context_window": 2_048,
+                "token_counter": "engine",
+                "requested_output_tokens": 4_096,
+                "effective_output_tokens": 1_600,
+                "input_budget_tokens": 416,
+                "prompt_tokens": 32,
+                "prompt_hash": "abc123",
+                "components": [
+                    {
+                        "component_id": "system",
+                        "tokens": 20,
+                        "included": True,
+                        "required": True,
+                        "priority": 0,
+                    },
+                    {
+                        "component_id": "archive",
+                        "tokens": 400,
+                        "included": False,
+                        "required": False,
+                        "priority": 50,
+                    },
+                ],
+            },
+        )
+        return RuntimeResult(
+            response_text=f"echo: {text}",
+            route=RuntimeRoute.FREE_CHAT,
+            trace=trace,
+        )
+
+
 class _FailingAssistantRuntime:
     def run_text_turn(self, text: str, *, source: str, metadata: dict) -> RuntimeResult:
         raise RuntimeError("synthetic runtime failure")
@@ -166,6 +204,16 @@ class _FailingAssistantRuntime:
 def _fake_text_builder(config: TextRuntimeConfig, session_memory=None) -> TextRuntimeBundle:
     return TextRuntimeBundle(
         runtime=_FakeAssistantRuntime(),  # type: ignore[arg-type]
+        session_memory=session_memory,
+        llm_status="fake",
+        knowledge_status="fake",
+        memory_status="fake",
+    )
+
+
+def _manifest_text_builder(config: TextRuntimeConfig, session_memory=None) -> TextRuntimeBundle:
+    return TextRuntimeBundle(
+        runtime=_ManifestAssistantRuntime(),  # type: ignore[arg-type]
         session_memory=session_memory,
         llm_status="fake",
         knowledge_status="fake",
@@ -196,6 +244,27 @@ def test_engine_chat_roundtrip_emits_done_with_response() -> None:
         "complete",
     ]
     assert progress[-1]["status"] == "done"
+
+
+def test_engine_context_exposes_last_prompt_manifest() -> None:
+    capture = ProtocolCapture()
+    code = run_engine(
+        voice_config=None,
+        text_config=make_text_config(),
+        profile="baseline",
+        stdin=_commands(capture, {"cmd": "chat", "text": "xin chào"}, '"done"'),
+        stdout=capture,
+        text_runtime_builder=_manifest_text_builder,
+    )
+
+    assert code == 0
+    context = [event for event in capture.events() if event["event"] == "context"][-1]
+    assert context["estimated"] is False
+    assert context["prompt_hash"] == "abc123"
+    assert context["model_context_tokens"] == 2_048
+    assert context["output_reserve_tokens"] == 1_600
+    archive = next(item for item in context["components"] if item["id"] == "archive")
+    assert archive["included"] is False
 
 
 def test_engine_chat_exception_does_not_emit_completed_progress() -> None:

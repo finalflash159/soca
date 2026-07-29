@@ -217,13 +217,12 @@ def test_llm_select_persists_remote_config_and_emits_active_config() -> None:
         ]
     )
 
-    assert saved == [
-        LlmSettings(
-            backend="remote",
-            provider_key="groq",
-            model_id="llama-3.1-8b-instant",
-        )
-    ]
+    assert saved[0] == LlmSettings(
+        backend="remote",
+        provider_key="groq",
+        model_id="llama-3.1-8b-instant",
+    )
+    assert saved[-1].model_context_window == 131_072
     event = next(item for item in capture.events() if item["event"] == "llm_config")
     assert event["backend"] == "remote"
     assert event["provider"] == "groq"
