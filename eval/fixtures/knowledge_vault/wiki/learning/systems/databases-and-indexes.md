@@ -6,7 +6,7 @@ status: active
 created: 2026-07-28
 updated: 2026-07-29
 tags: [systems, database, sqlite, index, transaction, consistency, query-plan]
-source_kind: personal-study-simulation
+source_kind: personal-study-note
 ---
 
 # Systems: database và index — dữ liệu bền vững không chỉ là ghi vào file
@@ -137,7 +137,7 @@ crash và cleanup.
 
 ## Quyết định cho corpus nhỏ
 
-Với fixture vài chục tài liệu, tôi ưu tiên Markdown là source, manifest/index
+Với corpus vài chục tài liệu, tôi ưu tiên Markdown là source, manifest/index
 private và exact/hybrid search dễ inspect. Không thêm database/vector service
 chỉ để demo nhìn “production”. Khi cần scale, benchmark read/write/recall/cold
 start trước, ghi decision và migration plan.

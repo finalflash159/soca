@@ -1,62 +1,76 @@
 ---
 type: health_note
-area: safety
-status: general-reference
-created: 2026-07-21
+area: clinician-visit
+status: open
+created: 2026-07-10
 updated: 2026-07-29
-tags: [health, safety, clinician, questions, uncertainty]
-source_kind: sanitized-life-vault-simulation
+confidence: high
+tags: [health, questions, clinician, preparation, uncertainty]
+source_kind: redacted-personal-note
 ---
 
-# Các câu tôi muốn chuẩn bị trước khi hỏi chuyên gia sức khỏe
+# Những câu hỏi tôi muốn mang tới buổi khám
 
-## Vì sao tôi ghi một danh sách câu hỏi
+## Vì sao tôi ghi câu hỏi thay vì tự trả lời
 
-Khi lo lắng, tôi thường kể lan man và quên mất mốc thời gian, thuốc đang dùng
-hoặc điều tôi muốn biết. Note này chỉ giúp chuẩn bị câu hỏi. Nó không tự trả lời
-thay chuyên gia và không phải hồ sơ y tế.
+Khi đọc nhiều nguồn sức khỏe, tôi dễ lấy một triệu chứng chung rồi gắn vào mình.
+Note này chỉ là danh sách chuẩn bị cho cuộc trao đổi với bác sĩ/chuyên gia được
+cấp phép. Nó không ghi chẩn đoán và không có thuốc hay liều dùng.
 
-## Thông tin nên chuẩn bị
+## Thông tin tôi sẽ chuẩn bị
 
-Tôi sẽ ghi triệu chứng/quan sát bằng từ của mình, thời điểm bắt đầu, tần suất,
-yếu tố làm tăng hoặc giảm, mức ảnh hưởng đến sinh hoạt, thuốc/thực phẩm bổ sung
-đang dùng và bệnh nền nếu có. Nếu có số đo, tôi ghi đơn vị, thiết bị, thời điểm
-và hoàn cảnh đo; không chép một con số không rõ nguồn.
+- thời điểm bắt đầu và diễn tiến của dấu hiệu;
+- tần suất, mức độ và điều gì làm tốt/xấu hơn;
+- thuốc, thực phẩm bổ sung và dị ứng đã biết;
+- giấc ngủ, vận động, bữa ăn và thay đổi gần đây;
+- kết quả xét nghiệm có ngày và đơn vị, nếu có;
+- câu hỏi cụ thể thay vì chỉ nói “tôi thấy không ổn”.
 
-Tôi tránh tự kết luận tên bệnh. “Tôi thấy chóng mặt sau khi đứng lên” là observation;
-“tôi bị bệnh X” là diagnosis cần người có chuyên môn. Đây là khác biệt nhỏ nhưng
-quan trọng khi assistant tóm tắt note.
+Tôi sẽ ghi `not measured` nếu chưa đo, không tự điền số ước chừng. Nếu dùng
+thiết bị tại nhà, tôi ghi loại thiết bị, thời điểm và điều kiện đo; đó vẫn không
+thay cho đánh giá lâm sàng.
 
-## Câu hỏi tôi có thể mang theo
+## Câu hỏi ưu tiên
 
-- Những nguyên nhân nào cần được loại trừ trước?
-- Dấu hiệu nào cần theo dõi ở nhà và theo dõi trong bao lâu?
-- Khi nào cần gọi lại hoặc đi khám sớm hơn lịch hẹn?
-- Thuốc hoặc thực phẩm bổ sung hiện tại có tương tác cần lưu ý không?
-- Tôi có cần xét nghiệm/đo gì, và kết quả sẽ thay đổi quyết định ra sao?
-- Mục tiêu của thay đổi ăn uống hoặc vận động là gì?
-- Tôi nên tăng/giảm một biến mỗi lần hay có kế hoạch cụ thể?
-- Có tài liệu nào đáng tin để tôi đọc lại sau buổi tư vấn không?
+1. Với các dấu hiệu tôi mô tả, nguyên nhân nào cần được loại trừ trước?
+2. Có dấu hiệu cảnh báo nào khiến tôi cần đi khám sớm hoặc cấp cứu không?
+3. Tôi cần theo dõi biến số nào, trong bao lâu, và ghi theo định dạng nào?
+4. Có xét nghiệm nào thực sự cần thiết, và kết quả sẽ thay đổi quyết định ra sao?
+5. Những thay đổi ăn uống/vận động nào an toàn trong khi chờ đánh giá?
+6. Thuốc hoặc thực phẩm bổ sung nào có thể tương tác với điều đang dùng?
+7. Nếu triệu chứng không cải thiện, mốc tái khám là khi nào?
 
-## Safety boundary cho assistant
+## Cách tôi phân loại note trước khi đi
 
-Nếu người dùng mô tả dấu hiệu cấp tính, nặng lên nhanh, khó thở, đau ngực, ngất,
-lú lẫn, yếu liệt, chảy máu bất thường hoặc nguy cơ tự hại, assistant không nên
-đưa checklist dài thay cho việc tìm trợ giúp khẩn cấp. Nó phải khuyến khích liên
-hệ dịch vụ cấp cứu/nhân viên y tế phù hợp với nơi người dùng đang ở.
+| Loại | Ví dụ | Không được suy ra |
+| --- | --- | --- |
+| observation | “ngủ ít hai đêm, thấy mệt” | nguyên nhân chắc chắn |
+| measurement | “thiết bị ghi X lúc 08:00” | chẩn đoán |
+| question | “có cần xét nghiệm không?” | câu trả lời đã có |
+| clinician guidance | ghi nguyên văn sau buổi khám | áp dụng cho người khác |
+| emergency sign | dấu hiệu cần trợ giúp gấp | chờ assistant phân tích |
 
-Với câu hỏi về thuốc, liều, chẩn đoán hoặc thay đổi điều trị, assistant chỉ nên
-giúp chuẩn bị câu hỏi và nhắc xác nhận với bác sĩ/dược sĩ. Không suy ra rằng một
-note về “bữa ăn cân bằng” phù hợp cho người có bệnh nền.
+## Nhật ký chuẩn bị
 
-## Cách tôi ghi sau buổi hẹn
+| Ngày | Điều tôi ghi nhận | Chắc chắn |
+| --- | --- | --- |
+| 21/07 | ngủ không đều, năng lượng thay đổi | observation |
+| 23/07 | lịch làm việc dài, bữa trưa muộn | observation |
+| 26/07 | chưa có số đo khách quan | unknown |
+| 29/07 | chưa gặp chuyên gia, câu hỏi vẫn mở | open |
 
-Tôi tách ba phần: điều chuyên gia đã nói, điều tôi hiểu, và điều còn chưa rõ.
-Nếu tôi diễn giải lại bằng ví dụ, tôi gắn nhãn đó là cách hiểu của mình. Tôi ghi
-ngày hẹn và follow-up nhưng không nhét kết luận mới vào phần observation cũ.
+Tôi giữ “chưa gặp” là trạng thái thật. Assistant không được trích note này như
+thể đã có kết luận y khoa.
 
-## Tóm tắt
+## Khi nào không chờ cuộc hẹn thường
 
-Một assistant tốt trong ngữ cảnh sức khỏe không cần giả làm bác sĩ. Nó cần giúp
-tôi tổ chức observation, giữ uncertainty, tìm đúng boundary và biết khi nào phải
-dừng để chuyển sang người có chuyên môn.
+Nếu có dấu hiệu cấp tính nghiêm trọng như khó thở, đau ngực, ngất, yếu liệt đột
+ngột, lú lẫn, chảy máu nhiều hoặc triệu chứng khiến tôi thấy nguy hiểm, tôi tìm
+trợ giúp khẩn cấp theo hệ thống y tế nơi mình ở. Tôi không chờ chat assistant
+đọc hết vault.
+
+## Sau buổi khám
+
+Tôi sẽ tạo note mới có ngày, tên chuyên khoa, điều được giải thích, kế hoạch theo
+dõi và mốc tái khám. Tôi không rewrite note chuẩn bị thành một câu chuyện như
+thể mình đã biết từ đầu. Điều gì chưa rõ sẽ được ghi thành câu hỏi tiếp theo.

@@ -1,65 +1,91 @@
 ---
 type: health_note
-area: nutrition
+area: general-nutrition
 status: general-reference
-created: 2026-07-11
-updated: 2026-07-25
-tags: [health, nutrition, meals, general]
-source_kind: sanitized-life-vault-simulation
+created: 2026-07-08
+updated: 2026-07-29
+confidence: medium
+tags: [health, food, general-reference, meals]
+source_kind: redacted-personal-note
 ---
 
-# Bữa ăn cân bằng — cách tôi hiểu ở mức nguyên tắc
+# Tôi hiểu một bữa ăn cân bằng như thế nào
 
-## Góc nhìn của tôi
+## Phạm vi của note
 
-Tôi không xem “bữa ăn cân bằng” là một công thức gram cố định. Với tôi đó là
-cách ghép nhiều nhóm thực phẩm để bữa ăn có năng lượng, đạm, chất xơ và nước ở
-mức phù hợp với người cụ thể.
+Đây là cách tôi sắp xếp suy nghĩ về bữa ăn hàng ngày, không phải thực đơn điều
+trị. Tôi dùng nó để kiểm tra xem mình có đang chỉ ăn theo một món tiện tay hay
+đang có một pattern đủ đa dạng. Tôi không dùng note này để tự điều chỉnh thuốc,
+đặt mục tiêu y tế hoặc suy ra bệnh từ một ngày ăn uống.
 
-Một bữa mẫu có thể gồm nguồn đạm, rau hoặc trái cây, tinh bột vừa phải và nước.
-Đây là khung suy nghĩ, không phải đơn thuốc hay thực đơn cá nhân.
+## Cách tôi nhìn một bữa ăn
 
-## Ví dụ dễ chuẩn bị
+Thay vì đếm một danh sách cấm, tôi hỏi bốn câu:
 
-| Tình huống | Ví dụ | Điều cần nhớ |
+1. Bữa này có nguồn năng lượng phù hợp với hoạt động hôm đó không?
+2. Có nhóm thực phẩm cung cấp protein và chất xơ không?
+3. Có rau, trái cây hoặc nguồn vi chất đa dạng ở cả ngày không?
+4. Lượng muối, đường tự do và thực phẩm siêu chế biến có trở thành phần chính
+   thường xuyên không?
+
+Tôi cố nhìn theo cả ngày/tuần, không phán xét một đĩa ăn đơn lẻ. Một bữa nhanh
+và đơn giản không làm cả pattern “mất cân bằng”; vấn đề cần quan sát là thói
+quen lặp lại và bối cảnh cá nhân.
+
+## Mẫu ghép món tôi thường dùng
+
+| Tình huống | Cách ghép thuận tiện | Điều cần nhớ |
 | --- | --- | --- |
-| sáng nhanh | trứng, bánh mì nguyên cám, trái cây | khẩu phần tùy người |
-| không ăn thịt | đậu phụ, đậu, rau, cơm | protein không chỉ có thịt |
-| cần mang đi | sữa chua, yến mạch, trái cây | kiểm tra bảo quản |
-| bữa nhà | cá/thịt nạc, rau, cơm | giảm món quá ngọt/mặn |
+| sáng vội | yến mạch + sữa chua + trái cây | không cần biến thành công thức bắt buộc |
+| trưa ở nhà | cơm + cá/đậu + rau | khẩu phần tùy đói và hoạt động |
+| tối nhẹ | đậu phụ + rau + phần tinh bột vừa đủ | không dùng “ăn nhẹ” như mục tiêu y tế |
+| không có thời gian | món còn lại + thêm rau/trái cây | an toàn thực phẩm và bảo quản trước |
 
-## Điều tôi không kết luận
+Các ví dụ này mô tả pattern tôi thấy dễ duy trì. Chúng không nói một người cụ
+thể nên ăn bao nhiêu gram hoặc bao nhiêu calo.
 
-Tôi không tự suy ra lượng calo, tỷ lệ macro hoặc thực đơn điều trị. Tiểu đường,
-bệnh thận, dị ứng, rối loạn ăn uống và các tình trạng đặc biệt cần tư vấn cá
-nhân hóa. Nếu đổi chế độ lớn, tôi xem `safety-boundaries.md` trước.
+## Điều tôi từng làm sai
 
-## Cách ghi nhật ký ăn uống
+Tôi từng cố sửa cả chế độ ăn sau một ngày thấy mệt. Sau đó tôi nhận ra cùng lúc
+có thể có thiếu ngủ, lịch di chuyển, stress và bữa ăn muộn. Đổi nhiều biến làm tôi
+không biết yếu tố nào liên quan. Hiện tôi ghi ngày, bữa, giấc ngủ và cảm giác
+chung, nhưng không tự gắn nguyên nhân.
 
-Tôi ghi thời điểm, món chính, cảm giác đói/no và bối cảnh, không giả vờ đo chính
-xác khi không cân. Một ngày ăn lệch không chứng minh thói quen lâu dài; review
-nên nhìn nhiều ngày và mục tiêu thực tế.
+Tôi cũng từng coi nước ép và trái cây nguyên miếng là tương đương trong mọi bối
+cảnh. Note hiện tại chỉ ghi nguyên tắc chung; nhu cầu riêng, bệnh nền và thuốc
+có thể làm câu trả lời cần cá nhân hóa.
 
-## Câu hỏi mở
+## Cách tôi ghi quan sát
 
-- làm sao giữ bữa đơn giản khi lịch làm việc thay đổi;
-- món nào bảo quản tốt mà không tăng lãng phí;
-- dấu hiệu nào cho thấy cần hỏi chuyên gia thay vì tự chỉnh.
+| Ngày | Bữa đáng nhớ | Bối cảnh | Quan sát | Chắc chắn đến đâu |
+| --- | --- | --- | --- | --- |
+| 21/07 | cơm, cá, rau | làm việc tại nhà | no ổn định | observation |
+| 22/07 | bữa trưa muộn | di chuyển | đói nhanh buổi chiều | observation |
+| 23/07 | yến mạch, trái cây | ngủ ít | chưa biết do món hay do ngủ | unknown |
+| 26/07 | ăn ngoài | lịch dày | khó ước lượng thành phần | incomplete |
 
-## Cách tôi biến nguyên tắc thành quan sát
+Tôi không biến bảng này thành kết luận “món X gây triệu chứng Y”. Nếu một dấu
+hiệu lặp lại, kéo dài hoặc làm tôi lo, tôi đưa câu hỏi sang `questions-for-a-
+clinician.md`.
 
-Tôi không bắt đầu bằng việc cân từng gram. Tôi nhìn một tuần: bữa nào có nguồn
-đạm, rau/quả, tinh bột hoặc năng lượng phù hợp, nước và mức no; sau đó xem lịch
-làm việc, ngân sách và đồ ăn sẵn có. Đây là cách tự quan sát, không phải công
-thức áp dụng cho mọi người.
+## Nguồn và giới hạn
 
-Tôi ghi cả điều làm kế hoạch thất bại: bữa họp kéo dài, không kịp nấu, mua quá
-nhiều rau rồi bỏ, hoặc cố đặt mục tiêu quá chặt. Nếu chỉ ghi “ăn tốt hơn” thì
-không học được gì cho tuần sau.
+Tôi tham khảo hướng dẫn ăn lành mạnh chung của WHO và tài liệu giáo dục phổ thông,
+nhưng note này vẫn là diễn giải cá nhân. Hướng dẫn chung không thay thế đánh giá
+theo tuổi, bệnh nền, thuốc, dị ứng, thai kỳ hoặc mục tiêu điều trị.
 
-## Không suy ra từ note này
+Assistant khi dùng note này phải nói rõ phạm vi, trích đúng note và không trả một
+con số prescription nếu evidence không có. Nếu user hỏi về tiểu đường, bệnh thận,
+thuốc chống đông, dị ứng nặng hoặc thai kỳ, phải chuyển sang hỏi chuyên gia.
 
-Note không quyết định lượng calo, không điều chỉnh thuốc, không thay thế chẩn
-đoán và không chứng minh một món ăn phù hợp cho người có bệnh nền. Nếu người
-dùng hỏi theo bệnh cụ thể, assistant phải chuyển sang safety boundary và khuyên
-hỏi chuyên gia.
+## Câu hỏi tôi còn mở
+
+- Làm sao chuẩn bị bữa nhanh mà vẫn giữ pattern đa dạng khi lịch thay đổi?
+- Làm sao ghi khẩu phần mà không biến việc ăn thành một bảng theo dõi ám ảnh?
+- Dấu hiệu nào cần ngừng tự quan sát và đặt lịch khám?
+
+## Kết luận
+
+Với tôi, “cân bằng” là một pattern có thể duy trì và được đặt trong bối cảnh,
+không phải một danh sách món hoàn hảo. Nếu câu hỏi vượt khỏi nguyên tắc chung,
+note này phải nhường chỗ cho chuyên gia và dữ liệu cá nhân đáng tin cậy.

@@ -61,9 +61,10 @@ loop is still a later design task.
 ## Showcase corpus boundary
 
 `eval/fixtures/knowledge_vault` is for smoke tests and UI demos. It is sanitized,
-not personal data and not a release benchmark. It now contains 13 substantial
-learning notes and 16 life notes covering learning, decisions, journal, finance
-and health. The learning notes include an initial misunderstanding, examples,
+not personal data and not a release benchmark. It now contains 16 substantial
+learning notes and 18 life notes covering fundamentals, DSA, systems, ML, DL,
+LLM serving, networking, security, decisions, journal, finance and health. The
+learning notes include an initial misunderstanding, examples,
 invariants, trade-offs, failure cases and open questions. Life notes preserve
 state/date/uncertainty; finance distinguishes budget, planned and receipt actual;
 health keeps a safety boundary.
@@ -77,7 +78,7 @@ Automated checks on this branch:
 - `uv run pytest -q`: **1090 passed, 3 skipped**;
 - `uv run ruff check soca tests`: **pass**;
 - `uv run pyright soca`: **0 errors, 0 warnings**;
-- showcase fixture: **31 markdown notes**, structure/size/query smoke pass.
+- showcase fixture: **35 indexed markdown notes**, structure/size/query smoke pass.
 
 Real local flow with `arcee_vylinh_3b_q4_k_m` passed:
 

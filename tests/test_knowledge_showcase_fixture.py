@@ -16,7 +16,7 @@ def test_showcase_vault_has_realistic_demo_slices() -> None:
 
     paths = source.iter_paths()
 
-    assert len(paths) >= 30
+    assert len(paths) >= 35
     assert {
         "wiki/learning/fundamentals/bayes-and-probability.md",
         "wiki/learning/dsa/graphs-and-dp.md",
@@ -27,14 +27,19 @@ def test_showcase_vault_has_realistic_demo_slices() -> None:
         "wiki/life/finance/receipt-ledger-2026-07.md",
         "wiki/life/health/safety-boundaries.md",
         "wiki/life/health/questions-for-a-clinician.md",
+        "wiki/life/health/sleep-observations.md",
         "wiki/life/journal/2026-07-28.md",
+        "wiki/life/journal/2026-07-29.md",
+        "wiki/learning/data/data-pipelines.md",
+        "wiki/learning/networks/http-timeouts-and-retries.md",
+        "wiki/learning/security/threat-modeling.md",
     }.issubset(paths)
     assert not any(path.startswith("wiki/dinh-duong/") for path in paths)
     assert not any(path.startswith("wiki/life/project/") for path in paths)
     learning_paths = [path for path in paths if path.startswith("wiki/learning/")]
     life_paths = [path for path in paths if path.startswith("wiki/life/")]
-    assert len(learning_paths) >= 13
-    assert len(life_paths) >= 16
+    assert len(learning_paths) >= 16
+    assert len(life_paths) >= 18
     assert all(
         len((SHOWCASE_VAULT / path).read_text(encoding="utf-8").splitlines()) >= 100
         for path in learning_paths

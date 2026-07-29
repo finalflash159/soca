@@ -6,7 +6,7 @@ status: active
 created: 2026-07-21
 updated: 2026-07-28
 tags: [ml, training, validation, leakage, metrics, calibration]
-source_kind: personal-study-simulation
+source_kind: personal-study-note
 ---
 
 # ML: train, validation và evaluation — đừng tự chấm bài mình đã học thuộc
@@ -188,6 +188,6 @@ release gate vẫn fail.
 - viết 20 query no-answer không lộ keyword “không có”;
 - tạo near-duplicate khác heading;
 - giữ một test set không được dùng khi calibrate threshold;
-- chạy evaluator leak sau mỗi lần sửa fixture;
+- chạy evaluator leak sau mỗi lần sửa corpus;
 - review từng failure theo taxonomy;
 - lưu decision cùng model revision và command reproduce.

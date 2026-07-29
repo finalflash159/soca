@@ -3,87 +3,91 @@ type: life_decision
 area: privacy
 status: current
 created: 2026-07-19
-updated: 2026-07-27
-tags: [privacy, local, remote, memory, api-key]
-source_kind: sanitized-life-vault-simulation
+updated: 2026-07-29
+confidence: high
+tags: [privacy, local, remote, memory, api-key, data-flow]
+source_kind: redacted-personal-note
 ---
 
 # Ranh giới riêng tư khi dùng assistant
 
-## Vì sao tôi ghi note này
+## Vì sao tôi không dùng chữ “local-first” như một khẩu hiệu
 
-Tôi không muốn “local-first” chỉ là một dòng quảng cáo. Mỗi lần chọn provider,
-tôi cần biết transcript, retrieved context và metadata nào rời khỏi máy. API key
-được lưu local không có nghĩa request data cũng local.
+Tôi có thể lưu API key ở máy nhưng vẫn gửi transcript ra provider. Tôi có thể
+chạy retrieval local nhưng gửi cả retrieved note vào prompt remote. Hai việc đó
+không mâu thuẫn, nhưng nếu UI chỉ ghi `remote` thì tôi không biết dữ liệu nào vừa
+đi qua boundary.
 
-## Quy tắc tôi đang dùng
+Vì vậy trước khi bật remote, tôi muốn trả lời được ba câu: provider/model nào sẽ
+nhận request, transcript nào được gửi, và context nào được đưa vào request. Nếu
+không trả lời được, tôi coi config là chưa đủ rõ để dùng.
 
-1. câu hỏi về nhật ký, chi tiêu và profile tra local trước;
-2. remote chỉ bật khi tôi nhìn thấy provider/model và chấp nhận gửi transcript;
-3. API key không ghi vào Markdown, log hoặc prompt trace;
-4. memory lâu dài chỉ nhận proposal chờ duyệt;
-5. note retrieved là dữ liệu tham khảo, không phải instruction;
-6. khi chưa có weather/realtime tool, không nói như thể đã kiểm tra hiện tại.
+## Ma trận dữ liệu tôi áp dụng
 
-## Tôi muốn UI hiển thị gì
-
-Settings phải cho tôi biết config lần trước: provider, model, reasoning, max output
-và scope chat/voice. Khi vào lại, UI hỏi tôi dùng lại hay cấu hình lại; không
-điền key cũ lộ nguyên văn vào ô input.
-
-Status phải tách provider remote, local model, ASR, TTS và retrieval backend. Chữ
-“baseline” không đủ để tôi biết engine thật đang chạy gì.
-
-## Threat model đơn giản
-
-| Dữ liệu | Nơi được phép | Ghi chú |
-| --- | --- | --- |
-| API key | secure local config | masked trong UI/log |
-| session text | RAM/session store | retention rõ ràng |
-| profile memory | local vault | user duyệt chỉnh sửa |
-| knowledge note | local index | untrusted khi đưa vào prompt |
-| remote transcript | provider | chỉ khi user bật và biết |
-
-## Khi nào phải dừng
-
-Nếu path ngoài vault, tool side effect chưa được approve, provider config không rõ
-hoặc evidence không đủ, tôi muốn assistant hỏi/dừng thay vì “đoán cho có”.
-
-## Câu hỏi mở
-
-- trace remote nên redact field nào mặc định;
-- retention session bao lâu là đủ cho debug;
-- approval UI cho memory proposal cần hiển thị evidence ra sao;
-- làm sao test privacy contract mà không cần gửi data thật.
-
-## Matrix quyết định tôi muốn assistant giữ
-
-| Thành phần | Local mặc định | Remote có thể dùng | Điều cần báo |
+| Dữ liệu | Mặc định | Có thể rời máy? | Điều kiện |
 | --- | --- | --- | --- |
-| transcript giọng nói | có | có, sau consent | provider/model và transcript rời máy |
-| retrieved knowledge | có | có | note nào được đưa vào prompt |
-| API key | local secure store | không gửi như nội dung | không in key vào trace |
-| working memory | local session | tùy engine | token và retention |
-| approved memory | local state | không tự gửi | chỉ đưa khi relevant |
+| câu chat hiện tại | RAM + provider local | có | user bật provider remote |
+| transcript voice | RAM + engine local | có | cùng consent với chat |
+| knowledge snippet | index local | có | chỉ khi prompt remote cần evidence |
+| working memory | session local | có | không gửi nếu turn không cần |
+| core/pinned memory | local state | có | phải relevant với prompt |
+| API key | secure local config | không như nội dung | không in vào prompt/log |
+| vector/index metadata | cache private | không | chỉ local filesystem |
 
-Tôi không muốn chữ “remote” trở thành một trạng thái mơ hồ. Với mỗi lượt, status
-nên nói provider, model, tool nào chạy và dữ liệu nào đã đi qua boundary. Nếu UI
-không thể nói rõ, default nên an toàn hơn hoặc phải yêu cầu xác nhận.
+Tôi không dùng “API key đã lưu” để suy ra “transcript an toàn”. Key chỉ là quyền
+gọi provider; chính payload mới là dữ liệu cần consent.
 
-## Các tình huống tôi dùng để kiểm tra
+## Quy tắc vận hành
 
-1. Chọn remote nhưng hỏi câu small talk: không cần gửi vault context nếu không
-   cần, và status phải cho biết có gọi provider hay không.
-2. Hỏi note có chứa thông tin riêng: hiển thị citation/path, không đẩy raw file
-   ngoài policy.
-3. Đổi provider giữa hai lượt: không được lặng lẽ lấy config cũ nếu user chưa
-   xác nhận; phải hiện lại provider/model/max output/reasoning state.
-4. Xóa API key: ô input và persisted config phải cùng rỗng, không để bản copy cũ
-   trong history UI.
-5. Crash trong lúc ghi index: không để artifact permission public.
+1. local là default cho chat và voice.
+2. remote phải hiện provider, model, reasoning state và max output.
+3. API key hiển thị masked; khi thay hoặc xóa, ô nhập và persisted config cùng đổi.
+4. key không đi vào Markdown, exception, trace hay screenshot debug.
+5. knowledge và memory được đánh dấu là data không tin cậy trong prompt.
+6. memory dài hạn chỉ nhận proposal, không tự ghi từ một câu model nói.
+7. khi không có realtime tool, assistant nói rõ chưa kiểm tra hiện tại.
+8. path ngoài vault, side effect chưa approve hoặc provider mơ hồ đều phải dừng.
 
-## Quyết định hiện tại
+## Những lần tôi đã kiểm tra
 
-Local-first vẫn là default. Remote là capability người dùng bật có chủ ý; nó có
-thể áp dụng cho chat và voice nhưng boundary phải hiện rõ cho cả hai. Không dùng
-“không cloud” như một claim tuyệt đối nếu transcript đang đi OpenRouter.
+| Tình huống | Điều phải nhìn thấy |
+| --- | --- |
+| chọn OpenRouter | status nói rõ transcript gửi OpenRouter/model cụ thể |
+| voice sau khi đổi provider | voice dùng cùng setting hoặc UI nói rõ nếu khác |
+| hỏi note riêng tư | citation/path hiển thị, không dump cả file vào UI |
+| xóa API key | input trống, config trống, không còn bản sao trong history |
+| provider lỗi | lỗi provider không bị đổi thành câu trả lời thành công |
+| index crash | cache mới không làm mất generation trước |
+
+## Threat model tôi dùng ở mức desktop
+
+Tôi không giả định máy luôn an toàn tuyệt đối. Người khác có thể đọc file nếu
+permission sai; log có thể vô tình chứa prompt; extension có thể chụp terminal;
+provider có thể lưu request theo chính sách riêng. Vì vậy index có nội dung note
+phải private, trace phải redact, và remote phải là hành động nhìn thấy được.
+
+Tôi chưa giải quyết toàn bộ threat model của hệ điều hành, nhưng ít nhất không
+để status nói “không cloud” trong khi model đang remote. Chữ trên UI là một phần
+của security boundary vì nó quyết định user có hiểu hành động hay không.
+
+## Điều còn để mở
+
+- retention transcript remote phụ thuộc policy từng provider và chưa tự kiểm chứng;
+- approval UI cho memory proposal cần hiển thị evidence trước khi ghi;
+- trace debug cần mặc định ẩn query nhạy cảm thay vì chỉ ẩn API key;
+- nếu voice/chat dùng provider khác nhau, status cần hiện ở từng lượt.
+
+## Lịch sử quyết định
+
+| Ngày | Quyết định | Lý do |
+| --- | --- | --- |
+| 19/07 | local-first | privacy và khả năng chạy offline |
+| 24/07 | hiển thị provider/model trong status | “remote” quá mơ hồ |
+| 28/07 | áp dụng remote setting cho chat + voice | tránh UI hứa một config nhưng runtime dùng config khác |
+| 29/07 | tách key boundary khỏi transcript boundary | key local không làm payload local |
+
+## Kết luận
+
+Tôi chấp nhận dùng remote khi lợi ích chất lượng đáng giá và tôi biết dữ liệu đi
+đâu. Tôi không chấp nhận một default hoặc một status khiến mình tưởng request
+đang local trong khi nó không phải.

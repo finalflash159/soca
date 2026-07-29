@@ -1,72 +1,72 @@
 ---
 type: finance_note
 area: food
-period: 2026-07-week-4
+period: 2026-07
 status: planned
-created: 2026-07-24
-updated: 2026-07-27
-tags: [grocery, plan, food, pending]
-source_kind: sanitized-life-vault-simulation
+created: 2026-07-27
+updated: 2026-07-29
+confidence: medium
+tags: [grocery, plan, food, planned, july-2026]
+source_kind: redacted-personal-note
 ---
 
-# Danh sách mua thực phẩm tuần cuối tháng 07
+# Danh sách mua cuối tháng 07/2026
 
-## Vì sao lập danh sách
+## Đây là kế hoạch, chưa phải receipt
 
-Tuần cuối tháng tôi muốn dùng phần còn lại của budget để mua đủ đồ cơ bản, nhưng
-không biến kế hoạch thành giao dịch. Note này phải được trả lời khác với
-`food-budget-2026-07.md` nếu tôi hỏi “đã chi bao nhiêu”.
+Tôi viết note này sau khi nhìn tủ lạnh tối 28/07. Những dòng dưới đây chỉ là
+`planned`; không được dùng để trả lời “tôi đã mua gì”. Khi mua xong, tôi sẽ thêm
+receipt vào `receipt-ledger-2026-07.md` và đổi trạng thái từng dòng.
 
-## Danh sách và mức dự kiến
+## Đồ cần mua
 
-| Mặt hàng | Lượng dự kiến | Mức dự kiến | Trạng thái |
-| --- | --- | ---: | --- |
-| trứng | 1 khay | 80.000 | planned |
-| đậu phụ | 4 bìa | 24.000 | planned |
-| rau xanh | 4–5 bó | 120.000 | planned |
-| trái cây | 2–3 loại | 180.000 | planned |
-| yến mạch | 1 gói | 95.000 | planned |
-| sữa chua không đường | 1 lốc | 70.000 | planned |
-| cá hoặc thịt nạc | 1–1,5 kg | 220.000 | planned |
+| Món | Lượng dự kiến | Giá dự kiến | Mục đích | Trạng thái |
+| --- | ---: | ---: | --- | --- |
+| rau xanh theo mùa | 3 bó | 90.000 | 3–4 bữa | planned |
+| đậu phụ | 4 miếng | 32.000 | bữa nhanh | planned |
+| cá | 0,8 kg | 130.000 | hai bữa | planned |
+| chuối | 1 nải nhỏ | 35.000 | bữa phụ | planned |
+| sữa chua không đường | 4 hộp | 44.000 | dùng trong tuần | planned |
+| hành, gừng, gia vị thiếu | 1 set nhỏ | 35.000 | nấu ăn | planned |
+| **tổng dự kiến** |  | **366.000** |  |  |
 
-Tổng dự kiến khoảng 789.000 đồng, nhưng giá và lượng thật có thể thay đổi.
+Tổng dự kiến cao hơn con số 280.000 trong budget vì tôi ghi cả một lần mua dự
+phòng. Tôi sẽ ưu tiên rau, đậu phụ và cá; nếu giá thực tế vượt 280.000, bỏ sữa
+chua hoặc mua cá ít hơn thay vì coi phần chênh là “không đáng kể”.
 
-## Sau khi mua
+## Vì sao tôi chọn như vậy
 
-Tôi sẽ ghi ngày, receipt, số tiền thật và mặt hàng thay thế. Nếu không mua một
-món, không xóa dòng; chuyển thành `skipped` và ghi lý do. Nếu mua ngoài list,
-thêm dòng `added` để monthly review biết vì sao lệch.
+Tôi không lập thực đơn lý tưởng cho cả tháng. Tôi lập kế hoạch đủ cho vài ngày,
+dựa trên những gì còn lại và lịch di chuyển. Gạo và yến mạch đang có nên không
+mua lại. Trứng còn sáu quả, vì vậy chưa cần thêm trừ khi giá tốt.
 
-## Điều không được suy ra
+Tôi ưu tiên món có thể ghép nhiều bữa: rau + đậu phụ cho bữa nhanh, cá chia
+phần cho hai bữa, chuối dùng ngay trước khi hỏng. Đây là quyết định tiết kiệm
+thời gian và giảm bỏ phí, không phải khuyến nghị dinh dưỡng cá nhân.
 
-Note này không chứng minh tôi đã mua hàng, không chứng minh còn budget chính xác
-và không phải thực đơn y tế. Assistant phải giữ chữ “dự kiến” khi trả lời.
+## Quy tắc chuyển plan thành actual
 
-## Kế hoạch theo nhóm
+- `planned`: ý định, chưa có bằng chứng mua;
+- `purchased`: đã mua nhưng receipt chưa được đối chiếu;
+- `actual`: có dòng receipt và số tiền thật;
+- `cancelled`: không mua, không cộng vào chi tiêu;
+- `carried-over`: chuyển sang tháng sau, không cộng tháng này.
 
-| Nhóm | Mặt hàng | Lý do | Ước tính | Trạng thái |
-| --- | --- | --- | ---: | --- |
-| protein | trứng | dùng cho bữa sáng, dễ chia | 120.000 | planned |
-| rau | rau lá và cà rốt | đủ cho vài bữa, ưu tiên ít lãng phí | 160.000 | planned |
-| pantry | đậu, yến mạch | bổ sung phần đã gần hết | 210.000 | planned |
-| fruit | chuối | ăn trong tuần, không mua quá nhiều | 80.000 | planned |
+Nếu mua một món thay thế, tôi không xóa món plan cũ. Tôi ghi `planned →
+cancelled` và thêm món mới cùng receipt. Như vậy sau này câu “tôi định mua gì”
+vẫn khác “tôi thực sự mua gì”.
 
-Tổng ước tính chỉ là planning number. Giá lúc mua, trọng lượng và món thay thế
-có thể khác. Tôi không muốn assistant cộng nó vào ledger actual hay nói “đã mua
-trứng” chỉ vì note có tên trứng.
+## Cách tôi sẽ review ngày 31/07
 
-## Điều kiện dừng hoặc đổi kế hoạch
+1. đối chiếu từng dòng với receipt;
+2. tách đồ ăn khỏi đồ gia dụng nếu cùng hóa đơn;
+3. tính actual grocery và so với budget note;
+4. ghi món không mua và lý do;
+5. nếu có đồ hỏng, ghi ở monthly review chứ không sửa lịch sử.
 
-Nếu budget actual đã gần trần, tôi giảm món pantry không cấp thiết trước. Nếu nhà
-còn tồn, đánh dấu `defer` thay vì mua cho đủ list. Nếu cửa hàng hết món, thêm
-`substitute` với món thực tế và ghi lý do. Nếu không mua, giữ dòng `skipped` để
-monthly review thấy kế hoạch đã thay đổi.
+## Query kiểm tra
 
-## Câu hỏi assistant nên hỏi lại
-
-- Bạn hỏi kế hoạch hay các món đã mua?
-- Bạn muốn tổng ước tính hay tổng actual có receipt?
-- Có cần tính món thay thế và đồ còn tồn không?
-
-Ba câu hỏi này nghe chậm hơn một câu trả lời ngay, nhưng tránh trộn plan với
-evidence. Với fixture, đó là distinction quan trọng để test grounding.
+- “Cuối tháng tôi định mua gì?” → note này.
+- “Tôi đã mua cá chưa?” → phải kiểm ledger, không trả `planned` như actual.
+- “Tôi còn bao nhiêu budget?” → budget note, không cộng tổng dự kiến vào actual.
+- “Tại sao bỏ sữa chua?” → chỉ trả lời sau khi status được cập nhật.

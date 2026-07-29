@@ -6,7 +6,7 @@ status: active
 created: 2026-07-26
 updated: 2026-07-28
 tags: [onnx, inference, coreml, cpu, model-serving, debugging]
-source_kind: personal-study-simulation
+source_kind: personal-study-note
 ---
 
 # Inference ONNX: tôi kiểm model chạy thật chứ không nhìn tên provider
@@ -72,7 +72,7 @@ Tôi muốn status nói `ready:coreml+cpu-fallback`, `ready:cpu` hoặc
 execution backend và fallback phải hiện riêng vì chúng là failure boundary khác
 nhau.
 
-## Ghi chú kết quả mô phỏng
+## Ghi chú kết quả chưa đủ benchmark
 
 Fixture này không chứa weight hoặc claim benchmark release. Các smoke table có thể
 ghi input class và expected contract, còn số latency phải lấy từ máy thật khi

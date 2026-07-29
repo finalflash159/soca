@@ -6,7 +6,7 @@ status: active
 created: 2026-07-18
 updated: 2026-07-28
 tags: [probability, bayes, statistics, reasoning]
-source_kind: personal-study-simulation
+source_kind: personal-study-note
 ---
 
 # Xác suất và định lý Bayes — cách tôi đổi góc nhìn
@@ -142,7 +142,7 @@ retry count và stage trace trước khi cập nhật kết luận.
 
 ## Ghi chú nguồn
 
-Đây là note tự diễn giải để học, với ví dụ số mô phỏng. Các ví dụ sức khỏe không
+Đây là note tự diễn giải để học, với ví dụ số minh họa. Các ví dụ sức khỏe không
 phải tư vấn y tế; khi hỏi về triệu chứng cần xem ranh giới ở
 `wiki/life/health/safety-boundaries.md`.
 

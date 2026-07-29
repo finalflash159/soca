@@ -6,7 +6,7 @@ status: active
 created: 2026-07-25
 updated: 2026-07-28
 tags: [software, debugging, testing, regression, observability]
-source_kind: personal-study-simulation
+source_kind: personal-study-note
 ---
 
 # Software engineering: debug bằng bằng chứng, test bằng contract

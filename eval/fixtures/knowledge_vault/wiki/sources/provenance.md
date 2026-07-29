@@ -4,17 +4,20 @@ scope: showcase-vault
 status: permanent
 created: 2026-07-01
 updated: 2026-07-28
-tags: [provenance, synthetic, sanitized, demo, benchmark]
+tags: [provenance, redacted, showcase, benchmark-boundary, sources]
 source_kind: repository-policy
 ---
 
-# Provenance của showcase vault
+# Provenance và ranh giới của vault
 
 ## Corpus này là gì
 
-Các note trong fixture được viết riêng cho repository để mô phỏng một vault có
-learning, journal, decision, finance và health. Một số con số và trải nghiệm được
-sanitise/simulate; chúng không phải dữ liệu riêng tư thật của một người.
+Corpus này được viết theo góc nhìn first-person và một timeline nhất quán để mô
+phỏng cách một người thật có thể ghi learning, journal, decision, finance và
+health. Nó đã được redacted: không có tên, địa chỉ, API key, receipt thật hay hồ
+sơ sức khỏe thật. “Realistic” ở đây nghĩa là context, trạng thái, mâu thuẫn nhỏ,
+history và uncertainty đủ thật để test retrieval; không được hiểu là dữ liệu cá
+nhân thật.
 
 ## Vì sao corpus phải có nhiều loại note
 
@@ -31,16 +34,18 @@ Ví dụ:
 - balanced-meals là general reference; safety-boundaries là guardrail;
 - context/tool-use là cách tôi học; journal ghi việc tôi đã kiểm tra runtime.
 
-## Tiêu chuẩn viết fixture
+## Tiêu chuẩn viết corpus
 
 Mỗi note nên có ít nhất một context khiến câu trả lời cần đọc cả đoạn, một
 distinction dễ nhầm, một limitation và một câu hỏi follow-up. Note không được
 chỉ lặp keyword rồi kết thúc bằng một định nghĩa. Với note learning, tôi thêm
-góc nhìn ban đầu, ví dụ, invariant, failure case và tóm tắt theo lời mình.
+góc nhìn ban đầu, ví dụ đủ số, invariant, failure case, nguồn tham khảo và tóm
+tắt theo lời mình.
 
 Với life note, tôi thêm thời điểm, trạng thái, lý do, điều chưa biết và hành động
-tiếp theo. Với health, luôn có boundary. Với finance, planned/actual/receipt
-không được trộn. Với journal, việc đã làm và việc dự kiến phải khác ngữ pháp.
+tiếp theo. Với health, luôn có boundary và phân biệt observation với diagnosis.
+Với finance, planned/actual/receipt không được trộn. Với journal, việc đã làm và
+việc dự kiến phải khác ngữ pháp.
 
 ## Những gì corpus không được giả vờ
 
@@ -95,6 +100,21 @@ trước tôi ghi gì?”. First-person giúp mô phỏng reference resolution, 
 Mỗi note chính có `created`, `updated`, `status` và `source_kind`. Nếu thêm một
 giao dịch, sửa actual ledger; nếu chỉ dự kiến, giữ `planned`. Nếu đổi quyết định,
 thêm ngày và lý do, không rewrite lịch sử như thể chưa từng có lựa chọn cũ.
+
+## Nguồn tham khảo được diễn giải trong learning notes
+
+Các note kỹ thuật không chép nguyên văn nguồn. Tôi dùng những nguồn gốc sau để
+kiểm tra khái niệm và ghi lại đường dẫn để người đọc mở lại:
+
+- Transformer: [Attention Is All You Need](https://arxiv.org/abs/1706.03762).
+- ONNX Runtime: [CoreML Execution Provider](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html)
+  và [Execution Providers](https://onnxruntime.ai/docs/execution-providers/).
+- SQLite transaction: [Atomic Commit In SQLite](https://www.sqlite.org/atomiccommit.html).
+- dense vector search: [Faiss documentation](https://faiss.ai/).
+- nutrition boundary: [WHO healthy diet fact sheet](https://www.who.int/news-room/fact-sheets/detail/healthy-diet).
+
+Các link này là nguồn giáo dục/technical reference, không biến các first-person
+note thành benchmark hay bằng chứng cho đời sống.
 
 ## Dùng trong demo
 

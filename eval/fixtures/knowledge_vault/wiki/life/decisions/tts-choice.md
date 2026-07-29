@@ -3,86 +3,89 @@ type: life_decision
 area: personal-tooling
 status: current
 created: 2026-07-18
-updated: 2026-07-26
-tags: [tts, privacy, local, decision]
-source_kind: sanitized-life-vault-simulation
+updated: 2026-07-29
+confidence: medium
+review_after: 2026-08-31
+tags: [tts, privacy, local, voice, latency, decision]
+source_kind: redacted-personal-note
 ---
 
-# Vì sao tôi chọn giọng đọc local
+# Vì sao tôi giữ TTS local làm mặc định
 
-## Bối cảnh
+## Bối cảnh thật của quyết định
 
-Tôi muốn dùng SoCa bằng giọng nói hằng ngày, không chỉ chạy một câu demo. Vì
-voice có transcript, memory và những câu nói riêng tư, lựa chọn TTS không thể
-chỉ nhìn chất lượng âm thanh cao nhất trên một đoạn mẫu.
+Tôi không chỉ đọc một câu chào. Tôi muốn dùng voice để hỏi note, nghe câu trả
+lời dài, cắt lời giữa chừng và khởi động lại engine nhiều lần. Vì transcript có
+thể chứa thông tin riêng, chất lượng âm thanh phải được cân với privacy, latency
+và khả năng barge-in.
 
-## Các tiêu chí tôi ghi ra trước khi chọn
+## Tiêu chí trước khi nghe mẫu
 
-| Tiêu chí | Trọng lượng cảm nhận | Cách tôi kiểm |
+| Tiêu chí | Trọng số | Cách tôi kiểm |
 | --- | ---: | --- |
-| riêng tư transcript | cao | request có rời máy không |
-| tiếng Việt tự nhiên | cao | tên riêng, câu dài, số và viết tắt |
-| latency | cao | first audio và total generation |
-| barge-in | cao | dừng giữa câu có sạch không |
-| ổn định | cao | 20 lượt liên tiếp có lỗi không |
-| resource | vừa | cold start, RSS, audio buffer |
+| transcript không rời máy | rất cao | xem provider và request boundary |
+| phát âm tiếng Việt | cao | câu có dấu, tên riêng, từ code-mix |
+| first audio | cao | đo từ lúc text sẵn sàng đến audio đầu |
+| barge-in | cao | cắt ở giữa câu và kiểm audio cũ dừng |
+| ổn định | cao | 20 lượt liên tiếp, ghi lỗi riêng |
+| tài nguyên | vừa | cold start, RSS, queue |
+| giọng tự nhiên | vừa | nghe mù, không biết model trước |
 
-## Quyết định
+## Tập câu tôi dùng
 
-Tôi giữ TTS local làm mặc định. Lý do chính là transcript không phải rời khỏi
-máy và lúc demo không phụ thuộc mạng. Đây là default theo privacy/risk, không phải
-khẳng định local luôn có chất lượng tốt nhất.
+Tôi giữ cùng một tập câu để tránh chọn model từ một sample nghe hay:
+
+1. “Chào bạn, hôm nay mình kiểm tra một ghi chú ngắn.”
+2. “Định lý Bayes cập nhật xác suất khi có bằng chứng mới.”
+3. “ONNX Runtime dùng CoreML trước rồi fallback CPU nếu cần.”
+4. “Tháng này còn 557 nghìn đồng trong ngân sách thực phẩm.”
+5. “Model `google/gemini-3.5-flash-lite` đang chạy ở provider remote.”
+6. “Tôi đang nghe, nếu bạn nói tiếp thì câu hiện tại phải dừng.”
+7. Một đoạn khoảng 90 giây có dấu phẩy, ngoặc, số và từ viết tắt.
+
+Tôi nghe riêng lỗi nuốt dấu, ngắt câu, phát âm tên file và thời điểm audio cũ
+thật sự dừng. “Nghe khá tự nhiên” không thay cho log latency và cancel.
+
+## Kết quả quan sát gần nhất
+
+| Hạng mục | Local | Remote thử nghiệm | Kết luận |
+| --- | --- | --- | --- |
+| privacy | tốt | phụ thuộc consent/provider | local thắng default |
+| cold start | chậm hơn ở lượt đầu | thường nhanh hơn nếu warm | cần hiển thị progress |
+| câu ngắn | đủ tự nhiên | tốt hơn một chút | chưa đáng đổi default |
+| tên code/file | có lỗi phát âm | tùy model | cần lexicon/test riêng |
+| barge-in | kiểm soát được local queue | phụ thuộc stream | local dễ predict hơn |
+| mạng chập chờn | không ảnh hưởng | có thể fail giữa câu | remote cần fallback rõ |
+
+Đây là kết luận có độ tin cậy trung bình vì tập câu chưa đủ lớn để gọi là
+benchmark. Tôi ghi “đủ cho default hiện tại”, không ghi “local tốt nhất”.
 
 ## Trade-off tôi chấp nhận
 
-Giọng local có thể kém tự nhiên hơn remote ở câu dài, dấu câu và tên riêng. Cold
-start cũng làm lượt đầu chậm. Tôi chấp nhận điều đó khi câu hỏi chứa dữ liệu
-riêng tư; với một lượt đánh giá chất lượng có chủ ý, tôi có thể bật remote và
-hiểu rõ transcript sẽ được gửi ra ngoài.
+Local có thể kém mềm mại hơn ở câu dài và lượt đầu có cold start. Tôi chấp nhận
+điều đó khi câu chứa dữ liệu riêng hoặc khi mạng không ổn định. Nếu cần đánh giá
+chất lượng remote, tôi sẽ bật có chủ ý, nhìn provider/model và không gọi đó là
+default privacy.
 
-## Cách tôi test
+## Khi nào tôi đổi quyết định
 
-- câu chào và câu ngắn;
-- câu tiếng Việt có nhiều dấu;
-- số tiền và ngày tháng;
-- tên model/code-mix;
-- câu dài cần nhiều sentence chunk;
-- user cắt lời giữa audio;
-- provider/model fail giữa stream.
+- local phát âm sai lặp lại trên tập câu đã chốt;
+- first audio hoặc RSS làm ASR/LLM bị starvation;
+- barge-in không dừng sạch sau nhiều lần;
+- model local mới có license hoặc lifecycle không phù hợp;
+- remote có lợi ích rõ nhưng consent/retention được thiết kế lại.
 
-Tôi ghi first audio, completion, lỗi, model ID và cảm nhận nghe riêng. Không ghi
-“đã chọn model tốt nhất” nếu mới nghe một câu.
+## Lịch sử
 
-## Khi nào tôi xem lại quyết định
+| Ngày | Quan sát | Hành động |
+| --- | --- | --- |
+| 18/07 | remote nghe hay ở câu mẫu | chưa đổi default |
+| 22/07 | local giữ privacy và chạy offline | giữ local |
+| 26/07 | cần test code-mix và barge-in | thêm vào tập câu |
+| 29/07 | tách cold/warm khỏi quality | ghi benchmark sau, không đoán |
 
-Tôi sẽ xem lại nếu model local mới giảm rõ cold start mà vẫn giữ privacy, hoặc nếu
-barge-in không đạt contract. Remote chỉ trở thành default khi privacy policy,
-chi phí và user consent đều thay đổi có chủ ý.
+## Liên kết
 
-## Liên hệ
-
-Quyết định này liên quan `privacy-boundary.md`, nhưng không phải bằng chứng cho
-query về ngân sách hay kiến thức kỹ thuật.
-
-## Cách tôi đánh giá lại lựa chọn
-
-Tôi ghi thử cùng một tập câu: câu ngắn tiếng Việt, tên riêng, số, từ code-mix,
-câu dài và đoạn có dấu câu. Tôi nghe các lỗi nuốt âm, dấu thanh, ngắt câu và
-thời gian từ lúc text sẵn sàng đến lúc có audio. Một demo một câu rất dễ làm tôi
-đánh giá quá cao model.
-
-Tôi tách cold-start khỏi warm latency. Cold-start ảnh hưởng lượt đầu sau khi
-khởi động; warm latency ảnh hưởng cảm giác hội thoại liên tục. Tôi cũng ghi RAM
-đỉnh, audio queue, khả năng cancel khi barge-in và việc model có giữ file tạm
-hay không.
-
-## Khi nào phải đổi quyết định
-
-- lỗi phát âm tên riêng lặp lại trên tập câu thật;
-- barge-in làm câu mới bị trễ hoặc audio cũ không dừng;
-- model local chiếm tài nguyên khiến ASR/LLM bị starvation;
-- license hoặc model update đổi quyền sử dụng;
-- remote tốt hơn rõ ràng nhưng privacy/consent chưa có thiết kế phù hợp.
-
-Tôi không đổi chỉ vì một sample nghe hay. Tôi cần artifact của benchmark, môi
-trường, model revision và failure examples để quyết định có thể reproduce.
+- `life/decisions/privacy-boundary.md` — boundary dữ liệu.
+- `learning/llm/serving-local-remote.md` — mô hình hóa latency và tài nguyên.
+- `life/journal/2026-07-23.md` — log lần test provider và ONNX.

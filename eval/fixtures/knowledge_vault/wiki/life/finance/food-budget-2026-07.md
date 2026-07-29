@@ -4,94 +4,78 @@ area: food
 period: 2026-07
 status: current
 created: 2026-07-01
-updated: 2026-07-27
-tags: [budget, food, monthly, synthetic]
-source_kind: sanitized-life-vault-simulation
+updated: 2026-07-29
+confidence: high
+tags: [budget, food, monthly, actuals, july-2026]
+source_kind: redacted-personal-note
 ---
 
 # Ngân sách ăn uống tháng 07/2026
 
-## Mục tiêu
+## Tôi đặt ngân sách thế nào
 
-Tôi đặt ngân sách mẫu 2.400.000 đồng cho thực phẩm và bữa ăn tại nhà trong
-tháng. Khoản này không gồm cà phê gặp bạn, giao đồ ăn ngoài kế hoạch, thực phẩm
-chức năng hoặc mua thiết bị bếp.
+Đầu tháng tôi đặt trần 2.400.000 đồng cho thực phẩm và các bữa trưa phải ăn
+ngoài khi di chuyển. Tôi không gộp cà phê gặp bạn, giao đồ ăn tùy hứng, thực
+phẩm chức năng hoặc đồ dùng bếp vào con số này. Tách phạm vi giúp tôi không dùng
+budget để phán xét những khoản vốn không thuộc budget.
 
-## Phân bổ đầu tháng
+| Nhóm | Trần tháng | Actual đến 28/07 | Planned còn lại | Ghi chú |
+| --- | ---: | ---: | ---: | --- |
+| chợ/siêu thị | 1.600.000 | 1.502.000 | 280.000 | planned lấy từ grocery plan |
+| bữa trưa khi di chuyển | 500.000 | 341.000 | 0 | chưa có plan thêm |
+| dự phòng | 300.000 | 0 | 0 | chưa dùng |
+| **tổng** | **2.400.000** | **1.843.000** | **280.000** | projected 2.123.000 |
 
-| Nhóm | Ngân sách | Đã ghi nhận đến 27/07 | Còn lại dự kiến |
-| --- | ---: | ---: | ---: |
-| chợ/siêu thị | 1.600.000 | 1.182.000 | 418.000 |
-| bữa trưa khi di chuyển | 500.000 | 326.000 | 174.000 |
-| dự phòng cuối tháng | 300.000 | 0 | 300.000 |
-| **tổng** | **2.400.000** | **1.508.000** | **892.000** |
+`Actual` chỉ lấy từ receipt ledger. `Planned` không được cộng vào actual. Nếu
+cuối tháng tôi không mua theo plan, actual vẫn giữ nguyên và plan chuyển sang
+trạng thái cancelled hoặc carried-over.
 
-Các số trong fixture là số mô phỏng đã được sanitise để demo. Tôi không dùng note
-này như dữ liệu tài chính thật của người dùng.
+## Tình hình hiện tại
 
-## Ledger đã ghi
+Đã ghi nhận 1.843.000 đồng, còn 557.000 đồng dưới trần. Grocery plan cuối tháng
+dự kiến 280.000 đồng, nên projected total là 2.123.000 đồng và còn buffer 277.000
+đồng. Đây là phép chiếu, chưa phải số đã tiêu.
 
-| Ngày | Nhóm | Nội dung | Số tiền |
-| --- | --- | --- | ---: |
-| 02/07 | chợ/siêu thị | rau, trứng, đậu phụ | 186.000 |
-| 05/07 | chợ/siêu thị | cá, rau, trái cây | 244.000 |
-| 08/07 | bữa trưa | cơm khi ở ngoài | 78.000 |
-| 11/07 | chợ/siêu thị | gạo, yến mạch, sữa chua | 312.000 |
-| 14/07 | bữa trưa | hai bữa đi làm | 96.000 |
-| 18/07 | chợ/siêu thị | thịt nạc, rau đông lạnh | 220.000 |
-| 23/07 | chợ/siêu thị | trứng, rau, trái cây | 220.000 |
-| 26/07 | bữa trưa | một bữa khi di chuyển | 152.000 |
+Tôi không lấy “còn buffer” làm lý do mua thêm. Ngày 29/07 tôi kiểm tra đồ còn ở
+nhà trước: gạo đủ, trứng còn 6 quả, rau xanh còn ít, yến mạch đủ cho vài bữa,
+đậu phụ chưa mua. Kế hoạch vì thế chỉ cần rau, đậu phụ, cá và một ít trái cây.
 
-## Quy tắc ghi nhận
+## Điều làm budget dễ sai
 
-- receipt chưa có thì đánh dấu pending, không tự bịa số;
-- danh sách mua dự kiến không tính là đã chi;
-- hoàn tiền ghi một dòng đảo chiều, không xóa lịch sử;
-- cuối tháng đối chiếu với bank/receipt thật;
-- nếu thay đổi ngân sách, ghi reason và ngày thay đổi.
+- một receipt siêu thị có cả đồ ăn và đồ dùng, phải tách dòng;
+- bữa trưa trả bằng ví điện tử có thể hiện ngày pending khác ngày dùng;
+- kế hoạch mua hàng có giá ước tính, không được ghi như actual;
+- khoản ăn ngoài với bạn thuộc phạm vi khác nhưng dễ bị nhập nhầm;
+- hoàn tiền hoặc voucher phải ghi riêng để không làm lệch tổng;
+- nếu thiếu receipt, trạng thái là `unknown`, không tự điền số gần đúng.
 
-## Câu hỏi thường gặp
+## Quy tắc cập nhật tôi đang dùng
 
-“Ngân sách tháng này là bao nhiêu?” → nhìn mục tiêu đầu tháng, 2.400.000 đồng.
+1. Ghi receipt trong ngày hoặc đánh dấu `needs-receipt`.
+2. Cuối mỗi tuần đối chiếu ledger với số dư nhóm.
+3. Không sửa con số cũ để làm projected đẹp hơn; thêm correction.
+4. Nếu chuyển tiền giữa nhóm, ghi lý do và ngày chuyển.
+5. Cuối tháng khóa actual, sau đó mở note review tháng mới.
 
-“Đã chi bao nhiêu?” → nhìn ledger đã ghi, 1.508.000 đồng tính đến 27/07.
+## Câu hỏi assistant phải trả lời đúng loại
 
-“Còn bao nhiêu?” → 892.000 đồng theo dữ liệu đã ghi, chưa phải dự báo chắc chắn.
+- “Tháng này tôi đã chi bao nhiêu?” → 1.843.000 actual đến 28/07.
+- “Tôi còn bao nhiêu trong budget?” → 557.000 dưới trần, chưa trừ plan.
+- “Cuối tháng định mua gì?” → grocery plan, giữ nhãn planned.
+- “Có khoản nào thiếu receipt?” → đọc ledger, không suy ra từ budget.
+- “Tại sao projected không bằng actual?” → vì projected cộng thêm plan chưa mua.
 
-“Chiều nay mua gì?” → xem grocery plan, không lấy nó làm giao dịch đã hoàn tất.
+## Lịch sử thay đổi
 
-## Review
+| Ngày | Thay đổi | Lý do |
+| --- | --- | --- |
+| 01/07 | đặt trần 2.400.000 | muốn có reserve riêng |
+| 16/07 | tách bữa trưa khỏi grocery | nhìn ra hai nhóm có hành vi khác |
+| 23/07 | cập nhật receipt mới | actual thay đổi, trần không đổi |
+| 29/07 | thêm projected cuối tháng | phân biệt kế hoạch và số đã tiêu |
 
-Tuần cuối tháng tôi sẽ kiểm tra khoản nào thiếu receipt và điều chỉnh phần dự
-phòng. Tôi không muốn assistant tự ghi đè note khi chỉ nghe tôi nói “hình như đã
-mua rồi”; câu đó cần clarification hoặc proposal.
+## Giới hạn
 
-## Các mốc trong tháng
-
-| Mốc | Budget còn theo kế hoạch | Actual có receipt | Việc cần làm |
-| --- | ---: | ---: | --- |
-| 01/07 | 2.400.000 | 0 | tạo envelope |
-| 10/07 | 1.900.000 | 500.000 | đối chiếu receipt |
-| 20/07 | 1.430.000 | 970.000 | kiểm tra nhóm pantry |
-| 27/07 | 1.117.000 | 1.283.000 | xem grocery plan và khoản lệch |
-
-Hai cột trên không hoàn toàn cùng nghĩa: “budget còn theo kế hoạch” là target
-chưa phân bổ, còn actual là tổng receipt đã nhập. Tôi ghi cả hai để tránh câu
-trả lời kiểu lấy 2.400.000 trừ một con số không cùng thời điểm.
-
-## Cách tôi xử lý khoản lệch
-
-Nếu actual vượt kế hoạch, tôi kiểm tra receipt thiếu category, khoản mua ngoài
-list và khoản mua cho nhiều tuần. Không tự kết luận “chi tiêu thất bại”. Nếu một
-receipt thuộc hai kỳ, ghi allocation và link về receipt gốc. Nếu chưa chắc, giữ
-`unknown` và đưa vào monthly review.
-
-## Contract cho assistant
-
-- câu “ngân sách ban đầu” → 2.400.000 đồng;
-- câu “đã chi có receipt” → ledger actual;
-- câu “dự kiến mua tuần cuối” → grocery plan;
-- câu “còn chính xác bao nhiêu” → nêu thiếu dữ liệu trước khi tính;
-- câu hỏi dinh dưỡng → không dùng budget làm health advice.
-
-Một câu trả lời tốt phải nói ngày cập nhật, phạm vi và distinction actual/planned.
+Note này chỉ nói về phạm vi food budget và không mô tả thu nhập, tài sản hay
+nghĩa vụ tài chính khác. Khi hỏi ngoài phạm vi, assistant phải nói không có dữ
+liệu thay vì suy luận profile từ một bảng chi tiêu.

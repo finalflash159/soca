@@ -6,7 +6,7 @@ status: active
 created: 2026-07-16
 updated: 2026-07-28
 tags: [systems, os, process, thread, memory, io, cache]
-source_kind: personal-study-simulation
+source_kind: personal-study-note
 ---
 
 # Systems: process, memory và I/O — cách tôi hình dung một chương trình chạy

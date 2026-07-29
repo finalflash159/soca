@@ -6,7 +6,7 @@ status: active
 created: 2026-07-15
 updated: 2026-07-27
 tags: [dsa, arrays, hashing, complexity, invariants]
-source_kind: personal-study-simulation
+source_kind: personal-study-note
 ---
 
 # DSA: array, hash table và cách tôi nhìn complexity

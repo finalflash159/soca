@@ -6,7 +6,7 @@ status: active
 created: 2026-07-17
 updated: 2026-07-28
 tags: [systems, distributed, consistency, retry, idempotency, observability]
-source_kind: personal-study-simulation
+source_kind: personal-study-note
 ---
 
 # Distributed systems — nhiều máy không phải một máy chậm hơn

@@ -6,7 +6,7 @@ status: active
 created: 2026-07-23
 updated: 2026-07-28
 tags: [llm, context, prompting, tools, rag, grounding, workflow]
-source_kind: personal-study-simulation
+source_kind: personal-study-note
 ---
 
 # LLM: context, tool use và cách tôi không để model tự nhận đã xong

@@ -6,7 +6,7 @@ status: active
 created: 2026-07-24
 updated: 2026-07-28
 tags: [llm, serving, local, remote, quantization, latency, kv-cache]
-source_kind: personal-study-simulation
+source_kind: personal-study-note
 ---
 
 # LLM serving: local và remote — tôi cân bằng chất lượng với tài nguyên thế nào

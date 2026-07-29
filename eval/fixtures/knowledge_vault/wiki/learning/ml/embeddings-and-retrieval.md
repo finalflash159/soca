@@ -6,7 +6,7 @@ status: active
 created: 2026-07-20
 updated: 2026-07-28
 tags: [ml, embeddings, retrieval, vector, sparse, dense, rag]
-source_kind: personal-study-simulation
+source_kind: personal-study-note
 ---
 
 # ML: embedding và retrieval — từ “gần nhau” đến “đúng câu hỏi”
@@ -202,7 +202,7 @@ giấu ambiguity bằng cách tự chọn một file.
 7. LLM có trích ngoài context dù retrieval đúng không.
 
 Tôi log fingerprint và score, không log raw private text mặc định. Khi debug
-fixture, tôi có thể xem path/chunk cụ thể; khi chạy vault thật, retention cần theo
+corpus, tôi có thể xem path/chunk cụ thể; khi chạy vault thật, retention cần theo
 privacy policy.
 
 ## Incremental indexing

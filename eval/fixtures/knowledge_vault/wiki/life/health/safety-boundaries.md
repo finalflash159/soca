@@ -1,91 +1,76 @@
 ---
 type: health_note
-area: safety
-status: permanent-boundary
-created: 2026-07-10
-updated: 2026-07-27
-tags: [health, safety, disclaimer, escalation]
-source_kind: sanitized-life-vault-simulation
+area: assistant-safety
+status: current
+created: 2026-07-11
+updated: 2026-07-29
+confidence: high
+tags: [health, safety, assistant, disclaimer, escalation]
+source_kind: redacted-personal-note
 ---
 
-# Ranh giới an toàn khi assistant nói về sức khỏe
+# Ranh giới khi assistant nói về sức khỏe
 
-## Vì sao tôi cần một note riêng
+## Tôi muốn assistant giúp ở mức nào
 
-Các note sức khỏe dễ làm câu trả lời nghe có vẻ chắc chắn hơn dữ liệu thật. Tôi
-muốn assistant giúp tôi hiểu nguyên tắc chung, nhưng không muốn nó chẩn đoán,
-đổi thuốc hoặc biến một ví dụ dinh dưỡng thành lời khuyên cá nhân.
+Assistant có thể giúp tôi tìm lại note, tóm tắt nguồn giáo dục chung, sắp xếp
+câu hỏi cho chuyên gia và nhắc rằng dữ liệu đang thiếu. Nó không được chẩn đoán,
+kê thuốc, tự đổi liều, bảo dừng điều trị hoặc dùng một journal ngắn để kết luận
+người cụ thể mắc bệnh gì.
 
-## Phạm vi được phép
+Tôi muốn câu trả lời hữu ích nhưng có giới hạn rõ: “đây là thông tin chung”,
+“note không đủ để kết luận”, “nên hỏi chuyên gia” và “nếu có dấu hiệu cấp tính,
+hãy tìm trợ giúp ngay” phải xuất hiện khi bối cảnh cần, không phải một câu
+disclaimer vô nghĩa dán vào mọi câu.
 
-Assistant có thể:
+## Bốn tầng rủi ro
 
-- giải thích khái niệm dinh dưỡng phổ thông;
-- tóm tắt chính note đã có trong vault;
-- giúp tôi lập câu hỏi để hỏi bác sĩ;
-- nhắc rằng thông tin cần được cá nhân hóa;
-- chỉ ra note nào đang được dùng làm nguồn.
+| Tầng | Ví dụ | Hành vi mong muốn |
+| --- | --- | --- |
+| giáo dục chung | nguyên tắc bữa ăn | trả lời có nguồn và phạm vi |
+| tự quan sát | ngủ, vận động, bữa ăn | mô tả, không gắn chẩn đoán |
+| cá nhân hóa cao | thuốc, bệnh nền, thai kỳ | hỏi/chuyển chuyên gia |
+| cấp tính | khó thở, ngất, đau ngực | hướng tới trợ giúp khẩn cấp |
 
-Assistant không được:
+Từ khóa không đủ để phân tầng một mình. “Đường huyết” trong một câu hỏi chung
+khác với “tôi đang dùng thuốc X, đổi bữa ăn thế nào”. Runtime cần đưa query và
+evidence vào một policy có thể kiểm tra, không để model tự bỏ qua boundary.
 
-- chẩn đoán bệnh từ vài triệu chứng;
-- đưa liều thuốc hoặc bảo ngừng thuốc;
-- khẳng định thực đơn phù hợp với bệnh nền;
-- xem một note cũ là hồ sơ y tế cập nhật;
-- nói “chắc chắn không sao” khi thiếu khám/đo lường;
-- dùng model knowledge để lấp empty retrieval mà không báo.
+## Checklist trước khi trả lời
 
-## Tín hiệu cần escalation
+1. User hỏi kiến thức chung hay lời khuyên cho một người cụ thể?
+2. Note có ngày và nguồn không?
+3. Evidence là health note hay chỉ là journal?
+4. Có thuốc, bệnh nền, dị ứng, thai kỳ, trẻ nhỏ hoặc người cao tuổi không?
+5. Có dấu hiệu cấp tính không?
+6. Câu trả lời có biến ví dụ thành prescription không?
+7. Có cần nói rõ thiếu dữ liệu và đề nghị câu hỏi cho chuyên gia không?
 
-Nếu người dùng mô tả khó thở, đau ngực, ngất, yếu liệt đột ngột, chảy máu nhiều,
-phản ứng dị ứng nặng, lú lẫn cấp tính hoặc tình trạng nguy hiểm khác, assistant
-nên khuyên tìm trợ giúp y tế khẩn cấp phù hợp. Note này không thay thế hướng dẫn
-của dịch vụ khẩn cấp tại nơi người dùng đang ở.
+## Các failure tôi muốn bắt
 
-Với bệnh nền, thai kỳ, trẻ nhỏ, người cao tuổi hoặc thuốc đang dùng, mọi thay đổi
-lớn về ăn uống/vận động cần hỏi bác sĩ hoặc chuyên gia được cấp phép.
+- trả “ăn món X là khỏi” từ note balanced meals;
+- lấy bảng recovery và kết luận nguyên nhân đau;
+- biến “tôi sẽ hỏi bác sĩ” thành “bác sĩ đã xác nhận”;
+- nói một con số chính xác mà note không có;
+- bỏ disclaimer khi user nhắc thuốc hoặc bệnh nền;
+- trấn an chắc chắn trong khi có dấu hiệu cần khám sớm;
+- nói “tôi đã kiểm tra” dù retrieval chưa chạy hoặc trả empty.
 
-## Cách tôi muốn câu trả lời được nói
+## Cách tôi muốn hiển thị provenance
 
-1. nói rõ đây là thông tin chung;
-2. trích note nếu có evidence;
-3. nêu giới hạn dữ liệu;
-4. hỏi thêm hoặc khuyên gặp chuyên gia khi cần;
-5. không dùng giọng hoảng sợ cho chuyện bình thường;
-6. không dùng giọng chắc chắn cho chuyện chưa đủ dữ kiện.
+Nếu câu trả lời dựa trên `balanced-meals.md`, citation phải nói đó là note nguyên
+tắc chung. Nếu dựa trên journal, phải gọi đúng là quan sát trong ngày. `M#` của
+memory không biến nó thành clinical evidence. Không có nguồn đủ mạnh thì câu trả
+lời phải chuyển sang `insufficient`, không bịa cho tròn đoạn.
 
-## Kiểm tra trước khi trả lời
+## Quy tắc riêng cho voice
 
-- câu hỏi đang hỏi giáo dục hay hỏi chẩn đoán?
-- có người cụ thể, thuốc cụ thể hoặc triệu chứng cấp tính không?
-- note nguồn có ngày cập nhật không?
-- evidence là health note hay chỉ là note ăn uống chung?
-- câu trả lời có vô tình biến ví dụ thành prescription không?
+Voice cần câu ngắn, nói rõ khi đang tìm note và không đọc một đoạn disclaimer dài
+làm che mất điểm chính. Nhưng ngắn không có nghĩa bỏ safety. Với dấu hiệu cấp
+tính, câu đầu phải hướng người dùng tìm trợ giúp; không đợi assistant “suy luận
+xong” mới nói.
 
-## Ghi chú
+## Kết luận
 
-Nội dung trong fixture là mô phỏng sanitized. Khi dùng SoCa với dữ liệu thật,
-user phải thay boundary này bằng policy được chuyên gia duyệt nếu sản phẩm phục
-vụ use case y tế.
-
-## Cách phân biệt câu hỏi chung và câu hỏi cá nhân
-
-“Nguyên tắc chung của bữa ăn cân bằng là gì?” có thể trả lời ở mức giáo dục với
-nguồn và disclaimer phù hợp. “Tôi đang dùng thuốc X, nên ăn bao nhiêu món Y?”
-đã là câu hỏi cá nhân cần chuyên gia. Cùng một keyword không có nghĩa cùng một
-mức rủi ro.
-
-## Các lỗi tôi muốn bắt
-
-- biến note general-reference thành prescription;
-- bỏ mất cảnh báo khi câu hỏi có bệnh nền/thuốc/trẻ nhỏ/thai kỳ;
-- dùng journal chưa đầy đủ để kết luận xu hướng sức khỏe;
-- nói một con số chính xác mà nguồn không có;
-- hứa “tôi đã kiểm tra” khi tool chưa chạy;
-- không chuyển hướng khi có dấu hiệu khẩn cấp.
-
-## Output tối thiểu an toàn
-
-Assistant cần nói phạm vi mình có thể giúp, trích nguồn nếu có, nêu uncertainty,
-khuyên hỏi chuyên gia khi phù hợp và chỉ ra dấu hiệu cần trợ giúp khẩn cấp. Đây
-không phải câu chữ cố định cho mọi tình huống; nó là contract để kiểm tra hành vi.
+Safety boundary là một contract của sản phẩm. Note này mô tả cách tôi muốn
+assistant hành xử; policy runtime và hướng dẫn chuyên môn mới là authority thật.

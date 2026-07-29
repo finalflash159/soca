@@ -1,80 +1,78 @@
 ---
 type: finance_note
-area: review-process
-period: monthly
-status: active
-created: 2026-07-03
-updated: 2026-07-27
-tags: [budget, review, receipt, process]
-source_kind: sanitized-life-vault-simulation
+area: monthly-review
+period: 2026-07
+status: in-progress
+created: 2026-07-28
+updated: 2026-07-29
+confidence: medium
+tags: [finance, review, actuals, planned, july-2026]
+source_kind: redacted-personal-note
 ---
 
-# Cách tôi review chi tiêu cuối tháng
+# Review chi tiêu giữa/cuối tháng 07/2026
 
-## Tôi không muốn review kiểu nào
+## Tôi không muốn review bằng cảm giác
 
-Tôi không muốn nhìn một con số tổng rồi tự kể một câu chuyện. Tổng thấp có thể
-do thiếu receipt, tổng cao có thể do một khoản bất thường. Vì vậy review cần giữ
-ledger, category, thời gian và uncertainty.
+Cuối tháng rất dễ nhớ những lần mua lớn và quên các khoản nhỏ. Vì vậy tôi đọc
+receipt ledger trước, rồi mới viết nhận xét. Con số trong note này là snapshot
+đến 28/07; ngày 31/07 tôi sẽ chốt lại sau khi các giao dịch pending được xác nhận.
 
-## Quy trình sáu bước
+## Snapshot
 
-1. gom receipt và giao dịch ngân hàng;
-2. normalize tên merchant nhưng giữ raw description;
-3. gán category và đánh dấu `needs_review` khi không chắc;
-4. đối chiếu với budget tháng;
-5. ghi variance và lý do, không chỉ ghi “vượt”;
-6. tạo kế hoạch tháng sau riêng, không sửa lịch sử tháng cũ.
+| Chỉ số | Giá trị | Trạng thái |
+| --- | ---: | --- |
+| budget food tháng | 2.400.000 | current |
+| actual đã có receipt | 1.843.000 | confirmed-to-28/07 |
+| còn dưới trần | 557.000 | calculated |
+| plan grocery chưa mua | 366.000 | planned |
+| projected nếu mua hết plan | 2.209.000 | estimate |
+| buffer sau projected | 191.000 | estimate |
 
-## Các câu hỏi tôi dùng
+Tôi đổi projected từ 280.000 thành 366.000 sau khi mở grocery plan chi tiết.
+Điều này không làm actual tăng. Nó chỉ làm buffer dự kiến nhỏ hơn.
 
-- khoản nào lặp lại?
-- khoản nào một lần?
-- khoản nào chưa có bằng chứng?
-- danh sách planned nào đã thành purchased?
-- variance có do thay đổi giá, số lượng hay category?
-- budget tháng sau cần đổi vì dữ liệu hay vì cảm giác?
+## Điều đã ổn
 
-## Quy tắc provenance
+- tách grocery và lunch giúp tôi biết phần nào tăng;
+- receipt có ngày và nhóm, không phải một tổng cuối tháng;
+- reserve 300.000 chưa bị dùng;
+- các món trong nhà được kiểm tra trước khi lập plan mới;
+- những khoản chưa có receipt vẫn được để `unknown`.
 
-Số “đã chi” phải đến từ ledger/receipt. Số “dự kiến” phải đến từ plan. Nếu user
-nói “chắc khoảng”, assistant nên giữ uncertainty hoặc hỏi lại, không biến thành
-con số chính xác trong memory.
+## Điều chưa ổn
 
-## Output tôi muốn
+Hai khoản bữa trưa ngày 20 và 26/07 hiển thị pending ở app thanh toán một lúc;
+tôi đã ghi theo ngày sử dụng nhưng cần đối chiếu lại sao kê. Một hóa đơn ngày
+23/07 có cả giấy lau bếp; tôi tách 32.000 đồng ra ngoài food category thay vì
+giữ cả hóa đơn trong grocery.
 
-Một review tốt có bảng actual/budget/variance, danh sách unknown và vài hành động
-nhỏ cho tháng tới. Nó không phán xét thói quen, không tự thay đổi note và không
-đưa lời khuyên đầu tư từ một tháng tiền ăn.
+Plan cuối tháng hiện cao hơn budget còn lại của riêng grocery. Nếu tôi mua hết,
+grocery sẽ vượt phần 1.600.000 khoảng 268.000, dù tổng food vẫn dưới trần vì
+reserve còn. Tôi cần quyết định rõ đó là chuyển từ reserve hay cắt món, không để
+con số tự “hợp thức hóa”.
 
-## Mẫu review tôi sẽ điền
+## Quyết định tạm thời
 
-### 1. Phạm vi và độ tin cậy
+Tôi ưu tiên mua rau, đậu phụ và cá; tạm bỏ sữa chua. Khi actual cập nhật, tôi sẽ
+đánh giá lại. Đây là `decision-for-next-shop`, chưa phải quy tắc lâu dài.
 
-- kỳ: 07/2026;
-- số receipt đã nhập: 6;
-- ngày cuối cùng đã đối chiếu: 23/07;
-- dòng planned chưa tính actual: grocery plan cuối tháng;
-- unknown cần kiểm tra: giao dịch ngoài nhà và receipt thiếu.
+## Việc còn phải làm
 
-### 2. So sánh
+1. xác nhận hai giao dịch pending;
+2. sửa category của phần đồ gia dụng trong receipt 23/07;
+3. ghi actual cuối tháng;
+4. ghi món plan bị hủy hoặc chuyển tháng 08;
+5. xem tháng sau có cần tách budget “ăn ngoài” khỏi “bữa trưa công việc”.
 
-Tôi đặt budget cạnh actual theo cùng kỳ và cùng category. Nếu category không
-khớp, ghi rõ mapping thay vì ép số. Variance có thể do timing, mua cho nhiều
-tuần, hoặc dữ liệu thiếu. Một câu “vượt 10%” không đủ nếu không nói denominator
-và phạm vi.
+## Cách assistant cần đọc note này
 
-### 3. Hành động nhỏ
+Nếu hỏi “tôi đã chi bao nhiêu?”, trả actual 1.843.000 và mốc 28/07. Nếu hỏi
+“tôi sẽ chi bao nhiêu nếu mua hết?”, trả projected 2.209.000 và nói đó là ước
+tính. Nếu hỏi “tôi còn bao nhiêu tiền?”, note này không đủ để suy ra số dư tài
+khoản; chỉ có thể nói còn dưới trần food budget.
 
-- đóng các receipt còn thiếu;
-- đánh dấu các khoản mua cho tuần sau;
-- xem pantry tồn trước khi tạo grocery plan mới;
-- giữ một buffer cho giá biến động;
-- không thay đổi nhiều thói quen chỉ từ một tháng.
+## Review cuối tháng
 
-## Bài học về uncertainty
-
-Tôi dễ bị hấp dẫn bởi con số tổng vì nó có vẻ khách quan. Nhưng ledger có thể
-thiếu một giao dịch hoặc gộp sai category. Vì vậy review phải có mục “chưa biết”.
-Assistant được phép nói “chưa đủ dữ liệu để tính chính xác”; đó là output tốt hơn
-một phép trừ có vẻ chính xác nhưng dựa trên hai nguồn khác kỳ.
+Tôi chỉ đổi `status: in-progress` thành `complete` sau khi receipt và pending
+được đối chiếu. Nếu thiếu một record, giữ trạng thái mở và ghi rõ thiếu gì.

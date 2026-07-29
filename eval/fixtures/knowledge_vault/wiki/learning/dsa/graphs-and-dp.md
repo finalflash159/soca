@@ -6,7 +6,7 @@ status: active
 created: 2026-07-28
 updated: 2026-07-29
 tags: [dsa, graph, bfs, dfs, shortest-path, dynamic-programming, invariants]
-source_kind: personal-study-simulation
+source_kind: personal-study-note
 ---
 
 # DSA: graph và dynamic programming — tôi tìm cấu trúc trước khi tìm công thức

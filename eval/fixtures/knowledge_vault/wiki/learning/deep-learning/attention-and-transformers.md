@@ -6,7 +6,7 @@ status: active
 created: 2026-07-22
 updated: 2026-07-28
 tags: [deep-learning, neural-network, attention, transformer, training]
-source_kind: personal-study-simulation
+source_kind: personal-study-note
 ---
 
 # DL: attention và Transformer — từ neuron đến “nhìn phần liên quan”

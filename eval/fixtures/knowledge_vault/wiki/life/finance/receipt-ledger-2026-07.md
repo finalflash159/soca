@@ -2,75 +2,72 @@
 type: finance_note
 area: food
 period: 2026-07
-status: partial-actual
-created: 2026-07-23
+status: current
+created: 2026-07-02
 updated: 2026-07-29
-tags: [finance, food, ledger, actual, receipt, uncertainty]
-source_kind: sanitized-life-vault-simulation
+confidence: high
+tags: [finance, receipts, ledger, actual, july-2026]
+source_kind: redacted-personal-note
 ---
 
-# Ledger thực phẩm tháng 07/2026 — actual có receipt mới được tính
+# Sổ receipt thực phẩm tháng 07/2026
 
-## Phạm vi
+## Quy ước
 
-Đây là ledger mô phỏng để phân biệt số đã chi với kế hoạch. Mục tiêu ngân sách
-được ghi ở `food-budget-2026-07.md`; danh sách sẽ mua ở
-`grocery-plan-2026-07.md`. Hai note đó không phải receipt.
+Mỗi dòng dưới đây là một khoản đã ghi nhận từ receipt hoặc lịch sử thanh toán.
+Tôi giữ `receipt_id`, ngày sử dụng, nhóm và trạng thái đối chiếu. Sổ này chỉ ghi
+actual; kế hoạch nằm ở `grocery-plan-2026-07.md`.
 
-Tôi dùng các cột: ngày, nhóm, mô tả ngắn, số tiền, trạng thái chứng từ và ghi chú.
-Số tiền trong fixture không phải giao dịch thật của người dùng nào.
+## Các khoản đã ghi
 
-| Ngày | Nhóm | Mô tả | Số tiền (VND) | Receipt | Trạng thái |
-| --- | --- | --- | ---: | --- | --- |
-| 2026-07-03 | protein | trứng và đậu phụ | 186.000 | R-0703 | actual |
-| 2026-07-06 | rau | rau xanh, nấm | 142.000 | R-0706 | actual |
-| 2026-07-10 | pantry | yến mạch, gạo | 238.000 | R-0710 | actual |
-| 2026-07-14 | protein | cá và thịt nạc | 326.000 | R-0714 | actual |
-| 2026-07-18 | rau | rau củ đông lạnh | 177.000 | R-0718 | actual |
-| 2026-07-23 | pantry | sữa chua, gia vị | 214.000 | R-0723 | actual |
-| 2026-07-27 | planned | đồ trong grocery plan | 0 | — | planned |
+| Receipt | Ngày | Nhóm | Nội dung rút gọn | Số tiền | Đối chiếu |
+| --- | --- | --- | --- | ---: | --- |
+| R-0702-01 | 02/07 | grocery | rau, trứng, đậu phụ | 186.000 | matched |
+| R-0705-01 | 05/07 | grocery | cá, rau, trái cây | 244.000 | matched |
+| R-0708-01 | 08/07 | lunch | cơm khi ở ngoài | 78.000 | matched |
+| R-0711-01 | 11/07 | grocery | gạo, thịt, rau | 312.000 | matched |
+| R-0713-01 | 13/07 | lunch | bữa trưa di chuyển | 82.000 | matched |
+| R-0716-01 | 16/07 | grocery | sữa chua, yến mạch, trái cây | 198.000 | matched |
+| R-0720-01 | 20/07 | lunch | bữa trưa di chuyển | 86.000 | pending-check |
+| R-0723-01 | 23/07 | grocery | cá, rau, đậu, đồ gia dụng tách riêng | 298.000 | matched |
+| R-0726-01 | 26/07 | lunch | bữa trưa di chuyển | 95.000 | pending-check |
+| R-0728-01 | 28/07 | grocery | rau, trứng, trái cây | 264.000 | matched |
 
-## Cách tôi đọc ledger
+Tổng grocery là 1.502.000 đồng. Tổng lunch là 341.000 đồng. Tổng actual trong
+phạm vi budget là 1.843.000 đồng. Hai dòng `pending-check` đã được ghi theo ngày
+dùng nhưng còn phải nhìn sao kê cuối kỳ; không được xóa chỉ vì app thanh toán
+chưa hiển thị ngay.
 
-Tổng actual của các dòng có receipt là 1.283.000 đồng. Dòng planned không được
-cộng vào actual. Nếu câu hỏi là “đã chi bao nhiêu”, assistant phải lấy actual và
-nói phạm vi receipt. Nếu câu hỏi là “còn ngân sách bao nhiêu”, nó cần đối chiếu
-với budget, nêu rằng ledger có thể chưa đủ và không biến planned thành đã mua.
+## Tách hóa đơn 23/07
 
-Tôi không muốn làm tròn im lặng. Nếu một receipt bị thiếu, ghi `unknown` thay vì
-ước lượng. Nếu cửa hàng gộp nhiều nhóm, tôi giữ category `mixed` hoặc ghi cách
-phân bổ; không tạo độ chính xác giả chỉ để tổng category đẹp.
+Hóa đơn 23/07 tổng 330.000 đồng. Trong đó 298.000 là thực phẩm; 32.000 là giấy
+lau bếp. Tôi đưa phần giấy lau bếp ra khỏi food budget. Nếu sau này category
+chung được dùng cho household, tôi sẽ tạo ledger khác thay vì nhập lại dòng cũ.
 
-## Những gì ledger chưa chứng minh
+## Kiểm tra tổng
 
-- chưa chứng minh mọi giao dịch ăn uống ngoài nhà đã được nhập;
-- chưa chứng minh các dòng actual là hóa đơn cá nhân thật;
-- chưa chứng minh phần tiền còn lại có thể chi tiêu tự do;
-- không phải hướng dẫn dinh dưỡng hoặc kế hoạch y tế;
-- không nên được dùng để suy ra thu nhập, thói quen hay đánh giá cá nhân.
+```text
+grocery = 186000 + 244000 + 312000 + 198000 + 298000 + 264000
+        = 1.502.000
+lunch   = 78000 + 82000 + 86000 + 95000
+        = 341.000
+actual  = 1.502.000 + 341.000
+        = 1.843.000
+```
 
-## Quy trình cập nhật
+Con số này phải khớp `food-budget-2026-07.md`. Nếu không khớp, tôi mở correction
+note, không sửa một bên cho xanh tổng.
 
-1. Giữ receipt id hoặc ghi rõ thiếu receipt.
-2. Nhập actual sau khi giao dịch hoàn tất.
-3. Nếu mua khác kế hoạch, thêm dòng mới thay vì sửa planned thành actual.
-4. Cuối tuần đối chiếu tổng ledger với app/ngăn ngân sách.
-5. Cuối tháng đóng kỳ và ghi adjustment riêng.
+## Những điều tôi không thể kết luận từ ledger
 
-Nếu phát hiện nhập nhầm, tôi không xóa dòng cũ. Tôi thêm correction với ngày sửa,
-lý do và liên kết dòng gốc. Cách này giúp assistant không kể lại history đã được
-viết lại như thể ngay từ đầu đã đúng.
+- không biết số dư tài khoản tổng;
+- không biết khoản ăn ngoài phạm vi food budget;
+- không biết chất lượng dinh dưỡng từ tên món ngắn;
+- không biết món nào đã được ăn hết nếu không có journal;
+- không biết plan cuối tháng đã mua nếu chưa có receipt mới.
 
-## Câu hỏi để kiểm retrieval
+## Việc tiếp theo
 
-- “actual food spending tháng 07 là bao nhiêu?” → ledger;
-- “tuần cuối định mua gì?” → grocery plan;
-- “ngân sách ban đầu là bao nhiêu?” → food budget;
-- “khoản nào thiếu chứng từ?” → ledger và unknown fields;
-- “tôi có nên đổi chế độ ăn không?” → không suy ra từ ledger, cần health boundary.
-
-## Tóm tắt
-
-Ledger là bằng chứng giao dịch theo phạm vi, không phải câu chuyện hoàn chỉnh về
-đời sống. Tôi muốn assistant bảo toàn trạng thái actual/planned/unknown, vì sai
-khác một chữ ở đây có thể khiến câu trả lời nghe rất cụ thể nhưng hoàn toàn sai.
+Ngày 31/07 tôi sẽ đối chiếu hai giao dịch pending, ghi receipt cuối tháng nếu có,
+và khóa sổ. Giao dịch phát sinh sau khi khóa sẽ vào note tháng 08, không backdate
+vào note này chỉ để làm tháng 07 đẹp hơn.

@@ -4,78 +4,99 @@ area: personal-knowledge
 status: current
 created: 2026-07-27
 updated: 2026-07-29
+confidence: high
+review_after: 2026-09-01
 tags: [knowledge, notes, retrieval, provenance, personal-workflow]
-source_kind: sanitized-life-vault-simulation
+source_kind: redacted-personal-note
 ---
 
 # Vì sao tôi tách learning, life và journal trong vault
 
-## Bối cảnh
+## Điều buộc tôi phải đổi cấu trúc
 
-Tôi từng để mọi thứ vào một thư mục `notes` rồi mong assistant tự hiểu sự khác
-nhau giữa một định nghĩa tôi đang học, một quyết định đã chốt và một chuyện đã
-xảy ra hôm qua. Cấu trúc đó tiện lúc bắt đầu nhưng làm retrieval trả lời lẫn
-loại evidence. Một journal có thể nhắc tôi đã đọc Bayes; nó không thay thế note
-giải thích Bayes. Một grocery plan nói dự định mua; nó không chứng minh receipt.
+Trước đây tôi để định nghĩa, log công việc, quyết định và danh sách mua hàng vào
+một thư mục `notes`. Lúc số file còn ít, tôi nhớ bằng tên file. Khi số note tăng,
+assistant nhìn thấy cùng một keyword ở nhiều nơi nhưng không biết loại evidence
+nào đang trả lời câu hỏi.
 
-Tôi tách vault thành ba loại chính:
+Một journal ngày 20/07 có thể chứng minh hôm đó tôi đã học Bayes. Nó không thay
+thế cho note giải thích công thức. Một grocery plan nói tôi định mua rau; nó không
+chứng minh tôi đã mua. Một decision nói lý do chọn TTS; nó không phải benchmark
+đo latency. Tôi cần biểu diễn các khác biệt này bằng folder và metadata, không bắt
+LLM đoán từ văn phong.
 
-- `learning`: điều tôi đang hiểu, còn có thể sửa, có ví dụ và câu hỏi mở;
-- `life`: quyết định, ledger, sức khỏe phổ thông và ranh giới sử dụng;
-- `journal`: sự kiện theo ngày, trạng thái hoàn thành và phản tỉnh tại thời điểm đó.
+## Cấu trúc tôi chốt
 
-## Quy tắc evidence tôi muốn giữ
+| Khu vực | Câu hỏi nó trả lời tốt | Không được dùng thay cho |
+| --- | --- | --- |
+| `learning/` | Tôi hiểu khái niệm này thế nào? | bằng chứng tôi đã làm việc đó |
+| `life/decisions/` | Tôi đã chọn gì, vì sao, khi nào xem lại? | log thực thi đầy đủ |
+| `life/journal/` | Ngày đó đã xảy ra chuyện gì? | định nghĩa kỹ thuật chuẩn |
+| `life/finance/` | Khoản nào planned, khoản nào actual? | suy đoán thu nhập |
+| `life/health/` | Tôi đang quan sát gì, cần hỏi gì? | chẩn đoán hoặc toa điều trị |
+| `sources/` | Corpus có quy ước và nguồn nào? | sự thật về đời sống cá nhân |
 
-Mỗi note ghi `type`, `status`, ngày tạo/cập nhật và `source_kind`. Date giúp phân
-biệt “đã xảy ra” với “định làm”, nhưng không biến mọi câu có ngày thành sự thật
-khách quan. `actual`, `planned`, `draft` và `unknown` phải được viết rõ trong
-finance hoặc journal.
+## Quy tắc evidence
 
-Một note có thể liên kết note khác, nhưng link không làm hai note cùng loại. Khi
-assistant trả lời, tôi muốn citation chỉ tới note thật sự hỗ trợ câu đó và nói rõ
-nếu nguồn là journal, decision hay learning. Nếu không có nguồn đủ mạnh, câu trả
-lời nên dừng ở “chưa tìm thấy” thay vì nối các mẩu gần nghĩa.
+Mỗi note phải có `type`, `status`, ngày và `source_kind`. Với những note có số
+liệu, tôi thêm trạng thái của số đó: `actual`, `planned`, `estimate` hoặc
+`unknown`. Tôi không muốn câu “tháng này tôi đã tiêu X” được tổng hợp từ một
+plan chỉ vì plan có con số X.
 
-## Vì sao không để project trong showcase
+Ngày tạo và ngày cập nhật cũng không giống ngày sự kiện. Journal giữ ngày sự kiện;
+`updated` chỉ nói lần cuối tôi sửa note. Khi sửa một quyết định, tôi thêm change
+log với ngày và lý do thay đổi, không âm thầm viết lại lịch sử.
 
-Project notes dễ kéo retrieval về một sản phẩm cụ thể và làm corpus giống tài liệu
-được dựng để test code. Tôi vẫn có thể học systems/ML/LLM trong `learning`, nhưng
-không muốn `life/project` giả lập một dự án không có lịch sử thật. Các decision và
-journal hiện tại đủ để test câu hỏi assistant-like mà không cần vỏ project.
+## Cách tôi viết một note mới
 
-## Cách tôi cập nhật
+1. Ghi raw thought trước, chưa cố làm câu chữ đẹp.
+2. Chọn loại evidence dựa trên câu hỏi note sẽ trả lời.
+3. Thêm ví dụ cụ thể hoặc record có thể kiểm tra.
+4. Ghi rõ điều chưa biết và việc tiếp theo.
+5. Link sang note liên quan nhưng không làm mất loại của note hiện tại.
+6. Đọc lại bằng query paraphrase, không chỉ search đúng title.
 
-Tôi viết raw thought trước, sau đó thêm metadata và link. Không sửa trực tiếp
-history để làm câu chuyện đẹp hơn; nếu nhận ra mình hiểu sai, tạo section
-“correction” hoặc note mới có ngày. Với số tiền, tôi chỉ đổi `actual` sau khi có
-receipt. Với sức khỏe, tôi ghi quan sát và câu hỏi cho chuyên gia, không tự biến
-note thành chẩn đoán.
+Tôi tránh tách một chủ đề thành nhiều file vài dòng. Nếu câu hỏi cần bối cảnh,
+ví dụ và failure case, chúng ở cùng một file để chunk vẫn giữ được ý. Ngược lại,
+ledger dài sẽ tách khỏi budget vì mỗi dòng giao dịch cần cập nhật độc lập.
 
-Khi một note lớn, tôi tách theo câu hỏi mà tôi sẽ thực sự hỏi assistant. Tôi không
-tách mỗi vài dòng thành một file vì làm mất ngữ cảnh và khiến retrieval trả snippet
-rụng rời. Ngược lại, một file quá dài không có heading cũng khó đọc và khó cite.
+## Điều tôi kiểm tra ở assistant
 
-## Điều tôi dùng vault để kiểm tra
+- “Tôi đã học Bayes khi nào?” phải ưu tiên journal.
+- “Bayes hoạt động thế nào?” phải ưu tiên learning.
+- “Tôi đã mua gì?” phải lấy receipt ledger, không lấy grocery plan.
+- “Tôi định mua gì tuần cuối tháng?” phải giữ nhãn planned.
+- “Tôi đã quyết chọn TTS nào?” phải lấy decision và ngày hiệu lực.
+- “Tôi có bệnh gì không?” phải dừng ở safety boundary, không suy luận từ journal.
+- Query không có note phải trả `insufficient`, không chọn một file gần nghĩa.
 
-- assistant có phân biệt “tôi đã mua” và “tôi dự kiến mua” không;
-- câu hỏi “tuần trước tôi học gì” có ưu tiên journal trước learning không;
-- câu hỏi “tôi hiểu embedding thế nào” có lấy learning note không;
-- câu hỏi sức khỏe có giữ safety boundary không;
-- query không có evidence có được trả lời thẳng là chưa có note không;
-- sửa một note có làm hit cũ biến mất khỏi index không.
+## Chi phí và điều tôi chấp nhận
 
-## Quyết định và giới hạn
+Cấu trúc này làm tôi phải viết metadata và cross-link nhiều hơn. Đổi lại, khi
+retrieval sai, tôi biết sai ở loại evidence nào. Tôi chấp nhận vài giây dọn note
+thay vì có một vault ngắn nhưng mọi câu trả lời đều trộn lẫn planned và actual.
 
-Đây là corpus demo đã sanitize, không phải nhật ký riêng tư thật. Tôi giữ các
-chi tiết vừa đủ để kiểm tra provenance, planned/actual và ambiguity, nhưng không
-đưa secret, địa chỉ, thông tin y tế thật hay giao dịch thật vào repository.
+Tôi cũng chấp nhận có note chưa hoàn chỉnh. `draft` hoặc `unknown` trung thực hơn
+một đoạn văn trôi chảy nhưng không có record. Assistant phải giữ trạng thái đó khi
+tóm tắt, không biến “tôi sẽ đo lại” thành “đã đo đạt”.
 
-Tôi không dùng corpus này làm benchmark release. Benchmark phải có dataset độc
-lập, split và nhãn rõ; showcase chỉ dùng cho smoke test, UI demo và kiểm tra tay.
+## Lịch sử quyết định
 
-## Tóm tắt
+| Ngày | Thay đổi | Lý do |
+| --- | --- | --- |
+| 20/07 | tách journal khỏi learning | câu hỏi “đã học chưa” cần ngày sự kiện |
+| 23/07 | tách finance plan khỏi ledger | tránh nhầm dự tính với khoản đã chi |
+| 27/07 | bỏ folder project khỏi showcase | không muốn checklist sản phẩm lấn vào life |
+| 29/07 | thêm confidence và review date | quyết định hiện tại không phải chân lý vĩnh viễn |
 
-Tách folder không phải để làm cây thư mục đẹp. Nó là một phần của semantics:
-retrieval cần biết loại evidence, runtime cần biết confidence và user cần biết
-assistant đang nhắc lại note nào. Nếu cấu trúc không biểu đạt được cách tôi nhớ,
-thì thêm model mạnh hơn cũng chỉ làm câu trả lời trôi chảy hơn, chưa chắc đúng hơn.
+## Khi nào tôi xem lại
+
+Tôi sẽ xem lại sau khi dùng vault đủ một tháng hoặc khi retrieval vẫn thường xuyên
+trộn journal với learning. Nếu vấn đề là model không đọc metadata, tôi sửa
+pipeline/context trước; không vội gom folder lại cho dễ index.
+
+## Kết luận hiện tại
+
+Tách folder là một quyết định về semantics, không phải trang trí cây thư mục.
+Tôi muốn assistant nói được không chỉ “nội dung gì”, mà còn “đây là loại bằng
+chứng nào, xảy ra lúc nào, còn chắc đến đâu”.

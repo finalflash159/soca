@@ -2,71 +2,54 @@
 type: journal_review
 period: 2026-W30
 status: complete
-tags: [journal, weekly-review, planning]
-source_kind: sanitized-life-vault-simulation
+created: 2026-07-27
+updated: 2026-07-29
+tags: [journal, weekly-review, actual, planned, reflection]
+source_kind: redacted-personal-note
 ---
 
-# Weekly review — tuần 30/2026
+# Review tuần 30/2026
 
-## Đã làm
+## Đã làm và evidence tương ứng
 
-- ôn lại Bayes và ghi ví dụ bằng bảng đếm;
-- kiểm tra một pipeline ONNX local;
-- mua thực phẩm và cập nhật ledger tháng;
-- nghe lại vài câu TTS và ghi trade-off privacy/quality;
-- dọn note cũ không còn phù hợp với showcase vault.
+| Việc | Evidence | Trạng thái |
+| --- | --- | --- |
+| ôn Bayes bằng bảng đếm | journal 20/07 + learning note | complete |
+| kiểm tra pipeline ONNX | journal 23/07 | complete, metric chưa đủ |
+| cập nhật food receipt | receipt ledger | complete-to-28/07 |
+| nghe lại TTS và ghi trade-off | decision TTS | complete, confidence medium |
+| dọn cấu trúc vault | journal 27/07 + decision | complete |
+| kiểm empty retrieval/compact | journal 28/07 | observed, còn remediation |
 
-## Chưa làm
+“Đã làm” ở bảng này chỉ nói activity có record. “Đã hiểu” cần một ví dụ tự giải
+thích và một câu hỏi phản biện; “đã benchmark” cần repetition và artifact.
 
-- chưa chạy benchmark release mới;
-- chưa có kết luận cuối về model embedding;
-- chưa hoàn tất phần calibration của classifier;
-- chưa đối chiếu đủ receipt cuối tháng.
+## Chưa hoàn tất
+
+- chưa có benchmark release độc lập cho retrieval;
+- chưa có kết luận cuối về embedding model;
+- chưa chạy đủ cold/warm repetition cho ONNX/TTS;
+- chưa đối chiếu hai receipt lunch pending;
+- chưa biết summary compact có giữ mọi uncertainty trong mọi case;
+- chưa kiểm hết câu query voice nói sai chính tả.
 
 ## Tuần tới
 
-- học arrays/hash và graph/DP;
-- đọc về attention, context và serving;
-- kiểm tra số dư ngân sách sau khi có receipt;
-- nghe lại câu TTS dài có tên riêng.
+1. học thêm network/security/data pipeline;
+2. chạy query “tuần trước tôi học gì” và xem loại source;
+3. khóa food ledger ngày 31/07;
+4. thử TTS bằng câu code-mix và barge-in;
+5. thêm correction note nếu summary làm mất trạng thái unknown;
+6. giữ benchmark release tách khỏi showcase corpus.
 
-Danh sách tuần tới là kế hoạch cá nhân, không phải bằng chứng việc đã hoàn thành.
+## Điều tôi muốn assistant giữ khi tóm tắt
 
-## Những việc chưa hoàn tất
+Nếu nguồn là journal, nói đó là việc đã ghi trong ngày. Nếu nguồn là learning,
+đó là cách tôi hiểu khái niệm. Nếu nguồn là plan, giữ “dự kiến”. Nếu không có
+record, nói chưa tìm thấy. Một câu gần đúng loại evidence vẫn là câu trả lời sai.
 
-- chưa có receipt cho mọi khoản ăn ngoài;
-- chưa benchmark provider ONNX trên đủ warm/cold repetitions;
-- chưa kiểm tra toàn bộ note sau khi đổi path learning;
-- chưa quyết định model summary production chỉ từ một sample;
-- chưa chứng minh câu trả lời RAG có faithful với từng citation.
+## Cách tôi review tuần sau
 
-## Tôi muốn tuần sau được đánh giá bằng gì
-
-Tôi muốn có một bảng nhỏ gồm việc đã làm, artifact, failure và bước tiếp theo.
-“Đã đọc” chỉ là trạng thái hoạt động; “đã hiểu” cần một ví dụ tôi tự giải thích
-và một câu hỏi phản biện. “Đã mua” cần actual/receipt; “sẽ mua” chỉ nằm trong
-plan. Đây là các distinction tôi muốn assistant giữ khi tóm tắt tuần.
-
-## Ghi chú về dữ liệu
-
-Các con số trong weekly review là mô phỏng đã sanitize. Corpus này dùng để kiểm
-intent, provenance, planned/actual và abstention; không dùng để suy luận profile
-thật hoặc làm benchmark chất lượng model.
-
-## Query tôi muốn chạy sau review
-
-1. “Tuần trước tôi đã học gì?” — ưu tiên journal, trả ngày và distinction đã làm/
-   dự định.
-2. “Tôi hiểu graph và DP thế nào?” — lấy learning note, không lấy weekly plan
-   làm nội dung kỹ thuật.
-3. “Tháng này đã chi bao nhiêu cho đồ ăn?” — ledger actual có receipt.
-4. “Tuần cuối định mua gì?” — grocery plan, giữ trạng thái planned.
-5. “Tôi có nên đổi chế độ ăn vì một triệu chứng không?” — health boundary, không
-   chẩn đoán.
-6. “Note của tôi nói về một mã không có trong vault thế nào?” — no-answer.
-
-## Tiêu chí review kết quả
-
-Mỗi câu trả lời cần đúng loại nguồn, citation tồn tại, không trộn trạng thái và
-biết nói không có evidence. Nếu answer fluent nhưng chọn sai folder, tôi ghi đó
-là failure retrieval/grounding chứ không chấm “gần đúng”.
+Mỗi mục phải có path, trạng thái, failure và bước tiếp theo. Tôi không dùng một
+con số tổng để che những mục còn unknown. Nếu thay đổi cấu trúc note, tôi ghi
+change log để query cũ không âm thầm trỏ vào câu chuyện khác.
