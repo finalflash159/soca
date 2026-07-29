@@ -50,8 +50,25 @@ from .turn import (
     RuntimeStreamEvent,
     RuntimeTrace,
     TurnFrame,
+    iter_workflow_events,
 )
 from .usage import LLMUsage, SessionUsage, TurnUsage
+from .workflow import (
+    BudgetExceededError,
+    BudgetLedger,
+    BudgetSnapshot,
+    DuplicateTerminalError,
+    GoalContract,
+    GoalStatus,
+    NodeOutcome,
+    NodeStatus,
+    TerminalOutcome,
+    TerminalStatus,
+    TurnBudget,
+    TurnState,
+    WorkflowEvent,
+    WorkflowEventStream,
+)
 
 if TYPE_CHECKING:
     from .runtime import (
@@ -142,6 +159,21 @@ __all__ = [
     "RuntimeStreamEvent",
     "RuntimeTrace",
     "RuntimeToolRouter",
+    "iter_workflow_events",
+    "GoalContract",
+    "GoalStatus",
+    "NodeOutcome",
+    "NodeStatus",
+    "TerminalOutcome",
+    "TerminalStatus",
+    "TurnBudget",
+    "TurnState",
+    "BudgetLedger",
+    "BudgetSnapshot",
+    "BudgetExceededError",
+    "DuplicateTerminalError",
+    "WorkflowEvent",
+    "WorkflowEventStream",
     "ResolvedVoiceRuntimeConfig",
     "SoundDevicePlayer",
     "WavFileSink",
