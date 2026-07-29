@@ -35,10 +35,12 @@ uses lexical coverage/normalized sparse score for sparse, a dense floor for dens
 and records top score, margin, accepted/rejected count. Known-backend hits below
 the floor are rejected before prompt construction. Legacy sources without score
 metadata remain accepted as `weak` for compatibility; that is a migration signal,
-not a calibrated evidence claim. Cached sparse and hybrid have separate
-calibrated policies: public XQuAD Vietnamese screening uses coverage `0.65` plus
-sparse ratio `0.75` for cached sparse, and dense floor `0.85` with a conservative
-sparse fallback coverage `0.95` for hybrid FastEmbed.
+not a calibrated evidence claim. Cached sparse and production hybrid have
+separate calibrated policies: public XQuAD Vietnamese screening uses coverage
+`0.65` plus sparse ratio `0.75` for cached sparse. The Phase 5
+`Vietnamese_Embedding_v2` hybrid uses dense floor `0.52` with conservative
+sparse fallback coverage `0.95`. The old FastEmbed floor `0.85` is invalid for
+the new encoder's score distribution.
 
 ## Context and citations
 
@@ -101,7 +103,7 @@ The outdated `wiki/dinh-duong/` tree and `wiki/life/project/` tree are removed.
 
 Automated checks on this branch:
 
-- `uv run pytest -q`: **1090 passed, 3 skipped**;
+- `uv run pytest -q`: **1178 passed, 3 skipped**;
 - `uv run ruff check soca tests`: **pass**;
 - `uv run pyright soca`: **0 errors, 0 warnings**;
 - showcase fixture: **35 indexed markdown notes**, structure/size/query smoke pass.
