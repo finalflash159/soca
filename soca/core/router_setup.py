@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
 
 from soca.core.llm_tool_router import LLMToolRouter
 from soca.core.router_cascade import CascadeToolRouter
@@ -31,11 +30,10 @@ def build_runtime_tool_router(
             return deterministic
         return LLMToolRouter(llm, tool_runtime, config=config, fallback=deterministic)
 
-    semantic_config = (
-        replace(config.semantic, enabled=False)
-        if voice and not config.semantic_enabled_in_voice
-        else config.semantic
-    )
+    # Capability routing is surface-independent: the ASR transcript enters
+    # the same semantic policy as text.  Only the optional LLM-router tier has
+    # a separate voice privacy/latency gate.
+    semantic_config = config.semantic
     try:
         semantic_router = build_semantic_turn_router(
             tool_runtime=tool_runtime,

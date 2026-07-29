@@ -49,7 +49,6 @@ class ToolRouterConfig:
     repair_attempts: int = 1
     zero_data_retention: bool = True
     enabled_in_voice: bool = False
-    semantic_enabled_in_voice: bool = False
     semantic: SemanticRouterConfig = field(default_factory=SemanticRouterConfig)
 
     def __post_init__(self) -> None:
@@ -67,7 +66,6 @@ class ToolRouterConfig:
         for value in (
             self.zero_data_retention,
             self.enabled_in_voice,
-            self.semantic_enabled_in_voice,
         ):
             if not isinstance(value, bool):
                 raise ValueError("router flags must be booleans")

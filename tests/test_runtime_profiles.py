@@ -76,20 +76,3 @@ def test_runtime_profile_validation_rejects_a_second_profile(monkeypatch) -> Non
     assert validate_voice_runtime_profiles()[0] == (
         "runtime profiles must contain exactly ['baseline'], got ['baseline', 'quality']"
     )
-
-
-def test_runtime_profile_validation_rejects_boolean_intent_threshold(monkeypatch) -> None:
-    monkeypatch.setitem(
-        VOICE_RUNTIME_PROFILES,
-        "baseline",
-        VoiceRuntimeProfile(
-            key="baseline",
-            description="Invalid threshold.",
-            asr_model="phowhisper_small",
-            llm_model="arcee_vylinh_3b_q4_k_m",
-            tts_voice=VALTEC_TTS_CONFIG.default_voice,
-            knowledge_intent_threshold=True,
-        ),
-    )
-
-    assert any("knowledge_intent_threshold" in error for error in validate_voice_runtime_profiles())

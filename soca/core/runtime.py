@@ -53,7 +53,6 @@ from soca.knowledge import (
     KnowledgeDocument,
     KnowledgeHit,
 )
-from soca.knowledge.intent_gate import IntentDecision, VoiceKnowledgeMode
 from soca.llm import LLMEngine
 from soca.llm.providers import RemoteLLMError
 from soca.memory import (
@@ -86,7 +85,6 @@ class RuntimeOptions:
     temperature: float = 0.2
     top_p: float = 0.95
     knowledge_limit: int = 3
-    voice_knowledge_mode: VoiceKnowledgeMode = "off"
     turn_workflow: Literal["legacy", "shadow", "controlled"] = "legacy"
     model_context_window: int | None = None
     model_max_output_tokens: int | None = None
@@ -96,8 +94,6 @@ class RuntimeOptions:
     context_safety_margin_tokens: int = 128
 
     def __post_init__(self) -> None:
-        if self.voice_knowledge_mode not in {"off", "intent", "always"}:
-            raise ValueError("voice_knowledge_mode must be off, intent, or always")
         if self.turn_workflow not in {"legacy", "shadow", "controlled"}:
             raise ValueError("turn_workflow must be legacy, shadow, or controlled")
         for name, value in (
@@ -112,12 +108,11 @@ class RuntimeOptions:
             raise ValueError("context_safety_margin_tokens must be non-negative")
 
 
-class KnowledgeIntentGate(Protocol):
-    def evaluate(self, query: str, *, limit: int) -> IntentDecision: ...
-
-
 class RuntimeToolRouter(Protocol):
     def select(self, text: str, *, knowledge_limit: int) -> ToolCall | None: ...
+
+
+EXPLICIT_KNOWLEDGE_SEARCH_PREFIXES = ("wiki:", "knowledge:", "wiki ", "knowledge ")
 
 
 class DefaultRuntimeToolRouter:
@@ -131,7 +126,7 @@ class DefaultRuntimeToolRouter:
     def __init__(
         self,
         *,
-        knowledge_search_prefixes: tuple[str, ...] = ("wiki:", "knowledge:"),
+        knowledge_search_prefixes: tuple[str, ...] = EXPLICIT_KNOWLEDGE_SEARCH_PREFIXES,
         memory_search_prefixes: tuple[str, ...] = ("memory:", "mem:"),
         time_prefixes: tuple[str, ...] = ("time:", "gio:", "giờ:"),
         read_prefixes: tuple[str, ...] = (
@@ -304,7 +299,6 @@ class AssistantRuntime:
         tool_runtime: ToolRuntime | None = None,
         tool_router: RuntimeToolRouter | None = None,
         knowledge_builder: KnowledgeContextBuilder | None = None,
-        knowledge_intent_gate: KnowledgeIntentGate | None = None,
         memory_builder: MemoryContextBuilder | None = None,
         guardrail_policy: GuardrailPolicy = DEFAULT_POLICY,
         options: RuntimeOptions | None = None,
@@ -313,7 +307,6 @@ class AssistantRuntime:
         self.tool_runtime = tool_runtime or ToolRuntime()
         self.tool_router = tool_router or DefaultRuntimeToolRouter()
         self.knowledge_builder = knowledge_builder
-        self.knowledge_intent_gate = knowledge_intent_gate
         self.memory_builder = memory_builder
         self.memory_assembler = PromptContextAssembler(
             max_chars=memory_builder.max_chars if memory_builder is not None else 64_000
@@ -1580,29 +1573,10 @@ class AssistantRuntime:
         if self.knowledge_builder is None:
             return None
         query = str(frame.metadata.get("knowledge_query") or frame.text)
-        explicit = self._should_build_knowledge_context(frame)
-        hits = None
-        if not explicit:
-            if frame.source != "asr" or self.options.voice_knowledge_mode == "off":
-                return None
-            if self.options.voice_knowledge_mode == "always":
-                pass
-            elif self.knowledge_intent_gate is not None:
-                with self._stage(draft, "knowledge_intent"):
-                    decision = self.knowledge_intent_gate.evaluate(
-                        query, limit=self.options.knowledge_limit
-                    )
-                if not decision.use_knowledge:
-                    return None
-                hits = decision.hits
-            else:
-                return None
+        if not self._should_build_knowledge_context(frame):
+            return None
         with self._stage(draft, "knowledge_context"):
-            context = (
-                self.knowledge_builder.build_from_hits(query, hits)
-                if hits is not None
-                else self.knowledge_builder.build(query)
-            )
+            context = self.knowledge_builder.build(query)
 
         draft.knowledge_hits.extend(context.hits)
         draft.citations.extend(context.citations)

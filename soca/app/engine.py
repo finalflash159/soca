@@ -104,7 +104,7 @@ def _progress_phase_for_stage(stage: str) -> str:
 
     if stage == "input_guardrail":
         return "analyzing"
-    if stage in {"tool_router", "knowledge_intent"}:
+    if stage == "tool_router":
         return "routing"
     if stage in {"memory_context", "memory_archive_context"} or stage.startswith("tool:memory."):
         return "memory"

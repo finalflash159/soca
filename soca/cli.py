@@ -886,13 +886,11 @@ def engine(
 )
 @click.option("--session-id", default="default", hidden=True)
 @click.option("--resume-session", is_flag=True, hidden=True)
-@click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="deterministic", hidden=True)
+@click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="cascade", hidden=True)
 @click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", hidden=True)
-@click.option("--llm-router-in-voice/--no-llm-router-in-voice", default=False, hidden=True)
-@click.option("--semantic-router/--no-semantic-router", default=False, hidden=True)
-@click.option("--semantic-router-in-voice/--no-semantic-router-in-voice", default=False, hidden=True)
-@click.option("--semantic-router-threshold", type=float, default=0.0, hidden=True)
-@click.option("--semantic-router-margin", type=float, default=0.0, hidden=True)
+@click.option("--semantic-router/--no-semantic-router", default=True, hidden=True)
+@click.option("--semantic-router-threshold", type=float, default=0.58, hidden=True)
+@click.option("--semantic-router-margin", type=float, default=0.04, hidden=True)
 @click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None, hidden=True)
 @click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", hidden=True)
 @click.option("--memory-limit", type=int, default=3, hidden=True)
@@ -959,9 +957,7 @@ def voice(
     resume_session: bool,
     tool_router: str,
     router_response: str,
-    llm_router_in_voice: bool,
     semantic_router: bool,
-    semantic_router_in_voice: bool,
     semantic_router_threshold: float,
     semantic_router_margin: float,
     semantic_router_examples: Path | None,
@@ -1008,9 +1004,7 @@ def voice(
             session_resume=resume_session,
             tool_router_mode=tool_router,
             tool_router_response_mode=router_response,
-            llm_router_in_voice=llm_router_in_voice,
             semantic_router_enabled=semantic_router,
-            semantic_router_in_voice=semantic_router_in_voice,
             semantic_router_threshold=semantic_router_threshold,
             semantic_router_margin=semantic_router_margin,
             semantic_router_examples=semantic_router_examples,
