@@ -56,6 +56,7 @@ def test_semantic_policy_keeps_weather_out_of_scope_and_selects_both_sources(tmp
     assert router.select("Tôi đã ghi gì về ONNX Runtime?", knowledge_limit=3) is None
     assert router.last_decision.disposition == "retrieval_request"
     assert router.last_decision.sources == ("knowledge", "memory")
+    assert set(router.last_decision.source_scores) == {"knowledge", "memory"}
 
 
 def test_semantic_policy_uses_only_allowlisted_direct_tool(tmp_path: Path) -> None:
