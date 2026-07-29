@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal
@@ -87,3 +88,14 @@ class RuntimeStreamEvent:
     type: RuntimeStreamEventType
     text: str = ""
     result: RuntimeResult | None = None
+
+
+def iter_workflow_events(
+    source: RuntimeResult | Iterable[RuntimeStreamEvent],
+    *,
+    turn_id: str = "",
+) -> Iterator[Any]:
+    """Compatibility entry point for the shared blocking/streaming adapter."""
+    from .workflow.legacy_adapter import iter_runtime_events
+
+    yield from iter_runtime_events(source, turn_id=turn_id)

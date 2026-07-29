@@ -96,7 +96,8 @@ def test_engine_hello_then_quit_emits_bye() -> None:
     assert code == 0
     events = capture.events()
     assert events[0]["event"] == "hello"
-    assert events[0]["version"] == 1
+    assert events[0]["version"] == 2
+    assert events[0]["supported_versions"] == [1, 2]
     assert events[-1]["event"] == "bye"
 
 
@@ -157,6 +158,11 @@ class _FakeAssistantRuntime:
         return RuntimeResult(response_text=f"echo: {text}", route=RuntimeRoute.FREE_CHAT)
 
 
+class _FailingAssistantRuntime:
+    def run_text_turn(self, text: str, *, source: str, metadata: dict) -> RuntimeResult:
+        raise RuntimeError("synthetic runtime failure")
+
+
 def _fake_text_builder(config: TextRuntimeConfig, session_memory=None) -> TextRuntimeBundle:
     return TextRuntimeBundle(
         runtime=_FakeAssistantRuntime(),  # type: ignore[arg-type]
@@ -190,6 +196,37 @@ def test_engine_chat_roundtrip_emits_done_with_response() -> None:
         "complete",
     ]
     assert progress[-1]["status"] == "done"
+
+
+def test_engine_chat_exception_does_not_emit_completed_progress() -> None:
+    capture = ProtocolCapture()
+
+    def failing_builder(config: TextRuntimeConfig, session_memory=None) -> TextRuntimeBundle:
+        return TextRuntimeBundle(
+            runtime=_FailingAssistantRuntime(),  # type: ignore[arg-type]
+            session_memory=session_memory,
+            llm_status="fake",
+            knowledge_status="fake",
+            memory_status="fake",
+        )
+
+    def stdin():
+        yield '{"cmd": "chat", "text": "xin chào"}\n'
+        capture.wait_for('"type": "error"')
+        yield '{"cmd": "quit"}\n'
+
+    code = run_engine(
+        voice_config=None,
+        text_config=make_text_config(),
+        profile="baseline",
+        stdin=stdin(),
+        stdout=capture,
+        text_runtime_builder=failing_builder,
+    )
+
+    assert code == 0
+    progress = [event for event in capture.events() if event["event"] == "turn_progress"]
+    assert not any(event["status"] == "done" for event in progress)
 
 
 @dataclass

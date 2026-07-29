@@ -51,6 +51,11 @@ from soca.app.voice_controller import (
 from soca.config import DEFAULT_SETTINGS, LlmSettings, SecretStore, load_settings, save_settings
 from soca.core import AudioSink, ResolvedVoiceRuntimeConfig
 from soca.core.usage import SessionUsage, TurnUsage
+from soca.core.workflow.protocol import (
+    CURRENT_PROTOCOL_VERSION,
+    adapt_legacy_command,
+    protocol_hello,
+)
 from soca.llm.providers import (
     PRICING_TABLE_AS_OF,
     LLMProvider,
@@ -66,7 +71,7 @@ from soca.memory.working import approximate_tokens
 from soca.prompts import SOCA_RUNTIME_SYSTEM_PROMPT, build_runtime_prompt
 from soca.tts import VALTEC_TTS_CONFIG
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = CURRENT_PROTOCOL_VERSION
 LOGGER = logging.getLogger(__name__)
 
 TextRuntimeBuilder = Callable[..., TextRuntimeBundle]
@@ -250,13 +255,7 @@ class SocaEngine:
                 "voice": self.voice_config.tts_voice,
             }
         self.writer.emit(
-            {
-                "event": "hello",
-                "version": PROTOCOL_VERSION,
-                "profile": self.profile,
-                "no_model": self.no_model,
-                "stack": stack,
-            }
+            protocol_hello(profile=self.profile, no_model=self.no_model, stack=stack)
         )
         self._cmd_context()
         if self._settings_warning is not None:
@@ -264,6 +263,7 @@ class SocaEngine:
 
     def dispatch(self, command: dict[str, Any]) -> bool:
         """Handle one command; return False when the engine should exit."""
+        command = adapt_legacy_command(command)
         cmd = command.get("cmd")
         if cmd == "quit":
             return False
@@ -1197,6 +1197,7 @@ class SocaEngine:
         thread.start()
 
     def _chat_worker(self, text: str) -> None:
+        terminal_emitted = False
         try:
             self.writer.emit({"event": "chat", "type": "start", "text": text})
             self._emit_turn_progress(
@@ -1233,6 +1234,8 @@ class SocaEngine:
                     "usage": usage,
                 }
             )
+            terminal_emitted = True
+            self._emit_turn_progress("chat", "complete", status="done")
             trace = result.trace
             if trace is not None:
                 commands = self._memory_commands()
@@ -1315,9 +1318,13 @@ class SocaEngine:
                 )
             self._cmd_context()
         except Exception as exc:  # noqa: BLE001 - protocol boundary must not crash
-            self.writer.emit({"event": "chat", "type": "error", "text": str(exc)})
+            if not terminal_emitted:
+                self.writer.emit({"event": "chat", "type": "error", "text": str(exc)})
+            else:
+                LOGGER.exception("chat worker failed after terminal result")
         finally:
-            self._emit_turn_progress("chat", "complete", status="done")
+            # Worker cleanup is not a product terminal. An exception before a
+            # result therefore emits chat:error, but never chat completion.
             self._chat_lock.release()
 
     def _ensure_text_bundle(self) -> TextRuntimeBundle:
