@@ -19,9 +19,15 @@ from soca.core.evidence import (
     EvidenceBundleDecision,
     EvidenceDecision,
     EvidenceReconciler,
+    EvidenceRelation,
     EvidenceSourceState,
     EvidenceStatus,
     decide_evidence,
+)
+from soca.core.grounding_policy import (
+    GroundingTurnPolicy,
+    aggregate_evidence_status,
+    select_grounding_policy,
 )
 from soca.core.guardrails import (
     DEFAULT_POLICY,
@@ -64,9 +70,12 @@ from soca.memory import (
     PromptContextAssembler,
 )
 from soca.prompts import (
+    ABSTENTION_GROUNDING_INSTRUCTIONS,
+    JOINT_GROUNDING_INSTRUCTIONS,
     KNOWLEDGE_GROUNDING_INSTRUCTIONS,
     MEMORY_GROUNDING_INSTRUCTIONS,
     SOCA_RUNTIME_SYSTEM_PROMPT,
+    UNAVAILABLE_GROUNDING_INSTRUCTIONS,
 )
 from soca.tools import ToolCall, ToolResult, ToolRuntime
 
@@ -261,6 +270,8 @@ class _TraceDraft:
     answer_validation: AnswerValidationDecision | None = None
     answer_repair_attempted: bool = False
     answer_repair_succeeded: bool = False
+    memory_access_plan: MemoryAccessPlan | None = None
+    answer_policy: GroundingTurnPolicy | None = None
     prompt_manifest: dict[str, Any] | None = None
 
 
@@ -824,18 +835,33 @@ class AssistantRuntime:
             tuple(draft.citations),
             evidence=tuple([*draft.knowledge_hits, *draft.memory_hits]),
         )
+        grounding_policy = self._grounding_policy(draft)
+        if (
+            grounding_policy.validation_action(
+                draft.answer_validation,
+                repair_attempted=True,
+            )
+            == "block"
+        ):
+            yield RuntimeStreamEvent(type="sentence", text=grounding_policy.block_message)
+            result = self._result(
+                frame,
+                draft,
+                response_text=grounding_policy.block_message,
+                route=RuntimeRoute.BLOCKED,
+                used_tool=used_tool,
+                used_llm=True,
+                blocked=True,
+                usage=usage,
+            )
+            yield RuntimeStreamEvent(type="result", result=result)
+            return
         self._append_safe_session_turn(frame.text, full_text)
         result = self._result(
             frame,
             draft,
             response_text=full_text,
-            route=(
-                RuntimeRoute.KNOWLEDGE_LLM
-                if knowledge_context is not None
-                else RuntimeRoute.MEMORY_LLM
-                if memory_context is not None and memory_context.citations
-                else RuntimeRoute.FREE_CHAT
-            ),
+            route=self._llm_route(draft, memory_context, knowledge_context),
             used_tool=used_tool,
             used_llm=True,
             usage=usage,
@@ -943,6 +969,13 @@ class AssistantRuntime:
                 )
             )
         elif tool_call.name == "memory.search":
+            draft.memory_access_plan = MemoryAccessPlan(
+                include_core=False,
+                include_working=False,
+                archive_mode="semantic",
+                archive_query=str(tool_call.arguments.get("query") or frame.text),
+                reason="explicit_memory_search",
+            )
             memory_context = self._memory_context_from_tool_result(
                 frame,
                 tool_call,
@@ -1342,7 +1375,12 @@ class AssistantRuntime:
             citations,
             evidence=evidence,
         )
-        if answer_validation.status in {"missing", "invalid"} and citations:
+        grounding_policy = self._grounding_policy(draft)
+        validation_action = grounding_policy.validation_action(
+            answer_validation,
+            repair_attempted=False,
+        )
+        if validation_action == "repair":
             response_text, llm_result, repaired_usage, answer_validation = (
                 self._repair_answer_once(
                     prompt,
@@ -1356,6 +1394,20 @@ class AssistantRuntime:
             )
             if repaired_usage is not None:
                 usage = usage.combine(repaired_usage) if usage is not None else repaired_usage
+        validation_action = grounding_policy.validation_action(
+            answer_validation,
+            repair_attempted=draft.answer_repair_attempted,
+        )
+        if validation_action == "block":
+            draft.answer_validation = answer_validation
+            return self._blocked_result(
+                frame,
+                draft,
+                reason=grounding_policy.block_message,
+                route=RuntimeRoute.BLOCKED,
+                llm_result=llm_result,
+                usage=usage,
+            )
 
         with self._stage(draft, "output_guardrail"):
             output_event = check_final_output(
@@ -1383,13 +1435,7 @@ class AssistantRuntime:
             frame,
             draft,
             response_text=response_text,
-            route=(
-                RuntimeRoute.KNOWLEDGE_LLM
-                if knowledge_context is not None
-                else RuntimeRoute.MEMORY_LLM
-                if memory_context is not None and memory_context.citations
-                else RuntimeRoute.FREE_CHAT
-            ),
+            route=self._llm_route(draft, memory_context, knowledge_context),
             used_tool=used_tool,
             used_llm=True,
             llm_result=llm_result,
@@ -1510,6 +1556,10 @@ class AssistantRuntime:
             None,
             plan=MemoryAccessPlan(archive_mode="none"),
         )
+        draft.memory_access_plan = MemoryAccessPlan(
+            archive_mode="none",
+            reason="core_and_working_default",
+        )
         draft.memory_hits.extend(context.hits)
         draft.memory_mode = context.mode
         draft.memory_degraded_reason = context.degraded_reason
@@ -1622,19 +1672,27 @@ class AssistantRuntime:
         memory_context = self._build_memory_context(frame, draft)
         knowledge_context = None
         if "memory" in decision.sources:
+            memory_plan = MemoryAccessPlan(
+                archive_mode="semantic",
+                archive_query=frame.text,
+                reason="semantic_memory_source_selected",
+            )
+            draft.memory_access_plan = memory_plan
             archive_context = self._build_archive_memory_context(frame, draft)
             if memory_context is not None and archive_context is not None:
                 memory_context = self.memory_assembler.assemble(
                     memory_context,
                     archive_context,
-                    plan=MemoryAccessPlan(
-                        archive_mode="semantic",
-                        archive_query=frame.text,
-                        reason="semantic_memory_source_selected",
-                    ),
+                    plan=memory_plan,
                 )
         if "knowledge" in decision.sources:
             knowledge_context = self._build_knowledge_context_from_query(frame, draft)
+        relation = frame.metadata.get("evidence_relation", "unknown")
+        if relation in {"consistent", "conflicting", "unknown"}:
+            draft.evidence_bundle = EvidenceReconciler().reconcile(
+                tuple(draft.evidence_decisions),
+                relation=cast(EvidenceRelation, relation),
+            )
         return _SemanticContextPlan(memory_context, knowledge_context)
 
     def _finish_semantic_context_turn(
@@ -1744,6 +1802,8 @@ class AssistantRuntime:
         memory_context: MemoryContext | None,
         knowledge_context: KnowledgeContext | None,
     ) -> str:
+        grounding_policy = self._grounding_policy(draft)
+        source_set = {decision.source for decision in draft.evidence_decisions}
         components = [
             PromptComponent(
                 "system",
@@ -1759,9 +1819,37 @@ class AssistantRuntime:
             ),
             PromptComponent("answer_prefix", "Trả lời:", priority=0, required=True),
         ]
+        if len(source_set) > 1:
+            components.append(
+                PromptComponent(
+                    "joint_grounding_policy",
+                    JOINT_GROUNDING_INSTRUCTIONS.strip(),
+                    priority=0,
+                    required=True,
+                )
+            )
+        if grounding_policy.name == "abstain":
+            components.append(
+                PromptComponent(
+                    "answer_policy",
+                    ABSTENTION_GROUNDING_INSTRUCTIONS.strip(),
+                    priority=0,
+                    required=True,
+                )
+            )
+        elif grounding_policy.name == "retrieval_unavailable":
+            components.append(
+                PromptComponent(
+                    "answer_policy",
+                    UNAVAILABLE_GROUNDING_INSTRUCTIONS.strip(),
+                    priority=0,
+                    required=True,
+                )
+            )
         if memory_context is not None and memory_context.prompt_text.strip():
             memory_text = "Memory:\n" + memory_context.prompt_text.strip()
-            if memory_context.citations:
+            memory_retrieval_requested = "memory" in source_set
+            if memory_context.citations or memory_retrieval_requested:
                 memory_text = MEMORY_GROUNDING_INSTRUCTIONS.strip() + "\n\n" + memory_text
             memory_text = (
                 f"Evidence status: {memory_context.evidence_status} "
@@ -1769,7 +1857,12 @@ class AssistantRuntime:
                 + memory_text
             )
             components.append(
-                PromptComponent("memory", memory_text, priority=30, required=False)
+                PromptComponent(
+                    "memory",
+                    memory_text,
+                    priority=30,
+                    required=memory_retrieval_requested,
+                )
             )
         if knowledge_context is not None and knowledge_context.prompt_text.strip():
             knowledge_text = (
@@ -1805,6 +1898,28 @@ class AssistantRuntime:
         )
         draft.prompt_manifest = manifest.to_dict()
         return prompt
+
+    def _grounding_policy(self, draft: _TraceDraft) -> GroundingTurnPolicy:
+        policy = select_grounding_policy(
+            tuple(draft.evidence_decisions),
+            draft.evidence_bundle,
+        )
+        draft.answer_policy = policy
+        return policy
+
+    def _llm_route(
+        self,
+        draft: _TraceDraft,
+        memory_context: MemoryContext | None,
+        knowledge_context: KnowledgeContext | None,
+    ) -> RuntimeRoute:
+        if knowledge_context is not None:
+            return RuntimeRoute.KNOWLEDGE_LLM
+        if memory_context is not None and any(
+            decision.source == "memory" for decision in draft.evidence_decisions
+        ):
+            return RuntimeRoute.MEMORY_LLM
+        return RuntimeRoute.FREE_CHAT
 
     def _effective_max_tokens(self, draft: _TraceDraft) -> int:
         manifest = draft.prompt_manifest or {}
@@ -1863,6 +1978,7 @@ class AssistantRuntime:
         llm_result: Any | None = None,
         usage: LLMUsage | None = None,
     ) -> RuntimeResult:
+        answer_policy = draft.answer_policy or self._grounding_policy(draft)
         trace = RuntimeTrace(
             route=route,
             guardrail_events=tuple(draft.guardrail_events),
@@ -1889,6 +2005,12 @@ class AssistantRuntime:
             router_margin=draft.router_margin,
             evidence_decisions=tuple(draft.evidence_decisions),
             evidence_bundle=draft.evidence_bundle,
+            evidence_status=aggregate_evidence_status(tuple(draft.evidence_decisions)),
+            memory_access_plan=draft.memory_access_plan,
+            answer_policy=answer_policy.name,
+            answer_policy_reason=answer_policy.reason,
+            grounding_policy_version=answer_policy.version,
+            citation_count=len(draft.citations),
             answer_validation=draft.answer_validation,
             answer_repair_attempted=draft.answer_repair_attempted,
             answer_repair_succeeded=draft.answer_repair_succeeded,

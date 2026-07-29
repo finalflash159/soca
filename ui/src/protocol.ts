@@ -59,6 +59,18 @@ export interface RouterTraceEvent {
   tier: "deterministic" | "semantic" | "llm" | "none";
   tool: string | null;
   latency_ms: number;
+  evidence_status: string;
+  answer_policy: string;
+  answer_policy_reason: string;
+  grounding_policy_version: string;
+  citation_count: number;
+  memory_access_plan: {
+    include_core: boolean;
+    include_working: boolean;
+    archive_mode: "none" | "semantic" | "episodic" | "both";
+    archive_query: string | null;
+    reason: string;
+  } | null;
 }
 
 export interface MemoryTraceEvent {

@@ -113,6 +113,21 @@ class FakeRetrievedMemory:
         )
 
 
+class EmptyRetrievedMemory:
+    def read_profile(self) -> str:
+        return ""
+
+    def retrieve_profile(self, query: str) -> MemoryProfileResult:
+        del query
+        return MemoryProfileResult(
+            text="",
+            mode="retrieved",
+            evidence_status="insufficient",
+            evidence_reason="no_hits",
+            retrieval_state="empty",
+        )
+
+
 class SpyLLM:
     def __init__(self, text: str = "Đây là câu trả lời.") -> None:
         self.text = text
@@ -278,7 +293,33 @@ def test_llm_repair_retries_once_when_citations_are_missing() -> None:
     assert result.usage.completion_tokens == 10
 
 
-def test_llm_repair_skips_second_call_when_repair_prompt_cannot_fit() -> None:
+def test_llm_blocks_grounded_answer_when_single_repair_still_has_no_citation() -> None:
+    source = FakeKnowledgeSource()
+    llm = SequenceLLM(
+        [
+            "Protein hỗ trợ duy trì cơ bắp.",
+            "Protein vẫn hỗ trợ duy trì cơ bắp.",
+        ]
+    )
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        knowledge_builder=KnowledgeContextBuilder(source),
+    )
+
+    result = runtime.run_text_turn("wiki: chất đạm")
+
+    assert result.blocked is True
+    assert result.route == RuntimeRoute.BLOCKED
+    assert "dẫn nguồn chưa hợp lệ" in result.response_text
+    assert result.trace is not None
+    assert result.trace.answer_repair_attempted is True
+    assert result.trace.answer_repair_succeeded is False
+    assert result.trace.answer_validation.status == "missing"
+    assert len(llm.calls) == 2
+
+
+def test_llm_blocks_uncited_answer_when_repair_prompt_cannot_fit() -> None:
     source = FakeKnowledgeSource()
     llm = SequenceLLM(
         [
@@ -299,10 +340,14 @@ def test_llm_repair_skips_second_call_when_repair_prompt_cannot_fit() -> None:
 
     result = runtime.run_text_turn("wiki: " + ("Bayes " * 90))
 
-    assert result.response_text == "Protein hỗ trợ duy trì cơ bắp."
+    assert result.blocked is True
+    assert result.route == RuntimeRoute.BLOCKED
+    assert "dẫn nguồn chưa hợp lệ" in result.response_text
     assert result.trace is not None
     assert result.trace.answer_repair_attempted is True
     assert result.trace.answer_repair_succeeded is False
+    assert result.trace.answer_policy == "grounded"
+    assert result.trace.answer_validation.status == "missing"
     assert len(llm.calls) == 1
 
 
@@ -341,6 +386,11 @@ def test_explicit_memory_search_synthesizes_retrieved_context_with_llm() -> None
     assert "Memory:" in llm.calls[0]["user_msg"]
     assert "Chọn TTS local vì riêng tư" in llm.calls[0]["user_msg"]
     assert result.trace.evidence_decisions[-1].status == "weak"
+    assert result.trace.answer_policy == "grounded"
+    assert result.trace.evidence_status == "weak"
+    assert result.trace.citation_count == 1
+    assert result.trace.memory_access_plan.archive_mode == "semantic"
+    assert result.trace.memory_access_plan.reason == "explicit_memory_search"
 
 
 def test_empty_knowledge_search_result_does_not_require_citation() -> None:
@@ -374,6 +424,26 @@ def test_empty_knowledge_search_passes_empty_context_to_llm() -> None:
     assert "No local knowledge notes found." in llm.calls[0]["user_msg"]
     assert "grounding" in llm.calls[0]["user_msg"]
     assert "chưa đủ thông tin" in result.response_text
+
+
+def test_empty_memory_search_passes_abstention_policy_to_llm() -> None:
+    llm = SpyLLM(text="Mình chưa tìm thấy đủ thông tin trong memory.")
+    builder = MemoryContextBuilder(long_term=EmptyRetrievedMemory())
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([MemorySearchTool(builder)]),
+    )
+
+    result = runtime.run_text_turn("memory: quyết định không tồn tại")
+
+    assert result.route == RuntimeRoute.MEMORY_LLM
+    assert result.trace is not None
+    assert result.trace.used_tool is True
+    assert result.trace.answer_policy == "abstain"
+    assert result.trace.evidence_status == "insufficient"
+    assert result.trace.citation_count == 0
+    assert "Không có bằng chứng cục bộ đủ dùng" in llm.calls[0]["user_msg"]
+    assert "No local memory notes found" in llm.calls[0]["user_msg"]
 
 
 def test_empty_llm_response_is_not_rendered_as_success() -> None:

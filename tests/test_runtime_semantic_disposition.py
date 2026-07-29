@@ -3,8 +3,9 @@ from __future__ import annotations
 from soca.core import AssistantRuntime, RuntimeRoute
 from soca.core.tool_routing import ToolRouterDecision
 from soca.knowledge import KnowledgeContextBuilder
+from soca.memory import MemoryContextBuilder
 from soca.tools import ToolCall
-from tests.test_assistant_runtime import FakeKnowledgeSource, SpyLLM
+from tests.test_assistant_runtime import FakeKnowledgeSource, FakeRetrievedMemory, SpyLLM
 
 
 class _Router:
@@ -34,7 +35,7 @@ def test_out_of_scope_does_not_call_llm_or_direct_tool() -> None:
 
 def test_semantic_knowledge_request_builds_context_then_calls_llm() -> None:
     source = FakeKnowledgeSource()
-    llm = SpyLLM()
+    llm = SpyLLM(text="Theo [K1], ghi chú nói về Bayes.")
     runtime = AssistantRuntime(
         llm=llm,
         knowledge_builder=KnowledgeContextBuilder(source),
@@ -52,5 +53,44 @@ def test_semantic_knowledge_request_builds_context_then_calls_llm() -> None:
     assert result.trace.selected_sources == ("knowledge",)
     assert result.trace.tool_calls == ()
     assert result.trace.evidence_decisions[0].status == "weak"
-    assert result.trace.answer_validation.status == "missing"
+    assert result.trace.answer_validation.status == "valid"
+    assert result.trace.answer_policy == "grounded"
     assert "[K1]" in llm.calls[0]["user_msg"]
+
+
+def test_joint_knowledge_memory_request_discloses_unreconciled_sources() -> None:
+    source = FakeKnowledgeSource()
+    llm = SpyLLM(
+        text=(
+            "Knowledge nói protein hỗ trợ cơ bắp [K1], còn memory ghi chọn "
+            "TTS local vì riêng tư [M1]; hai nguồn nói về hai nội dung khác nhau."
+        )
+    )
+    runtime = AssistantRuntime(
+        llm=llm,
+        knowledge_builder=KnowledgeContextBuilder(source),
+        memory_builder=MemoryContextBuilder(long_term=FakeRetrievedMemory()),
+        tool_router=_Router(
+            ToolRouterDecision(
+                reason="semantic_retrieval",
+                disposition="retrieval_request",
+                sources=("knowledge", "memory"),
+            )
+        ),
+    )
+
+    result = runtime.run_text_turn(
+        "So sánh knowledge và memory của tôi",
+        metadata={"evidence_relation": "conflicting"},
+    )
+
+    assert result.route == RuntimeRoute.KNOWLEDGE_LLM
+    assert result.trace is not None
+    assert result.trace.evidence_bundle.status == "conflicting"
+    assert result.trace.answer_policy == "conflict_disclosure"
+    assert result.trace.citation_count == 2
+    assert result.trace.memory_access_plan.archive_mode == "semantic"
+    assert result.trace.answer_validation.status == "valid"
+    assert "Không so độ lớn score giữa hai nguồn" in llm.calls[0]["user_msg"]
+    assert "[K1]" in llm.calls[0]["user_msg"]
+    assert "[M1]" in llm.calls[0]["user_msg"]

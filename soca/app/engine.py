@@ -1330,6 +1330,22 @@ class SocaEngine:
                         "source_scores": dict(trace.router_source_scores),
                         "runner_up": trace.router_runner_up,
                         "margin": trace.router_margin,
+                        "evidence_status": trace.evidence_status,
+                        "answer_policy": trace.answer_policy,
+                        "answer_policy_reason": trace.answer_policy_reason,
+                        "grounding_policy_version": trace.grounding_policy_version,
+                        "citation_count": trace.citation_count,
+                        "memory_access_plan": (
+                            {
+                                "include_core": trace.memory_access_plan.include_core,
+                                "include_working": trace.memory_access_plan.include_working,
+                                "archive_mode": trace.memory_access_plan.archive_mode,
+                                "archive_query": trace.memory_access_plan.archive_query,
+                                "reason": trace.memory_access_plan.reason,
+                            }
+                            if trace.memory_access_plan is not None
+                            else None
+                        ),
                         "latency_ms": trace.stage_latencies_ms.get("tool_router", 0.0),
                     }
                 )
