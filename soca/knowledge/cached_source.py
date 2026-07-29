@@ -69,6 +69,10 @@ class CachedMarkdownVaultKnowledgeSource(MarkdownVaultKnowledgeSource):
             else None
         )
 
+    @property
+    def retrieval_mode(self) -> str:
+        return "cached_sparse"
+
     def _refresh_index(
         self,
     ) -> tuple[VaultIndex, SparseDocumentRetriever]:

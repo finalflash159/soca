@@ -14,6 +14,7 @@ from typing import Any
 
 from eval.eval_hybrid_retrieval import _build_source
 from soca.knowledge.context import KnowledgeContextBuilder
+from soca.knowledge.relevance import RelevancePolicy
 
 
 def load_dataset(path: Path) -> tuple[dict[str, Any], ...]:
@@ -84,12 +85,26 @@ def run_benchmark(
             index_home=index_home or Path(temporary_index),
             rrf_k=60,
         )
-        builder = KnowledgeContextBuilder(source, max_hits=5)
+        builder = KnowledgeContextBuilder(
+            source,
+            max_hits=5,
+            relevance_policy=RelevancePolicy.for_retrieval_mode(variant),
+        )
         records: list[dict[str, Any]] = []
         for row in rows:
             started = time.perf_counter()
-            raw_hits = source.search(row["query"], limit=5)
-            context = builder.build_from_hits(row["query"], tuple(raw_hits))
+            retrieve = getattr(source, "retrieve", None)
+            if callable(retrieve):
+                batch = retrieve(row["query"], limit=5)
+                raw_hits = tuple(batch.hits)
+                context = builder.build_from_hits(
+                    row["query"],
+                    raw_hits,
+                    diagnostics=batch.diagnostics,
+                )
+            else:
+                raw_hits = tuple(source.search(row["query"], limit=5))
+                context = builder.build_from_hits(row["query"], raw_hits)
             raw_paths = list(dict.fromkeys(hit.document.path for hit in raw_hits))
             accepted_paths = list(dict.fromkeys(hit.document.path for hit in context.hits))
             records.append(
@@ -100,6 +115,11 @@ def run_benchmark(
                     "accepted_paths": accepted_paths,
                     "evidence_status": context.evidence_status,
                     "evidence_reason": context.evidence_reason,
+                    "retrieval_state": context.retrieval_state,
+                    "query_coverage": context.query_coverage,
+                    "score_separation": context.score_separation,
+                    "sparse_top_score": context.sparse_top_score,
+                    "dense_top_score": context.dense_top_score,
                     "latency_ms": (time.perf_counter() - started) * 1000,
                 }
             )
@@ -111,10 +131,23 @@ def run_benchmark(
     unanswerable = [
         record for row, record in zip(rows, records, strict=True) if not row["answerable"]
     ]
-    recall = sum(bool(set(record["raw_paths"][:5]) & set(row["relevant_paths"])) for row, record in answerable)
+    raw_recall = sum(
+        bool(set(record["raw_paths"][:5]) & set(row["relevant_paths"]))
+        for row, record in answerable
+    )
+    recall = sum(
+        bool(set(record["accepted_paths"][:5]) & set(row["relevant_paths"]))
+        for row, record in answerable
+    )
     false_evidence = sum(bool(record["accepted_paths"]) for record in unanswerable)
     latencies = sorted(float(record["latency_ms"]) for record in records)
     p95 = latencies[min(len(latencies) - 1, math.ceil(len(latencies) * 0.95) - 1)] if latencies else 0.0
+    warm_latencies = sorted(float(record["latency_ms"]) for record in records[1:])
+    warm_p95 = (
+        warm_latencies[min(len(warm_latencies) - 1, math.ceil(len(warm_latencies) * 0.95) - 1)]
+        if warm_latencies
+        else 0.0
+    )
     return {
         "dataset": str(dataset),
         "dataset_sha256": hashlib.sha256(dataset.read_bytes()).hexdigest(),
@@ -123,10 +156,14 @@ def run_benchmark(
         "backend": backend,
         "case_count": len(rows),
         "answerable_retrieval_recall_at_5": _wilson(recall, len(answerable)),
+        "answerable_accepted_evidence_recall_at_5": _wilson(recall, len(answerable)),
+        "answerable_raw_retrieval_recall_at_5": _wilson(raw_recall, len(answerable)),
         "unanswerable_false_evidence_rate": _wilson(false_evidence, len(unanswerable)),
         "latency_ms": {
             "mean": statistics.fmean(latencies) if latencies else 0.0,
             "p95": p95,
+            "first_query": float(records[0]["latency_ms"]) if records else 0.0,
+            "warm_p95": warm_p95,
         },
         "records": records,
     }

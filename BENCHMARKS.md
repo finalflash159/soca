@@ -1818,3 +1818,81 @@ is not a quality release gate: many low-confidence cases correctly fall to
 `unresolved`. P3 therefore wires parity and fail-closed behavior; it does not
 pretend this capture is a calibrated production win. The `/tmp` raw report is
 local-only and is not a repository artifact.
+
+### P4 — Retrieval evidence contract and groundedness calibration
+
+Run date: 2026-07-29. Branch: `feat/voice-knowledge-p4-evidence-contract`, based
+on merged P3 `main` at `5a18d2c`.
+
+This phase uses the checked-in public XQuAD Vietnamese corpus, not the
+showcase or private/demo vault:
+
+- corpus: `eval/fixtures/real_rag_vault`
+- labels: `eval/prompts/p0/grounding_vi.jsonl`
+- grounding dataset SHA-256: `965bbd8c238afdad715700d22e07c7235ec5fb83741a96e60e78e192a68e2791`
+- corpus manifest SHA-256: `a43bc4ee832e04007051f06de5e81c003d33f1c4219d318d3123c28f5839398c`
+- 20 rows: 12 answerable and 8 deliberately unanswerable; family splits are
+  frozen by the P0 contract.
+
+The evidence contract now carries source-local state (`ready`, `missing`,
+`stale`, `degraded`, `unavailable`), query coverage, score separation, and
+separate sparse/dense top scores through retrieval → context → runtime trace.
+Dense retrieval is not gated by lexical overlap. Cached sparse hits require
+both calibrated lexical coverage and sparse score ratio; dense hits use their
+own cosine distribution. `memory.search` preserves backend scores instead of
+falling back to an unscored legacy label. Dense-only failure is
+`unavailable`; an empty but healthy index is `insufficient`.
+
+Calibration commands:
+
+```bash
+PYTHONPATH=. .venv/bin/python -m eval.eval_grounding \
+  --vault eval/fixtures/real_rag_vault \
+  --dataset eval/prompts/p0/grounding_vi.jsonl \
+  --variant cached_sparse \
+  --output /tmp/soca-p4/grounding-cached-sparse.json
+
+PYTHONPATH=. .venv/bin/python -m eval.eval_grounding \
+  --vault eval/fixtures/real_rag_vault \
+  --dataset eval/prompts/p0/grounding_vi.jsonl \
+  --variant hybrid --backend fastembed \
+  --output /tmp/soca-p4/grounding-hybrid-fastembed.json
+```
+
+| Retrieval policy | Accepted-evidence recall@5 | Unanswerable accepted evidence | First query | Warm p95 | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| cached_sparse (`coverage=0.65`, sparse ratio `0.75`) | 10/12 (83.3%) | 0/8 (0%) | 77.4 ms | 58.8 ms | safe sparse default; recall follow-up required |
+| hybrid FastEmbed (`dense=0.85`, sparse fallback coverage `0.95`) | 12/12 (100%) | 0/8 (0%) | 13.0 s | 45.9 ms | opt-in; cold model load remains visible |
+
+The benchmark now scores answerable recall from policy-accepted paths, not raw
+retriever paths. The raw sparse retriever found all 12 answerable paths, but the
+gate rejected two low-coverage cases (`gr-002`, `gr-012`); this exposes a real
+recall trade-off instead of hiding it in the metric. The previous policy
+admitted 7/8 unanswerable sparse cases. The current policy accepts 0/8, but the
+Wilson upper bound is 32.44% with only eight negatives; this is an initial
+calibration gate, not a claim of production statistical certainty. Hybrid cold
+start is recorded separately from warm retrieval and is not hidden in the
+mean.
+
+Answer validation also emits a non-blocking shadow groundedness score by
+comparing cited claims with selected evidence snippets. It does not block or
+rewrite answers until a held-out human/model calibration set is available.
+
+Decision: keep cached-sparse as the safe default for now, keep hybrid opt-in,
+and retain all evidence/groundedness signals in telemetry. The 10/12 accepted
+recall result is not a release-quality gate; threshold tuning and a larger
+public negative/answerable set remain required. No raw sparse-vs-dense score
+comparison is used.
+
+**Real-flow capture (public corpus, 2026-07-29)**
+
+The answer path was exercised end-to-end with no showcase/demo notes:
+
+| Engine | Answerable | Unanswerable | Contract result |
+| --- | --- | --- | --- |
+| Local `arcee_vylinh_3b_q4_k_m` | `knowledge.search → relevance → context → LLM`, non-empty answer, one `[K1]`, validation `valid` | LLM received `insufficient/no_hits`, non-empty abstention, zero citations | pass |
+| OpenRouter `google/gemini-3.5-flash-lite` | same route, non-empty answer, one citation, validation `valid` | same `insufficient/no_hits` behavior, zero citations | pass |
+
+The remote run used the existing `.env` key only in memory; the key and full
+transcript were not written to a result artifact. This is a contract smoke
+capture, not a provider quality comparison.

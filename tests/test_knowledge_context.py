@@ -1,5 +1,8 @@
+from types import SimpleNamespace
+
 from soca.knowledge.base import KnowledgeDocument, KnowledgeHit
 from soca.knowledge.context import KnowledgeContextBuilder
+from soca.knowledge.hybrid_source import DenseUnavailableError, RetrievalDiagnostics
 
 
 class FakeKnowledgeSource:
@@ -125,3 +128,61 @@ def test_build_from_hits_preserves_line_range_in_citations() -> None:
     assert context.hits == (hit,)
     assert context.citations[0].line_start == 7
     assert context.citations[0].line_end == 11
+
+
+def test_build_propagates_retrieval_diagnostics_to_context() -> None:
+    hit = make_hit(
+        "wiki/bayes.md",
+        "Định lý Bayes",
+        "Bayes cập nhật xác suất bằng bằng chứng.",
+        score=0.8,
+    )
+
+    class RetrievalSource(FakeKnowledgeSource):
+        def retrieve(self, query: str, *, limit: int):
+            return SimpleNamespace(
+                hits=(hit,),
+                diagnostics=SimpleNamespace(
+                    overall_state="ready",
+                    sparse_top_score=12.0,
+                    dense_top_score=0.82,
+                    unavailable_reason="",
+                ),
+            )
+
+    context = KnowledgeContextBuilder(RetrievalSource([])).build("Bayes")
+
+    assert context.retrieval_state == "ready"
+    assert context.sparse_top_score == 12.0
+    assert context.dense_top_score == 0.82
+
+
+def test_build_distinguishes_dense_unavailable_from_empty_evidence() -> None:
+    class UnavailableSource(FakeKnowledgeSource):
+        def retrieve(self, query: str, *, limit: int):
+            raise DenseUnavailableError("dense-only index refresh failed")
+
+    context = KnowledgeContextBuilder(UnavailableSource([])).build("Bayes")
+
+    assert context.hits == ()
+    assert context.evidence_status == "unavailable"
+    assert context.retrieval_state == "unavailable"
+    assert context.evidence_reason == "dense-only index refresh failed"
+
+
+def test_build_distinguishes_dense_failure_diagnostics_from_healthy_empty_index() -> None:
+    class FailedDenseSource(FakeKnowledgeSource):
+        def retrieve(self, query: str, *, limit: int):
+            return SimpleNamespace(
+                hits=(),
+                diagnostics=RetrievalDiagnostics(
+                    sparse_state="absent",
+                    dense_state="failed",
+                    index_state="ready",
+                ),
+            )
+
+    context = KnowledgeContextBuilder(FailedDenseSource([])).build("Bayes")
+
+    assert context.evidence_status == "unavailable"
+    assert context.retrieval_state == "unavailable"

@@ -23,6 +23,12 @@ class MemoryProfileResult:
     rejected_hit_count: int = 0
     top_relevance: float | None = None
     relevance_margin: float | None = None
+    score_separation: float | None = None
+    query_coverage: float | None = None
+    sparse_top_score: float | None = None
+    dense_top_score: float | None = None
+    retrieval_state: str = "unknown"
+    retrieval_reason: str = ""
 
 
 class LongTermMemorySource(Protocol):

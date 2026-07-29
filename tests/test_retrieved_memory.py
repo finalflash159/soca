@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from soca.knowledge import KnowledgeDocument, KnowledgeHit
+from soca.knowledge.relevance import RelevancePolicy
 from soca.memory import (
     MarkdownLongTermMemory,
     MemoryContextBuilder,
@@ -41,3 +42,40 @@ def test_retrieved_memory_returns_ranked_marked_context(tmp_path: Path) -> None:
     assert context.mode == "retrieved"
     assert "[M1] memory/a.md:1-2" in context.prompt_text
     assert "Distractor" not in context.prompt_text
+
+
+def test_retrieved_memory_gates_before_memory_top_k_rerank(tmp_path: Path) -> None:
+    root = tmp_path / "vault"
+    (root / "memory").mkdir(parents=True)
+    (root / "memory" / "profile.md").write_text("fallback", encoding="utf-8")
+    low = KnowledgeDocument("low", "memory/low.md", "Low", "TTS low confidence")
+    high = KnowledgeDocument("high", "memory/high.md", "High", "TTS selected")
+    source = FakeSource(
+        [
+            KnowledgeHit(
+                low,
+                0.99,
+                low.text,
+                dense_score=0.70,
+                retrieval_backend="dense",
+            ),
+            KnowledgeHit(
+                high,
+                0.80,
+                high.text,
+                dense_score=0.90,
+                retrieval_backend="dense",
+            ),
+        ]
+    )
+    memory = RetrievedMemory(
+        source,
+        MarkdownLongTermMemory(root),
+        config=RetrievedMemoryConfig(top_k=1),
+        relevance_policy=RelevancePolicy.for_retrieval_mode("hybrid"),
+    )
+
+    context = MemoryContextBuilder(long_term=memory).build("what TTS was selected")
+
+    assert "memory/high.md" in context.prompt_text
+    assert "memory/low.md" not in context.prompt_text

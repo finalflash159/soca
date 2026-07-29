@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from soca.knowledge.base import KnowledgeHit, KnowledgeSource
 from soca.knowledge.relevance import RelevancePolicy, assess_relevance
@@ -31,6 +32,12 @@ class KnowledgeContext:
     rejected_hit_count: int = 0
     top_relevance: float | None = None
     relevance_margin: float | None = None
+    score_separation: float | None = None
+    query_coverage: float | None = None
+    sparse_top_score: float | None = None
+    dense_top_score: float | None = None
+    retrieval_state: str = "unknown"
+    retrieval_reason: str = ""
 
 
 class KnowledgeContextBuilder:
@@ -49,6 +56,19 @@ class KnowledgeContextBuilder:
         self.relevance_policy = relevance_policy or RelevancePolicy()
 
     def build(self, query: str) -> KnowledgeContext:
+        retrieve = getattr(self.source, "retrieve", None)
+        if callable(retrieve):
+            from soca.knowledge.hybrid_source import DenseUnavailableError
+
+            try:
+                batch = retrieve(query, limit=self.max_hits)
+            except DenseUnavailableError as exc:
+                return self._unavailable_context(query, str(exc) or "dense_unavailable")
+            return self.build_from_hits(
+                query,
+                tuple(getattr(batch, "hits", ())),
+                diagnostics=getattr(batch, "diagnostics", None),
+            )
         return self.build_from_hits(
             query,
             tuple(self.source.search(query, limit=self.max_hits)),
@@ -58,6 +78,8 @@ class KnowledgeContextBuilder:
         self,
         query: str,
         hits: tuple[KnowledgeHit, ...],
+        *,
+        diagnostics: Any | None = None,
     ) -> KnowledgeContext:
         hits = hits[: self.max_hits]
         assessment = assess_relevance(
@@ -74,11 +96,14 @@ class KnowledgeContextBuilder:
         citations: list[KnowledgeCitation] = []
 
         if not hits:
+            retrieval_state = _retrieval_state(diagnostics, has_hits=False)
+            unavailable = retrieval_state == "unavailable"
             prompt_text = "\n\n".join(
                 [
                     UNTRUSTED_KNOWLEDGE_WARNING.strip(),
                     "No local knowledge notes found.",
-                    f"Evidence status: {assessment.status} ({assessment.reason}).",
+                    f"Evidence status: {'unavailable' if unavailable else assessment.status} "
+                    f"({getattr(diagnostics, 'unavailable_reason', '') or assessment.reason}).",
                 ]
             )
             return KnowledgeContext(
@@ -86,11 +111,28 @@ class KnowledgeContextBuilder:
                 hits=(),
                 prompt_text=prompt_text[: self.max_chars],
                 citations=(),
-                evidence_status="insufficient",
-                evidence_reason=assessment.reason,
+                evidence_status="unavailable" if unavailable else "insufficient",
+                evidence_reason=(
+                    getattr(diagnostics, "unavailable_reason", "")
+                    or assessment.reason
+                ),
                 rejected_hit_count=assessment.rejected_count,
                 top_relevance=assessment.top_score,
                 relevance_margin=assessment.margin,
+                score_separation=assessment.margin,
+                query_coverage=assessment.query_coverage,
+                sparse_top_score=(
+                    assessment.sparse_top_score
+                    if assessment.sparse_top_score is not None
+                    else getattr(diagnostics, "sparse_top_score", None)
+                ),
+                dense_top_score=(
+                    assessment.dense_top_score
+                    if assessment.dense_top_score is not None
+                    else getattr(diagnostics, "dense_top_score", None)
+                ),
+                retrieval_state=retrieval_state,
+                retrieval_reason=getattr(diagnostics, "unavailable_reason", ""),
             )
 
         for index, hit in enumerate(hits, start=1):
@@ -122,6 +164,39 @@ class KnowledgeContextBuilder:
             rejected_hit_count=assessment.rejected_count,
             top_relevance=assessment.top_score,
             relevance_margin=assessment.margin,
+            query_coverage=assessment.query_coverage,
+            score_separation=assessment.margin,
+            sparse_top_score=(
+                assessment.sparse_top_score
+                if assessment.sparse_top_score is not None
+                else getattr(diagnostics, "sparse_top_score", None)
+            ),
+            dense_top_score=(
+                assessment.dense_top_score
+                if assessment.dense_top_score is not None
+                else getattr(diagnostics, "dense_top_score", None)
+            ),
+            retrieval_state=_retrieval_state(diagnostics, has_hits=True),
+            retrieval_reason=getattr(diagnostics, "unavailable_reason", ""),
+        )
+
+    def _unavailable_context(self, query: str, reason: str) -> KnowledgeContext:
+        prompt_text = "\n\n".join(
+            (
+                UNTRUSTED_KNOWLEDGE_WARNING.strip(),
+                "Knowledge retrieval is unavailable; do not infer an answer from memory.",
+                f"Evidence status: unavailable ({reason}).",
+            )
+        )
+        return KnowledgeContext(
+            query=query,
+            hits=(),
+            prompt_text=prompt_text[: self.max_chars],
+            citations=(),
+            evidence_status="unavailable",
+            evidence_reason=reason,
+            retrieval_state="unavailable",
+            retrieval_reason=reason,
         )
 
     def _format_hit(
@@ -158,3 +233,14 @@ class KnowledgeContextBuilder:
                 snippet,
             ]
         )
+
+
+def _retrieval_state(diagnostics: Any | None, *, has_hits: bool) -> str:
+    if diagnostics is None:
+        return "ready" if has_hits else "empty"
+    overall = str(getattr(diagnostics, "overall_state", ""))
+    if overall:
+        return overall
+    if getattr(diagnostics, "unavailable_reason", ""):
+        return "degraded"
+    return "ready" if has_hits else "empty"

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from soca.core.answer_validation import validate_grounded_answer
-from soca.knowledge import KnowledgeCitation
+from soca.knowledge import KnowledgeCitation, KnowledgeDocument, KnowledgeHit
 
 
 def test_answer_validation_accepts_knowledge_and_memory_provenance() -> None:
@@ -11,6 +11,60 @@ def test_answer_validation_accepts_knowledge_and_memory_provenance() -> None:
     )
     decision = validate_grounded_answer("Theo [K1] và [M1] thì đúng.", citations)
     assert decision.status == "valid"
+
+
+def test_answer_validation_records_shadow_groundedness_against_selected_evidence() -> None:
+    citations = (KnowledgeCitation("wiki/bayes.md", "Bayes"),)
+    evidence = (
+        KnowledgeHit(
+            KnowledgeDocument(
+                "wiki/bayes.md",
+                "wiki/bayes.md",
+                "Bayes",
+                "Định lý Bayes cập nhật xác suất bằng bằng chứng.",
+            ),
+            score=0.9,
+            snippet="Định lý Bayes cập nhật xác suất bằng bằng chứng.",
+            retrieval_backend="dense",
+            dense_score=0.9,
+        ),
+    )
+
+    decision = validate_grounded_answer(
+        "Định lý Bayes cập nhật xác suất bằng bằng chứng [K1].",
+        citations,
+        evidence=evidence,
+    )
+
+    assert decision.status == "valid"
+    assert decision.groundedness == "supported"
+    assert decision.groundedness_score is not None
+    assert decision.grounded_claim_count == 1
+    assert decision.ungrounded_claim_count == 0
+
+
+def test_shadow_groundedness_does_not_change_provenance_status() -> None:
+    citation = KnowledgeCitation("wiki/bayes.md", "Bayes")
+    evidence = (
+        KnowledgeHit(
+            KnowledgeDocument("wiki/bayes.md", "wiki/bayes.md", "Bayes", "Bayes."),
+            score=0.9,
+            snippet="Bayes.",
+            retrieval_backend="dense",
+            dense_score=0.9,
+        ),
+    )
+
+    decision = validate_grounded_answer(
+        "Thời tiết ngày mai chắc chắn tốt [K1].",
+        (citation,),
+        evidence=evidence,
+    )
+
+    assert decision.status == "valid"
+    assert decision.groundedness == "unsupported"
+    assert decision.grounded_claim_count == 0
+    assert decision.ungrounded_claim_count == 1
 
 
 def test_answer_validation_reports_missing_provenance_without_blocking() -> None:

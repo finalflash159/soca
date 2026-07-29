@@ -9,6 +9,7 @@ from soca.knowledge.hybrid_source import (
     DenseUnavailableError,
     HybridConfig,
     HybridKnowledgeSource,
+    RetrievalDiagnostics,
 )
 
 
@@ -82,6 +83,8 @@ def test_sparse_only_mode_does_not_call_dense_backend(tmp_path: Path) -> None:
     assert all(hit.line_start is not None for hit in batch.hits)
     assert model.document_calls == []
     assert model.query_calls == []
+    assert batch.diagnostics.sparse_state == "ready"
+    assert batch.diagnostics.dense_state == "absent"
 
 
 def test_hybrid_keeps_two_chunks_from_one_document_as_distinct_hits(tmp_path: Path) -> None:
@@ -119,6 +122,8 @@ def test_dense_retrieval_is_not_blocked_by_a_lexical_miss(tmp_path: Path) -> Non
 
     assert batch.hits
     assert model.query_calls == ["khái niệm không xuất hiện trong vault"]
+    assert batch.diagnostics.dense_state == "ready"
+    assert batch.diagnostics.sparse_state == "absent"
 
 
 def test_dense_construction_failure_degrades_to_sparse_when_enabled(
@@ -137,6 +142,9 @@ def test_dense_construction_failure_degrades_to_sparse_when_enabled(
 
     assert batch.hits
     assert batch.max_dense_score is None
+    assert batch.diagnostics.dense_state == "unavailable"
+    assert batch.diagnostics.unavailable_reason == "dense_index_refresh_failed"
+    assert batch.diagnostics.overall_state == "degraded"
 
 
 def test_dense_only_failure_raises_explicit_error(tmp_path: Path) -> None:
@@ -168,6 +176,20 @@ def test_dense_query_failure_degrades_to_sparse(tmp_path: Path) -> None:
 
     assert batch.hits
     assert batch.max_dense_score is None
+    assert batch.diagnostics.dense_state == "unavailable"
+    assert batch.diagnostics.unavailable_reason == "dense_query_failed"
+    assert batch.diagnostics.overall_state == "degraded"
+
+
+@pytest.mark.parametrize("dense_state", ("model_missing", "stale", "incompatible", "failed"))
+def test_dense_only_unusable_states_are_unavailable(dense_state: str) -> None:
+    diagnostics = RetrievalDiagnostics(
+        sparse_state="absent",
+        dense_state=dense_state,
+        index_state="ready",
+    )
+
+    assert diagnostics.overall_state == "unavailable"
 
 
 def test_retrieve_validates_limit_and_empty_query(tmp_path: Path) -> None:

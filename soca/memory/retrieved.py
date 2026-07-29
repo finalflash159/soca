@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from soca.core.text_budget import truncate
 from soca.knowledge import KnowledgeSource
-from soca.knowledge.relevance import assess_relevance
+from soca.knowledge.relevance import RelevancePolicy, assess_relevance
 from soca.memory.base import LongTermMemorySource, MemoryProfileResult
 from soca.memory.scoring import MemoryHit, MemoryScoreConfig, rerank_memory_hits
 
@@ -41,10 +41,12 @@ class RetrievedMemory:
         fallback: LongTermMemorySource,
         *,
         config: RetrievedMemoryConfig | None = None,
+        relevance_policy: RelevancePolicy | None = None,
     ) -> None:
         self._source = source
         self._fallback = fallback
         self._config = config or RetrievedMemoryConfig()
+        self._relevance_policy = relevance_policy or RelevancePolicy()
 
     def read_profile(self) -> str:
         return self._fallback.read_profile()
@@ -74,7 +76,11 @@ class RetrievedMemory:
                 evidence_status="insufficient",
                 evidence_reason="no_hits",
             )
-        assessment = assess_relevance(normalized, hits)
+        assessment = assess_relevance(
+            normalized,
+            hits,
+            policy=self._relevance_policy,
+        )
         if not assessment.accepted_hits:
             return MemoryProfileResult(
                 text="",
@@ -84,6 +90,12 @@ class RetrievedMemory:
                 rejected_hit_count=assessment.rejected_count,
                 top_relevance=assessment.top_score,
                 relevance_margin=assessment.margin,
+                score_separation=assessment.margin,
+                query_coverage=assessment.query_coverage,
+                sparse_top_score=assessment.sparse_top_score,
+                dense_top_score=assessment.dense_top_score,
+                retrieval_state="empty",
+                retrieval_reason=assessment.reason,
             )
         memory_hits = rerank_memory_hits(
             assessment.accepted_hits,
@@ -99,6 +111,12 @@ class RetrievedMemory:
             rejected_hit_count=assessment.rejected_count,
             top_relevance=assessment.top_score,
             relevance_margin=assessment.margin,
+            score_separation=assessment.margin,
+            query_coverage=assessment.query_coverage,
+            sparse_top_score=assessment.sparse_top_score,
+            dense_top_score=assessment.dense_top_score,
+            retrieval_state="ready",
+            retrieval_reason=assessment.reason,
         )
 
     def _safe_fallback(self) -> str:

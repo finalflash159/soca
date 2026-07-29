@@ -91,6 +91,41 @@ def test_relevance_policy_is_calibratable_without_code_changes() -> None:
     assert assessment.reason == "all_hits_below_floor"
 
 
+def test_retrieval_modes_keep_separate_score_distributions() -> None:
+    sparse = RelevancePolicy.for_retrieval_mode("cached_sparse")
+    hybrid = RelevancePolicy.for_retrieval_mode("hybrid")
+
+    assert sparse.min_lexical_coverage == 0.65
+    assert sparse.min_dense_score == 0.55
+    assert hybrid.min_lexical_coverage == 0.95
+    assert hybrid.min_dense_score == 0.85
+
+
+def test_generic_lexical_overlap_is_not_enough_when_sparse_score_is_weak() -> None:
+    assessment = assess_relevance(
+        "hệ thống hoạt động hiệu quả",
+        (
+            _hit(
+                "wiki/irrelevant.md",
+                "Hệ thống",
+                "Một hệ thống hoạt động theo các bước chung.",
+                sparse_score=10.0,
+            ),
+            _hit(
+                "wiki/answer.md",
+                "Khác chủ đề",
+                "Hệ thống hoạt động hiệu quả khi các bước được kiểm tra.",
+                sparse_score=100.0,
+            ),
+        ),
+        policy=RelevancePolicy(min_lexical_coverage=0.9, min_sparse_score_ratio=0.75),
+    )
+
+    assert assessment.status == "supported"
+    assert [hit.document.path for hit in assessment.accepted_hits] == ["wiki/answer.md"]
+    assert assessment.rejected_count == 1
+
+
 def test_relevance_gate_preserves_order_across_backend_score_spaces() -> None:
     assessment = assess_relevance(
         "định lý Bayes",
@@ -115,4 +150,28 @@ def test_relevance_gate_preserves_order_across_backend_score_spaces() -> None:
         "wiki/lexical.md",
         "wiki/dense.md",
     ]
+    assert assessment.margin is None
+
+
+def test_hybrid_margin_does_not_compare_dense_and_sparse_signals() -> None:
+    assessment = assess_relevance(
+        "định lý Bayes",
+        (
+            _hit(
+                "wiki/dense.md",
+                "Bayes dense",
+                "Cập nhật niềm tin sau quan sát mới.",
+                backend="hybrid",
+                dense_score=0.91,
+            ),
+            _hit(
+                "wiki/sparse.md",
+                "Bayes sparse",
+                "Định lý Bayes cập nhật xác suất.",
+                backend="hybrid",
+                sparse_score=80.0,
+            ),
+        ),
+    )
+
     assert assessment.margin is None

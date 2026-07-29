@@ -6,6 +6,7 @@ from soca.core.knowledge_setup import build_knowledge_runtime_setup
 from soca.knowledge.cached_source import CachedMarkdownVaultKnowledgeSource
 from soca.knowledge.factory import RetrievalConfig
 from soca.knowledge.hybrid_source import HybridKnowledgeSource
+from soca.knowledge.relevance import RelevancePolicy
 
 
 def test_setup_shares_one_cached_source_across_builder_and_tools(
@@ -76,3 +77,29 @@ def test_hybrid_factory_failure_degrades_to_cached_sparse(
 
     assert isinstance(setup.source, CachedMarkdownVaultKnowledgeSource)
     assert setup.status == "enabled"
+    assert setup.builder.relevance_policy == RelevancePolicy.for_retrieval_mode("cached_sparse")
+
+
+def test_memory_hybrid_factory_failure_uses_sparse_policy(tmp_path: Path, monkeypatch) -> None:
+    memory = tmp_path / "memory"
+    memory.mkdir()
+    (memory / "profile.md").write_text("# Memory\nSparse fallback.", encoding="utf-8")
+
+    import soca.knowledge.factory as factory
+    from soca.core.memory_setup import MemoryRuntimeConfig, build_memory_runtime_setup
+    from soca.memory import SessionMemory
+
+    monkeypatch.setattr(
+        factory,
+        "_build_model",
+        lambda backend: (_ for _ in ()).throw(ImportError("dense package unavailable")),
+    )
+    setup = build_memory_runtime_setup(
+        tmp_path,
+        session=SessionMemory(summary_enabled=False),
+        config=MemoryRuntimeConfig(retrieval_mode="hybrid"),
+        index_home=tmp_path / "index",
+    )
+
+    assert setup.status.startswith("enabled:retrieved:cached_sparse")
+    assert setup.builder.relevance_policy == RelevancePolicy.for_retrieval_mode("cached_sparse")

@@ -6,6 +6,28 @@ from soca.knowledge import KnowledgeSource
 from soca.tools.base import SideEffectLevel, ToolResult, ToolSpec, object_schema
 
 
+def _retrieval_metadata(diagnostics: Any | None) -> dict[str, Any]:
+    if diagnostics is None:
+        return {}
+    metadata: dict[str, Any] = {}
+    for field in (
+        "sparse_state",
+        "dense_state",
+        "index_state",
+        "sparse_top_score",
+        "dense_top_score",
+        "sparse_separation",
+        "dense_separation",
+        "query_coverage",
+        "unavailable_reason",
+    ):
+        value = getattr(diagnostics, field, None)
+        if value not in (None, ""):
+            metadata[field] = value
+    metadata["retrieval_state"] = str(getattr(diagnostics, "overall_state", "ready"))
+    return metadata
+
+
 class KnowledgeSearchTool:
     def __init__(
         self,
@@ -43,14 +65,23 @@ class KnowledgeSearchTool:
 
         limit = int(arguments.get("limit") or self.max_limit)
         limit = max(1, min(limit, self.max_limit))
-        hits = self.source.search(query, limit=limit)
+        retrieve = getattr(self.source, "retrieve", None)
+        diagnostics: Any | None = None
+        if callable(retrieve):
+            batch = retrieve(query, limit=limit)
+            hits = list(getattr(batch, "hits", ()))
+            diagnostics = getattr(batch, "diagnostics", None)
+        else:
+            hits = self.source.search(query, limit=limit)
 
         if not hits:
+            data: dict[str, Any] = {"hits": []}
+            data.update(_retrieval_metadata(diagnostics))
             return ToolResult(
                 name=self.spec.name,
                 ok=True,
                 content="Mình chưa tìm thấy thông tin đó trong knowledge vault.",
-                data={"hits": []},
+                data=data,
             )
 
         lines: list[str] = []
@@ -73,11 +104,13 @@ class KnowledgeSearchTool:
                 data_hit["line_end"] = hit.line_end
             data_hits.append(data_hit)
 
+        metadata: dict[str, Any] = {"hits": data_hits}
+        metadata.update(_retrieval_metadata(diagnostics))
         return ToolResult(
             name=self.spec.name,
             ok=True,
             content="\n\n".join(lines),
-            data={"hits": data_hits},
+            data=metadata,
         )
 
 

@@ -23,6 +23,10 @@ def _hit_payload(hit: object) -> dict[str, Any]:
         value = getattr(hit, field, None)
         if value is not None:
             payload[field] = value
+    for field in ("retrieval_backend", "sparse_score", "dense_score", "fusion_score"):
+        value = getattr(hit, field, None)
+        if value is not None:
+            payload[field] = value
     return payload
 
 
@@ -67,6 +71,12 @@ class MemorySearchTool:
                     "rejected_hit_count": context.rejected_hit_count,
                     "top_relevance": context.top_relevance,
                     "relevance_margin": context.relevance_margin,
+                    "score_separation": context.score_separation,
+                    "query_coverage": context.query_coverage,
+                    "sparse_top_score": context.sparse_top_score,
+                    "dense_top_score": context.dense_top_score,
+                    "retrieval_state": context.retrieval_state,
+                    "retrieval_reason": context.retrieval_reason,
                 },
             )
         lines = [
@@ -85,6 +95,12 @@ class MemorySearchTool:
                 "rejected_hit_count": context.rejected_hit_count,
                 "top_relevance": context.top_relevance,
                 "relevance_margin": context.relevance_margin,
+                "score_separation": context.score_separation,
+                "query_coverage": context.query_coverage,
+                "sparse_top_score": context.sparse_top_score,
+                "dense_top_score": context.dense_top_score,
+                "retrieval_state": context.retrieval_state,
+                "retrieval_reason": context.retrieval_reason,
             },
         )
 

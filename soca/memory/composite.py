@@ -63,6 +63,12 @@ class CompositeMemorySource:
                 rejected_hit_count=assessment.rejected_count,
                 top_relevance=assessment.top_score,
                 relevance_margin=assessment.margin,
+                score_separation=assessment.margin,
+                query_coverage=assessment.query_coverage,
+                sparse_top_score=assessment.sparse_top_score,
+                dense_top_score=assessment.dense_top_score,
+                retrieval_state="empty",
+                retrieval_reason=assessment.reason,
             )
         ranked = rerank_memory_hits(
             assessment.accepted_hits,
@@ -82,6 +88,12 @@ class CompositeMemorySource:
             rejected_hit_count=assessment.rejected_count,
             top_relevance=assessment.top_score,
             relevance_margin=assessment.margin,
+            score_separation=assessment.margin,
+            query_coverage=assessment.query_coverage,
+            sparse_top_score=assessment.sparse_top_score,
+            dense_top_score=assessment.dense_top_score,
+            retrieval_state="ready",
+            retrieval_reason=assessment.reason,
         )
 
     def _episode_hits(self, query: str) -> list[KnowledgeHit]:
