@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "status": "historical_reference_pending_no_boh_rerun",
+  "scope": "ASR BoH ablation; research/eval only",
+  "production_before": {
+    "pipeline": "RobustASR",
+    "behavior": "auto-loaded model-specific BoH artifacts when present",
+    "evidence": [
+      "eval/results/asr_d1_baseline.json",
+      "eval/fixtures/real_rag_vault/wiki/project/benchmarks.md"
+    ]
+  },
+  "production_after": {
+    "pipeline": "RobustASR",
+    "behavior": "VAD -> ASR -> confidence guard -> de-loop -> heuristics",
+    "boh_auto_loaded": false
+  },
+  "historical_artifacts": [
+    "data/asr/boh/phowhisper_base_vi_boh_v1.json",
+    "data/asr/boh/phowhisper_small_vi_boh_v1.json",
+    "data/asr/boh/phowhisper_tiny_vi_boh_v1.json"
+  ],
+  "required_release_measurements": [
+    "no_boh_vs_experimental_boh WER and CER on Vietnamese speech",
+    "non-speech hallucination and catch rate by noise subtype",
+    "false-reject rate on real speech",
+    "p50/p95 latency and startup behavior"
+  ],
+  "data_governance": {
+    "allowed": [
+      "FLEURS Vietnamese speech",
+      "ESC-50 plus synthetic silence/white/pink noise",
+      "separate non-speech benchmark with provenance and hashes"
+    ],
+    "forbidden": [
+      "demo_smoke fixtures",
+      "untracked private recordings",
+      "using a BoH artifact as production evidence without model identity"
+    ]
+  },
+  "rerun_command": "uv run python -m local.eval_table7 --configs vad_deloop_boh",
+  "notes": "This manifest records the boundary and required rerun; it is not a new benchmark result. local.eval_table7 labels BoH as experimental_boh and applies it only after production RobustASR."
+}

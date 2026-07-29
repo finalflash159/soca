@@ -1,4 +1,4 @@
-"""Unit tests for soca.asr.boh."""
+"""Unit tests for the research-only BoH matcher."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from soca.asr.boh import VietnameseBoH
+from eval.experimental.asr_boh import VietnameseBoH
 
 
 @pytest.fixture
@@ -27,6 +27,7 @@ def boh_artifact(tmp_path: Path) -> Path:
     return artifact
 
 
+@pytest.mark.experimental
 class TestVietnameseBoH:
     def test_load_artifact(self, boh_artifact):
         boh = VietnameseBoH(boh_path=boh_artifact)

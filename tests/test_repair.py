@@ -66,7 +66,7 @@ def test_kind_for_reason_maps_uncertain_vs_no_input() -> None:
     assert kind_for_reason("no_speech") == RepairKind.NO_INPUT
     assert kind_for_reason("") == RepairKind.NO_INPUT
     assert kind_for_reason("low_confidence:-0.90") == RepairKind.UNCERTAIN_INPUT
-    assert kind_for_reason("boh_model_mismatch") == RepairKind.UNCERTAIN_INPUT
+    assert kind_for_reason("compression_model_mismatch") == RepairKind.UNCERTAIN_INPUT
 
 
 def test_plan_repair_escalates_no_input_then_handover() -> None:

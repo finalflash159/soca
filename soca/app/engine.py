@@ -470,14 +470,13 @@ class SocaEngine:
                 "Silero VAD · lazy" if voice_bundle is None else "Silero VAD",
             )
             data_asr = Path(__file__).resolve().parents[2] / "data" / "asr"
-            boh_path = data_asr / "boh" / f"{self.voice_config.asr_model}_vi_boh_v1.json"
             calibration_path = data_asr / "threshold_calibration.json"
-            guard_state = "ready" if boh_path.is_file() and calibration_path.is_file() else "degraded"
+            guard_state = "ready" if calibration_path.is_file() else "degraded"
             add(
                 "asr_guards",
                 "ASR guards",
                 guard_state,
-                f"BoH {'+' if boh_path.is_file() else '-'} confidence {'+' if calibration_path.is_file() else '-'}",
+                f"confidence {'+' if calibration_path.is_file() else '-'}",
             )
 
         if self.session_memory is None:

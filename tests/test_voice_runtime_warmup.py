@@ -26,7 +26,6 @@ class FakeInnerASR:
 
 
 class FakeRobustASR:
-    boh_status = "disabled:test"
     confidence_guard_status = "disabled:test"
 
     def __init__(self) -> None:

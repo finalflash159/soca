@@ -13,7 +13,6 @@ from soca.tts import TTSResult
 
 @dataclass
 class FakeASRForBundle:
-    boh_status: str = "disabled:test"
     confidence_guard_status: str = "disabled:test"
 
 

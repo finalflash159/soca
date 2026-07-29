@@ -20,7 +20,6 @@ from soca.tts import TTSResult
 
 @dataclass
 class FakeASR:
-    boh_status: str = "disabled:test"
     confidence_guard_status: str = "disabled:test"
 
 
