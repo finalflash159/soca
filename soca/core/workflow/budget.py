@@ -43,7 +43,10 @@ class BudgetLedger:
             raise BudgetExceededError(kind)
         self._counts[kind] = next_value
         snapshot = self.snapshot()
-        if snapshot.elapsed_ms > self.budget.max_elapsed_ms:
+        if (
+            self.budget.max_elapsed_ms is not None
+            and snapshot.elapsed_ms > self.budget.max_elapsed_ms
+        ):
             raise BudgetExceededError("elapsed_ms")
         return snapshot
 
