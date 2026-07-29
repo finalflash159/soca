@@ -31,8 +31,6 @@ from soca.core.tool_routing import (
 )
 from soca.core.turn_taking import partial_interval_from_cost
 from soca.knowledge.factory import DenseBackend, RetrievalConfig, RetrievalMode
-from soca.knowledge.hybrid_source import HybridKnowledgeSource
-from soca.knowledge.intent_gate import RetrievalIntentGate, RetrievalSourceLike, VoiceKnowledgeMode
 from soca.knowledge.retrievers.dense import FastEmbedModel
 from soca.llm import LocalLlamaCppLLM
 from soca.llm.registry import LLM_MODEL_REGISTRY
@@ -79,15 +77,11 @@ class ResolvedVoiceRuntimeConfig:
     knowledge_limit: int = 3
     knowledge_retrieval_mode: str = "cached_sparse"
     knowledge_dense_backend: str = "fastembed"
-    voice_knowledge_mode: str = "off"
-    knowledge_intent_threshold: float | None = None
-    tool_router_mode: str = "deterministic"
+    tool_router_mode: str = "cascade"
     tool_router_response_mode: str = "prompt_json"
-    llm_router_in_voice: bool = False
-    semantic_router_in_voice: bool = False
-    semantic_router_enabled: bool = False
-    semantic_router_threshold: float = 0.0
-    semantic_router_margin: float = 0.0
+    semantic_router_enabled: bool = True
+    semantic_router_threshold: float = 0.58
+    semantic_router_margin: float = 0.04
     semantic_router_examples: Path | None = None
     memory_mode: MemoryMode = "retrieved"
     memory_limit: int = 3
@@ -159,15 +153,11 @@ def resolve_voice_runtime_config(
     knowledge_limit: int | None = None,
     knowledge_retrieval_mode: str | None = None,
     knowledge_dense_backend: str | None = None,
-    voice_knowledge_mode: str | None = None,
-    knowledge_intent_threshold: float | None = None,
-    tool_router_mode: str = "deterministic",
+    tool_router_mode: str = "cascade",
     tool_router_response_mode: str = "prompt_json",
-    llm_router_in_voice: bool = False,
-    semantic_router_in_voice: bool = False,
-    semantic_router_enabled: bool = False,
-    semantic_router_threshold: float = 0.0,
-    semantic_router_margin: float = 0.0,
+    semantic_router_enabled: bool = True,
+    semantic_router_threshold: float = 0.58,
+    semantic_router_margin: float = 0.04,
     semantic_router_examples: str | Path | None = None,
     memory_mode: str = "retrieved",
     memory_limit: int = 3,
@@ -197,12 +187,6 @@ def resolve_voice_runtime_config(
     resolved_limit = knowledge_limit if knowledge_limit is not None else profile.knowledge_limit
     resolved_retrieval = knowledge_retrieval_mode or profile.knowledge_retrieval_mode
     resolved_backend = knowledge_dense_backend or profile.knowledge_dense_backend
-    resolved_voice_mode = voice_knowledge_mode or profile.voice_knowledge_mode
-    resolved_threshold = (
-        knowledge_intent_threshold
-        if knowledge_intent_threshold is not None
-        else profile.knowledge_intent_threshold
-    )
     if (
         isinstance(resolved_limit, bool)
         or not isinstance(resolved_limit, int)
@@ -213,18 +197,6 @@ def resolve_voice_runtime_config(
         raise ValueError("unknown knowledge retrieval mode")
     if resolved_backend not in {"fastembed", "model2vec"}:
         raise ValueError("unknown knowledge dense backend")
-    if resolved_voice_mode not in {"off", "intent", "always"}:
-        raise ValueError("unknown voice knowledge mode")
-    if resolved_threshold is not None and (
-        isinstance(resolved_threshold, bool)
-        or not isinstance(resolved_threshold, (int, float))
-        or not 0 <= resolved_threshold <= 1
-    ):
-        raise ValueError("knowledge_intent_threshold must be a number between 0 and 1")
-    if resolved_voice_mode == "intent" and resolved_threshold is None:
-        raise ValueError("intent mode requires knowledge_intent_threshold")
-    if resolved_voice_mode == "intent" and resolved_retrieval != "hybrid":
-        raise ValueError("intent mode requires hybrid retrieval")
 
     return ResolvedVoiceRuntimeConfig(
         profile_key=profile_key,
@@ -266,14 +238,8 @@ def resolve_voice_runtime_config(
         knowledge_limit=resolved_limit,
         knowledge_retrieval_mode=resolved_retrieval,
         knowledge_dense_backend=resolved_backend,
-        voice_knowledge_mode=resolved_voice_mode,
-        knowledge_intent_threshold=resolved_threshold,
         tool_router_mode=tool_router_mode,
         tool_router_response_mode=tool_router_response_mode,
-        llm_router_in_voice=llm_router_in_voice,
-        # Semantic capability routing is the same policy for text and ASR. The
-        # LLM-routing tier remains independently off for voice.
-        semantic_router_in_voice=semantic_router_enabled or semantic_router_in_voice,
         semantic_router_enabled=semantic_router_enabled,
         semantic_router_threshold=semantic_router_threshold,
         semantic_router_margin=semantic_router_margin,
@@ -331,8 +297,6 @@ def build_voice_runtime(
     knowledge_builder = None
     tools: list[Tool] = [LocalTimeTool()]
 
-    knowledge_intent_gate = None
-    effective_voice_mode = config.voice_knowledge_mode
     if config.vault.is_dir():
         knowledge = build_knowledge_runtime_setup(
             config.vault,
@@ -345,17 +309,6 @@ def build_voice_runtime(
         knowledge_builder = knowledge.builder
         tools.extend([knowledge.search_tool, knowledge.read_tool])
         knowledge_status = knowledge.status
-        if (
-            effective_voice_mode == "intent"
-            and isinstance(knowledge.source, HybridKnowledgeSource)
-            and config.knowledge_intent_threshold is not None
-        ):
-            knowledge_intent_gate = RetrievalIntentGate(
-                cast(RetrievalSourceLike, knowledge.source),
-                threshold=config.knowledge_intent_threshold,
-            )
-        elif effective_voice_mode == "intent":
-            effective_voice_mode = "off"
     else:
         if not config.no_memory:
             memory_status = f"disabled:not_found:{config.vault}"
@@ -414,14 +367,11 @@ def build_voice_runtime(
         llm=llm,
         tool_runtime=tool_runtime,
         deterministic=DefaultRuntimeToolRouter(
-            knowledge_search_prefixes=("wiki:", "knowledge:", "wiki ", "knowledge "),
             enable_memory_search=memory_builder is not None,
         ),
         config=ToolRouterConfig(
             mode=cast(ToolRouterMode, config.tool_router_mode),
             response_mode=cast(RouterResponseMode, config.tool_router_response_mode),
-            enabled_in_voice=config.llm_router_in_voice,
-            semantic_enabled_in_voice=config.semantic_router_in_voice,
             semantic=SemanticRouterConfig(
                 enabled=config.semantic_router_enabled,
                 threshold=config.semantic_router_threshold,
@@ -443,10 +393,8 @@ def build_voice_runtime(
             temperature=config.temperature,
             top_p=config.top_p,
             knowledge_limit=knowledge_limit,
-            voice_knowledge_mode=cast(VoiceKnowledgeMode, effective_voice_mode),
             model_context_window=LLM_MODEL_REGISTRY[config.llm_model].context_window,
         ),
-        knowledge_intent_gate=knowledge_intent_gate,
     )
 
     tts = create_tts_engine(voice=config.tts_voice)

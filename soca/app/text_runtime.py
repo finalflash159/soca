@@ -318,7 +318,6 @@ def build_text_runtime(
         ),
     )
     deterministic_router = DefaultRuntimeToolRouter(
-        knowledge_search_prefixes=("wiki:", "knowledge:"),
         enable_memory_search=memory_builder is not None,
     )
     router_embedding_model = embedding_model

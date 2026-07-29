@@ -340,6 +340,39 @@ def test_run_profile_eval_playback_selects_sounddevice(monkeypatch, tmp_path: Pa
     assert result["playback_sink"] == "SoundDevicePlayer"
 
 
+def test_run_profile_eval_forwards_dense_backend(monkeypatch, tmp_path: Path) -> None:
+    seen: dict[str, str] = {}
+
+    def capture_config(config):
+        seen["backend"] = config.knowledge_dense_backend
+        raise eval_voice_loop.TTSRuntimeUnavailableError("test capture")
+
+    monkeypatch.setattr(eval_voice_loop, "build_voice_runtime", capture_config)
+    args = SimpleNamespace(
+        asr_model=None,
+        llm_model=None,
+        voice=None,
+        max_tokens=None,
+        temperature=None,
+        top_p=None,
+        first_clause=None,
+        vault=tmp_path,
+        no_memory=True,
+        memory_chars=2200,
+        profile_chars=900,
+        session_chars=1300,
+        session_turns=6,
+        turn_chars=500,
+        knowledge_retrieval_mode=None,
+        knowledge_dense_backend="model2vec",
+    )
+
+    result = run_profile_eval("baseline", [], args=args)
+
+    assert result["status"] == "skipped_unavailable"
+    assert seen["backend"] == "model2vec"
+
+
 def test_write_outputs_creates_report_and_latest(tmp_path: Path) -> None:
     run_paths = make_eval_run_paths(tmp_path, "voice_loop", "20260601_000000")
     sample = VoiceLoopSample(

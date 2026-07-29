@@ -5,7 +5,7 @@ import gc
 import json
 import time
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from statistics import mean, median
@@ -363,8 +363,10 @@ def runtime_config_to_dict(config: ResolvedVoiceRuntimeConfig) -> dict[str, Any]
         "knowledge_limit": config.knowledge_limit,
         "knowledge_retrieval_mode": config.knowledge_retrieval_mode,
         "knowledge_dense_backend": config.knowledge_dense_backend,
-        "voice_knowledge_mode": config.voice_knowledge_mode,
-        "knowledge_intent_threshold": config.knowledge_intent_threshold,
+        "tool_router_mode": config.tool_router_mode,
+        "semantic_router_enabled": config.semantic_router_enabled,
+        "semantic_router_threshold": config.semantic_router_threshold,
+        "semantic_router_margin": config.semantic_router_margin,
     }
 
 
@@ -390,21 +392,9 @@ def run_profile_eval(
         session_chars=args.session_chars,
         session_turns=args.session_turns,
         turn_chars=args.turn_chars,
+        knowledge_retrieval_mode=getattr(args, "knowledge_retrieval_mode", None),
+        knowledge_dense_backend=getattr(args, "knowledge_dense_backend", "fastembed"),
     )
-    voice_knowledge_mode = getattr(args, "voice_knowledge_mode", None)
-    intent_threshold = getattr(args, "knowledge_intent_threshold", None)
-    if voice_knowledge_mode is not None:
-        if voice_knowledge_mode == "intent" and intent_threshold is None:
-            raise ValueError("intent mode requires --knowledge-intent-threshold")
-        config = replace(
-            config,
-            voice_knowledge_mode=voice_knowledge_mode,
-            knowledge_intent_threshold=intent_threshold,
-            knowledge_retrieval_mode=(
-                "hybrid" if voice_knowledge_mode == "intent" else config.knowledge_retrieval_mode
-            ),
-            knowledge_dense_backend=getattr(args, "knowledge_dense_backend", "fastembed"),
-        )
     load_started = time.perf_counter()
     try:
         bundle = build_voice_runtime(config)
@@ -741,8 +731,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--knowledge-dense-backend", choices=("fastembed", "model2vec"), default="fastembed"
     )
-    parser.add_argument("--voice-knowledge-mode", choices=("off", "intent", "always"), default=None)
-    parser.add_argument("--knowledge-intent-threshold", type=float, default=None)
     parser.add_argument("--asr-model", default=None)
     parser.add_argument("--llm-model", default=None)
     parser.add_argument("--voice", default=None)

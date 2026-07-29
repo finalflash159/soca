@@ -31,11 +31,12 @@ def test_baseline_resolves_former_quality_stack_with_valtec(tmp_path: Path) -> N
     assert config.tts_voice == "NF"
 
 
-def test_voice_semantic_policy_uses_the_shared_turn_catalog(tmp_path: Path) -> None:
-    config = resolve_voice_runtime_config(
-        profile_key="baseline", vault=tmp_path, semantic_router_enabled=True
-    )
-    assert config.semantic_router_in_voice is True
+def test_voice_defaults_to_the_shared_semantic_policy(tmp_path: Path) -> None:
+    config = resolve_voice_runtime_config(profile_key="baseline", vault=tmp_path)
+    assert config.tool_router_mode == "cascade"
+    assert config.semantic_router_enabled is True
+    assert config.semantic_router_threshold == 0.58
+    assert config.semantic_router_margin == 0.04
     assert config.semantic_router_examples is not None
     assert config.semantic_router_examples.name == "turn_routing_vi.jsonl"
 
@@ -83,16 +84,6 @@ def test_unknown_valtec_voice_is_rejected(tmp_path: Path) -> None:
             profile_key="baseline",
             tts_voice="not-a-valtec-voice",
             vault=tmp_path,
-        )
-
-
-@pytest.mark.parametrize("threshold", [True, False])
-def test_boolean_intent_threshold_is_rejected(tmp_path: Path, threshold: bool) -> None:
-    with pytest.raises(ValueError, match="threshold"):
-        resolve_voice_runtime_config(
-            profile_key="baseline",
-            vault=tmp_path,
-            knowledge_intent_threshold=threshold,
         )
 
 
