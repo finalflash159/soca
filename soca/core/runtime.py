@@ -56,7 +56,12 @@ from soca.knowledge import (
 from soca.knowledge.intent_gate import IntentDecision, VoiceKnowledgeMode
 from soca.llm import LLMEngine
 from soca.llm.providers import RemoteLLMError
-from soca.memory import MemoryContext, MemoryContextBuilder
+from soca.memory import (
+    MemoryAccessPlan,
+    MemoryContext,
+    MemoryContextBuilder,
+    PromptContextAssembler,
+)
 from soca.prompts import (
     KNOWLEDGE_GROUNDING_INSTRUCTIONS,
     MEMORY_GROUNDING_INSTRUCTIONS,
@@ -310,6 +315,9 @@ class AssistantRuntime:
         self.knowledge_builder = knowledge_builder
         self.knowledge_intent_gate = knowledge_intent_gate
         self.memory_builder = memory_builder
+        self.memory_assembler = PromptContextAssembler(
+            max_chars=memory_builder.max_chars if memory_builder is not None else 64_000
+        )
         self.guardrail_policy = guardrail_policy
         self.options = options or RuntimeOptions()
         self._prompt_safety_margin_tokens = self.options.context_safety_margin_tokens
@@ -1400,7 +1408,17 @@ class AssistantRuntime:
 
         query = str(frame.metadata.get("memory_query") or frame.text)
         with self._stage(draft, "memory_context"):
-            context = self.memory_builder.build(query, include_archive=False)
+            core_working = self.memory_builder.build(
+                query,
+                include_archive=False,
+                include_core=True,
+                include_working=True,
+            )
+        context = self.memory_assembler.assemble(
+            core_working,
+            None,
+            plan=MemoryAccessPlan(archive_mode="none"),
+        )
         draft.memory_hits.extend(context.hits)
         draft.memory_mode = context.mode
         draft.memory_degraded_reason = context.degraded_reason
@@ -1420,7 +1438,12 @@ class AssistantRuntime:
         if self.memory_builder is None:
             return None
         with self._stage(draft, "memory_archive_context"):
-            context = self.memory_builder.build(frame.text, include_archive=True)
+            context = self.memory_builder.build(
+                frame.text,
+                include_archive=True,
+                include_core=False,
+                include_working=False,
+            )
         draft.memory_hits.extend(context.hits)
         draft.citations.extend(context.citations)
         draft.evidence_decisions.append(
@@ -1485,7 +1508,17 @@ class AssistantRuntime:
         memory_context = self._build_memory_context(frame, draft)
         knowledge_context = None
         if "memory" in decision.sources:
-            memory_context = self._build_archive_memory_context(frame, draft)
+            archive_context = self._build_archive_memory_context(frame, draft)
+            if memory_context is not None and archive_context is not None:
+                memory_context = self.memory_assembler.assemble(
+                    memory_context,
+                    archive_context,
+                    plan=MemoryAccessPlan(
+                        archive_mode="semantic",
+                        archive_query=frame.text,
+                        reason="semantic_memory_source_selected",
+                    ),
+                )
         if "knowledge" in decision.sources:
             knowledge_context = self._build_knowledge_context_from_query(frame, draft)
         if self.llm is not None:

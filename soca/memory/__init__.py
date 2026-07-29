@@ -1,3 +1,5 @@
+from soca.memory.access import ArchiveMode, MemoryAccessPlan, MemoryArchiveMode
+from soca.memory.assembler import PromptContextAssembler
 from soca.memory.base import (
     LongTermMemorySource,
     MemoryProfileResult,
@@ -29,6 +31,10 @@ from soca.memory.working import (
 
 __all__ = [
     "LongTermMemorySource",
+    "ArchiveMode",
+    "MemoryArchiveMode",
+    "MemoryAccessPlan",
+    "PromptContextAssembler",
     "MarkdownLongTermMemory",
     "MemoryContext",
     "MemoryContextBuilder",

@@ -33,6 +33,8 @@ class MemoryContext:
     rejected_hit_count: int = 0
     top_relevance: float | None = None
     relevance_margin: float | None = None
+    core_text: str = ""
+    archive_text: str = ""
 
 
 class MemoryContextBuilder:
@@ -55,14 +57,21 @@ class MemoryContextBuilder:
         self.profile_chars = profile_chars
         self.relevance_policy = relevance_policy or RelevancePolicy()
 
-    def build(self, query: str | None = None, *, include_archive: bool = True) -> MemoryContext:
+    def build(
+        self,
+        query: str | None = None,
+        *,
+        include_archive: bool = True,
+        include_core: bool = True,
+        include_working: bool = True,
+    ) -> MemoryContext:
         profile = MemoryProfileResult(text="")
         session_text = ""
         parts: list[str] = []
 
         accepted_hits: tuple[object, ...] = ()
         assessment = None
-        if self.long_term is not None:
+        if self.long_term is not None and (include_core or include_archive):
             if (
                 include_archive
                 and query is not None
@@ -70,7 +79,9 @@ class MemoryContextBuilder:
             ):
                 profile = self.long_term.retrieve_profile(query)
             else:
-                profile = MemoryProfileResult(text=self.long_term.read_profile())
+                profile = MemoryProfileResult(
+                    text=self.long_term.read_profile() if include_core else ""
+                )
             raw_hits = tuple(profile.hits)
             accepted_hits = raw_hits
             if profile.mode == "retrieved":
@@ -111,7 +122,7 @@ class MemoryContextBuilder:
         else:
             profile_text = ""
 
-        if self.session is not None:
+        if include_working and self.session is not None:
             session_text = self.session.render().strip()
             if session_text:
                 parts.append(session_text)
@@ -166,6 +177,8 @@ class MemoryContextBuilder:
             rejected_hit_count=rejected_hit_count,
             top_relevance=top_relevance,
             relevance_margin=relevance_margin,
+            core_text=(profile_text if include_core and profile.mode != "retrieved" else ""),
+            archive_text=(profile_text if include_archive and profile.mode == "retrieved" else ""),
         )
 
 
