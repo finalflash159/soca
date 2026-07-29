@@ -801,7 +801,7 @@ def main() -> int:
                     query_limit=args.query_limit,
                     seed=args.seed,
                 )
-            except (ImportError, FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+            except Exception as exc:
                 print(
                     f"[{dataset.name}] {spec.name} failed: "
                     f"{type(exc).__name__}: {exc}",
