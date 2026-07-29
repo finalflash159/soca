@@ -9,6 +9,7 @@ import pytest
 
 from eval.embedding_candidates import (
     EVAL_CANDIDATE_FALLBACKS,
+    EVAL_CANDIDATE_REMOTE_CODE,
     EVAL_CANDIDATES,
     VietnameseEvalEmbedding,
     build_eval_candidate,
@@ -27,8 +28,8 @@ def _install_fake_sentence_transformers(
     calls: list[dict[str, object]],
 ) -> None:
     class FakeSentenceTransformer:
-        def __init__(self, path: str, *, local_files_only: bool) -> None:
-            calls.append({"path": path, "local_files_only": local_files_only})
+        def __init__(self, path: str, **kwargs: object) -> None:
+            calls.append({"path": path, **kwargs})
 
         def encode(
             self,
@@ -75,7 +76,12 @@ def test_eval_candidate_loads_local_only_and_normalizes(
     vectors = model.embed_documents(("xin chào", "hỏi đáp"))
     query = model.embed_query("câu hỏi")
 
-    assert calls[0] == {"path": str(model_dir), "local_files_only": True}
+    assert calls[0] == {
+        "path": str(model_dir),
+        "device": "cpu",
+        "local_files_only": True,
+        "trust_remote_code": candidate in EVAL_CANDIDATE_REMOTE_CODE,
+    }
     assert calls[1]["convert_to_numpy"] is True
     assert calls[1]["normalize_embeddings"] is False
     expected_texts = (
@@ -108,7 +114,7 @@ def test_eval_candidate_rejects_invalid_outputs(
     model_dir.mkdir(parents=True)
 
     class FakeSentenceTransformer:
-        def __init__(self, path: str, *, local_files_only: bool) -> None:
+        def __init__(self, path: str, **kwargs: object) -> None:
             pass
 
         def encode(self, texts: list[str], **kwargs: object) -> np.ndarray:

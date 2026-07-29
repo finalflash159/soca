@@ -97,6 +97,15 @@ def recall_at_k(expected: np.ndarray, actual: np.ndarray, *, k: int) -> float:
     )
 
 
+def ordered_top_k_match(expected: np.ndarray, actual: np.ndarray) -> float:
+    if expected.shape != actual.shape or expected.ndim != 2:
+        raise ValueError("ordered top-k arrays must have the same matrix shape")
+    return statistics.fmean(
+        bool(np.array_equal(expected_row, actual_row))
+        for expected_row, actual_row in zip(expected, actual, strict=True)
+    )
+
+
 def measure_single_query(
     search: SearchFunction,
     queries: np.ndarray,
@@ -228,6 +237,8 @@ def benchmark_size(
         result["backends"]["numpy-exact"] = {
             "latency": latency,
             "recall_at_k": recall_at_k(oracle, matches, k=k),
+            "ordered_top_k_match": ordered_top_k_match(oracle, matches),
+            "max_abs_score_error": 0.0,
             "vector_bytes": vectors.nbytes,
         }
 
@@ -251,10 +262,20 @@ def benchmark_size(
             lambda query: flat.search(query.reshape(1, -1), k)[1][0],
             queries,
         )
+        distances, batch_matches = flat.search(queries, k)
+        exact_returned_scores = np.einsum(
+            "qkd,qd->qk",
+            vectors[batch_matches],
+            queries,
+        )
         result["backends"]["faiss-flat"] = {
             "build_ms": build_ms,
             "latency": latency,
             "recall_at_k": recall_at_k(oracle, matches, k=k),
+            "ordered_top_k_match": ordered_top_k_match(oracle, batch_matches),
+            "max_abs_score_error": float(
+                np.max(np.abs(distances - exact_returned_scores))
+            ),
             "serialized_bytes": serialized_size(
                 lambda path: faiss.write_index(flat, str(path)),
                 suffix=".faiss",
@@ -431,6 +452,7 @@ def main() -> int:
         json.dumps(report, indent=2, sort_keys=True),
         encoding="utf-8",
     )
+    args.output.chmod(0o600)
     return 0
 
 

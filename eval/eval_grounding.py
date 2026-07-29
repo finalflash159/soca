@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import statistics
 import tempfile
 import time
@@ -174,7 +175,11 @@ def main() -> int:
     parser.add_argument("--vault", type=Path, required=True)
     parser.add_argument("--dataset", type=Path, required=True)
     parser.add_argument("--variant", choices=("cached_sparse", "chunk_sparse", "dense", "hybrid"), default="cached_sparse")
-    parser.add_argument("--backend", choices=("fastembed", "model2vec"), default="fastembed")
+    parser.add_argument(
+        "--backend",
+        choices=("fastembed", "model2vec", "aiteamvn_v2", "bge_m3"),
+        default="fastembed",
+    )
     parser.add_argument("--index-home", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -187,6 +192,7 @@ def main() -> int:
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.chmod(args.output, 0o600)
     return 0
 
 

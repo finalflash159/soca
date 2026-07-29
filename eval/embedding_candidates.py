@@ -50,6 +50,8 @@ class VietnameseEvalEmbedding:
         self._candidate = candidate
         self._remote_id = EVAL_CANDIDATES[candidate]
         path = (model_home or default_model_home()) / "eval" / candidate
+        if candidate == "aiteamvn_v2" and not path.is_dir():
+            path = (model_home or default_model_home()) / "knowledge" / "aiteamvn_v2"
         if not path.is_dir():
             raise FileNotFoundError(f"eval model is not provisioned at {path}")
         from sentence_transformers import SentenceTransformer
