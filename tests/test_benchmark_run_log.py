@@ -23,3 +23,5 @@ def test_logged_benchmark_captures_output_and_provenance(tmp_path) -> None:
     assert payload["exit_code"] == 0
     assert payload["started_at_utc"]
     assert payload["finished_at_utc"]
+    assert payload["source"]["tracked_tree_sha256"]
+    assert payload["source"]["working_diff_sha256"]

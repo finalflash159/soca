@@ -157,6 +157,51 @@ def load_beir_parquet(
     )
 
 
+def load_vire_csv(
+    path: Path,
+    *,
+    name: str,
+    dataset_class: DatasetClassValue,
+    query_id_column: str | None = None,
+    title_column: str | None = "title",
+) -> RetrievalDataset:
+    frame = pd.read_csv(path)
+    required = {"question", "context"}
+    if not required.issubset(frame.columns):
+        raise ValueError(f"{path} must contain question and context columns")
+    if query_id_column is not None and query_id_column not in frame.columns:
+        raise ValueError(f"{path} does not contain query id column {query_id_column!r}")
+
+    documents: dict[str, BenchmarkDocument] = {}
+    document_ids_by_context: dict[str, str] = {}
+    queries: dict[str, str] = {}
+    qrels: dict[str, dict[str, int]] = {}
+    for position, row in enumerate(frame.to_dict("records")):
+        context = _string(row["context"], field=f"row {position} context")
+        context_key = hashlib.sha256(context.encode("utf-8")).hexdigest()
+        document_id = document_ids_by_context.get(context_key)
+        if document_id is None:
+            document_id = f"d-{context_key}"
+            title_value = row.get(title_column) if title_column is not None else None
+            title = title_value.strip() if isinstance(title_value, str) else ""
+            documents[document_id] = BenchmarkDocument(document_id, title, context)
+            document_ids_by_context[context_key] = document_id
+
+        query = _string(row["question"], field=f"row {position} question")
+        raw_query_id = row.get(query_id_column) if query_id_column is not None else None
+        query_id = (
+            str(raw_query_id).strip()
+            if raw_query_id is not None and str(raw_query_id).strip()
+            else f"q-{position:08d}"
+        )
+        if query_id in queries:
+            raise ValueError(f"duplicate query id: {query_id}")
+        queries[query_id] = query
+        qrels[query_id] = {document_id: 1}
+
+    return RetrievalDataset(name, dataset_class, documents, queries, qrels)
+
+
 def production_chunks(
     dataset: RetrievalDataset,
 ) -> tuple[tuple[MarkdownChunk, ...], dict[str, str]]:

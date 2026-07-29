@@ -8,6 +8,7 @@ import pytest
 from eval.retrieval_benchmark_data import (
     RetrievalDataset,
     load_beir_parquet,
+    load_vire_csv,
     production_chunks,
 )
 from soca.knowledge.index.models import MarkdownChunk
@@ -111,3 +112,26 @@ def test_incomplete_public_screening_can_record_and_exclude_invalid_qrels(
 
     assert dataset.qrels == {"q1": {"doc/one": 2}}
     assert dataset.excluded_qrels == (("q1", "missing"),)
+
+
+def test_load_vire_csv_deduplicates_contexts_and_builds_qrels(tmp_path: Path) -> None:
+    path = tmp_path / "dataset.csv"
+    pd.DataFrame(
+        [
+            {"id": "q1", "title": "A", "question": "hỏi một", "context": "nội dung A"},
+            {"id": "q2", "title": "A", "question": "hỏi hai", "context": "nội dung A"},
+            {"id": "q3", "title": "B", "question": "hỏi ba", "context": "nội dung B"},
+        ]
+    ).to_csv(path, index=False)
+
+    dataset = load_vire_csv(
+        path,
+        name="vire-test",
+        dataset_class="public_screening",
+        query_id_column="id",
+    )
+
+    assert len(dataset.documents) == 2
+    assert dataset.queries == {"q1": "hỏi một", "q2": "hỏi hai", "q3": "hỏi ba"}
+    assert dataset.qrels["q1"] == dataset.qrels["q2"]
+    assert dataset.qrels["q1"] != dataset.qrels["q3"]

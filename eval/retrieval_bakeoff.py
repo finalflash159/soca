@@ -6,14 +6,15 @@ import json
 import math
 import os
 import platform
+import resource
 import statistics
 import sys
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from importlib import metadata
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol, TypeVar
 
 import numpy as np
 
@@ -21,6 +22,7 @@ from eval.eval_hybrid_retrieval import build_embedding_model
 from eval.retrieval_benchmark_data import (
     RetrievalDataset,
     load_beir_parquet,
+    load_vire_csv,
     production_chunks,
 )
 from soca.knowledge.index.models import MarkdownChunk
@@ -41,6 +43,15 @@ REGISTERED_DATASETS = {
     ),
     "scifact-vn": ("public_screening", "test-00000-of-00001.parquet", False),
 }
+VIRE_DATASETS = {
+    "vire-viquad2": ("UIT-ViQuAD2.csv", "id"),
+    "vire-vinewsqa": ("ViNewsQA.csv", "id"),
+    "vire-educoqa": ("EduCoQA.csv", "qid"),
+    "vire-vimedaqa": ("ViMedAQA_v2.csv", "idx"),
+    "vire-alqac": ("ALQAC.csv", None),
+    "vire-csconda": ("CSConDa.csv", None),
+}
+T = TypeVar("T")
 
 
 class Ranker(Protocol):
@@ -66,6 +77,30 @@ class CandidateSpec:
     name: str
     sparse: str | None
     dense: str | None
+    fusion: Literal["rrf", "linear"] | None = None
+    dense_weight: float = 0.5
+    reranker: str | None = None
+    rerank_top_k: int = 0
+
+
+@dataclass(frozen=True)
+class BuiltRanker:
+    ranker: Ranker
+    cold_build_seconds: float
+    reused_components: tuple[str, ...]
+
+
+class StaticRanker:
+    def __init__(self, hits: tuple[RankedHit, ...]) -> None:
+        self._hits = hits
+
+    @property
+    def artifact_bytes(self) -> int:
+        return 0
+
+    def rank(self, query: str, *, limit: int) -> list[RankedHit]:
+        del query
+        return list(self._hits[:limit])
 
 
 class CustomSparseRanker:
@@ -192,6 +227,135 @@ class HybridRanker:
         ]
 
 
+def _min_max_scores(hits: Sequence[RankedHit]) -> dict[str, float]:
+    if not hits:
+        return {}
+    values = [hit.score for hit in hits]
+    low = min(values)
+    span = max(values) - low
+    if span <= 1e-12:
+        return {hit.chunk_id: 0.0 for hit in hits}
+    return {hit.chunk_id: (hit.score - low) / span for hit in hits}
+
+
+class LinearHybridRanker:
+    def __init__(
+        self,
+        sparse: Ranker,
+        dense: Ranker,
+        *,
+        dense_weight: float,
+    ) -> None:
+        if not 0 <= dense_weight <= 1:
+            raise ValueError("dense weight must be in [0, 1]")
+        self._sparse = sparse
+        self._dense = dense
+        self._dense_weight = dense_weight
+
+    @property
+    def artifact_bytes(self) -> int:
+        return self._sparse.artifact_bytes + self._dense.artifact_bytes
+
+    def rank(self, query: str, *, limit: int) -> list[RankedHit]:
+        candidate_limit = max(50, limit)
+        sparse = _min_max_scores(self._sparse.rank(query, limit=candidate_limit))
+        dense = _min_max_scores(self._dense.rank(query, limit=candidate_limit))
+        identifiers = set(sparse) | set(dense)
+        scored = sorted(
+            (
+                (
+                    identifier,
+                    (1 - self._dense_weight) * sparse.get(identifier, 0.0)
+                    + self._dense_weight * dense.get(identifier, 0.0),
+                )
+                for identifier in identifiers
+            ),
+            key=lambda item: (-item[1], item[0]),
+        )
+        return [
+            RankedHit(chunk_id, rank, score)
+            for rank, (chunk_id, score) in enumerate(scored[:limit], start=1)
+        ]
+
+
+class CrossEncoderScorer:
+    def __init__(self, candidate: str, *, batch_size: int) -> None:
+        model_root = (
+            Path.home() / ".local" / "share" / "soca" / "models" / "eval" / candidate
+        )
+        if not model_root.is_dir():
+            raise FileNotFoundError(f"reranker is not provisioned at {model_root}")
+        from sentence_transformers import CrossEncoder
+
+        self._model = CrossEncoder(
+            str(model_root),
+            device="cpu",
+            local_files_only=True,
+            trust_remote_code=candidate == "rerank_gte_multilingual",
+        )
+        self._batch_size = batch_size
+        self.artifact_bytes = sum(
+            path.stat().st_size
+            for path in model_root.rglob("*")
+            if path.is_file() and ".git" not in path.parts
+        )
+
+    def score(self, query: str, documents: Sequence[str]) -> np.ndarray:
+        values = self._model.predict(
+            [[query, document] for document in documents],
+            batch_size=self._batch_size,
+            show_progress_bar=False,
+        )
+        scores = np.asarray(values, dtype=np.float32).reshape(-1)
+        if scores.shape != (len(documents),) or not np.isfinite(scores).all():
+            raise ValueError("reranker returned invalid scores")
+        return scores
+
+
+class RerankRanker:
+    def __init__(
+        self,
+        base: Ranker,
+        scorer: CrossEncoderScorer,
+        chunks: tuple[MarkdownChunk, ...],
+        *,
+        top_k: int,
+    ) -> None:
+        if top_k < 1:
+            raise ValueError("rerank top-k must be positive")
+        self._base = base
+        self._scorer = scorer
+        self._texts = {chunk.chunk_id: chunk.text for chunk in chunks}
+        self._top_k = top_k
+
+    @property
+    def artifact_bytes(self) -> int:
+        return self._base.artifact_bytes + self._scorer.artifact_bytes
+
+    def rank(self, query: str, *, limit: int) -> list[RankedHit]:
+        candidates = self._base.rank(query, limit=max(limit, self._top_k))
+        rerankable = candidates[: self._top_k]
+        scores = self._scorer.score(
+            query,
+            [self._texts[hit.chunk_id] for hit in rerankable],
+        )
+        scored = sorted(
+            zip(rerankable, scores, strict=True),
+            key=lambda item: (-float(item[1]), item[0].chunk_id),
+        )
+        tail = candidates[self._top_k :]
+        ordered = [item[0] for item in scored] + tail
+        score_by_id = {item.chunk_id: float(score) for item, score in scored}
+        return [
+            RankedHit(
+                item.chunk_id,
+                rank,
+                score_by_id.get(item.chunk_id, item.score),
+            )
+            for rank, item in enumerate(ordered[:limit], start=1)
+        ]
+
+
 def parse_candidate(value: str) -> CandidateSpec:
     parts = value.split(":")
     if parts == ["lexical_custom"]:
@@ -206,7 +370,89 @@ def parse_candidate(value: str) -> CandidateSpec:
         and parts[1] in {"lexical_custom", "bm25"}
         and parts[2]
     ):
-        return CandidateSpec(value, parts[1], parts[2])
+        return CandidateSpec(value, parts[1], parts[2], fusion="rrf")
+    if (
+        len(parts) == 3
+        and parts[0] == "hybrid_rrf"
+        and parts[1] in {"lexical_custom", "bm25"}
+        and parts[2]
+    ):
+        return CandidateSpec(value, parts[1], parts[2], fusion="rrf")
+    if (
+        len(parts) == 4
+        and parts[0] == "hybrid_linear"
+        and parts[1] in {"lexical_custom", "bm25"}
+        and parts[2]
+    ):
+        try:
+            dense_weight = float(parts[3])
+        except ValueError as exc:
+            raise ValueError(f"invalid dense fusion weight: {parts[3]!r}") from exc
+        if not 0 <= dense_weight <= 1:
+            raise ValueError("dense fusion weight must be in [0, 1]")
+        return CandidateSpec(
+            value,
+            parts[1],
+            parts[2],
+            fusion="linear",
+            dense_weight=dense_weight,
+        )
+    if (
+        len(parts) == 7
+        and parts[0] == "rerank"
+        and parts[1] in {"hybrid_rrf", "hybrid_linear"}
+        and parts[2] in {"lexical_custom", "bm25"}
+        and parts[3]
+        and parts[4]
+    ):
+        if parts[1] == "hybrid_rrf":
+            if parts[5]:
+                raise ValueError("RRF reranker candidate must leave weight empty")
+            dense_weight = 0.5
+        else:
+            try:
+                dense_weight = float(parts[5])
+            except ValueError as exc:
+                raise ValueError(f"invalid dense fusion weight: {parts[5]!r}") from exc
+            if not 0 <= dense_weight <= 1:
+                raise ValueError("dense fusion weight must be in [0, 1]")
+        try:
+            top_k = int(parts[6])
+        except ValueError as exc:
+            raise ValueError(f"invalid rerank top-k: {parts[6]!r}") from exc
+        if top_k < 1:
+            raise ValueError("rerank top-k must be positive")
+        return CandidateSpec(
+            value,
+            parts[2],
+            parts[3],
+            fusion="rrf" if parts[1] == "hybrid_rrf" else "linear",
+            dense_weight=dense_weight,
+            reranker=parts[4],
+            rerank_top_k=top_k,
+        )
+    if (
+        len(parts) == 6
+        and parts[0] == "rerank"
+        and parts[1] == "hybrid_rrf"
+        and parts[2] in {"lexical_custom", "bm25"}
+        and parts[3]
+        and parts[4]
+    ):
+        try:
+            top_k = int(parts[5])
+        except ValueError as exc:
+            raise ValueError(f"invalid rerank top-k: {parts[5]!r}") from exc
+        if top_k < 1:
+            raise ValueError("rerank top-k must be positive")
+        return CandidateSpec(
+            value,
+            parts[2],
+            parts[3],
+            fusion="rrf",
+            reranker=parts[4],
+            rerank_top_k=top_k,
+        )
     raise ValueError(f"invalid retrieval candidate: {value!r}")
 
 
@@ -307,34 +553,119 @@ def summarize_measurements(
     }
 
 
-def _build_ranker(
-    spec: CandidateSpec,
-    chunks: tuple[MarkdownChunk, ...],
-    *,
-    batch_size: int,
-) -> Ranker:
-    sparse: Ranker | None = None
-    if spec.sparse == "lexical_custom":
-        sparse = CustomSparseRanker(chunks)
-    elif spec.sparse == "bm25":
-        sparse = Bm25Ranker(chunks)
-    if spec.dense is None:
-        assert sparse is not None
-        return sparse
-    model = build_embedding_model(spec.dense)
-    dense = ExactDenseRanker(chunks, model, batch_size=batch_size)
-    return dense if sparse is None else HybridRanker(sparse, dense)
+class RankerFactory:
+    def __init__(
+        self,
+        chunks: tuple[MarkdownChunk, ...],
+        *,
+        batch_size: int,
+    ) -> None:
+        self._chunks = chunks
+        self._batch_size = batch_size
+        self._sparse: dict[str, tuple[Ranker, float]] = {}
+        self._dense: dict[str, tuple[Ranker, float]] = {}
+        self._rerankers: dict[str, tuple[CrossEncoderScorer, float]] = {}
+
+    @staticmethod
+    def _timed(factory: Callable[[], T]) -> tuple[T, float]:
+        started = time.perf_counter()
+        value = factory()
+        return value, time.perf_counter() - started
+
+    def _sparse_ranker(self, name: str) -> tuple[Ranker, float, bool]:
+        cached = self._sparse.get(name)
+        if cached is not None:
+            return cached[0], cached[1], True
+        if name == "lexical_custom":
+            built = self._timed(lambda: CustomSparseRanker(self._chunks))
+        elif name == "bm25":
+            built = self._timed(lambda: Bm25Ranker(self._chunks))
+        else:
+            raise ValueError(f"unknown sparse candidate: {name}")
+        self._sparse[name] = built
+        return built[0], built[1], False
+
+    def _dense_ranker(self, name: str) -> tuple[Ranker, float, bool]:
+        cached = self._dense.get(name)
+        if cached is not None:
+            return cached[0], cached[1], True
+
+        def build() -> Ranker:
+            model = build_embedding_model(name)
+            return ExactDenseRanker(
+                self._chunks,
+                model,
+                batch_size=self._batch_size,
+            )
+
+        built = self._timed(build)
+        self._dense[name] = built
+        return built[0], built[1], False
+
+    def _reranker(self, name: str) -> tuple[CrossEncoderScorer, float, bool]:
+        cached = self._rerankers.get(name)
+        if cached is not None:
+            return cached[0], cached[1], True
+        built = self._timed(
+            lambda: CrossEncoderScorer(name, batch_size=self._batch_size)
+        )
+        self._rerankers[name] = built
+        return built[0], built[1], False
+
+    def build(self, spec: CandidateSpec) -> BuiltRanker:
+        cold_seconds = 0.0
+        reused: list[str] = []
+        sparse: Ranker | None = None
+        dense: Ranker | None = None
+        if spec.sparse is not None:
+            sparse, elapsed, cached = self._sparse_ranker(spec.sparse)
+            cold_seconds += elapsed
+            if cached:
+                reused.append(f"sparse:{spec.sparse}")
+        if spec.dense is not None:
+            dense, elapsed, cached = self._dense_ranker(spec.dense)
+            cold_seconds += elapsed
+            if cached:
+                reused.append(f"dense:{spec.dense}")
+
+        if sparse is None:
+            assert dense is not None
+            ranker = dense
+        elif dense is None:
+            ranker = sparse
+        elif spec.fusion == "linear":
+            ranker = LinearHybridRanker(
+                sparse,
+                dense,
+                dense_weight=spec.dense_weight,
+            )
+        else:
+            ranker = HybridRanker(sparse, dense)
+
+        if spec.reranker is not None:
+            scorer, elapsed, cached = self._reranker(spec.reranker)
+            cold_seconds += elapsed
+            if cached:
+                reused.append(f"reranker:{spec.reranker}")
+            ranker = RerankRanker(
+                ranker,
+                scorer,
+                self._chunks,
+                top_k=spec.rerank_top_k,
+            )
+        return BuiltRanker(ranker, cold_seconds, tuple(reused))
 
 
 def evaluate_candidate(
     dataset: RetrievalDataset,
     spec: CandidateSpec,
     *,
+    chunks: tuple[MarkdownChunk, ...],
+    document_paths: dict[str, str],
+    ranker_factory: RankerFactory,
     query_limit: int | None,
     seed: int,
-    batch_size: int,
 ) -> dict[str, Any]:
-    chunks, document_paths = production_chunks(dataset)
     path_documents = {path: document_id for document_id, path in document_paths.items()}
     chunk_documents = {
         chunk.chunk_id: path_documents[chunk.document_path]
@@ -346,8 +677,9 @@ def evaluate_candidate(
         flush=True,
     )
     started = time.perf_counter()
-    ranker = _build_ranker(spec, chunks, batch_size=batch_size)
+    built = ranker_factory.build(spec)
     build_seconds = time.perf_counter() - started
+    ranker = built.ranker
     query_ids = select_query_ids(dataset.qrels, limit=query_limit, seed=seed)
     measurements: list[QueryMeasurement] = []
     for position, query_id in enumerate(query_ids, start=1):
@@ -372,6 +704,7 @@ def evaluate_candidate(
         if position == len(query_ids) or position % 100 == 0:
             print(f"  evaluated {position}/{len(query_ids)} queries", flush=True)
     return {
+        "status": "ok",
         "dataset": dataset.name,
         "dataset_class": dataset.dataset_class,
         "candidate": spec.name,
@@ -380,9 +713,12 @@ def evaluate_candidate(
         "query_count": len(query_ids),
         "excluded_upstream_qrels": len(dataset.excluded_qrels),
         "build_seconds": build_seconds,
+        "cold_component_build_seconds": built.cold_build_seconds,
+        "reused_components": list(built.reused_components),
         "artifact_bytes": ranker.artifact_bytes,
         "metrics": summarize_measurements(measurements),
         "measurements": [asdict(measurement) for measurement in measurements],
+        "peak_rss_bytes": _peak_rss_bytes(),
     }
 
 
@@ -391,6 +727,31 @@ def _package_version(name: str) -> str | None:
         return metadata.version(name)
     except metadata.PackageNotFoundError:
         return None
+
+
+def _peak_rss_bytes() -> int:
+    value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    return value if sys.platform == "darwin" else value * 1024
+
+
+def _load_dataset(name: str, data_root: Path) -> RetrievalDataset:
+    vire = VIRE_DATASETS.get(name)
+    if vire is not None:
+        filename, query_id_column = vire
+        return load_vire_csv(
+            data_root / "vire" / "data" / filename,
+            name=name,
+            dataset_class="public_screening",
+            query_id_column=query_id_column,
+        )
+    dataset_class, corpus_file, allow_incomplete = REGISTERED_DATASETS[name]
+    return load_beir_parquet(
+        data_root / name,
+        name=name,
+        dataset_class=dataset_class,
+        corpus_file=corpus_file,
+        allow_incomplete_qrels=allow_incomplete,
+    )
 
 
 def _output_path(argument: Path | None) -> Path:
@@ -409,7 +770,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dataset",
         action="append",
-        choices=tuple(REGISTERED_DATASETS),
+        choices=tuple([*REGISTERED_DATASETS, *VIRE_DATASETS]),
         required=True,
     )
     parser.add_argument("--candidate", action="append", required=True)
@@ -424,27 +785,38 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     specs = tuple(parse_candidate(value) for value in args.candidate)
-    datasets = tuple(
-        load_beir_parquet(
-            args.data_root / name,
-            name=name,
-            dataset_class=REGISTERED_DATASETS[name][0],
-            corpus_file=REGISTERED_DATASETS[name][1],
-            allow_incomplete_qrels=REGISTERED_DATASETS[name][2],
-        )
-        for name in args.dataset
-    )
-    results = [
-        evaluate_candidate(
-            dataset,
-            spec,
-            query_limit=args.query_limit,
-            seed=args.seed,
-            batch_size=args.batch_size,
-        )
-        for dataset in datasets
-        for spec in specs
-    ]
+    datasets = tuple(_load_dataset(name, args.data_root) for name in args.dataset)
+    results: list[dict[str, Any]] = []
+    for dataset in datasets:
+        chunks, document_paths = production_chunks(dataset)
+        ranker_factory = RankerFactory(chunks, batch_size=args.batch_size)
+        for spec in specs:
+            try:
+                result = evaluate_candidate(
+                    dataset,
+                    spec,
+                    chunks=chunks,
+                    document_paths=document_paths,
+                    ranker_factory=ranker_factory,
+                    query_limit=args.query_limit,
+                    seed=args.seed,
+                )
+            except (ImportError, FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+                print(
+                    f"[{dataset.name}] {spec.name} failed: "
+                    f"{type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+                result = {
+                    "status": "failed",
+                    "dataset": dataset.name,
+                    "dataset_class": dataset.dataset_class,
+                    "candidate": spec.name,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                    "peak_rss_bytes": _peak_rss_bytes(),
+                }
+            results.append(result)
     report = {
         "schema_version": 1,
         "suite": "retrieval-production-bakeoff",
@@ -454,7 +826,9 @@ def main() -> int:
                 "sanitized_benchmark",
                 "private_release",
             ],
-            "observed_classes": sorted({result["dataset_class"] for result in results}),
+            "observed_classes": sorted(
+                {str(result["dataset_class"]) for result in results}
+            ),
             "demo_smoke_present": False,
         },
         "config": {

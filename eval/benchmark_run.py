@@ -22,6 +22,31 @@ def _git_value(*arguments: str) -> str:
         return "unknown"
 
 
+def _git_bytes(*arguments: str) -> bytes:
+    try:
+        return subprocess.run(
+            ["git", *arguments],
+            check=True,
+            capture_output=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return b"unknown"
+
+
+def _source_hashes(cwd: Path) -> tuple[str, str]:
+    tracked = _git_bytes("ls-files", "-s")
+    diff = bytearray(_git_bytes("diff", "--binary", "HEAD"))
+    untracked = _git_value("ls-files", "--others", "--exclude-standard")
+    for relative in sorted(item for item in untracked.splitlines() if item):
+        path = cwd / relative
+        diff.extend(relative.encode("utf-8", errors="surrogateescape"))
+        diff.extend(b"\0")
+        digest = _file_sha256(path)
+        diff.extend((digest or "missing").encode("ascii"))
+        diff.extend(b"\0")
+    return hashlib.sha256(tracked).hexdigest(), hashlib.sha256(diff).hexdigest()
+
+
 def _file_sha256(path: Path) -> str | None:
     if not path.is_file():
         return None
@@ -80,6 +105,7 @@ def run_logged_command(
     exit_code = process.wait()
     finished_at = datetime.now(UTC)
     status = _git_value("status", "--porcelain=v1", "--untracked-files=all")
+    tracked_tree_sha256, working_diff_sha256 = _source_hashes(resolved_cwd)
     payload: dict[str, Any] = {
         "schema_version": 1,
         "family": family,
@@ -92,6 +118,8 @@ def run_logged_command(
         "source": {
             "commit": _git_value("rev-parse", "HEAD"),
             "dirty": status not in {"", "unknown"},
+            "tracked_tree_sha256": tracked_tree_sha256,
+            "working_diff_sha256": working_diff_sha256,
         },
         "environment": {
             "python": platform.python_version(),
