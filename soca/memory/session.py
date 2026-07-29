@@ -76,7 +76,7 @@ class SessionMemory:
         self.max_turns = max_turns
         self.max_chars = max_chars
         self.max_turn_chars = max_turn_chars
-        self.persistence = persistence
+        self.persistence: SessionPersistence = persistence
         self.checkpoint_store = checkpoint_store
         self._summary_worker = (
             summary_worker
