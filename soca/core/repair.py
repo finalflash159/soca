@@ -157,7 +157,7 @@ class RepairState:
 
 
 # technical ASR reason -> repair kind. Unknown reasons fall back to no_input.
-_UNCERTAIN_MARKERS = ("low_confidence", "compression", "hallucinat", "boh", "repetition")
+_UNCERTAIN_MARKERS = ("low_confidence", "compression", "hallucinat", "repetition")
 
 
 def kind_for_reason(rejection_reason: str) -> RepairKind:

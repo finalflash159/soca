@@ -247,7 +247,7 @@ def test_run_profile_eval_with_fake_runtime(monkeypatch, tmp_path: Path) -> None
         pipeline=FakePipeline(),
         memory_status="disabled",
         knowledge_status="disabled",
-        asr_guard_status="BoH=disabled; confidence=disabled",
+        asr_guard_status="confidence=disabled",
     )
     monkeypatch.setattr(eval_voice_loop, "build_voice_runtime", lambda config: fake_bundle)
 

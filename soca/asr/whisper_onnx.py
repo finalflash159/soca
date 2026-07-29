@@ -91,7 +91,7 @@ class VietnameseASR:
         self.suppress_tokens, self.begin_suppress_tokens = self._load_suppression_tokens()
 
     def runtime_metadata(self, max_new_tokens: int = 128) -> dict:
-        """Return the inference identity that BoH artifacts must be tied to."""
+        """Return the inference identity used by ASR evaluation artifacts."""
         return {
             "backend": self.BACKEND,
             "asr_class": f"{self.__class__.__module__}.{self.__class__.__name__}",

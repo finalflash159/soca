@@ -1,8 +1,7 @@
 """Lightweight post-ASR heuristic checks for Whisper hallucinations.
 
-Complementary to BoH matching — these catch hallucinations NOT in the
-empirical phrase list (novel loops, filler-only outputs, output too long
-for input duration).
+These catch novel loops, filler-only outputs, and output too long for the
+input duration without relying on an empirical phrase list.
 
 Reference: Barański et al. (ICASSP 2025); thresholds calibrated from p99
 on real Vietnamese speech (see local/calibrate_thresholds.py).

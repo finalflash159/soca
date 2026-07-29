@@ -11,7 +11,6 @@ from pathlib import Path
 
 import numpy as np
 
-from soca.asr.boh import BoHMatch
 from soca.asr.robust_asr import RobustASR, load_confidence_guard_calibration
 from soca.asr.vad import VADResult
 from soca.asr.whisper_onnx import ASRResult
@@ -61,25 +60,9 @@ class MockVAD:
         )
 
 
-class MockBoH:
-    def __init__(self, phrase: str, model_key: str | None = None):
-        self.phrase = phrase
-        self.model_key = model_key
-
-    def match_and_clean(self, text: str) -> BoHMatch:
-        if self.phrase not in text:
-            return BoHMatch(matched_phrases=(), cleaned_text=text, n_chars_removed=0)
-        cleaned = " ".join(text.replace(self.phrase, "").split())
-        return BoHMatch(
-            matched_phrases=(self.phrase,),
-            cleaned_text=cleaned,
-            n_chars_removed=len(text) - len(cleaned),
-        )
-
-
 def test_no_speech_skips_asr():
     asr = MockASR("xin chào", avg_logprob=0.0)
-    pipeline = RobustASR(asr=asr, vad=MockVAD(has_speech=False), boh=None)
+    pipeline = RobustASR(asr=asr, vad=MockVAD(has_speech=False))
 
     result = pipeline.transcribe(DUMMY_AUDIO)
 
@@ -94,7 +77,6 @@ def test_low_confidence_rejected_before_text_filters():
     pipeline = RobustASR(
         asr=MockASR("thôi.", avg_logprob=-0.90),
         vad=MockVAD(),
-        boh=MockBoH("thôi."),
         min_avg_logprob=-0.25,
     )
 
@@ -103,8 +85,6 @@ def test_low_confidence_rejected_before_text_filters():
     assert result.text == ""
     assert result.rejection_reason == "low_confidence:-0.90"
     assert result.text_after_deloop == "thôi."
-    assert result.text_after_boh == "thôi."
-    assert result.boh_matches == ()
 
 
 def test_high_compression_rejected():
@@ -112,7 +92,6 @@ def test_high_compression_rejected():
     pipeline = RobustASR(
         asr=MockASR(repeated, avg_logprob=0.0),
         vad=MockVAD(),
-        boh=None,
         max_compression_ratio=0.5,
     )
 
@@ -127,7 +106,6 @@ def test_deloop_then_clean_passes():
     pipeline = RobustASR(
         asr=MockASR("xin chào xin chào", avg_logprob=0.0),
         vad=MockVAD(),
-        boh=None,
     )
 
     result = pipeline.transcribe(DUMMY_AUDIO)
@@ -138,26 +116,23 @@ def test_deloop_then_clean_passes():
     assert result.rejection_reason == ""
 
 
-def test_boh_phrase_removed_to_empty():
+def test_boh_like_phrase_is_preserved_in_production_transcript():
+    phrase = "cảm ơn các bạn đã xem video"
     pipeline = RobustASR(
-        asr=MockASR("cảm ơn các bạn đã xem video", avg_logprob=0.0),
+        asr=MockASR(phrase, avg_logprob=0.0),
         vad=MockVAD(),
-        boh=MockBoH("cảm ơn các bạn đã xem video"),
     )
 
     result = pipeline.transcribe(DUMMY_AUDIO)
 
-    assert result.text == ""
-    assert result.text_after_boh == ""
-    assert result.boh_matches == ("cảm ơn các bạn đã xem video",)
-    assert result.rejection_reason == "empty_after_boh"
+    assert result.text == phrase
+    assert result.rejection_reason == ""
 
 
 def test_filler_only_rejected_by_heuristic():
     pipeline = RobustASR(
         asr=MockASR("ờ ừm", avg_logprob=0.0),
         vad=MockVAD(),
-        boh=None,
     )
 
     result = pipeline.transcribe(DUMMY_AUDIO)
@@ -166,28 +141,10 @@ def test_filler_only_rejected_by_heuristic():
     assert result.rejection_reason == "heuristic:filler_only"
 
 
-def test_mismatched_boh_artifact_is_skipped():
-    pipeline = RobustASR(
-        asr=MockASR("xin chào thế giới", avg_logprob=0.0, model_key="phowhisper_base"),
-        vad=MockVAD(),
-        boh=MockBoH("xin chào", model_key="phowhisper_tiny"),
-        confidence_profile_model_key=None,
-    )
-
-    result = pipeline.transcribe(DUMMY_AUDIO)
-
-    assert result.text == "xin chào thế giới"
-    assert result.boh_matches == ()
-    assert result.boh_status == (
-        "skipped:model_mismatch:artifact=phowhisper_tiny,runtime=phowhisper_base"
-    )
-
-
 def test_unprofiled_asr_model_skips_tiny_confidence_guard():
     pipeline = RobustASR(
         asr=MockASR("xin chào thế giới", avg_logprob=-0.90, model_key="phowhisper_base"),
         vad=MockVAD(),
-        boh=MockBoH("irrelevant"),
         min_avg_logprob=-0.25,
     )
 
@@ -204,7 +161,6 @@ def test_matching_confidence_profile_keeps_guard_enabled_for_custom_model():
     pipeline = RobustASR(
         asr=MockASR("xin chào thế giới", avg_logprob=-0.90, model_key="phowhisper_base"),
         vad=MockVAD(),
-        boh=MockBoH("irrelevant"),
         min_avg_logprob=-0.25,
         confidence_profile_model_key="phowhisper_base",
     )
@@ -275,7 +231,6 @@ def test_explicit_missing_confidence_calibration_disables_guard():
     pipeline = RobustASR(
         asr=MockASR("xin chào thế giới", avg_logprob=-0.90, model_key="phowhisper_base"),
         vad=MockVAD(),
-        boh=MockBoH("irrelevant"),
         min_avg_logprob=-0.25,
         confidence_guard_skip_reason="skipped:missing_for_model:phowhisper_base",
     )

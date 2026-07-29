@@ -108,7 +108,7 @@ class VoiceRuntimeBundle:
 
     @property
     def asr_guard_status(self) -> str:
-        return f"BoH={self.asr.boh_status}; confidence={self.asr.confidence_guard_status}"
+        return f"confidence={self.asr.confidence_guard_status}"
 
 
 @dataclass(frozen=True)

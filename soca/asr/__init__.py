@@ -1,14 +1,5 @@
-"""ASR subpackage: Vietnamese speech-to-text with Whisper hallucination mitigation.
+"""Vietnamese speech-to-text pipeline."""
 
-Public pipeline:
-    audio → VAD → ASR → de-loop → BoH match → heuristics → clean text
-
-References:
-    - Barański et al. (ICASSP 2025) — Bag of Hallucinations approach
-    - Le et al. (ICLR 2024 Tiny Papers) — PhoWhisper Vietnamese fine-tune
-"""
-
-from .boh import BoHMatch, VietnameseBoH
 from .deloop import has_excessive_repetition, remove_consecutive_repeats
 from .hallucination_heuristics import (
     HeuristicCheck,
@@ -36,7 +27,6 @@ __all__ = [
     "ASR_BAKEOFF_MODEL_KEYS",
     "ASR_FULL_MODEL_KEYS",
     "ASR_MODEL_REGISTRY",
-    "BoHMatch",
     "DEFAULT_ASR_MODEL_KEY",
     "HeuristicCheck",
     "RobustASR",
@@ -44,7 +34,6 @@ __all__ = [
     "SpeechDetector",
     "VADResult",
     "VietnameseASR",
-    "VietnameseBoH",
     "check_heuristics",
     "get_asr_model_config",
     "get_asr_profile_model_keys",

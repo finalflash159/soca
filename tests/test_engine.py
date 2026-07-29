@@ -194,7 +194,6 @@ def test_engine_chat_roundtrip_emits_done_with_response() -> None:
 
 @dataclass
 class _FakeASR:
-    boh_status: str = "disabled:test"
     confidence_guard_status: str = "disabled:test"
 
 
