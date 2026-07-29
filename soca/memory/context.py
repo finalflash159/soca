@@ -21,6 +21,11 @@ class MemoryContext:
     citations: tuple[KnowledgeCitation, ...] = ()
     mode: str = "blob"
     degraded_reason: str = ""
+    evidence_status: str = "insufficient"
+    evidence_reason: str = "no_hits"
+    rejected_hit_count: int = 0
+    top_relevance: float | None = None
+    relevance_margin: float | None = None
 
 
 class MemoryContextBuilder:
@@ -86,4 +91,18 @@ class MemoryContextBuilder:
             citations=citations,
             mode=profile.mode,
             degraded_reason=profile.degraded_reason,
+            evidence_status=(
+                "supported"
+                if profile.hits
+                else "insufficient"
+                if profile.mode == "retrieved"
+                else "weak"
+            ),
+            evidence_reason=(
+                "retrieved_hits"
+                if profile.hits
+                else "no_hits"
+                if profile.mode == "retrieved"
+                else "profile_blob"
+            ),
         )

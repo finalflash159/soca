@@ -247,6 +247,8 @@ class MarkdownVaultKnowledgeSource:
                         entry.document.text,
                         query_term_set,
                     ),
+                    retrieval_backend="lexical_custom",
+                    sparse_score=score,
                 )
             )
 

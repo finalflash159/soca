@@ -10,8 +10,14 @@ import pytest
 from soca.core import AssistantRuntime, RuntimeOptions, RuntimeRoute
 from soca.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
 from soca.llm import LLMResult
-from soca.memory import MemoryContextBuilder, RetrievedMemory, SessionMemory
-from soca.tools import KnowledgeReadTool, KnowledgeSearchTool, LocalTimeTool, ToolRuntime
+from soca.memory import MemoryContextBuilder, MemoryProfileResult, RetrievedMemory, SessionMemory
+from soca.tools import (
+    KnowledgeReadTool,
+    KnowledgeSearchTool,
+    LocalTimeTool,
+    MemorySearchTool,
+    ToolRuntime,
+)
 
 
 @dataclass(frozen=True)
@@ -58,6 +64,28 @@ class EmptyKnowledgeSource(FakeKnowledgeSource):
 class FailingMemorySource(FakeKnowledgeSource):
     def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
         raise RuntimeError("memory index unavailable")
+
+
+class FakeRetrievedMemory:
+    def read_profile(self) -> str:
+        return ""
+
+    def retrieve_profile(self, query: str) -> MemoryProfileResult:
+        hit = KnowledgeHit(
+            document=KnowledgeDocument(
+                id="memory/decision.md",
+                path="memory/decision.md",
+                title="Quyết định TTS",
+                text="Chọn TTS local vì riêng tư.",
+            ),
+            score=0.9,
+            snippet="Chọn TTS local vì riêng tư.",
+        )
+        return MemoryProfileResult(
+            text=hit.snippet,
+            hits=(hit,),
+            mode="retrieved",
+        )
 
 
 class SpyLLM:
@@ -176,6 +204,25 @@ def test_explicit_wiki_search_synthesizes_retrieved_context_with_llm() -> None:
     assert "Knowledge:" in llm.calls[0]["user_msg"]
     assert "Protein hỗ trợ" in llm.calls[0]["user_msg"]
     assert result.response_text.startswith("Theo [K1]")
+
+
+def test_explicit_memory_search_synthesizes_retrieved_context_with_llm() -> None:
+    llm = SpyLLM(text="Theo [M1], bạn chọn TTS local vì riêng tư.")
+    builder = MemoryContextBuilder(long_term=FakeRetrievedMemory())
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([MemorySearchTool(builder)]),
+    )
+
+    result = runtime.run_text_turn("memory: lựa chọn TTS của tôi")
+
+    assert result.route == RuntimeRoute.MEMORY_LLM
+    assert result.trace is not None
+    assert result.trace.used_tool is True
+    assert result.trace.used_llm is True
+    assert result.citations[0].source == "memory"
+    assert "Memory:" in llm.calls[0]["user_msg"]
+    assert "Chọn TTS local vì riêng tư" in llm.calls[0]["user_msg"]
 
 
 def test_empty_knowledge_search_result_does_not_require_citation() -> None:

@@ -18,7 +18,7 @@ def _hit_payload(hit: object) -> dict[str, Any]:
     }
     score = getattr(hit, "score", None)
     if score is not None:
-        payload["score"] = score
+        payload["score"] = getattr(score, "total", score)
     for field in ("line_start", "line_end"):
         value = getattr(hit, field, None)
         if value is not None:

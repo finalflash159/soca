@@ -62,7 +62,12 @@ class KnowledgeSearchTool:
                 "title": hit.document.title,
                 "score": hit.score,
                 "snippet": hit.snippet,
+                "retrieval_backend": hit.retrieval_backend,
             }
+            for field in ("sparse_score", "dense_score", "fusion_score"):
+                value = getattr(hit, field, None)
+                if value is not None:
+                    data_hit[field] = value
             if hit.line_start is not None:
                 data_hit["line_start"] = hit.line_start
                 data_hit["line_end"] = hit.line_end

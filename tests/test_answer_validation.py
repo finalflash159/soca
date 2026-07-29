@@ -31,3 +31,12 @@ def test_answer_validation_reports_partial_provenance() -> None:
     assert decision.expected_labels == ("[K1]", "[K2]", "[M1]")
     assert decision.found_labels == ("[K1]", "[M1]")
     assert decision.reason == "partial_provenance_labels"
+
+
+def test_answer_validation_rejects_unknown_citation_ids() -> None:
+    citations = (KnowledgeCitation("wiki/a.md", "A"),)
+
+    decision = validate_grounded_answer("Theo [K2] thì đúng.", citations)
+
+    assert decision.status == "invalid"
+    assert decision.unknown_labels == ("[K2]",)
