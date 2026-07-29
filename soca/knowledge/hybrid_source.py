@@ -73,11 +73,34 @@ class RetrievalDiagnostics:
 
     @property
     def overall_state(self) -> str:
-        if self.unavailable_reason:
-            return "degraded"
-        if self.sparse_state == "absent" and self.dense_state in {"absent", "missing"}:
-            return "unavailable"
-        return "ready"
+        failed_states = {
+            "model_missing",
+            "missing",
+            "stale",
+            "incompatible",
+            "failed",
+            "unavailable",
+            "queued",
+            "building",
+        }
+        if (
+            self.index_state == "empty"
+            and not self.unavailable_reason
+            and self.sparse_state not in failed_states
+            and self.dense_state not in failed_states
+        ):
+            return "ready"
+        sparse_usable = self.sparse_state == "ready"
+        dense_usable = self.dense_state == "ready"
+        if sparse_usable or dense_usable:
+            if self.unavailable_reason:
+                return "degraded"
+            if self.sparse_state in {"stale", "failed", "unavailable"}:
+                return "degraded"
+            if self.dense_state in failed_states:
+                return "degraded"
+            return "ready"
+        return "unavailable"
 
 
 @dataclass(frozen=True)
@@ -185,6 +208,10 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
     def _dense_must_raise(self) -> bool:
         return not self._config.sparse_enabled or self._config.dense_failure_policy == "raise"
 
+    @property
+    def retrieval_mode(self) -> str:
+        return "hybrid" if self._config.dense_enabled else "chunk_sparse"
+
     def _ensure_dense_model_available(self) -> None:
         if self._config.dense_enabled and self._model is None and self._dense_must_raise:
             raise DenseUnavailableError("dense-only retrieval has no model")
@@ -259,6 +286,7 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
             rank_lists.append(sparse_hits)
             sparse_scores = {hit.chunk_id: hit.score for hit in sparse_hits}
         max_dense_score: float | None = None
+        sparse_state = _enum_value(snapshot.sparse_state)
         dense_state = _enum_value(snapshot.dense_state)
         unavailable_reason = ""
         if (
@@ -289,7 +317,7 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
             max_dense_score,
             sparse_scores=sparse_scores,
             dense_scores=dense_scores,
-            sparse_state="ready" if self._config.sparse_enabled else "absent",
+            sparse_state=sparse_state if self._config.sparse_enabled else "absent",
             dense_state=dense_state if self._config.dense_enabled else "absent",
             unavailable_reason=unavailable_reason,
         )

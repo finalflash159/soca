@@ -14,7 +14,7 @@ from soca.knowledge.indexing.identity import (
     embedding_fingerprint_for,
 )
 from soca.knowledge.indexing.migration_v1 import import_v1_manifest
-from soca.knowledge.indexing.status import DenseState, IndexStatus
+from soca.knowledge.indexing.status import DenseState, IndexStatus, SparseState
 from soca.knowledge.retrievers.dense import DenseIndex, EmbeddingModel
 
 
@@ -24,6 +24,7 @@ class IndexSnapshot:
     revision: int
     content_digest: str
     sparse_index: VaultIndex
+    sparse_state: SparseState
     dense_index: DenseIndex | None
     dense_state: DenseState
     embedding_fingerprint: EmbeddingFingerprint | None
@@ -93,16 +94,13 @@ class IndexCoordinator:
                 dense_state = DenseState.MODEL_MISSING
             else:
                 status = self.catalog.status(self.spec, embedding_fingerprint=fingerprint)
-                dense_state = (
-                    DenseState.STALE
-                    if status.dense_state not in {DenseState.ABSENT, DenseState.MODEL_MISSING}
-                    else status.dense_state
-                )
+                dense_state = status.dense_state
             return IndexSnapshot(
                 corpus_id=self.spec.corpus_identity.value,
                 revision=sparse.revision,
                 content_digest=sparse.index.content_digest,
                 sparse_index=sparse.index,
+                sparse_state=SparseState.READY,
                 dense_index=dense,
                 dense_state=dense_state,
                 embedding_fingerprint=fingerprint,

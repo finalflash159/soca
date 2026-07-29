@@ -8,6 +8,7 @@ from soca.knowledge.base import KnowledgeHit
 from soca.knowledge.markdown_vault import tokenize_terms
 
 RelevanceStatus = Literal["supported", "weak", "insufficient"]
+_SignalSpace = Literal["explicit", "lexical", "sparse", "dense"]
 
 
 @dataclass(frozen=True)
@@ -89,7 +90,7 @@ def assess_relevance(
         default=None,
     )
 
-    scored: list[tuple[KnowledgeHit, float | None]] = []
+    scored: list[tuple[KnowledgeHit, tuple[float, _SignalSpace] | None]] = []
     max_sparse_score = max(
         (float(hit.sparse_score) for hit in hits if hit.sparse_score is not None),
         default=None,
@@ -98,10 +99,10 @@ def assess_relevance(
         signal = _admission_signal(query, hit, resolved, max_sparse_score=max_sparse_score)
         scored.append((hit, signal))
 
-    explicit: list[tuple[KnowledgeHit, float]] = []
+    explicit: list[tuple[KnowledgeHit, float, _SignalSpace]] = []
     for hit, signal in scored:
         if signal is not None:
-            explicit.append((hit, signal))
+            explicit.append((hit, signal[0], signal[1]))
     if not explicit:
         if any(hit.retrieval_backend != "unknown" for hit, _ in scored):
             return RelevanceAssessment(
@@ -127,22 +128,10 @@ def assess_relevance(
             dense_top_score,
         )
 
-    accepted = tuple(hit for hit, signal in explicit if signal is not None)
+    accepted = tuple(hit for hit, _, _ in explicit)
     rejected_count = len(hits) - len(accepted)
     top_score = float(explicit[0][1])
     margin = _same_backend_margin(explicit)
-    if not accepted:
-        return RelevanceAssessment(
-            "insufficient",
-            (),
-            len(hits),
-            top_score,
-            margin,
-            "all_hits_below_floor",
-            query_coverage,
-            sparse_top_score,
-            dense_top_score,
-        )
 
     status = "supported"
     reason = "relevance_floor"
@@ -163,7 +152,7 @@ def assess_relevance(
 
 
 def _same_backend_margin(
-    scored: list[tuple[KnowledgeHit, float]],
+    scored: list[tuple[KnowledgeHit, float, _SignalSpace]],
 ) -> float | None:
     """Compare adjacent signals only when they share a score space.
 
@@ -173,9 +162,9 @@ def _same_backend_margin(
     """
     if len(scored) < 2:
         return None
-    first_hit, first_score = scored[0]
-    second_hit, second_score = scored[1]
-    if first_hit.retrieval_backend != second_hit.retrieval_backend:
+    _, first_score, first_space = scored[0]
+    _, second_score, second_space = scored[1]
+    if first_space != second_space:
         return None
     return float(first_score) - float(second_score)
 
@@ -186,9 +175,9 @@ def _admission_signal(
     policy: RelevancePolicy,
     *,
     max_sparse_score: float | None,
-) -> float | None:
+) -> tuple[float, _SignalSpace] | None:
     if hit.retrieval_backend == "explicit_read":
-        return 1.0
+        return 1.0, "explicit"
 
     lexical_coverage = _lexical_coverage(query, hit)
     lexical_signal = (
@@ -213,27 +202,28 @@ def _admission_signal(
     )
 
     if hit.retrieval_backend == "dense":
-        return dense_signal
+        return (dense_signal, "dense") if dense_signal is not None else None
     if hit.retrieval_backend == "hybrid":
         if dense_signal is not None:
-            return dense_signal
+            return dense_signal, "dense"
         if hit.sparse_score is not None:
-            return sparse_signal
-        return lexical_signal
+            return (sparse_signal, "sparse") if sparse_signal is not None else None
+        return (lexical_signal, "lexical") if lexical_signal is not None else None
     if hit.retrieval_backend == "lexical_custom":
         # Cached sparse hits have a backend-local score. Coverage alone is not
         # enough: generic words such as "hệ thống" can appear in unrelated
         # notes. Keep the lexical fallback only for legacy/custom hits that do
         # not expose a sparse score at all.
         if hit.sparse_score is not None:
-            return sparse_signal
-        return lexical_signal
+            return (sparse_signal, "sparse") if sparse_signal is not None else None
+        return (lexical_signal, "lexical") if lexical_signal is not None else None
     if hit.retrieval_backend == "unknown":
         return None if not query.strip() else None
-    return max(
-        (value for value in (lexical_signal, dense_signal) if value is not None),
-        default=None,
-    )
+    if dense_signal is not None:
+        return dense_signal, "dense"
+    if lexical_signal is not None:
+        return lexical_signal, "lexical"
+    return None
 
 
 def _lexical_coverage(query: str, hit: KnowledgeHit) -> float:

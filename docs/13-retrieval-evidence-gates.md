@@ -110,9 +110,12 @@ the showcase corpus must not be used to claim benchmark quality.
 
 The P4 public screening result is recorded in `BENCHMARKS.md` and uses the
 real XQuAD Vietnamese corpus under `eval/fixtures/real_rag_vault`, not the
-showcase vault. Both calibrated policies reached 12/12 answerable recall@5 and
-0/8 accepted evidence on the unanswerable rows. Hybrid FastEmbed had a 12.4 s
-cold model load and 46.9 ms warm p95; the cold event is reported separately.
+showcase vault. The metric is now policy-accepted evidence recall, not raw
+retriever recall. Cached sparse accepted 10/12 answerable paths and 0/8
+unanswerable rows; raw sparse recall was 12/12. Hybrid FastEmbed accepted
+12/12 and 0/8, with a 13.0 s cold model load and 45.9 ms warm p95. The cold
+event is reported separately, and the cached-sparse recall trade-off remains a
+follow-up calibration item rather than a release-quality claim.
 
 ## Remaining gaps
 

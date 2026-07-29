@@ -95,6 +95,8 @@ def build_memory_runtime_setup(
             ),
             index_home=index_home or default_memory_index_home(),
         )
+        effective_mode = str(getattr(source, "retrieval_mode", config.retrieval_mode))
+        relevance_policy = RelevancePolicy.for_retrieval_mode(effective_mode)
         long_term = RetrievedMemory(
             source,
             blob,
@@ -108,8 +110,9 @@ def build_memory_runtime_setup(
                     recency_half_life_days=config.recency_half_life_days,
                 ),
             ),
+            relevance_policy=relevance_policy,
         )
-        status = f"enabled:retrieved:{config.retrieval_mode}"
+        status = f"enabled:retrieved:{effective_mode}"
     core = CoreMemoryStore(vault, max_chars=config.profile_chars)
     if not core.path.is_file():
         core_state = "empty"
@@ -126,7 +129,11 @@ def build_memory_runtime_setup(
             core=core,
             max_chars=config.context_chars,
             profile_chars=config.profile_chars,
-            relevance_policy=RelevancePolicy.for_retrieval_mode(config.retrieval_mode),
+            relevance_policy=(
+                relevance_policy
+                if config.mode == "retrieved"
+                else RelevancePolicy.for_retrieval_mode(config.retrieval_mode)
+            ),
         ),
         long_term=long_term,
         core=core,

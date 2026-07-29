@@ -31,7 +31,8 @@ def build_knowledge_runtime_setup(
         config=resolved_config,
         index_home=index_home,
     )
-    relevance_policy = RelevancePolicy.for_retrieval_mode(resolved_config.mode)
+    effective_mode = str(getattr(source, "retrieval_mode", resolved_config.mode))
+    relevance_policy = RelevancePolicy.for_retrieval_mode(effective_mode)
     return KnowledgeRuntimeSetup(
         source=source,
         builder=KnowledgeContextBuilder(

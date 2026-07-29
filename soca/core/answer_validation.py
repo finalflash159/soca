@@ -25,6 +25,14 @@ class AnswerValidationDecision:
     groundedness_score: float | None = None
 
 
+@dataclass(frozen=True)
+class _ShadowGroundedness:
+    status: Literal["not_run", "shadow", "supported", "mixed", "unsupported"]
+    score: float | None
+    grounded_claim_count: int = 0
+    ungrounded_claim_count: int = 0
+
+
 _CITATION_LIKE_RE = re.compile(r"\[(?P<token>[KMkm][A-Za-z0-9]*)\]")
 
 
@@ -50,10 +58,10 @@ def validate_grounded_answer(
     mentioned = tuple(
         f"[{match.group('token')}]" for match in _CITATION_LIKE_RE.finditer(text)
     )
-    groundedness, groundedness_score = (
+    shadow = (
         _shadow_groundedness(text, citations, evidence)
         if evidence
-        else ("not_run", None)
+        else _ShadowGroundedness("not_run", None)
     )
     unknown = tuple(label for label in mentioned if label not in expected)
     if unknown:
@@ -63,9 +71,11 @@ def validate_grounded_answer(
             tuple(label for label in mentioned if label in expected),
             "unknown_provenance_label",
             unknown_labels=unknown,
-            groundedness=groundedness,
+            groundedness=shadow.status,
             cited_claim_count=len(mentioned),
-            groundedness_score=groundedness_score,
+            groundedness_score=shadow.score,
+            grounded_claim_count=shadow.grounded_claim_count,
+            ungrounded_claim_count=shadow.ungrounded_claim_count,
         )
     found = tuple(label for label in expected if label in text)
     if not found:
@@ -74,9 +84,11 @@ def validate_grounded_answer(
             tuple(expected),
             (),
             "no_provenance_label",
-            groundedness=groundedness,
+            groundedness=shadow.status,
             uncited_claim_count=1,
-            groundedness_score=groundedness_score,
+            groundedness_score=shadow.score,
+            grounded_claim_count=shadow.grounded_claim_count,
+            ungrounded_claim_count=shadow.ungrounded_claim_count,
         )
     if len(found) != len(expected):
         return AnswerValidationDecision(
@@ -84,19 +96,23 @@ def validate_grounded_answer(
             tuple(expected),
             found,
             "partial_provenance_labels",
-            groundedness=groundedness,
+            groundedness=shadow.status,
             cited_claim_count=len(mentioned),
             uncited_claim_count=max(0, 1 - len(mentioned)),
-            groundedness_score=groundedness_score,
+            groundedness_score=shadow.score,
+            grounded_claim_count=shadow.grounded_claim_count,
+            ungrounded_claim_count=shadow.ungrounded_claim_count,
         )
     return AnswerValidationDecision(
         "valid",
         tuple(expected),
         found,
         "labels_present",
-        groundedness=groundedness,
+        groundedness=shadow.status,
         cited_claim_count=len(mentioned),
-        groundedness_score=groundedness_score,
+        groundedness_score=shadow.score,
+        grounded_claim_count=shadow.grounded_claim_count,
+        ungrounded_claim_count=shadow.ungrounded_claim_count,
     )
 
 
@@ -104,7 +120,7 @@ def _shadow_groundedness(
     text: str,
     citations: tuple[KnowledgeCitation, ...],
     evidence: tuple[Any, ...],
-) -> tuple[Literal["shadow", "supported", "mixed", "unsupported"], float | None]:
+) -> _ShadowGroundedness:
     """Return a telemetry-only lexical claim/evidence signal.
 
     This is deliberately not an answer gate. It supplies a reproducible shadow
@@ -112,7 +128,7 @@ def _shadow_groundedness(
     Citation provenance remains the deterministic contract.
     """
     if not evidence or not citations:
-        return "shadow", None
+        return _ShadowGroundedness("shadow", None)
     evidence_by_label = _evidence_by_label(citations, evidence)
     scores: list[float] = []
     for sentence in _sentences(text):
@@ -131,13 +147,17 @@ def _shadow_groundedness(
             source_terms.update(tokenize_terms(evidence_by_label[label]))
         scores.append(len(claim_terms & source_terms) / len(claim_terms))
     if not scores:
-        return "shadow", None
+        return _ShadowGroundedness("shadow", None)
     score = sum(scores) / len(scores)
-    if score >= 0.5:
-        return "supported", score
-    if score > 0.0:
-        return "mixed", score
-    return "unsupported", score
+    grounded_count = sum(item >= 0.5 for item in scores)
+    ungrounded_count = len(scores) - grounded_count
+    if score >= 0.5 and ungrounded_count == 0:
+        status: Literal["supported", "mixed", "unsupported"] = "supported"
+    elif score > 0.0:
+        status = "mixed"
+    else:
+        status = "unsupported"
+    return _ShadowGroundedness(status, score, grounded_count, ungrounded_count)
 
 
 def _evidence_by_label(

@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from soca.knowledge.base import KnowledgeDocument, KnowledgeHit
 from soca.knowledge.context import KnowledgeContextBuilder
-from soca.knowledge.hybrid_source import DenseUnavailableError
+from soca.knowledge.hybrid_source import DenseUnavailableError, RetrievalDiagnostics
 
 
 class FakeKnowledgeSource:
@@ -168,3 +168,21 @@ def test_build_distinguishes_dense_unavailable_from_empty_evidence() -> None:
     assert context.evidence_status == "unavailable"
     assert context.retrieval_state == "unavailable"
     assert context.evidence_reason == "dense-only index refresh failed"
+
+
+def test_build_distinguishes_dense_failure_diagnostics_from_healthy_empty_index() -> None:
+    class FailedDenseSource(FakeKnowledgeSource):
+        def retrieve(self, query: str, *, limit: int):
+            return SimpleNamespace(
+                hits=(),
+                diagnostics=RetrievalDiagnostics(
+                    sparse_state="absent",
+                    dense_state="failed",
+                    index_state="ready",
+                ),
+            )
+
+    context = KnowledgeContextBuilder(FailedDenseSource([])).build("Bayes")
+
+    assert context.evidence_status == "unavailable"
+    assert context.retrieval_state == "unavailable"

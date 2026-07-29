@@ -151,3 +151,27 @@ def test_relevance_gate_preserves_order_across_backend_score_spaces() -> None:
         "wiki/dense.md",
     ]
     assert assessment.margin is None
+
+
+def test_hybrid_margin_does_not_compare_dense_and_sparse_signals() -> None:
+    assessment = assess_relevance(
+        "định lý Bayes",
+        (
+            _hit(
+                "wiki/dense.md",
+                "Bayes dense",
+                "Cập nhật niềm tin sau quan sát mới.",
+                backend="hybrid",
+                dense_score=0.91,
+            ),
+            _hit(
+                "wiki/sparse.md",
+                "Bayes sparse",
+                "Định lý Bayes cập nhật xác suất.",
+                backend="hybrid",
+                sparse_score=80.0,
+            ),
+        ),
+    )
+
+    assert assessment.margin is None

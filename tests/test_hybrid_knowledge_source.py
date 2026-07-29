@@ -9,6 +9,7 @@ from soca.knowledge.hybrid_source import (
     DenseUnavailableError,
     HybridConfig,
     HybridKnowledgeSource,
+    RetrievalDiagnostics,
 )
 
 
@@ -143,6 +144,7 @@ def test_dense_construction_failure_degrades_to_sparse_when_enabled(
     assert batch.max_dense_score is None
     assert batch.diagnostics.dense_state == "unavailable"
     assert batch.diagnostics.unavailable_reason == "dense_index_refresh_failed"
+    assert batch.diagnostics.overall_state == "degraded"
 
 
 def test_dense_only_failure_raises_explicit_error(tmp_path: Path) -> None:
@@ -176,6 +178,18 @@ def test_dense_query_failure_degrades_to_sparse(tmp_path: Path) -> None:
     assert batch.max_dense_score is None
     assert batch.diagnostics.dense_state == "unavailable"
     assert batch.diagnostics.unavailable_reason == "dense_query_failed"
+    assert batch.diagnostics.overall_state == "degraded"
+
+
+@pytest.mark.parametrize("dense_state", ("model_missing", "stale", "incompatible", "failed"))
+def test_dense_only_unusable_states_are_unavailable(dense_state: str) -> None:
+    diagnostics = RetrievalDiagnostics(
+        sparse_state="absent",
+        dense_state=dense_state,
+        index_state="ready",
+    )
+
+    assert diagnostics.overall_state == "unavailable"
 
 
 def test_retrieve_validates_limit_and_empty_query(tmp_path: Path) -> None:

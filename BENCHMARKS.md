@@ -1859,24 +1859,30 @@ PYTHONPATH=. .venv/bin/python -m eval.eval_grounding \
   --output /tmp/soca-p4/grounding-hybrid-fastembed.json
 ```
 
-| Retrieval policy | Answerable recall@5 | Unanswerable accepted evidence | First query | Warm p95 | Decision |
+| Retrieval policy | Accepted-evidence recall@5 | Unanswerable accepted evidence | First query | Warm p95 | Decision |
 | --- | ---: | ---: | ---: | ---: | --- |
-| cached_sparse (`coverage=0.65`, sparse ratio `0.75`) | 12/12 (100%) | 0/8 (0%) | 75.9 ms | 30.9 ms | calibrated sparse default |
-| hybrid FastEmbed (`dense=0.85`, sparse fallback coverage `0.95`) | 12/12 (100%) | 0/8 (0%) | 12.4 s | 46.9 ms | opt-in; cold model load remains visible |
+| cached_sparse (`coverage=0.65`, sparse ratio `0.75`) | 10/12 (83.3%) | 0/8 (0%) | 77.4 ms | 58.8 ms | safe sparse default; recall follow-up required |
+| hybrid FastEmbed (`dense=0.85`, sparse fallback coverage `0.95`) | 12/12 (100%) | 0/8 (0%) | 13.0 s | 45.9 ms | opt-in; cold model load remains visible |
 
-The previous policy admitted 7/8 unanswerable sparse cases. The new run
-rejects all eight on this public set, but the Wilson upper bound is 32.44%
-with only eight negatives; this is an initial calibration gate, not a claim
-of production statistical certainty. Hybrid cold start is recorded separately
-from warm retrieval and is not hidden in the mean.
+The benchmark now scores answerable recall from policy-accepted paths, not raw
+retriever paths. The raw sparse retriever found all 12 answerable paths, but the
+gate rejected two low-coverage cases (`gr-002`, `gr-012`); this exposes a real
+recall trade-off instead of hiding it in the metric. The previous policy
+admitted 7/8 unanswerable sparse cases. The current policy accepts 0/8, but the
+Wilson upper bound is 32.44% with only eight negatives; this is an initial
+calibration gate, not a claim of production statistical certainty. Hybrid cold
+start is recorded separately from warm retrieval and is not hidden in the
+mean.
 
 Answer validation also emits a non-blocking shadow groundedness score by
 comparing cited claims with selected evidence snippets. It does not block or
 rewrite answers until a held-out human/model calibration set is available.
 
-Decision: keep calibrated cached-sparse as the safe default, keep hybrid
-opt-in, and retain all evidence/groundedness signals in telemetry. No raw
-sparse-vs-dense score comparison is used.
+Decision: keep cached-sparse as the safe default for now, keep hybrid opt-in,
+and retain all evidence/groundedness signals in telemetry. The 10/12 accepted
+recall result is not a release-quality gate; threshold tuning and a larger
+public negative/answerable set remain required. No raw sparse-vs-dense score
+comparison is used.
 
 **Real-flow capture (public corpus, 2026-07-29)**
 

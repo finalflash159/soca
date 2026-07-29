@@ -131,7 +131,14 @@ def run_benchmark(
     unanswerable = [
         record for row, record in zip(rows, records, strict=True) if not row["answerable"]
     ]
-    recall = sum(bool(set(record["raw_paths"][:5]) & set(row["relevant_paths"])) for row, record in answerable)
+    raw_recall = sum(
+        bool(set(record["raw_paths"][:5]) & set(row["relevant_paths"]))
+        for row, record in answerable
+    )
+    recall = sum(
+        bool(set(record["accepted_paths"][:5]) & set(row["relevant_paths"]))
+        for row, record in answerable
+    )
     false_evidence = sum(bool(record["accepted_paths"]) for record in unanswerable)
     latencies = sorted(float(record["latency_ms"]) for record in records)
     p95 = latencies[min(len(latencies) - 1, math.ceil(len(latencies) * 0.95) - 1)] if latencies else 0.0
@@ -149,6 +156,8 @@ def run_benchmark(
         "backend": backend,
         "case_count": len(rows),
         "answerable_retrieval_recall_at_5": _wilson(recall, len(answerable)),
+        "answerable_accepted_evidence_recall_at_5": _wilson(recall, len(answerable)),
+        "answerable_raw_retrieval_recall_at_5": _wilson(raw_recall, len(answerable)),
         "unanswerable_false_evidence_rate": _wilson(false_evidence, len(unanswerable)),
         "latency_ms": {
             "mean": statistics.fmean(latencies) if latencies else 0.0,

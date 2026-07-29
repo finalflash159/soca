@@ -39,6 +39,8 @@ def test_answer_validation_records_shadow_groundedness_against_selected_evidence
     assert decision.status == "valid"
     assert decision.groundedness == "supported"
     assert decision.groundedness_score is not None
+    assert decision.grounded_claim_count == 1
+    assert decision.ungrounded_claim_count == 0
 
 
 def test_shadow_groundedness_does_not_change_provenance_status() -> None:
@@ -61,6 +63,8 @@ def test_shadow_groundedness_does_not_change_provenance_status() -> None:
 
     assert decision.status == "valid"
     assert decision.groundedness == "unsupported"
+    assert decision.grounded_claim_count == 0
+    assert decision.ungrounded_claim_count == 1
 
 
 def test_answer_validation_reports_missing_provenance_without_blocking() -> None:
