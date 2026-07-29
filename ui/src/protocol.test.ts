@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { parseEngineEvent } from "./protocol.js";
+import { adaptLegacyEvent, parseEngineEvent } from "./protocol.js";
 
 describe("parseEngineEvent", () => {
+  it("adapts a v1 hello without changing its fields", () => {
+    const event = adaptLegacyEvent({
+      event: "hello",
+      version: 1,
+      profile: "baseline",
+      no_model: false,
+      stack: {},
+    });
+
+    expect(event.protocol_version).toBe(1);
+    expect(event.supported_versions).toEqual([1]);
+  });
+
   it("parses a remote LLM catalog event", () => {
     const event = parseEngineEvent(
       JSON.stringify({

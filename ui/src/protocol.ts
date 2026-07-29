@@ -1,5 +1,8 @@
 // Wire types for the `soca engine` NDJSON protocol (see soca/app/engine.py).
 
+export const PROTOCOL_VERSION = 2;
+export const SUPPORTED_PROTOCOL_VERSIONS = [1, 2] as const;
+
 export interface EngineCommand {
   cmd:
     | "status"
@@ -35,6 +38,8 @@ export interface EngineCommand {
 export interface HelloEvent {
   event: "hello";
   version: number;
+  protocol_version?: number;
+  supported_versions?: number[];
   profile: string;
   no_model: boolean;
   stack: Record<string, string | null>;
@@ -369,8 +374,18 @@ export function parseEngineEvent(line: string): EngineEvent | null {
       !known.has(eventName)
     )
       return null;
-    return parsed as EngineEvent;
+    return adaptLegacyEvent(parsed as Record<string, unknown>) as unknown as EngineEvent;
   } catch {
     return null;
   }
+}
+
+export function adaptLegacyEvent(event: Record<string, unknown>): Record<string, unknown> {
+  if (event.event !== "hello" || typeof event.version !== "number") return event;
+  if (event.protocol_version !== undefined) return event;
+  return {
+    ...event,
+    protocol_version: event.version,
+    supported_versions: [event.version],
+  };
 }

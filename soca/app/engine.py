@@ -51,6 +51,11 @@ from soca.app.voice_controller import (
 from soca.config import DEFAULT_SETTINGS, LlmSettings, SecretStore, load_settings, save_settings
 from soca.core import AudioSink, ResolvedVoiceRuntimeConfig
 from soca.core.usage import SessionUsage, TurnUsage
+from soca.core.workflow.protocol import (
+    CURRENT_PROTOCOL_VERSION,
+    adapt_legacy_command,
+    protocol_hello,
+)
 from soca.llm.providers import (
     PRICING_TABLE_AS_OF,
     LLMProvider,
@@ -66,7 +71,7 @@ from soca.memory.working import approximate_tokens
 from soca.prompts import SOCA_RUNTIME_SYSTEM_PROMPT, build_runtime_prompt
 from soca.tts import VALTEC_TTS_CONFIG
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = CURRENT_PROTOCOL_VERSION
 LOGGER = logging.getLogger(__name__)
 
 TextRuntimeBuilder = Callable[..., TextRuntimeBundle]
@@ -250,13 +255,7 @@ class SocaEngine:
                 "voice": self.voice_config.tts_voice,
             }
         self.writer.emit(
-            {
-                "event": "hello",
-                "version": PROTOCOL_VERSION,
-                "profile": self.profile,
-                "no_model": self.no_model,
-                "stack": stack,
-            }
+            protocol_hello(profile=self.profile, no_model=self.no_model, stack=stack)
         )
         self._cmd_context()
         if self._settings_warning is not None:
@@ -264,6 +263,7 @@ class SocaEngine:
 
     def dispatch(self, command: dict[str, Any]) -> bool:
         """Handle one command; return False when the engine should exit."""
+        command = adapt_legacy_command(command)
         cmd = command.get("cmd")
         if cmd == "quit":
             return False

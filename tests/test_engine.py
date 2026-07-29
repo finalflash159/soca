@@ -96,7 +96,8 @@ def test_engine_hello_then_quit_emits_bye() -> None:
     assert code == 0
     events = capture.events()
     assert events[0]["event"] == "hello"
-    assert events[0]["version"] == 1
+    assert events[0]["version"] == 2
+    assert events[0]["supported_versions"] == [1, 2]
     assert events[-1]["event"] == "bye"
 
 
