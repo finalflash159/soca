@@ -73,7 +73,10 @@ def assess_relevance(
         signal = _admission_signal(query, hit, resolved, max_sparse_score=max_sparse_score)
         scored.append((hit, signal))
 
-    explicit = [item for item in scored if item[1] is not None]
+    explicit: list[tuple[KnowledgeHit, float]] = []
+    for hit, signal in scored:
+        if signal is not None:
+            explicit.append((hit, signal))
     if not explicit:
         if any(hit.retrieval_backend != "unknown" for hit, _ in scored):
             return RelevanceAssessment(

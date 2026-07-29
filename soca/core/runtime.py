@@ -18,6 +18,7 @@ from soca.core.evidence import (
     EvidenceBundleDecision,
     EvidenceDecision,
     EvidenceReconciler,
+    EvidenceStatus,
     decide_evidence,
 )
 from soca.core.guardrails import (
@@ -861,7 +862,7 @@ class AssistantRuntime:
                 decide_evidence(
                     "knowledge",
                     knowledge_context.hits,
-                    status=knowledge_context.evidence_status,
+                    status=cast(EvidenceStatus, knowledge_context.evidence_status),
                     reason=knowledge_context.evidence_reason,
                     top_score=knowledge_context.top_relevance,
                     margin=knowledge_context.relevance_margin,
@@ -880,7 +881,7 @@ class AssistantRuntime:
                 decide_evidence(
                     "memory",
                     memory_context.hits,
-                    status=memory_context.evidence_status,
+                    status=cast(EvidenceStatus, memory_context.evidence_status),
                     reason=memory_context.evidence_reason,
                     top_score=memory_context.top_relevance,
                     margin=memory_context.relevance_margin,
@@ -1266,8 +1267,15 @@ class AssistantRuntime:
             + previous_answer[:4_000]
         )
         try:
+            llm = self.llm
+            if llm is None:
+                return previous_answer, llm_result, usage, validate_grounded_answer(
+                    previous_answer,
+                    citations,
+                    evidence=evidence,
+                )
             with self._stage(draft, "answer_repair"):
-                repaired_result = self.llm.generate(
+                repaired_result = llm.generate(
                     repair_prompt,
                     max_tokens=self._effective_max_tokens(draft),
                     temperature=0.0,
@@ -1342,7 +1350,7 @@ class AssistantRuntime:
                 "memory",
                 context.hits,
                 unavailable=context.degraded_reason == "retrieval_unavailable",
-                status=context.evidence_status,
+                status=cast(EvidenceStatus, context.evidence_status),
                 reason=context.evidence_reason,
                 top_score=context.top_relevance,
                 margin=context.relevance_margin,
@@ -1437,7 +1445,7 @@ class AssistantRuntime:
             decide_evidence(
                 "knowledge",
                 context.hits,
-                status=context.evidence_status,
+                status=cast(EvidenceStatus, context.evidence_status),
                 reason=context.evidence_reason,
                 top_score=context.top_relevance,
                 margin=context.relevance_margin,
@@ -1485,7 +1493,7 @@ class AssistantRuntime:
             decide_evidence(
                 "knowledge",
                 context.hits,
-                status=context.evidence_status,
+                status=cast(EvidenceStatus, context.evidence_status),
                 reason=context.evidence_reason,
                 top_score=context.top_relevance,
                 margin=context.relevance_margin,
