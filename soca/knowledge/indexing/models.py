@@ -3,15 +3,17 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
-from soca.knowledge.indexing.identity import sha256_file
+from soca.knowledge.indexing.identity import EmbeddingFingerprint, sha256_file
 from soca.knowledge.retrievers.dense import (
     AITEAMVN_V2_MODEL_SHA256,
     AITEAMVN_V2_TOKENIZER_SHA256,
     default_model_home,
+    production_embedding_fingerprint,
 )
 
 
@@ -73,6 +75,21 @@ def model_status(key: str, *, model_home: Path | None = None) -> dict[str, objec
     }
 
 
+def model_fingerprint(key: str) -> EmbeddingFingerprint:
+    model_spec(key)
+    return production_embedding_fingerprint()
+
+
+def model_is_provisioned(key: str, *, model_home: Path | None = None) -> bool:
+    spec = model_spec(key)
+    root = (model_home or default_model_home()) / spec.cache_subdirectory
+    try:
+        _verify_model_layout(root, spec)
+    except (FileNotFoundError, OSError, ValueError):
+        return False
+    return True
+
+
 def load_model(key: str, *, model_home: Path | None = None, allow_download: bool = False):
     from soca.knowledge.retrievers.dense import VietnameseEmbeddingV2Model
 
@@ -82,9 +99,9 @@ def load_model(key: str, *, model_home: Path | None = None, allow_download: bool
     return VietnameseEmbeddingV2Model(model_home=model_home)
 
 
-def _verify_model_files(root: Path, spec: ModelSpec) -> None:
+def _verify_model_layout(root: Path, spec: ModelSpec) -> None:
     manifest_path = root / ".soca-model.json"
-    if not manifest_path.is_file():
+    if manifest_path.is_symlink() or not manifest_path.is_file():
         raise FileNotFoundError(f"model manifest is missing: {manifest_path}")
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     expected = {
@@ -97,6 +114,15 @@ def _verify_model_files(root: Path, spec: ModelSpec) -> None:
     }
     if any(payload.get(key) != value for key, value in expected.items()):
         raise ValueError("model manifest does not match the production lock")
+    for name in ("model.safetensors", "tokenizer.json"):
+        path = root / name
+        metadata = path.lstat()
+        if path.is_symlink() or not stat.S_ISREG(metadata.st_mode):
+            raise ValueError(f"model artifact must be a regular non-symlink file: {path}")
+
+
+def _verify_model_files(root: Path, spec: ModelSpec) -> None:
+    _verify_model_layout(root, spec)
     if sha256_file(root / "model.safetensors") != AITEAMVN_V2_MODEL_SHA256:
         raise ValueError("model checksum mismatch")
     if sha256_file(root / "tokenizer.json") != AITEAMVN_V2_TOKENIZER_SHA256:
@@ -104,8 +130,24 @@ def _verify_model_files(root: Path, spec: ModelSpec) -> None:
 
 
 def _make_private(root: Path) -> None:
-    for path in (root, *root.rglob("*")):
-        path.chmod(0o700 if path.is_dir() else 0o600)
+    paths = (root, *root.rglob("*"))
+    modes: list[tuple[Path, int]] = []
+    for path in paths:
+        metadata = path.lstat()
+        if stat.S_ISLNK(metadata.st_mode):
+            raise ValueError(f"model cache must not contain symlinks: {path}")
+        if stat.S_ISDIR(metadata.st_mode):
+            mode = 0o700
+        elif stat.S_ISREG(metadata.st_mode):
+            mode = 0o600
+        else:
+            raise ValueError(f"model cache contains an unsupported file type: {path}")
+        modes.append((path, mode))
+    for path, mode in modes:
+        if os.chmod in os.supports_follow_symlinks:
+            os.chmod(path, mode, follow_symlinks=False)
+        else:
+            path.chmod(mode)
 
 
 def install_model(key: str, *, model_home: Path | None = None) -> Path:

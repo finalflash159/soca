@@ -122,6 +122,33 @@ def test_engine_reports_invalid_json_without_crashing() -> None:
     assert "engine_error" in kinds
 
 
+def test_engine_status_does_not_load_embedding_runtime(monkeypatch, tmp_path: Path) -> None:
+    from soca.knowledge.indexing import models
+
+    def forbidden_load(*args, **kwargs):
+        raise AssertionError("status must not load the embedding runtime")
+
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    monkeypatch.setattr(models, "load_model", forbidden_load)
+    capture = ProtocolCapture()
+    code = run_engine(
+        voice_config=None,
+        text_config=make_text_config(),
+        profile="baseline",
+        no_model=True,
+        stdin=_commands(capture, {"cmd": "status"}, '"event": "status"'),
+        stdout=capture,
+    )
+
+    assert code == 0
+    event = next(item for item in capture.events() if item["event"] == "status")
+    embedding = next(
+        item for item in event["runtime_components"] if item["id"] == "embedding"
+    )
+    assert embedding["status"] == "missing"
+    assert event["knowledge_index"]["dense_state"] == "model_missing"
+
+
 def test_engine_uses_local_defaults_when_saved_llm_settings_are_invalid() -> None:
     capture = ProtocolCapture()
 

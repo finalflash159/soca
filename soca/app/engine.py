@@ -315,7 +315,7 @@ class SocaEngine:
         from soca.knowledge.index.persistence import default_index_home
         from soca.knowledge.indexing.catalog import IndexCatalog
         from soca.knowledge.indexing.identity import CorpusSpec
-        from soca.knowledge.indexing.models import load_model
+        from soca.knowledge.indexing.models import model_fingerprint, model_is_provisioned
 
         profiles = [
             {
@@ -329,17 +329,12 @@ class SocaEngine:
             for item in collect_runtime_profile_readiness()
         ]
         knowledge_index: dict[str, Any] | None = None
-        embedding_model: object | None = None
+        embedding_ready = False
         try:
-            # Catalog status is model-specific for dense generations. Passing
-            # no fingerprint makes an existing ready generation look absent.
-            # Match the CLI/index lifecycle status path without allowing a
-            # status command to download a model.
-            try:
-                embedding_model = load_model("aiteamvn-v2", allow_download=False)
-                embedding_fingerprint = getattr(embedding_model, "embedding_fingerprint", None)
-            except (ImportError, FileNotFoundError, OSError, RuntimeError, ValueError):
-                embedding_fingerprint = None
+            embedding_ready = model_is_provisioned("aiteamvn-v2")
+            embedding_fingerprint = (
+                model_fingerprint("aiteamvn-v2") if embedding_ready else None
+            )
             knowledge_index = (
                 IndexCatalog(default_index_home())
                 .status(
@@ -356,7 +351,7 @@ class SocaEngine:
                 "profiles": profiles,
                 "knowledge_index": knowledge_index,
                 "runtime_components": self._runtime_component_statuses(
-                    embedding_model=embedding_model,
+                    embedding_ready=embedding_ready,
                     knowledge_index=knowledge_index,
                 ),
             }
@@ -365,7 +360,7 @@ class SocaEngine:
     def _runtime_component_statuses(
         self,
         *,
-        embedding_model: object | None,
+        embedding_ready: bool,
         knowledge_index: dict[str, Any] | None,
     ) -> list[dict[str, str]]:
         """Describe configured runtime dependencies without eagerly loading them."""
@@ -499,8 +494,12 @@ class SocaEngine:
                 f" · session {self.session_memory.persistence}",
             )
 
-        embedding_detail = "aiteamvn-v2 · provisioned"
-        embedding_state = "ready" if embedding_model is not None else "missing"
+        embedding_detail = (
+            "aiteamvn-v2 · provisioned"
+            if embedding_ready
+            else "aiteamvn-v2 · not provisioned"
+        )
+        embedding_state = "ready" if embedding_ready else "missing"
         if knowledge_index is not None:
             embedding_detail += f" · dense {knowledge_index.get('dense_state', 'unknown')}"
         add("embedding", "Embedding", embedding_state, embedding_detail)

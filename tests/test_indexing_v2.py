@@ -3,13 +3,14 @@ from __future__ import annotations
 import sqlite3
 import stat
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from soca.knowledge.indexing import generations
 from soca.knowledge.indexing.coordinator import IndexCoordinator
-from soca.knowledge.indexing.generations import DenseGenerationCorrupt
+from soca.knowledge.indexing.generations import DenseGenerationBuilder, DenseGenerationCorrupt
 from soca.knowledge.indexing.identity import (
     ChunkerFingerprint,
     CorpusSpec,
@@ -236,6 +237,23 @@ def test_ready_generation_reuses_checksum_until_vector_file_changes(
     coordinator.snapshot()
 
     assert hashed == [report.dense.vector_file, report.dense.vector_file]
+
+
+def test_dense_checksum_identity_ignores_access_time_only_changes(tmp_path: Path) -> None:
+    path = tmp_path / "vectors.npy"
+    common = {
+        "st_dev": 1,
+        "st_ino": 2,
+        "st_size": 3,
+        "st_mtime_ns": 4,
+        "st_ctime_ns": 5,
+    }
+    before = SimpleNamespace(**common, st_atime_ns=6)
+    after = SimpleNamespace(**common, st_atime_ns=7)
+
+    assert DenseGenerationBuilder._checksum_identity(path, "abc", before) == (
+        DenseGenerationBuilder._checksum_identity(path, "abc", after)
+    )
 
 
 def test_dense_builder_batches_embedding_and_watcher_rebuilds_changes(tmp_path: Path) -> None:

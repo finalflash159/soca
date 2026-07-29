@@ -70,6 +70,21 @@ class EmbeddingModel(Protocol):
     def embed_query(self, text: str) -> np.ndarray: ...
 
 
+def production_embedding_fingerprint() -> EmbeddingFingerprint:
+    return EmbeddingFingerprint(
+        adapter="sentence_transformers",
+        adapter_version="runtime-v1",
+        model_id=AITEAMVN_V2_MODEL,
+        model_revision=AITEAMVN_V2_REVISION,
+        artifact_digest=AITEAMVN_V2_MODEL_SHA256,
+        tokenizer_digest=AITEAMVN_V2_TOKENIZER_SHA256,
+        dimension=1024,
+        pooling="mean",
+        normalize=True,
+        max_length=8192,
+    )
+
+
 class VietnameseEmbeddingV2Model:
     def __init__(self, *, model_home: Path | None = None) -> None:
         root = (model_home or default_model_home()) / "knowledge" / "aiteamvn_v2"
@@ -106,18 +121,7 @@ class VietnameseEmbeddingV2Model:
 
     @property
     def embedding_fingerprint(self) -> EmbeddingFingerprint:
-        return EmbeddingFingerprint(
-            adapter="sentence_transformers",
-            adapter_version="runtime-v1",
-            model_id=AITEAMVN_V2_MODEL,
-            model_revision=AITEAMVN_V2_REVISION,
-            artifact_digest=AITEAMVN_V2_MODEL_SHA256,
-            tokenizer_digest=AITEAMVN_V2_TOKENIZER_SHA256,
-            dimension=1024,
-            pooling="mean",
-            normalize=True,
-            max_length=8192,
-        )
+        return production_embedding_fingerprint()
 
     def embed_documents(self, texts: tuple[str, ...]) -> np.ndarray:
         if not texts:

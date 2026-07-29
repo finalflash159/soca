@@ -69,7 +69,22 @@ class DenseGenerationBuilder:
 
     def _verify_checksum(self, path: Path, expected: str) -> None:
         metadata = path.lstat()
-        identity = (
+        identity = self._checksum_identity(path, expected, metadata)
+        if identity in self._verified_files:
+            return
+        if _sha256_file(path) != expected:
+            raise DenseGenerationCorrupt("active dense generation checksum mismatch")
+        if self._checksum_identity(path, expected, path.lstat()) != identity:
+            raise DenseGenerationCorrupt("active dense generation changed during verification")
+        self._verified_files.add(identity)
+
+    @staticmethod
+    def _checksum_identity(
+        path: Path,
+        expected: str,
+        metadata: os.stat_result,
+    ) -> tuple[Path, str, int, int, int, int, int]:
+        return (
             path,
             expected,
             metadata.st_dev,
@@ -78,13 +93,6 @@ class DenseGenerationBuilder:
             metadata.st_mtime_ns,
             metadata.st_ctime_ns,
         )
-        if identity in self._verified_files:
-            return
-        if _sha256_file(path) != expected:
-            raise DenseGenerationCorrupt("active dense generation checksum mismatch")
-        if path.lstat() != metadata:
-            raise DenseGenerationCorrupt("active dense generation changed during verification")
-        self._verified_files.add(identity)
 
     def load_ready(
         self,
