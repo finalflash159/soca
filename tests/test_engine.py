@@ -330,6 +330,35 @@ def _fake_voice_builder(config: ResolvedVoiceRuntimeConfig) -> VoiceRuntimeBundl
         [
             StreamingEvent(type="asr", text="xin chào"),
             StreamingEvent(
+                type="runtime",
+                text="Theo memory [M1].",
+                metadata={
+                    "router_tier": "semantic",
+                    "router_reason": "retrieval_request",
+                    "router_disposition": "retrieval_request",
+                    "router_handler": "memory",
+                    "router_selected_routes": ["retrieval_request"],
+                    "router_sources": ["memory"],
+                    "router_scores": {"retrieval_request": 0.91},
+                    "router_source_scores": {"memory": 0.93},
+                    "router_runner_up": "unresolved",
+                    "router_margin": 0.12,
+                    "router_latency_ms": 4.2,
+                    "evidence_status": "supported",
+                    "answer_policy": "grounded",
+                    "answer_policy_reason": "supported_evidence",
+                    "grounding_policy_version": "grounding-v1",
+                    "citation_count": 1,
+                    "memory_access_plan": {
+                        "include_core": True,
+                        "include_working": True,
+                        "archive_mode": "semantic",
+                        "archive_query": "ghi chú đã lưu",
+                        "reason": "semantic_source_selection",
+                    },
+                },
+            ),
+            StreamingEvent(
                 type="done",
                 text="Xin chào.",
                 latency_ms=5.0,
@@ -375,6 +404,11 @@ def test_engine_voice_start_streams_loop_events() -> None:
     assert "loop_stopped" in voice_types
     asr = next(e for e in capture.events() if e["event"] == "voice" and e["type"] == "asr")
     assert asr["text"] == "xin chào"
+    router_trace = next(e for e in capture.events() if e["event"] == "router_trace")
+    assert router_trace["evidence_status"] == "supported"
+    assert router_trace["answer_policy"] == "grounded"
+    assert router_trace["citation_count"] == 1
+    assert router_trace["memory_access_plan"]["archive_mode"] == "semantic"
 
 
 def test_engine_no_model_rejects_voice_and_chat() -> None:

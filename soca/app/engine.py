@@ -1,25 +1,3 @@
-"""Headless SoCa engine: NDJSON protocol over stdio for external UIs.
-
-The Ink TUI (``ui/``) spawns ``soca engine`` and speaks this protocol:
-
-* stdin  — one JSON command per line:
-  ``{"cmd": "status"}`` · ``{"cmd": "context"}`` ·
-  ``{"cmd": "chat", "text": "..."}`` ·
-  ``{"cmd": "voice_start", "max_turns": null}`` · ``{"cmd": "voice_stop"}`` ·
-  ``{"cmd": "llm_providers"}`` · ``{"cmd": "llm_models", "provider": "..."}`` ·
-  ``{"cmd": "llm_set_key", "provider": "...", "key": "..."}`` ·
-  ``{"cmd": "llm_select", "backend": "remote", "provider": "...", "model": "..."}`` ·
-  ``{"cmd": "quit"}``
-* stdout — one JSON event per line, first ``{"event": "hello", ...}`` then
-  ``voice`` / ``chat`` / ``status`` / ``engine_error`` / ``bye`` events.
-
-Audio never crosses the boundary: the mic, DuplexAecSink barge-in, and TTS
-playback all stay inside this process. The UI only renders state.
-
-stdout belongs to the protocol exclusively — everything else (model loading
-chatter, warnings) is redirected to stderr while the engine runs.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -262,9 +240,7 @@ class SocaEngine:
                 "tts": VALTEC_TTS_CONFIG.key,
                 "voice": self.voice_config.tts_voice,
             }
-        self.writer.emit(
-            protocol_hello(profile=self.profile, no_model=self.no_model, stack=stack)
-        )
+        self.writer.emit(protocol_hello(profile=self.profile, no_model=self.no_model, stack=stack))
         self._cmd_context()
         if self._settings_warning is not None:
             self._error(self._settings_warning)
@@ -419,8 +395,10 @@ class SocaEngine:
             )
         else:
             local_config = get_model_config(settings.model_id)
-            local_state = "loaded" if self.text_bundle is not None else (
-                "ready" if local_config.local_path.is_file() else "missing"
+            local_state = (
+                "loaded"
+                if self.text_bundle is not None
+                else ("ready" if local_config.local_path.is_file() else "missing")
             )
             add("chat_llm", "Chat LLM", local_state, f"local · {settings.model_id}")
 
@@ -446,7 +424,9 @@ class SocaEngine:
             add(
                 "voice_llm",
                 "Voice LLM",
-                "loaded" if voice_bundle is not None else ("ready" if voice_llm_ready else "missing"),
+                "loaded"
+                if voice_bundle is not None
+                else ("ready" if voice_llm_ready else "missing"),
                 f"local · {self.voice_config.llm_model}",
             )
             try:
@@ -497,10 +477,20 @@ class SocaEngine:
                 add("summary", "Working summary", "disabled", "worker disabled")
             elif self.session_memory.summary_worker_state == "running":
                 summary_state = "loaded"
-                add("summary", "Working summary", summary_state, f"local · {summary_spec.key} · lazy")
+                add(
+                    "summary",
+                    "Working summary",
+                    summary_state,
+                    f"local · {summary_spec.key} · lazy",
+                )
             else:
                 summary_state = "ready" if summary_path.is_file() else "missing"
-                add("summary", "Working summary", summary_state, f"local · {summary_spec.key} · lazy")
+                add(
+                    "summary",
+                    "Working summary",
+                    summary_state,
+                    f"local · {summary_spec.key} · lazy",
+                )
             add(
                 "memory",
                 "Archive memory",
@@ -993,9 +983,7 @@ class SocaEngine:
                     "input_budget_tokens": input_budget,
                     "available_dynamic_tokens": available,
                     "observed_prompt_tokens": manifest.get("observed_prompt_tokens"),
-                    "observed_prompt_token_source": manifest.get(
-                        "observed_prompt_token_source"
-                    ),
+                    "observed_prompt_token_source": manifest.get("observed_prompt_token_source"),
                     "provider_prompt_tokens": manifest.get("provider_prompt_tokens"),
                     "prompt_token_delta": manifest.get("prompt_token_delta"),
                     "components": components,
@@ -1336,13 +1324,7 @@ class SocaEngine:
                         "grounding_policy_version": trace.grounding_policy_version,
                         "citation_count": trace.citation_count,
                         "memory_access_plan": (
-                            {
-                                "include_core": trace.memory_access_plan.include_core,
-                                "include_working": trace.memory_access_plan.include_working,
-                                "archive_mode": trace.memory_access_plan.archive_mode,
-                                "archive_query": trace.memory_access_plan.archive_query,
-                                "reason": trace.memory_access_plan.reason,
-                            }
+                            dataclasses.asdict(trace.memory_access_plan)
                             if trace.memory_access_plan is not None
                             else None
                         ),
@@ -1554,6 +1536,21 @@ class SocaEngine:
                         "source_scores": metadata.get("router_source_scores", {}),
                         "runner_up": metadata.get("router_runner_up"),
                         "margin": metadata.get("router_margin"),
+                        "evidence_status": metadata.get(
+                            "evidence_status",
+                            "not_requested",
+                        ),
+                        "answer_policy": metadata.get("answer_policy", "free_chat"),
+                        "answer_policy_reason": metadata.get(
+                            "answer_policy_reason",
+                            "no_retrieval_evidence",
+                        ),
+                        "grounding_policy_version": metadata.get(
+                            "grounding_policy_version",
+                            "",
+                        ),
+                        "citation_count": int(metadata.get("citation_count", 0)),
+                        "memory_access_plan": metadata.get("memory_access_plan"),
                         "latency_ms": float(metadata.get("router_latency_ms", 0.0)),
                     }
                 )
