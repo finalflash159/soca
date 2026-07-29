@@ -1513,6 +1513,7 @@ class SocaEngine:
                         "event": "router_trace",
                         "tier": tier,
                         "tool": None,
+                        "reason": metadata.get("router_reason", "no_match"),
                         "disposition": metadata.get("router_disposition", "unresolved"),
                         "handler": metadata.get("router_handler"),
                         "selected_routes": metadata.get("router_selected_routes", []),

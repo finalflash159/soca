@@ -1463,7 +1463,10 @@ class AssistantRuntime:
                 reason="Mình chưa hỗ trợ khả năng này trên máy bạn.",
                 route=RuntimeRoute.OUT_OF_SCOPE,
             )
-        if decision.disposition == "unresolved" and decision.reason.startswith("semantic_"):
+        if decision.disposition == "unresolved" and (
+            decision.selected_routes == ("unresolved",)
+            or decision.reason.startswith("semantic_")
+        ):
             return self._blocked_result(
                 frame,
                 draft,

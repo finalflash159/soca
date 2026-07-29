@@ -133,7 +133,19 @@ def _fit_margin(
             best_margin = margin
     if source:
         return best_margin, {"correct": best_rank[0], "total": len(rows), "accuracy": best_rank[1]}
-    return best_margin, {"unsupported": 0 if best_rank[0] else 1, "total": len(rows), "accuracy": best_rank[1]}
+    predictions = [_route_prediction(row, thresholds, best_margin) for row in rows]
+    out_of_scope_total = sum(row["disposition"] == "out_of_scope" for row in rows)
+    unsupported_count = sum(
+        prediction == "direct_tool" and row["disposition"] == "out_of_scope"
+        for row, prediction in zip(rows, predictions, strict=True)
+    )
+    return best_margin, {
+        "unsupported_count": unsupported_count,
+        "unsupported_total": out_of_scope_total,
+        "unsupported_rate": unsupported_count / out_of_scope_total if out_of_scope_total else 0.0,
+        "total": len(rows),
+        "accuracy": best_rank[1],
+    }
 
 
 def fit(

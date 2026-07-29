@@ -4,7 +4,9 @@ import pytest
 
 from soca.core.llm_tool_router import LLMToolRouter
 from soca.core.route_catalog import source_profile, validate_route_fields
+from soca.core.runtime import AssistantRuntime
 from soca.core.tool_routing import ToolRouterConfig, parse_route_decision
+from soca.core.turn import RuntimeRoute
 from soca.llm.base import LLMResult
 from soca.tools import LocalTimeTool, ToolRuntime
 
@@ -67,3 +69,22 @@ def test_llm_router_uses_route_contract_for_direct_and_retrieval() -> None:
     assert retrieval.select("tôi đã chọn TTS gì", knowledge_limit=3) is None
     assert retrieval.last_decision.sources == ("memory",)
     assert retrieval.last_decision.source_profile == "memory"
+
+
+def test_llm_unresolved_route_becomes_clarification_not_free_chat() -> None:
+    router = LLMToolRouter(
+        _FakeRouterLLM(
+            '{"route":"unresolved","handler":null,"arguments":{},"sources":[]}'
+        ),
+        ToolRuntime([LocalTimeTool()]),
+        config=ToolRouterConfig(mode="llm", repair_attempts=0),
+    )
+    result = AssistantRuntime(
+        llm=_FakeRouterLLM("should not answer"),
+        tool_runtime=ToolRuntime([LocalTimeTool()]),
+        tool_router=router,
+    ).run_text_turn("cái đó thế nào rồi?")
+
+    assert result.route == RuntimeRoute.CLARIFICATION
+    assert result.trace is not None
+    assert result.trace.disposition == "unresolved"
