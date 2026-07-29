@@ -1294,6 +1294,21 @@ the whole profile gives more context than the top-3 chunks. On a large personal
 vault the retrieved variant is expected to win; this small fixture is for CI
 reproducibility, not a tuned benchmark.
 
+### P2.4 — Memory-plane and checkpoint contract smoke
+
+Measured on the current tree with `.venv` Python 3.11. The model-free contract
+suite covers 65 tests, including normal-turn archive non-access, explicit
+semantic archive assembly, approved-core separation, checkpoint round-trip,
+legacy checkpoint migration, private permissions, resume, clear/delete, and
+RAM-only non-persistence. Ruff and Pyright report zero findings for the touched
+memory/runtime modules.
+
+Decision: the access-plane split and opt-in checkpoint implementation are
+accepted for the P2 branch. `ram_only` remains the product default; durable
+resume is available only when `session_persistence=local_resumable` is
+explicitly selected. This smoke is a contract test, not evidence that
+episodic memory or automatic core promotion is production-ready.
+
 ---
 
 ## P3.1 — Conversational Robustness (barge-in + turn-taking)

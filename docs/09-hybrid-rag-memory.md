@@ -161,8 +161,16 @@ The stack is in `soca/memory/`:
 Archive retrieval is now explicitly requested by the semantic source decision
 or `memory:` override; it is not run for ordinary smalltalk/free-chat turns.
 `MemoryContextBuilder.build(..., include_archive=False)` contributes only the
-always-on bounded working/profile context. Archive snippets become `[M#]`
-grounded context only when selected.
+always-on bounded working/core context. Archive snippets become `[M#]`
+grounded context only when selected. Production setup uses `memory/core.json`
+for explicitly approved core items; `memory/profile.md` is not promoted into
+core automatically. The compatibility builder still accepts an old profile
+source when no core store is supplied by a test/legacy adapter.
+
+`MemoryAccessPlan` records core/working inclusion, archive mode (`none`,
+`semantic`, `episodic`, or `both`), archive query, and reason.
+`PromptContextAssembler` combines already-selected blocks and never searches a
+corpus, so archive access remains visible in the runtime policy.
 
 Working memory is typed as complete `ConversationTurn`s instead of a flat
 message deque. The production `working_v2_16k` policy uses
@@ -176,6 +184,13 @@ Summary context is allocated dynamically from 4K to 32K. A missing or invalid
 private weight falls back to `trim_only`; there is no extractive/regex summary,
 remote summary fallback, or automatic runtime download. `/compact`,
 `status`, and `cancel` share the same coordinator in CLI and UI.
+
+Session state is `ram_only` by default. Explicit `local_resumable` mode uses
+`SessionCheckpointStore` under the XDG state directory with atomic writes,
+private `0700/0600` permissions, schema-versioned wrapper payloads, legacy
+working-checkpoint reads, and a revision guard. Checkpoints contain only
+working turns/summary state; they do not contain API keys, retrieved snippets,
+core values, tool results, or vectors. `clear` deletes the checkpoint.
 
 ### Human-in-the-loop capture
 
