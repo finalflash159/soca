@@ -1632,7 +1632,7 @@ answerable and 8 unanswerable rows:
 | --- | ---: | ---: |
 | Answerable path recall@5 | 12/12 (100.00%) | 75.75–100.00% |
 | Unanswerable accepted-evidence rate | 7/8 (87.50%) | 52.91–97.76% |
-| Retrieval+evidence mean / p95 | 60.50 / 68.67 ms | local cached-sparse run |
+| Retrieval+evidence mean / p95 | 32.88 / 32.81 ms | local cached-sparse run; single retrieval |
 
 The 87.50% false-evidence rate is a release blocker and confirms that an empty
 or unrelated vault question cannot be trusted merely because sparse retrieval
@@ -1677,6 +1677,13 @@ max has a useful direct-tool diagnostic but loses held-out disposition quality;
 it is not a production choice. E5 asymmetric/max remains the compatibility
 baseline only, not a calibrated winner. The raw bake-off predictions are in
 `eval/results/voice_knowledge_p0/bakeoff_*.jsonl` (ignored local artifacts).
+
+The post-review rerun also verifies that all evaluators reject missing or stale
+prediction IDs instead of scoring a partial intersection. The grounding
+capture reuses the exact retrieved hit set for relevance admission, and the
+bake-off creates its output directory before its first capture. Source routing
+keeps raw floating-point scores for threshold/margin decisions; six-decimal
+values are telemetry only.
 
 **Memory policy baseline**
 

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from eval.eval_turn_policy import evaluate as evaluate_turn_policy
+from eval.eval_turn_policy import require_exact_prediction_ids
 from soca.core.router_setup import build_runtime_tool_router
 from soca.core.runtime import DefaultRuntimeToolRouter
 from soca.core.tool_routing import SemanticRouterConfig, ToolRouterConfig
@@ -260,6 +261,12 @@ def _score_splits(rows: tuple[dict[str, Any], ...], predictions: dict[str, dict[
 def evaluate(dataset: Path, predictions: Path, *, examples: Path | None = None) -> dict[str, Any]:
     rows = load_dataset(dataset)
     captured = _load_predictions(predictions)
+    require_exact_prediction_ids(
+        (row["id"] for row in rows),
+        captured,
+        dataset=dataset,
+        predictions=predictions,
+    )
     result = evaluate_turn_policy(dataset, predictions)
     result.update(
         {

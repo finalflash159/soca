@@ -89,7 +89,7 @@ def run_benchmark(
         for row in rows:
             started = time.perf_counter()
             raw_hits = source.search(row["query"], limit=5)
-            context = builder.build(row["query"])
+            context = builder.build_from_hits(row["query"], tuple(raw_hits))
             raw_paths = list(dict.fromkeys(hit.document.path for hit in raw_hits))
             accepted_paths = list(dict.fromkeys(hit.document.path for hit in context.hits))
             records.append(

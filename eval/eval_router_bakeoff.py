@@ -152,6 +152,7 @@ def run(
 ) -> dict[str, Any]:
     rows = load_dataset(dataset)
     examples = _load_examples(examples_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
     example_texts = tuple(str(row["text"]) for row in examples)
     query_texts = tuple(str(row.get("query") or row.get("transcript")) for row in rows)
     reports: dict[str, Any] = {}
@@ -205,7 +206,6 @@ def run(
         "reports": reports,
         "decision": "diagnostic_only_no_threshold_fit",
     }
-    output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return result
 

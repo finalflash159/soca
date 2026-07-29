@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from eval.eval_full_cascade import evaluate as evaluate_cascade
 from eval.eval_full_cascade import load_dataset as load_route_dataset
 from eval.eval_grounding import load_dataset as load_grounding_dataset
@@ -79,6 +81,14 @@ def test_cascade_evaluator_scores_disposition_source_and_family(tmp_path: Path) 
     assert result["tool_metrics"]["unsupported_to_real_tool"]["rate"] == 0.0
     assert result["by_family"]["test-family"]["disposition_accuracy"] == 1.0
 
+    _write_jsonl(predictions, rows[:2])
+    with pytest.raises(ValueError, match="exactly match"):
+        evaluate_cascade(dataset, predictions)
+
+    _write_jsonl(predictions, rows + [{"id": "stale", "disposition": "smalltalk", "sources": []}])
+    with pytest.raises(ValueError, match="exactly match"):
+        evaluate_cascade(dataset, predictions)
+
 
 def test_source_evaluator_reports_neither_without_collapsing_it(tmp_path: Path) -> None:
     dataset = tmp_path / "source.jsonl"
@@ -102,3 +112,10 @@ def test_source_evaluator_reports_neither_without_collapsing_it(tmp_path: Path) 
     assert result["by_profile"]["neither"]["count"] == 1
     assert result["by_profile"]["neither"]["correct"] == 1
     assert result["by_profile"]["neither"]["precision"] == 1.0
+
+    _write_jsonl(predictions, [
+        {"id": "train", "sources": []},
+        {"id": "validation", "sources": ["knowledge"]},
+    ])
+    with pytest.raises(ValueError, match="exactly match"):
+        evaluate_sources(dataset, predictions)

@@ -143,7 +143,10 @@ class SemanticTurnRouter:
         runner_up = ranked[1][0] if len(ranked) > 1 else None
         margin = top_score - ranked[1][1] if len(ranked) > 1 else None
         score_map = {name: round(score, 6) for name, score in ranked}
-        source_score_map = self._source_scores(scores)
+        raw_source_scores = self._source_scores(scores)
+        source_score_map = {
+            source: round(score, 6) for source, score in raw_source_scores.items()
+        }
         if top_score < self._config.threshold:
             self.last_tier = "none"
             self.last_decision = ToolRouterDecision(
@@ -197,7 +200,7 @@ class SemanticTurnRouter:
             )
             return call
         if disposition == "retrieval_request":
-            sources = self._select_sources(source_score_map)
+            sources = self._select_sources(raw_source_scores)
             self.last_decision = ToolRouterDecision(
                 reason="semantic_retrieval",
                 disposition="retrieval_request",
@@ -225,7 +228,7 @@ class SemanticTurnRouter:
                 continue
             for source in example.sources:
                 by_source[source] = max(by_source.get(source, float("-inf")), float(raw_score))
-        return {source: round(score, 6) for source, score in sorted(by_source.items())}
+        return dict(sorted(by_source.items()))
 
     def _select_sources(self, by_source: dict[str, float]) -> tuple[str, ...]:
         if not by_source:

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from eval.eval_full_cascade import _build_router
+from eval.eval_turn_policy import require_exact_prediction_ids
 
 _PROFILES = {"knowledge", "memory", "both", "neither"}
 _SOURCES = {"knowledge", "memory"}
@@ -106,6 +107,12 @@ def _wilson(successes: int, total: int) -> dict[str, float | int]:
 def evaluate(dataset: Path, predictions: Path) -> dict[str, Any]:
     rows = load_dataset(dataset)
     captured = _load_predictions(predictions)
+    require_exact_prediction_ids(
+        (row["id"] for row in rows),
+        captured,
+        dataset=dataset,
+        predictions=predictions,
+    )
     pairs = [(row, captured[row["id"]]) for row in rows if row["id"] in captured]
     exact = sum(set(row["sources"]) == set(prediction.get("sources", [])) for row, prediction in pairs)
     by_profile: dict[str, dict[str, float | int]] = {}

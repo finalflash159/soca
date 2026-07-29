@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -57,10 +58,35 @@ def _rate(numerator: int, denominator: int) -> float:
     return numerator / denominator if denominator else 0.0
 
 
+def require_exact_prediction_ids(
+    expected_ids: Iterable[str],
+    actual_ids: Iterable[str],
+    *,
+    dataset: Path,
+    predictions: Path,
+) -> None:
+    expected = set(expected_ids)
+    actual = set(actual_ids)
+    if expected == actual:
+        return
+    missing = sorted(expected - actual)
+    extra = sorted(actual - expected)
+    raise ValueError(
+        f"prediction ids must exactly match dataset; dataset={dataset}, predictions={predictions}, "
+        f"missing={missing}, extra={extra}"
+    )
+
+
 def evaluate(dataset: Path, predictions: Path) -> dict[str, Any]:
     """Score one captured policy run against a sealed labelled dataset."""
     expected = _load(dataset)
     actual = {row["id"]: row for row in _load(predictions, predictions=True)}
+    require_exact_prediction_ids(
+        (row["id"] for row in expected),
+        actual,
+        dataset=dataset,
+        predictions=predictions,
+    )
     pairs = [(row, actual[row["id"]]) for row in expected if row["id"] in actual]
     if not all(row.get("disposition") in _DISPOSITIONS for row, _ in pairs):
         return {
