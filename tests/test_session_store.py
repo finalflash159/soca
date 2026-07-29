@@ -49,3 +49,23 @@ def test_checkpoint_reads_legacy_working_payload(tmp_path: Path) -> None:
 
     assert loaded is not None
     assert loaded.snapshot.turns == memory.snapshot.turns
+
+
+def test_checkpoint_rejects_stale_equal_revision_state(tmp_path: Path) -> None:
+    store = SessionCheckpointStore(tmp_path / "sessions")
+    first = WorkingMemory(thread_id="same")
+    turn = first.begin_turn("first")
+    first.finish_turn(turn.sequence, "one")
+    path = store.save(first)
+    loaded, revision, digest = store.load_with_metadata("same")
+    assert loaded is not None
+    assert revision == first.snapshot.revision
+    assert digest is not None
+
+    divergent = WorkingMemory(thread_id="same")
+    turn = divergent.begin_turn("other")
+    divergent.finish_turn(turn.sequence, "two")
+    divergent._revision = first.snapshot.revision  # noqa: SLF001 - adversarial fixture
+    with pytest.raises(ValueError, match="advance revision"):
+        store.save(divergent, expected_revision=revision, expected_digest=digest)
+    assert path.exists()

@@ -40,6 +40,9 @@ export interface AppProps {
   profile?: string;
   noModel?: boolean;
   vault?: string;
+  sessionPersistence?: "ram_only" | "local_resumable";
+  sessionId?: string;
+  resumeSession?: boolean;
 }
 
 // History flows into the terminal's own scrollback via <Static> (the
@@ -73,7 +76,15 @@ function Brand({ profile }: { profile: string }) {
   );
 }
 
-export function App({ target, profile, noModel = false, vault }: AppProps) {
+export function App({
+  target,
+  profile,
+  noModel = false,
+  vault,
+  sessionPersistence,
+  sessionId,
+  resumeSession,
+}: AppProps) {
   const { exit } = useApp();
   const rawInput = Boolean(useStdin().isRawModeSupported);
   // Choosing chat/voice routes through Settings first so the user picks the LLM
@@ -114,7 +125,14 @@ export function App({ target, profile, noModel = false, vault }: AppProps) {
     engine.on("exit", () =>
       dispatch({ type: "system_message", text: "engine đã thoát" }),
     );
-    engine.start({ profile, noModel, vault });
+    engine.start({
+      profile,
+      noModel,
+      vault,
+      sessionPersistence,
+      sessionId,
+      resumeSession,
+    });
     engine.send({ cmd: "llm_providers" });
     engine.send({ cmd: "llm_config" });
     if (target === "status") engine.send({ cmd: "status" });

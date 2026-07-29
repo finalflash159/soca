@@ -15,6 +15,9 @@ export interface EngineOptions {
   profile?: string;
   noModel?: boolean;
   vault?: string;
+  sessionPersistence?: "ram_only" | "local_resumable";
+  sessionId?: string;
+  resumeSession?: boolean;
 }
 
 /** Locate the repo's soca executable relative to this file (ui/src or ui/dist). */
@@ -27,6 +30,10 @@ function defaultEngineCommand(options: EngineOptions): string[] {
   if (options.profile) args.push(options.profile);
   if (options.noModel) args.push("--no-model");
   if (options.vault) args.push("--vault", options.vault);
+  if (options.sessionPersistence)
+    args.push("--session-persistence", options.sessionPersistence);
+  if (options.sessionId) args.push("--session-id", options.sessionId);
+  if (options.resumeSession) args.push("--resume-session");
   return [...base, ...args];
 }
 

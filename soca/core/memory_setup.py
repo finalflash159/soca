@@ -110,6 +110,14 @@ def build_memory_runtime_setup(
         )
         status = f"enabled:retrieved:{config.retrieval_mode}"
     core = CoreMemoryStore(vault, max_chars=config.profile_chars)
+    if not core.path.is_file():
+        core_state = "empty"
+    else:
+        try:
+            core.items()
+            core_state = "ready"
+        except (OSError, UnicodeError, ValueError):
+            core_state = "degraded"
     return MemoryRuntimeSetup(
         builder=MemoryContextBuilder(
             long_term=long_term,
@@ -120,7 +128,7 @@ def build_memory_runtime_setup(
         ),
         long_term=long_term,
         core=core,
-        status=status + (":core:ready" if core.path.is_file() else ":core:empty"),
+        status=status + f":core:{core_state}",
     )
 
 

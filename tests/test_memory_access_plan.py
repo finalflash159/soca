@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from soca.knowledge import KnowledgeCitation, KnowledgeDocument, KnowledgeHit
 from soca.memory import (
     CoreMemoryStore,
     MemoryAccessPlan,
+    MemoryContext,
     MemoryContextBuilder,
     MemoryProfileResult,
     PromptContextAssembler,
@@ -90,3 +92,58 @@ def test_core_store_is_separate_from_archive_profile(tmp_path) -> None:
 
     core = CoreMemoryStore(tmp_path)
     assert core.read_profile() == "- [language] Tiếng Việt"
+
+
+def test_invalid_core_degrades_without_blocking_working_memory(tmp_path) -> None:
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    (memory_dir / "core.json").write_text("{not-json", encoding="utf-8")
+    session = SessionMemory(summary_enabled=False)
+    session.append("user", "working vẫn dùng được")
+
+    context = MemoryContextBuilder(
+        core=CoreMemoryStore(tmp_path),
+        session=session,
+    ).build("xin chào", include_archive=False)
+
+    assert context.degraded_reason == "core_invalid"
+    assert "working vẫn dùng được" in context.prompt_text
+
+
+def test_assembler_reserves_space_for_selected_archive_evidence() -> None:
+    document = KnowledgeDocument("memory-a", "memory/a.md", "A", "TTS choice")
+    hit = KnowledgeHit(document, 1.0, "TTS choice", 1, 1)
+    citation = KnowledgeCitation("memory/a.md", "A", 1, 1, "memory")
+    core = MemoryContextBuilder(session=SessionMemory()).build()
+    archive = MemoryContext(
+        profile_text="",
+        session_text="",
+        prompt_text="[M1] memory/a.md\nMemory: TTS choice",
+        hits=(hit,),
+        citations=(citation,),
+        mode="retrieved",
+        evidence_status="supported",
+        evidence_reason="test_hit",
+        archive_text="[M1] memory/a.md\nMemory: TTS choice",
+    )
+    core = MemoryContext(
+        profile_text="",
+        session_text="Recent conversation:\n" + "x" * 180,
+        prompt_text="Recent conversation:\n" + "x" * 180,
+        core_text="",
+    )
+
+    combined = PromptContextAssembler(max_chars=220).assemble(
+        core,
+        archive,
+        plan=MemoryAccessPlan(
+            archive_mode="semantic",
+            archive_query="TTS",
+            reason="test_archive_priority",
+        ),
+    )
+
+    assert len(combined.prompt_text) <= 220
+    assert "memory/a.md" in combined.prompt_text
+    assert combined.citations == (citation,)
+    assert combined.hits == (hit,)

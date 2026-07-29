@@ -8,7 +8,11 @@ from typing import Literal
 from soca.core.text_budget import truncate
 from soca.memory.base import MemoryRole, MemoryTurn
 from soca.memory.compaction_coordinator import CompactionResult, WorkingMemoryCompactionCoordinator
-from soca.memory.session_store import CheckpointConflictError, SessionCheckpointStore
+from soca.memory.session_store import (
+    CheckpointConflictError,
+    SessionCheckpointStore,
+    _payload_digest,
+)
 from soca.memory.summary import LocalSummaryWorkerProcess, build_production_summary_worker
 from soca.memory.working import WorkingMemory, WorkingMemoryPolicy, approximate_tokens
 
@@ -78,6 +82,8 @@ class SessionMemory:
         self.max_turn_chars = max_turn_chars
         self.persistence: SessionPersistence = persistence
         self.checkpoint_store = checkpoint_store
+        self._checkpoint_revision: int | None = None
+        self._checkpoint_digest: str | None = None
         self._summary_worker = (
             summary_worker
             if summary_worker is not None
@@ -98,9 +104,11 @@ class SessionMemory:
             ),
         )
         if resume and checkpoint_store is not None:
-            loaded = checkpoint_store.load(thread_id)
+            loaded, revision, digest = checkpoint_store.load_with_metadata(thread_id)
             if loaded is not None:
                 self.working = loaded
+                self._checkpoint_revision = revision
+                self._checkpoint_digest = digest
         self.compaction = WorkingMemoryCompactionCoordinator(
             self.working,
             self._summary_worker,
@@ -275,15 +283,34 @@ class SessionMemory:
         if self.persistence != "local_resumable" or self.checkpoint_store is None:
             return
         try:
-            self.checkpoint_store.save(self.working)
+            self.checkpoint_store.save(
+                self.working,
+                expected_revision=self._checkpoint_revision,
+                expected_digest=self._checkpoint_digest,
+            )
+            self._checkpoint_revision = self.working.snapshot.revision
+            self._checkpoint_digest = _payload_digest(self.working.to_dict())
         except CheckpointConflictError:
             # A second process owns this thread. Do not overwrite its newer
             # state or turn a local privacy feature into data loss.
             return
 
     def _delete_checkpoint(self) -> None:
-        if self.persistence == "local_resumable" and self.checkpoint_store is not None:
-            self.checkpoint_store.delete(self.working.thread_id)
+        if (
+            self.persistence == "local_resumable"
+            and self.checkpoint_store is not None
+            and self._checkpoint_revision is not None
+        ):
+            try:
+                self.checkpoint_store.delete(
+                    self.working.thread_id,
+                    expected_revision=self._checkpoint_revision,
+                    expected_digest=self._checkpoint_digest,
+                )
+            except CheckpointConflictError:
+                return
+            self._checkpoint_revision = None
+            self._checkpoint_digest = None
 
 
 __all__ = ["SessionMemory", "SessionMemoryStats", "SessionPersistence"]
