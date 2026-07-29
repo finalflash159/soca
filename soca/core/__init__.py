@@ -11,6 +11,18 @@ from .audio_out import (
     StreamingAudioSink,
     WavFileSink,
 )
+from .context_budget import (
+    EngineTokenCounter,
+    ModelCapability,
+    PromptAssembler,
+    PromptBudgetError,
+    PromptComponent,
+    PromptComponentUsage,
+    PromptManifest,
+    Utf8TokenCounter,
+    capability_from_engine,
+    token_counter_from_engine,
+)
 from .endpoint import EndpointConfig, block_samples, record_until_silence, should_stop_recording
 from .guardrails import (
     GuardrailAction,
@@ -147,6 +159,16 @@ __all__ = [
     "AudioPlaybackSession",
     "AudioSink",
     "StreamingAudioSink",
+    "ModelCapability",
+    "PromptAssembler",
+    "PromptBudgetError",
+    "PromptComponent",
+    "PromptComponentUsage",
+    "PromptManifest",
+    "EngineTokenCounter",
+    "Utf8TokenCounter",
+    "capability_from_engine",
+    "token_counter_from_engine",
     "AssistantRuntime",
     "DefaultRuntimeToolRouter",
     "ToolRouterConfig",

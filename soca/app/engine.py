@@ -242,6 +242,7 @@ class SocaEngine:
         # Session usage accumulates across chat AND voice turns (shared session).
         self.session_usage = SessionUsage()
         self._usage_lock = threading.Lock()
+        self._last_prompt_manifest: dict[str, Any] | None = None
 
     # --- lifecycle --------------------------------------------------------------
 
@@ -612,6 +613,9 @@ class SocaEngine:
                 reasoning_enabled=reasoning_enabled,
                 temperature=self.llm_settings.temperature,
                 top_p=self.llm_settings.top_p,
+                model_context_window=(
+                    model_info.context_length if model_info is not None else None
+                ),
                 model_max_output_tokens=(
                     model_info.max_output_tokens if model_info is not None else None
                 ),
@@ -639,6 +643,7 @@ class SocaEngine:
             return
         self.llm_settings = settings
         self.text_bundle = None
+        self._last_prompt_manifest = None
         self._emit_llm_config()
 
     def _emit_llm_config(self) -> None:
@@ -830,6 +835,7 @@ class SocaEngine:
         if model is None:
             return
         refreshed = settings.with_model_capabilities(
+            context_window=model.context_length,
             max_output_tokens=model.max_output_tokens,
             reasoning_supported=model.reasoning_supported,
             reasoning_mandatory=model.reasoning_mandatory,
@@ -844,6 +850,7 @@ class SocaEngine:
             return
         self.llm_settings = refreshed
         self.text_bundle = None
+        self._last_prompt_manifest = None
 
     def _key_validation_is_current(self, provider_key: str, fingerprint: str) -> bool:
         with self._catalog_lock:
@@ -930,6 +937,63 @@ class SocaEngine:
 
     def _cmd_context(self) -> None:
         stats = self.session_memory.stats() if self.session_memory is not None else None
+        manifest = self._last_prompt_manifest
+        if isinstance(manifest, dict):
+            raw_components = manifest.get("components")
+            components: list[dict[str, Any]] = []
+            if isinstance(raw_components, list):
+                labels = {
+                    "system": "System instructions",
+                    "current_input": "Current user input",
+                    "answer_prefix": "Prompt scaffolding",
+                    "memory": "Memory retrieval",
+                    "knowledge": "Knowledge retrieval",
+                }
+                for item in raw_components:
+                    if not isinstance(item, dict):
+                        continue
+                    component_id = str(item.get("component_id") or "unknown")
+                    components.append(
+                        {
+                            "id": component_id,
+                            "label": labels.get(component_id, component_id),
+                            "tokens": item.get("tokens"),
+                            "included": bool(item.get("included")),
+                            "required": bool(item.get("required")),
+                            "priority": item.get("priority"),
+                            "policy": "always" if bool(item.get("required")) else "on_demand",
+                        }
+                    )
+            prompt_tokens = manifest.get("prompt_tokens")
+            input_budget = manifest.get("input_budget_tokens")
+            available = (
+                max(0, input_budget - prompt_tokens)
+                if isinstance(input_budget, int) and isinstance(prompt_tokens, int)
+                else None
+            )
+            self.writer.emit(
+                {
+                    "event": "context",
+                    "estimated": False,
+                    "token_counter": manifest.get("token_counter"),
+                    "prompt_hash": manifest.get("prompt_hash"),
+                    "prompt_manifest": manifest,
+                    "session": dataclasses.asdict(stats) if stats is not None else None,
+                    "resident_prompt_tokens": prompt_tokens,
+                    "output_reserve_tokens": manifest.get("effective_output_tokens"),
+                    "model_context_tokens": manifest.get("context_window"),
+                    "input_budget_tokens": input_budget,
+                    "available_dynamic_tokens": available,
+                    "observed_prompt_tokens": manifest.get("observed_prompt_tokens"),
+                    "observed_prompt_token_source": manifest.get(
+                        "observed_prompt_token_source"
+                    ),
+                    "provider_prompt_tokens": manifest.get("provider_prompt_tokens"),
+                    "prompt_token_delta": manifest.get("prompt_token_delta"),
+                    "components": components,
+                }
+            )
+            return
         core_memory = self._core_memory_text()
         core_section = f"Long-term memory:\n{core_memory}" if core_memory else ""
         summary_section = ""
@@ -1238,6 +1302,7 @@ class SocaEngine:
             self._emit_turn_progress("chat", "complete", status="done")
             trace = result.trace
             if trace is not None:
+                self._last_prompt_manifest = trace.prompt_manifest
                 commands = self._memory_commands()
                 try:
                     pending_count = len(commands.list_pending()) if commands is not None else 0
@@ -1428,6 +1493,10 @@ class SocaEngine:
             )
             if event.type == "runtime":
                 metadata = event.metadata
+                prompt_manifest = metadata.get("prompt_manifest")
+                self._last_prompt_manifest = (
+                    prompt_manifest if isinstance(prompt_manifest, dict) else None
+                )
                 tier = metadata.get("router_tier", "none")
                 if tier not in {"deterministic", "semantic", "llm", "none"}:
                     tier = "none"

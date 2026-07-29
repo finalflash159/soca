@@ -299,6 +299,7 @@ class VoicePipeline:
                 # LLM telemetry for `soca voice --usage`. Object is fine in metadata;
                 # eval/console read named keys, not the whole dict.
                 "llm_usage": getattr(runtime_result, "usage", None),
+                "prompt_manifest": getattr(trace, "prompt_manifest", None),
             },
         )
 

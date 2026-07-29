@@ -422,6 +422,7 @@ def build_voice_runtime(
             top_p=config.top_p,
             knowledge_limit=knowledge_limit,
             voice_knowledge_mode=cast(VoiceKnowledgeMode, effective_voice_mode),
+            model_context_window=LLM_MODEL_REGISTRY[config.llm_model].context_window,
         ),
         knowledge_intent_gate=knowledge_intent_gate,
     )

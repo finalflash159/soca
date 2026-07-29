@@ -34,6 +34,7 @@ class LlmSettings:
     reasoning_enabled: bool = False
     temperature: float = 0.2
     top_p: float = 0.95
+    model_context_window: int | None = None
     model_max_output_tokens: int | None = None
     model_reasoning_supported: bool | None = None
     model_reasoning_mandatory: bool = False
@@ -61,6 +62,12 @@ class LlmSettings:
             or self.model_max_output_tokens <= 0
         ):
             raise ValueError("model_max_output_tokens must be a positive integer or null")
+        if self.model_context_window is not None and (
+            isinstance(self.model_context_window, bool)
+            or not isinstance(self.model_context_window, int)
+            or self.model_context_window <= 0
+        ):
+            raise ValueError("model_context_window must be a positive integer or null")
         if self.model_reasoning_supported is not None and not isinstance(
             self.model_reasoning_supported, bool
         ):
@@ -112,6 +119,7 @@ class LlmSettings:
     def with_model_capabilities(
         self,
         *,
+        context_window: int | None = None,
         max_output_tokens: int | None,
         reasoning_supported: bool | None,
         reasoning_mandatory: bool,
@@ -119,6 +127,7 @@ class LlmSettings:
     ) -> LlmSettings:
         return replace(
             self,
+            model_context_window=context_window,
             model_max_output_tokens=max_output_tokens,
             model_reasoning_supported=reasoning_supported,
             model_reasoning_mandatory=reasoning_mandatory,

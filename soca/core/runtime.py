@@ -7,6 +7,13 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, cast
 
 from soca.core.answer_validation import AnswerValidationDecision, validate_grounded_answer
+from soca.core.context_budget import (
+    PromptAssembler,
+    PromptBudgetError,
+    PromptComponent,
+    capability_from_engine,
+    token_counter_from_engine,
+)
 from soca.core.evidence import (
     EvidenceBundleDecision,
     EvidenceDecision,
@@ -49,7 +56,11 @@ from soca.knowledge.intent_gate import IntentDecision, VoiceKnowledgeMode
 from soca.llm import LLMEngine
 from soca.llm.providers import RemoteLLMError
 from soca.memory import MemoryContext, MemoryContextBuilder
-from soca.prompts import build_runtime_prompt
+from soca.prompts import (
+    KNOWLEDGE_GROUNDING_INSTRUCTIONS,
+    MEMORY_GROUNDING_INSTRUCTIONS,
+    SOCA_RUNTIME_SYSTEM_PROMPT,
+)
 from soca.tools import ToolCall, ToolResult, ToolRuntime
 
 from .workflow import (
@@ -71,12 +82,28 @@ class RuntimeOptions:
     knowledge_limit: int = 3
     voice_knowledge_mode: VoiceKnowledgeMode = "off"
     turn_workflow: Literal["legacy", "shadow", "controlled"] = "legacy"
+    model_context_window: int | None = None
+    model_max_output_tokens: int | None = None
+    # Remote model tokenizers may count provider message wrappers differently
+    # from the client adapter. Keep a conservative admission margin by default;
+    # observed positive deltas can increase it for subsequent turns.
+    context_safety_margin_tokens: int = 128
 
     def __post_init__(self) -> None:
         if self.voice_knowledge_mode not in {"off", "intent", "always"}:
             raise ValueError("voice_knowledge_mode must be off, intent, or always")
         if self.turn_workflow not in {"legacy", "shadow", "controlled"}:
             raise ValueError("turn_workflow must be legacy, shadow, or controlled")
+        for name, value in (
+            ("model_context_window", self.model_context_window),
+            ("model_max_output_tokens", self.model_max_output_tokens),
+        ):
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int) or value < 1
+            ):
+                raise ValueError(f"{name} must be a positive integer or null")
+        if self.context_safety_margin_tokens < 0:
+            raise ValueError("context_safety_margin_tokens must be non-negative")
 
 
 class KnowledgeIntentGate(Protocol):
@@ -220,6 +247,7 @@ class _TraceDraft:
     evidence_decisions: list[EvidenceDecision] = field(default_factory=list)
     evidence_bundle: EvidenceBundleDecision | None = None
     answer_validation: AnswerValidationDecision | None = None
+    prompt_manifest: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -252,6 +280,7 @@ class AssistantRuntime:
         self.memory_builder = memory_builder
         self.guardrail_policy = guardrail_policy
         self.options = options or RuntimeOptions()
+        self._prompt_safety_margin_tokens = self.options.context_safety_margin_tokens
         self._progress_callback: Callable[[str], None] | None = None
         self._active_goal_store = ActiveGoalStore()
         self._goal_resolver = GoalResolver(self._active_goal_store)
@@ -548,11 +577,22 @@ class AssistantRuntime:
             yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
             return
 
-        prompt = self._build_llm_prompt(
-            frame.text,
-            memory_context,
-            knowledge_context,
-        )
+        try:
+            prompt = self._build_llm_prompt(
+                draft,
+                frame.text,
+                memory_context,
+                knowledge_context,
+            )
+        except PromptBudgetError as exc:
+            result = self._blocked_result(
+                frame,
+                draft,
+                reason=f"Prompt vượt context của model ({exc.code}).",
+                route=RuntimeRoute.BLOCKED,
+            )
+            yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
+            return
         citations = tuple(draft.citations)
         knowledge_used = bool(citations)
 
@@ -569,7 +609,7 @@ class AssistantRuntime:
         try:
             stream = self.llm.generate_stream(
                 prompt,
-                max_tokens=self.options.max_tokens,
+                max_tokens=self._effective_max_tokens(draft),
                 temperature=self.options.temperature,
                 top_p=self.options.top_p,
                 inject_persona=False,
@@ -649,6 +689,7 @@ class AssistantRuntime:
             first_token_time=first_token_time,
             ended=ended,
         )
+        self._record_prompt_calibration(draft, usage, source="stream_engine")
 
         if stream_error is not None or not full_text:
             message = (
@@ -945,17 +986,26 @@ class AssistantRuntime:
                 route=RuntimeRoute.BLOCKED,
             )
 
-        prompt = self._build_llm_prompt(
-            frame.text,
-            memory_context,
-            knowledge_context,
-        )
+        try:
+            prompt = self._build_llm_prompt(
+                draft,
+                frame.text,
+                memory_context,
+                knowledge_context,
+            )
+        except PromptBudgetError as exc:
+            return self._blocked_result(
+                frame,
+                draft,
+                reason=f"Prompt vượt context của model ({exc.code}).",
+                route=RuntimeRoute.BLOCKED,
+            )
 
         try:
             with self._stage(draft, "llm"):
                 llm_result = self.llm.generate(
                     prompt,
-                    max_tokens=self.options.max_tokens,
+                    max_tokens=self._effective_max_tokens(draft),
                     temperature=self.options.temperature,
                     top_p=self.options.top_p,
                     inject_persona=False,
@@ -973,6 +1023,7 @@ class AssistantRuntime:
 
         response_text = getattr(llm_result, "text", "").strip()
         usage = LLMUsage.from_llm_result(llm_result)
+        self._record_prompt_calibration(draft, usage, source="llm_result")
         citations = tuple(draft.citations)
         knowledge_used = bool(citations)
 
@@ -1202,18 +1253,101 @@ class AssistantRuntime:
 
     def _build_llm_prompt(
         self,
+        draft: _TraceDraft,
         user_text: str,
         memory_context: MemoryContext | None,
         knowledge_context: KnowledgeContext | None,
     ) -> str:
-        return build_runtime_prompt(
-            user_text=user_text,
-            memory_prompt_text=memory_context.prompt_text if memory_context is not None else "",
-            memory_grounding=bool(memory_context is not None and memory_context.citations),
-            knowledge_prompt_text=(
-                knowledge_context.prompt_text if knowledge_context is not None else ""
+        components = [
+            PromptComponent(
+                "system",
+                SOCA_RUNTIME_SYSTEM_PROMPT.strip(),
+                priority=0,
+                required=True,
             ),
+            PromptComponent(
+                "current_input",
+                "Câu hỏi hiện tại:\n" + user_text.strip(),
+                priority=0,
+                required=True,
+            ),
+            PromptComponent("answer_prefix", "Trả lời:", priority=0, required=True),
+        ]
+        if memory_context is not None and memory_context.prompt_text.strip():
+            memory_text = "Memory:\n" + memory_context.prompt_text.strip()
+            if memory_context.citations:
+                memory_text = MEMORY_GROUNDING_INSTRUCTIONS.strip() + "\n\n" + memory_text
+            components.append(
+                PromptComponent("memory", memory_text, priority=30, required=False)
+            )
+        if knowledge_context is not None and knowledge_context.prompt_text.strip():
+            knowledge_text = (
+                KNOWLEDGE_GROUNDING_INSTRUCTIONS.strip()
+                + "\n\nKnowledge:\n"
+                + knowledge_context.prompt_text.strip()
+            )
+            components.append(
+                PromptComponent(
+                    "knowledge",
+                    knowledge_text,
+                    priority=10,
+                    required=bool(knowledge_context.citations),
+                )
+            )
+        capability = capability_from_engine(
+            self.llm,
+            model_context_window=self.options.model_context_window,
+            model_max_output_tokens=self.options.model_max_output_tokens,
         )
+        assembler = PromptAssembler(
+            capability,
+            counter=token_counter_from_engine(self.llm),
+            safety_margin_tokens=self._prompt_safety_margin_tokens,
+        )
+        prompt, manifest = assembler.assemble(
+            components,
+            requested_output_tokens=self.options.max_tokens,
+        )
+        draft.prompt_manifest = manifest.to_dict()
+        return prompt
+
+    def _effective_max_tokens(self, draft: _TraceDraft) -> int:
+        manifest = draft.prompt_manifest or {}
+        value = manifest.get("effective_output_tokens")
+        if isinstance(value, int) and value > 0:
+            return value
+        if self.options.model_max_output_tokens is not None:
+            return min(self.options.max_tokens, self.options.model_max_output_tokens)
+        return self.options.max_tokens
+
+    def _record_prompt_calibration(
+        self,
+        draft: _TraceDraft,
+        usage: LLMUsage | None,
+        *,
+        source: str,
+    ) -> None:
+        manifest = draft.prompt_manifest
+        if not isinstance(manifest, dict) or usage is None or usage.prompt_tokens <= 0:
+            return
+        estimated = manifest.get("prompt_tokens")
+        if not isinstance(estimated, int):
+            return
+        manifest["observed_prompt_tokens"] = usage.prompt_tokens
+        manifest["observed_prompt_token_source"] = source
+        delta = usage.prompt_tokens - estimated
+        manifest["prompt_token_delta"] = delta
+        if delta > 0:
+            self._prompt_safety_margin_tokens = max(
+                self._prompt_safety_margin_tokens,
+                delta + 16,
+            )
+        if source == "llm_result":
+            manifest["provider_prompt_tokens"] = usage.prompt_tokens
+            manifest["provider_completion_tokens"] = usage.completion_tokens
+        else:
+            manifest["engine_prompt_tokens"] = usage.prompt_tokens
+            manifest["engine_completion_tokens"] = usage.completion_tokens
 
     def _append_safe_session_turn(self, user_text: str, assistant_text: str) -> None:
         if self.memory_builder is None or self.memory_builder.session is None:
@@ -1258,6 +1392,7 @@ class AssistantRuntime:
             evidence_decisions=tuple(draft.evidence_decisions),
             evidence_bundle=draft.evidence_bundle,
             answer_validation=draft.answer_validation,
+            prompt_manifest=draft.prompt_manifest,
         )
         return RuntimeResult(
             response_text=response_text,

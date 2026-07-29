@@ -33,6 +33,7 @@ from soca.knowledge.factory import DenseBackend, RetrievalMode
 from soca.knowledge.retrievers.dense import EmbeddingModel, FastEmbedModel
 from soca.llm import LLMEngine, LocalLlamaCppLLM
 from soca.llm.factory import SecretReader, build_llm_engine
+from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.memory import SessionMemory
 from soca.tools import LocalTimeTool, MemorySearchTool, Tool, ToolRuntime
 
@@ -259,11 +260,11 @@ def build_text_runtime(
         memory_status = memory_setup.status
         tools.append(MemorySearchTool(memory_builder, max_limit=config.knowledge_limit))
 
+    selected_settings = llm_settings or load_settings()
     if config.no_llm:
         llm = None
         llm_status = "disabled"
     else:
-        selected_settings = llm_settings or load_settings()
         if config.llm_model_is_override:
             # An explicit CLI model key is a local runtime override. This
             # prevents a persisted remote UI selection from silently turning
@@ -323,6 +324,13 @@ def build_text_runtime(
             temperature=config.temperature,
             top_p=config.top_p,
             knowledge_limit=config.knowledge_limit,
+            model_context_window=(
+                LLM_MODEL_REGISTRY[selected_settings.model_id].context_window
+                if selected_settings.backend == "local"
+                and selected_settings.model_id in LLM_MODEL_REGISTRY
+                else selected_settings.model_context_window
+            ),
+            model_max_output_tokens=selected_settings.model_max_output_tokens,
         ),
     )
     return TextRuntimeBundle(
