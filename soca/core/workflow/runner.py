@@ -6,6 +6,12 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from soca.core.guardrails import (
+    DEFAULT_POLICY,
+    GuardrailPolicy,
+    check_final_output,
+    check_tool_call,
+)
 from soca.tools import SideEffectLevel, ToolCall, ToolResult, ToolRuntime
 
 from .budget import BudgetLedger, BudgetSnapshot
@@ -109,6 +115,7 @@ class ControlledWorkflowRunner:
     tool_runtime: ToolRuntime
     verifier: DeterministicVerifier = field(default_factory=DeterministicVerifier)
     budget: TurnBudget = field(default_factory=TurnBudget)
+    guardrail_policy: GuardrailPolicy = DEFAULT_POLICY
 
     def run(
         self,
@@ -179,7 +186,7 @@ class ControlledWorkflowRunner:
                 self._bind_model_budget(planner, ledger)
                 if not self._has_model_budget_hook(planner):
                     ledger.consume("model")
-                plan = planner.plan(goal.statement)
+                plan = planner.plan(goal.planner_text())
 
             if not plan.steps:
                 return terminal(self._failed_outcome("empty_plan"))
@@ -214,14 +221,28 @@ class ControlledWorkflowRunner:
                 current,
                 {"phase": "synthesizing", "text": "Đang tổng hợp kết quả"},
             )
+            response_text = self._observation_text(observations)
+            output_event = check_final_output(
+                response_text,
+                knowledge_used=any(
+                    result.name in {"knowledge.search", "knowledge.read", "memory.search"}
+                    for result in observations
+                ),
+                citations=self._citation_payload(observations),
+                tool_results=tuple(observations),
+                policy=self.guardrail_policy,
+            )
+            if output_event.blocked:
+                return terminal(self._failed_outcome("output_guardrail", detail=output_event.reason))
             return terminal(
                 TerminalOutcome(
                     status=TerminalStatus.SUCCEEDED,
-                    response_text=plan.final_instruction,
+                    response_text=response_text,
                     route="controlled_workflow",
                     metadata={
                         "goal_id": goal.goal_id,
                         "observations": len(observations),
+                        "planner_instruction": plan.final_instruction,
                         "rationale": plan.rationale,
                     },
                 )
@@ -253,17 +274,49 @@ class ControlledWorkflowRunner:
         fingerprint = action_fingerprint(goal, step.call)
         tool = self.tool_runtime.get(step.call.name)
         if tool is None or not tool.spec.enabled:
-            return current, ToolResult(step.call.name, False, "", error="unknown_tool"), Verification(False, "unknown_tool"), self._failed_outcome("unknown_tool")
+            return (
+                current,
+                ToolResult(step.call.name, False, "", error="unknown_tool"),
+                Verification(False, "unknown_tool"),
+                self._failed_outcome("unknown_tool"),
+            )
+        guardrail_event = check_tool_call(
+            self.tool_runtime,
+            step.call,
+            self.guardrail_policy,
+        )
+        if guardrail_event.blocked:
+            result = ToolResult(
+                step.call.name,
+                False,
+                "",
+                error=guardrail_event.reason,
+            )
+            return (
+                current,
+                result,
+                Verification(False, guardrail_event.reason),
+                self._failed_outcome("guardrail_blocked", detail=guardrail_event.reason),
+            )
         needs_authorization = step.requires_authorization or tool.spec.side_effect != SideEffectLevel.READ_ONLY
         if needs_authorization:
             if authorize is None or not authorize(goal, step):
-                return current, ToolResult(step.call.name, False, "", error="authorization_denied"), Verification(False, "authorization_denied"), self._failed_outcome("authorization_denied")
+                return (
+                    current,
+                    ToolResult(step.call.name, False, "", error="authorization_denied"),
+                    Verification(False, "authorization_denied"),
+                    self._failed_outcome("authorization_denied"),
+                )
 
         if retries.is_completed(fingerprint):
             result = ToolResult(step.call.name, False, "", error="duplicate_action")
-            return current, result, Verification(False, "duplicate_action"), self._failed_outcome("duplicate_action")
+            return (
+                current,
+                result,
+                Verification(False, "duplicate_action"),
+                self._failed_outcome("duplicate_action"),
+            )
 
-        attempt = retries.attempts(fingerprint)
         while True:
             if is_cancelled():
                 result = ToolResult(step.call.name, False, "", error="cancelled")
@@ -303,9 +356,12 @@ class ControlledWorkflowRunner:
             )
             if verification.achieved:
                 return current, result, verification, None
-            if not result.ok and attempt < self.budget.max_retries:
+            if (
+                not result.ok
+                and ledger.snapshot().retries < self.budget.max_retries
+                and (tool.spec.side_effect == SideEffectLevel.READ_ONLY or tool.spec.idempotent)
+            ):
                 ledger.consume("retry")
-                attempt += 1
                 stream.emit(
                     "update",
                     current,
@@ -313,6 +369,28 @@ class ControlledWorkflowRunner:
                 )
                 continue
             return current, result, verification, None
+
+    @staticmethod
+    def _observation_text(observations: list[ToolResult]) -> str:
+        parts: list[str] = []
+        for result in observations:
+            if result.content.strip():
+                parts.append(result.content.strip())
+            elif result.data:
+                parts.append(json.dumps(result.data, ensure_ascii=False, sort_keys=True))
+        return "\n\n".join(parts).strip()
+
+    @staticmethod
+    def _citation_payload(observations: list[ToolResult]) -> tuple[object, ...]:
+        citations: list[object] = []
+        for result in observations:
+            hits = result.data.get("hits")
+            if isinstance(hits, list):
+                citations.extend(hits)
+            path = result.data.get("path")
+            if isinstance(path, str) and path:
+                citations.append({"path": path})
+        return tuple(citations)
 
     @staticmethod
     def _move(

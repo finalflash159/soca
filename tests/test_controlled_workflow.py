@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from soca.core import AssistantRuntime, RuntimeOptions
 from soca.core.workflow import (
@@ -32,12 +32,18 @@ class ScriptedTool:
 
     @property
     def spec(self) -> ToolSpec:
+        properties = (
+            {"path": {"type": "string"}}
+            if self.name == "knowledge.read"
+            else {"query": {"type": "string"}}
+        )
+        required = ["path"] if self.name == "knowledge.read" else ["query"]
         return ToolSpec(
             name=self.name,
             description="Search a test knowledge source.",
             input_schema=object_schema(
-                properties={"query": {"type": "string"}},
-                required=["query"],
+                properties=properties,
+                required=required,
             ),
             side_effect=self.side_effect,
         )
@@ -54,10 +60,12 @@ class ScriptedTool:
 class StaticPlanner:
     plan_value: ActionPlan
     calls: int = 0
+    seen_goals: list[str] = field(default_factory=list)
 
     def plan(self, goal: str) -> ActionPlan:
         assert goal
         self.calls += 1
+        self.seen_goals.append(goal)
         return self.plan_value
 
 
@@ -91,6 +99,21 @@ def make_goal() -> GoalContract:
     return GoalContract(statement="Tìm ghi chú Bayes", goal_id="goal-1")
 
 
+def knowledge_observation(
+    content: str,
+    *,
+    ok: bool = True,
+    error: str = "",
+) -> ToolResult:
+    return ToolResult(
+        "knowledge.search",
+        ok,
+        content,
+        data={"hits": [{"path": "wiki/bayes.md"}]} if ok else {},
+        error=error,
+    )
+
+
 def make_plan(*calls: ToolCall) -> ActionPlan:
     return ActionPlan(
         steps=tuple(
@@ -107,7 +130,7 @@ def make_plan(*calls: ToolCall) -> ActionPlan:
 
 
 def test_explicit_call_skips_planner_and_emits_update_before_terminal() -> None:
-    tool = ScriptedTool([ToolResult("knowledge.search", True, "Bayes")])
+    tool = ScriptedTool([knowledge_observation("Bayes")])
     planner = StaticPlanner(make_plan(ToolCall("knowledge.search", {"query": "Bayes"})))
     runner = ControlledWorkflowRunner(ToolRuntime([tool]))
 
@@ -126,7 +149,7 @@ def test_explicit_call_skips_planner_and_emits_update_before_terminal() -> None:
 
 
 def test_planner_workflow_executes_catalog_action() -> None:
-    tool = ScriptedTool([ToolResult("knowledge.search", True, "Bayes")])
+    tool = ScriptedTool([knowledge_observation("Bayes")])
     planner = StaticPlanner(make_plan(ToolCall("knowledge.search", {"query": "Bayes"})))
 
     result = ControlledWorkflowRunner(ToolRuntime([tool])).run(
@@ -140,11 +163,28 @@ def test_planner_workflow_executes_catalog_action() -> None:
     assert result.observations[0].content == "Bayes"
 
 
+def test_four_default_tool_calls_fit_transition_budget() -> None:
+    tool = ScriptedTool([knowledge_observation(f"hit-{index}") for index in range(4)])
+    calls = tuple(
+        ToolCall("knowledge.search", {"query": f"query-{index}"})
+        for index in range(4)
+    )
+
+    result = ControlledWorkflowRunner(ToolRuntime([tool])).run(
+        make_goal(),
+        planner=StaticPlanner(make_plan(*calls)),
+    )
+
+    assert result.terminal.status is TerminalStatus.SUCCEEDED
+    assert result.budget.transitions == 19
+    assert result.budget.tool_calls == 4
+
+
 def test_transient_tool_failure_retries_with_shared_budget() -> None:
     tool = ScriptedTool(
         [
-            ToolResult("knowledge.search", False, "", error="temporary"),
-            ToolResult("knowledge.search", True, "Bayes"),
+            knowledge_observation("", ok=False, error="temporary"),
+            knowledge_observation("Bayes"),
         ]
     )
     plan = make_plan(ToolCall("knowledge.search", {"query": "Bayes"}))
@@ -160,11 +200,35 @@ def test_transient_tool_failure_retries_with_shared_budget() -> None:
     assert any(event.payload.get("phase") == "retrying" for event in result.events)
 
 
+def test_mutating_tool_failure_is_not_retried_without_idempotency() -> None:
+    tool = ScriptedTool(
+        [
+            ToolResult("memory.propose_note", False, "", error="ambiguous"),
+            ToolResult("memory.propose_note", True, "proposal"),
+        ],
+        name="memory.propose_note",
+        side_effect=SideEffectLevel.LOCAL_STATE,
+    )
+    result = ControlledWorkflowRunner(
+        ToolRuntime([tool]),
+        budget=TurnBudget(max_retries=1),
+    ).run(
+        make_goal(),
+        explicit_call=ToolCall("memory.propose_note", {"query": "remember"}),
+        authorize=lambda goal, step: True,
+    )
+
+    assert result.terminal.status is TerminalStatus.FAILED
+    assert result.terminal.error_code == "ambiguous"
+    assert result.budget.retries == 0
+    assert tool.calls == 1
+
+
 def test_duplicate_successful_action_is_gated() -> None:
     tool = ScriptedTool(
         [
-            ToolResult("knowledge.search", True, "first"),
-            ToolResult("knowledge.search", True, "second"),
+            knowledge_observation("first"),
+            knowledge_observation("second"),
         ]
     )
     call = ToolCall("knowledge.search", {"query": "Bayes"})
@@ -178,8 +242,36 @@ def test_duplicate_successful_action_is_gated() -> None:
     assert tool.calls == 1
 
 
+def test_empty_search_observation_does_not_achieve_goal() -> None:
+    tool = ScriptedTool(
+        [ToolResult("knowledge.search", True, "Không tìm thấy", data={"hits": []})]
+    )
+    result = ControlledWorkflowRunner(ToolRuntime([tool])).run(
+        make_goal(),
+        explicit_call=ToolCall("knowledge.search", {"query": "missing"}),
+    )
+
+    assert result.terminal.status is TerminalStatus.FAILED
+    assert result.terminal.error_code == "no_matching_observation"
+
+
+def test_knowledge_read_guardrail_blocks_out_of_scope_path_before_tool() -> None:
+    tool = ScriptedTool(
+        [ToolResult("knowledge.read", True, "secret")],
+        name="knowledge.read",
+    )
+    result = ControlledWorkflowRunner(ToolRuntime([tool])).run(
+        make_goal(),
+        explicit_call=ToolCall("knowledge.read", {"path": "private/secret.md"}),
+    )
+
+    assert result.terminal.status is TerminalStatus.FAILED
+    assert result.terminal.error_code == "guardrail_blocked"
+    assert tool.calls == 0
+
+
 def test_budget_exhaustion_is_terminal_and_bounded() -> None:
-    tool = ScriptedTool([ToolResult("knowledge.search", True, "Bayes")])
+    tool = ScriptedTool([knowledge_observation("Bayes")])
     result = ControlledWorkflowRunner(
         ToolRuntime([tool]),
         budget=TurnBudget(max_tool_calls=0),
@@ -195,7 +287,7 @@ def test_budget_exhaustion_is_terminal_and_bounded() -> None:
 
 
 def test_cancellation_does_not_produce_a_success_answer() -> None:
-    tool = ScriptedTool([ToolResult("knowledge.search", True, "Bayes")])
+    tool = ScriptedTool([knowledge_observation("Bayes")])
     result = ControlledWorkflowRunner(ToolRuntime([tool])).run(
         make_goal(),
         explicit_call=ToolCall("knowledge.search", {"query": "Bayes"}),
@@ -213,7 +305,7 @@ def test_side_effect_action_requires_authorization() -> None:
         name="memory.propose_note",
         side_effect=SideEffectLevel.LOCAL_STATE,
     )
-    call = ToolCall("memory.propose_note", {"content": "remember this"})
+    call = ToolCall("memory.propose_note", {"query": "remember this"})
     result = ControlledWorkflowRunner(ToolRuntime([tool])).run(
         make_goal(),
         explicit_call=call,
@@ -246,6 +338,22 @@ def test_goal_resolver_keeps_follow_up_on_the_same_goal() -> None:
     assert follow_up.goal.goal_id == first.goal.goal_id
     assert follow_up.goal.statement == first.goal.statement
     assert follow_up.goal.metadata["follow_up"] == "chỉ lấy trong vault"
+
+
+def test_follow_up_constraint_is_sent_to_planner() -> None:
+    goal = GoalContract(
+        statement="Tìm ghi chú Bayes",
+        goal_id="goal-1",
+        metadata={"follow_up": "chỉ lấy trong vault"},
+    )
+    planner = StaticPlanner(make_plan(ToolCall("knowledge.search", {"query": "Bayes"})))
+    tool = ScriptedTool([knowledge_observation("Bayes")])
+
+    ControlledWorkflowRunner(ToolRuntime([tool])).run(goal, planner=planner)
+
+    assert planner.seen_goals == [
+        "Objective: Tìm ghi chú Bayes\nFollow-up constraint: chỉ lấy trong vault"
+    ]
 
 
 def test_structured_planner_repairs_once_and_debits_each_model_call() -> None:
@@ -308,7 +416,7 @@ def test_planner_catalog_does_not_invent_removed_weather_tool() -> None:
 
 
 def test_runtime_facade_is_opt_in_and_uses_active_goal_store() -> None:
-    tool = ScriptedTool([ToolResult("knowledge.search", True, "Bayes")])
+    tool = ScriptedTool([knowledge_observation("Bayes")])
     runtime = AssistantRuntime(
         tool_runtime=ToolRuntime([tool]),
         options=RuntimeOptions(turn_workflow="shadow"),

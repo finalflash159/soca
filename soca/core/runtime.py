@@ -299,6 +299,7 @@ class AssistantRuntime:
         runner = ControlledWorkflowRunner(
             self.tool_runtime,
             budget=budget or TurnBudget(),
+            guardrail_policy=self.guardrail_policy,
         )
         return runner.run(
             resolution.goal,

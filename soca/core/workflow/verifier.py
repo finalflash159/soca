@@ -22,6 +22,9 @@ def verify_tool_result(goal: GoalContract, result: ToolResult) -> Verification:
     del goal
     if not result.ok:
         return Verification(False, result.error or "tool_failed")
+    hits = result.data.get("hits")
+    if isinstance(hits, list) and not hits:
+        return Verification(False, "no_matching_observation")
     if not result.content.strip() and not result.data:
         return Verification(False, "tool_returned_no_observation")
     return Verification(True, "tool_observation_available")

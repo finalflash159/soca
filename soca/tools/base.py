@@ -28,6 +28,7 @@ class ToolSpec:
     input_schema: dict[str, Any]
     side_effect: SideEffectLevel = SideEffectLevel.READ_ONLY
     enabled: bool = True
+    idempotent: bool = False
 
 
 @dataclass(frozen=True)
