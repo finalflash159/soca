@@ -8,6 +8,8 @@ from typing import Any, Literal
 
 from soca.tools import ToolCall, ToolSpec
 
+SourceProfile = Literal["knowledge", "memory", "both", "neither"]
+
 ToolRouterMode = Literal["deterministic", "llm", "cascade"]
 RouterResponseMode = Literal["prompt_json", "json_schema"]
 TurnDisposition = Literal[
@@ -98,11 +100,112 @@ class ToolRouterDecision:
     call: ToolCall | None = None
     reason: str = "no_match"
     disposition: TurnDisposition = "unresolved"
+    handler: str | None = None
+    selected_routes: tuple[TurnDisposition, ...] = ()
     sources: tuple[str, ...] = ()
+    source_profile: SourceProfile | None = None
     scores: dict[str, float] = field(default_factory=dict)
     source_scores: dict[str, float] = field(default_factory=dict)
     runner_up: str | None = None
     margin: float | None = None
+
+
+@dataclass(frozen=True)
+class ParsedRouteDecision:
+    route: TurnDisposition
+    handler: str | None
+    arguments: dict[str, Any]
+    sources: tuple[str, ...]
+
+
+def build_route_decision_schema(specs: tuple[ToolSpec, ...]) -> dict[str, Any]:
+    """Build the shared LLM-router contract: route first, handler second."""
+    handlers = [spec.name for spec in specs]
+    return {
+        "type": "object",
+        "properties": {
+            "route": {
+                "enum": [
+                    "direct_tool",
+                    "retrieval_request",
+                    "smalltalk",
+                    "out_of_scope",
+                    "unresolved",
+                ]
+            },
+            "handler": {"anyOf": [{"type": "null"}, {"enum": handlers}]},
+            "arguments": {"type": "object"},
+            "sources": {
+                "type": "array",
+                "items": {"enum": ["knowledge", "memory"]},
+                "uniqueItems": True,
+                "maxItems": 2,
+            },
+        },
+        "required": ["route", "handler", "arguments", "sources"],
+        "additionalProperties": False,
+    }
+
+
+def parse_route_decision(raw: str, *, max_chars: int) -> ParsedRouteDecision:
+    if not isinstance(raw, str):
+        raise RouterOutputError("output_not_string")
+    if max_chars < 1 or len(raw) > max_chars:
+        raise RouterOutputError("output_too_large")
+    decoder = json.JSONDecoder()
+    objects: list[dict[str, Any]] = []
+    cursor = 0
+    while cursor < len(raw):
+        offset = raw.find("{", cursor)
+        if offset < 0:
+            break
+        try:
+            candidate, consumed = decoder.raw_decode(raw[offset:])
+        except json.JSONDecodeError:
+            cursor = offset + 1
+            continue
+        cursor = offset + max(consumed, 1)
+        if isinstance(candidate, dict):
+            objects.append(candidate)
+    if len(objects) != 1:
+        raise RouterOutputError("no_json_object" if not objects else "multiple_json_objects")
+    payload = objects[0]
+    if set(payload) != {"route", "handler", "arguments", "sources"}:
+        raise RouterOutputError("invalid_root_fields")
+    route = payload["route"]
+    handler = payload["handler"]
+    arguments = payload["arguments"]
+    sources = payload["sources"]
+    if route not in {
+        "direct_tool",
+        "retrieval_request",
+        "smalltalk",
+        "out_of_scope",
+        "unresolved",
+    }:
+        raise RouterOutputError("invalid_route")
+    if handler is not None and (not isinstance(handler, str) or not handler):
+        raise RouterOutputError("invalid_handler")
+    if not isinstance(arguments, dict) or any(not isinstance(key, str) for key in arguments):
+        raise RouterOutputError("arguments_not_object")
+    if not isinstance(sources, list) or not all(source in {"knowledge", "memory"} for source in sources):
+        raise RouterOutputError("invalid_sources")
+    if len(set(sources)) != len(sources):
+        raise RouterOutputError("duplicate_sources")
+    if route == "direct_tool" and handler is None:
+        raise RouterOutputError("direct_route_missing_handler")
+    if route != "direct_tool" and handler is not None:
+        raise RouterOutputError("non_direct_route_has_handler")
+    if route != "retrieval_request" and sources:
+        raise RouterOutputError("non_retrieval_route_has_sources")
+    if route != "direct_tool" and arguments:
+        raise RouterOutputError("non_direct_route_has_arguments")
+    return ParsedRouteDecision(
+        route=route,
+        handler=handler,
+        arguments=dict(arguments),
+        sources=tuple(sources),
+    )
 
 
 def build_tool_decision_schema(specs: tuple[ToolSpec, ...]) -> dict[str, Any]:

@@ -1,0 +1,25 @@
+{
+  "gate_id": "voice_knowledge_p1",
+  "version": 1,
+  "purpose": "Disposition/source contract and train-validation-only calibration",
+  "inputs": {
+    "route_dataset": "eval/prompts/p0/turn_routing_vi.jsonl",
+    "source_dataset": "eval/prompts/p0/retrieval_source_vi.jsonl",
+    "route_examples": "eval/prompts/p0/turn_routing_examples_vi.jsonl",
+    "route_capture": "eval/results/voice_knowledge_p0/route_predictions.jsonl",
+    "source_capture": "eval/results/voice_knowledge_p0/source_predictions.jsonl"
+  },
+  "fit_policy": {
+    "splits": ["train", "validation"],
+    "final_test": "sealed",
+    "precision_target": 0.90,
+    "threshold_selection": "F0.5 after precision target, then recall",
+    "margin_selection": "fit-set safety-first; zero unsupported direct-tool route required"
+  },
+  "commands": {
+    "calibrate": "uv run python -m eval.calibrate_router --route-dataset eval/prompts/p0/turn_routing_vi.jsonl --route-predictions eval/results/voice_knowledge_p0/route_predictions.jsonl --source-dataset eval/prompts/p0/retrieval_source_vi.jsonl --source-predictions eval/results/voice_knowledge_p0/source_predictions.jsonl --examples eval/prompts/p0/turn_routing_examples_vi.jsonl --git-sha $(git rev-parse HEAD) --output eval/results/voice_knowledge_p1/router_calibration.json"
+  },
+  "artifact": "eval/results/voice_knowledge_p1/router_calibration.json",
+  "decision": "release_candidate_not_enabled",
+  "reason": "P1 artifact is diagnostic until P5/P6 prompt/runtime freeze; do not change production defaults."
+}

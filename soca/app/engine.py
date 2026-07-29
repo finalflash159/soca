@@ -1314,6 +1314,14 @@ class SocaEngine:
                         "tier": trace.tool_router_tier,
                         "tool": trace.tool_calls[-1].name if trace.tool_calls else None,
                         "reason": trace.tool_router_reason,
+                        "disposition": trace.disposition,
+                        "handler": trace.router_handler,
+                        "selected_routes": list(trace.selected_routes),
+                        "sources": list(trace.selected_sources),
+                        "scores": dict(trace.router_scores),
+                        "source_scores": dict(trace.router_source_scores),
+                        "runner_up": trace.router_runner_up,
+                        "margin": trace.router_margin,
                         "latency_ms": trace.stage_latencies_ms.get("tool_router", 0.0),
                     }
                 )
@@ -1505,6 +1513,15 @@ class SocaEngine:
                         "event": "router_trace",
                         "tier": tier,
                         "tool": None,
+                        "reason": metadata.get("router_reason", "no_match"),
+                        "disposition": metadata.get("router_disposition", "unresolved"),
+                        "handler": metadata.get("router_handler"),
+                        "selected_routes": metadata.get("router_selected_routes", []),
+                        "sources": metadata.get("router_sources", []),
+                        "scores": metadata.get("router_scores", {}),
+                        "source_scores": metadata.get("router_source_scores", {}),
+                        "runner_up": metadata.get("router_runner_up"),
+                        "margin": metadata.get("router_margin"),
                         "latency_ms": float(metadata.get("router_latency_ms", 0.0)),
                     }
                 )

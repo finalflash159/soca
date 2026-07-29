@@ -45,15 +45,25 @@ from .profiles import (
     get_voice_runtime_profile,
     validate_voice_runtime_profiles,
 )
+from .route_catalog import (
+    DEFAULT_ROUTE_CATALOG,
+    RouteSpec,
+    SourceProfile,
+    source_profile,
+    validate_route_fields,
+)
 from .streaming import StreamingEvent, pop_ready_sentence
 from .text_chunking import chunk_text_for_tts, split_sentences
 from .tool_routing import (
+    ParsedRouteDecision,
     ParsedToolDecision,
     RouterOutputError,
     SemanticRouterConfig,
     ToolRouterConfig,
     ToolRouterDecision,
+    build_route_decision_schema,
     build_tool_decision_schema,
+    parse_route_decision,
     parse_tool_decision,
 )
 from .turn import (
@@ -174,10 +184,18 @@ __all__ = [
     "ToolRouterConfig",
     "SemanticRouterConfig",
     "ToolRouterDecision",
+    "ParsedRouteDecision",
     "ParsedToolDecision",
     "RouterOutputError",
+    "build_route_decision_schema",
     "build_tool_decision_schema",
+    "parse_route_decision",
     "parse_tool_decision",
+    "DEFAULT_ROUTE_CATALOG",
+    "RouteSpec",
+    "SourceProfile",
+    "source_profile",
+    "validate_route_fields",
     "EndpointConfig",
     "GuardrailAction",
     "GuardrailEvent",

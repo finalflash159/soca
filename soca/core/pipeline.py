@@ -290,6 +290,14 @@ class VoicePipeline:
                 "citations": [{"path": item.path, "title": item.title} for item in citations],
                 "router_tier": getattr(trace, "tool_router_tier", "none"),
                 "router_reason": getattr(trace, "tool_router_reason", "no_match"),
+                "router_disposition": getattr(trace, "disposition", "unresolved"),
+                "router_handler": getattr(trace, "router_handler", None),
+                "router_selected_routes": list(getattr(trace, "selected_routes", ()) or ()),
+                "router_sources": list(getattr(trace, "selected_sources", ()) or ()),
+                "router_scores": dict(getattr(trace, "router_scores", {}) or {}),
+                "router_source_scores": dict(getattr(trace, "router_source_scores", {}) or {}),
+                "router_runner_up": getattr(trace, "router_runner_up", None),
+                "router_margin": getattr(trace, "router_margin", None),
                 "router_latency_ms": float(
                     getattr(trace, "stage_latencies_ms", {}).get("tool_router", 0.0)
                 ),

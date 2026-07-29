@@ -189,7 +189,13 @@ class DefaultRuntimeToolRouter:
     def _call(self, name: str, arguments: dict[str, Any]) -> ToolCall:
         call = ToolCall(name, arguments)
         self.last_tier = "deterministic"
-        self.last_decision = ToolRouterDecision(call=call, reason="explicit_command")
+        self.last_decision = ToolRouterDecision(
+            call=call,
+            reason="explicit_command",
+            disposition="direct_tool",
+            handler=name,
+            selected_routes=("direct_tool",),
+        )
         return call
 
     def _none(self, reason: str) -> None:
@@ -242,7 +248,10 @@ class _TraceDraft:
     memory_degraded_reason: str = ""
     disposition: str = "unresolved"
     selected_sources: tuple[str, ...] = ()
+    selected_routes: tuple[str, ...] = ()
     router_scores: dict[str, float] = field(default_factory=dict)
+    router_source_scores: dict[str, float] = field(default_factory=dict)
+    router_handler: str | None = None
     router_runner_up: str | None = None
     router_margin: float | None = None
     evidence_decisions: list[EvidenceDecision] = field(default_factory=list)
@@ -1434,7 +1443,10 @@ class AssistantRuntime:
     def _record_router_decision(self, draft: _TraceDraft, decision: ToolRouterDecision) -> None:
         draft.disposition = decision.disposition
         draft.selected_sources = decision.sources
+        draft.selected_routes = tuple(decision.selected_routes)
         draft.router_scores = dict(decision.scores)
+        draft.router_source_scores = dict(decision.source_scores)
+        draft.router_handler = decision.handler
         draft.router_runner_up = decision.runner_up
         draft.router_margin = decision.margin
 
@@ -1451,7 +1463,10 @@ class AssistantRuntime:
                 reason="Mình chưa hỗ trợ khả năng này trên máy bạn.",
                 route=RuntimeRoute.OUT_OF_SCOPE,
             )
-        if decision.disposition == "unresolved" and decision.reason.startswith("semantic_"):
+        if decision.disposition == "unresolved" and (
+            decision.selected_routes == ("unresolved",)
+            or decision.reason.startswith("semantic_")
+        ):
             return self._blocked_result(
                 frame,
                 draft,
@@ -1720,7 +1735,10 @@ class AssistantRuntime:
             tool_router_reason=draft.tool_router_reason,
             disposition=draft.disposition,
             selected_sources=draft.selected_sources,
+            selected_routes=draft.selected_routes,
             router_scores=draft.router_scores,
+            router_source_scores=draft.router_source_scores,
+            router_handler=draft.router_handler,
             router_runner_up=draft.router_runner_up,
             router_margin=draft.router_margin,
             evidence_decisions=tuple(draft.evidence_decisions),

@@ -51,7 +51,10 @@ class RuntimeTrace:
     tool_router_reason: str = "no_match"
     disposition: str = "unresolved"
     selected_sources: tuple[str, ...] = ()
+    selected_routes: tuple[str, ...] = ()
     router_scores: dict[str, float] = field(default_factory=dict)
+    router_source_scores: dict[str, float] = field(default_factory=dict)
+    router_handler: str | None = None
     router_runner_up: str | None = None
     router_margin: float | None = None
     evidence_decisions: tuple[Any, ...] = ()
