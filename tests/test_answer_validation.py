@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from soca.core.answer_validation import validate_grounded_answer
+from soca.core.answer_validation import (
+    expected_citation_labels,
+    validate_grounded_answer,
+)
 from soca.knowledge import KnowledgeCitation, KnowledgeDocument, KnowledgeHit
 
 
@@ -11,6 +14,17 @@ def test_answer_validation_accepts_knowledge_and_memory_provenance() -> None:
     )
     decision = validate_grounded_answer("Theo [K1] và [M1] thì đúng.", citations)
     assert decision.status == "valid"
+
+
+def test_expected_citation_labels_follow_each_source_sequence() -> None:
+    citations = (
+        KnowledgeCitation("wiki/a.md", "A"),
+        KnowledgeCitation("memory/a.md", "A", source="memory"),
+        KnowledgeCitation("wiki/b.md", "B"),
+        KnowledgeCitation("memory/b.md", "B", source="memory"),
+    )
+
+    assert expected_citation_labels(citations) == ("[K1]", "[M1]", "[K2]", "[M2]")
 
 
 def test_answer_validation_records_shadow_groundedness_against_selected_evidence() -> None:
@@ -68,7 +82,9 @@ def test_shadow_groundedness_does_not_change_provenance_status() -> None:
 
 
 def test_answer_validation_reports_missing_provenance_without_blocking() -> None:
-    decision = validate_grounded_answer("Một câu trả lời không nguồn.", (KnowledgeCitation("wiki/a.md", "A"),))
+    decision = validate_grounded_answer(
+        "Một câu trả lời không nguồn.", (KnowledgeCitation("wiki/a.md", "A"),)
+    )
     assert decision.status == "missing"
 
 

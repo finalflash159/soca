@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -7,7 +8,11 @@ from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any, Literal, Protocol, cast
 
-from soca.core.answer_validation import AnswerValidationDecision, validate_grounded_answer
+from soca.core.answer_validation import (
+    AnswerValidationDecision,
+    expected_citation_labels,
+    validate_grounded_answer,
+)
 from soca.core.context_budget import (
     PromptAssembler,
     PromptBudgetError,
@@ -61,7 +66,7 @@ from soca.knowledge import (
     KnowledgeDocument,
     KnowledgeHit,
 )
-from soca.llm import LLMEngine
+from soca.llm import LLMEngine, StructuredLLMEngine
 from soca.llm.providers import RemoteLLMError
 from soca.memory import (
     MemoryAccessPlan,
@@ -959,9 +964,7 @@ class AssistantRuntime:
                     top_score=knowledge_context.top_relevance,
                     margin=knowledge_context.relevance_margin,
                     rejected_count=knowledge_context.rejected_hit_count,
-                    source_state=cast(
-                        EvidenceSourceState, knowledge_context.retrieval_state
-                    ),
+                    source_state=cast(EvidenceSourceState, knowledge_context.retrieval_state),
                     query_coverage=knowledge_context.query_coverage,
                     score_separation=knowledge_context.score_separation,
                     sparse_top_score=knowledge_context.sparse_top_score,
@@ -993,9 +996,7 @@ class AssistantRuntime:
                     top_score=memory_context.top_relevance,
                     margin=memory_context.relevance_margin,
                     rejected_count=memory_context.rejected_hit_count,
-                    source_state=cast(
-                        EvidenceSourceState, memory_context.retrieval_state
-                    ),
+                    source_state=cast(EvidenceSourceState, memory_context.retrieval_state),
                     query_coverage=memory_context.query_coverage,
                     score_separation=memory_context.score_separation,
                     sparse_top_score=memory_context.sparse_top_score,
@@ -1004,9 +1005,7 @@ class AssistantRuntime:
             )
         draft.citations.extend(citations)
         if draft.evidence_decisions:
-            draft.evidence_bundle = EvidenceReconciler().reconcile(
-                tuple(draft.evidence_decisions)
-            )
+            draft.evidence_bundle = EvidenceReconciler().reconcile(tuple(draft.evidence_decisions))
 
         return _PreparedToolTurn(
             result=tool_result,
@@ -1098,15 +1097,11 @@ class AssistantRuntime:
                             line_end = None
                         try:
                             score = float(raw_hit.get("score", 0.0))
-                            retrieval_backend = str(
-                                raw_hit.get("retrieval_backend", "unknown")
-                            )
+                            retrieval_backend = str(raw_hit.get("retrieval_backend", "unknown"))
                             optional_scores: dict[str, float | None] = {}
                             for field in ("sparse_score", "dense_score", "fusion_score"):
                                 value = raw_hit.get(field)
-                                optional_scores[field] = (
-                                    float(value) if value is not None else None
-                                )
+                                optional_scores[field] = float(value) if value is not None else None
                             hits.append(
                                 KnowledgeHit(
                                     document=KnowledgeDocument(
@@ -1183,15 +1178,13 @@ class AssistantRuntime:
                 if not path or not snippet:
                     continue
                 try:
-                            score = float(raw_hit.get("score", 0.0))
-                            optional_scores: dict[str, float | None] = {}
-                            for field in ("sparse_score", "dense_score", "fusion_score"):
-                                value = raw_hit.get(field)
-                                optional_scores[field] = (
-                                    float(value) if value is not None else None
-                                )
-                            memory_hits.append(
-                                KnowledgeHit(
+                    score = float(raw_hit.get("score", 0.0))
+                    optional_scores: dict[str, float | None] = {}
+                    for field in ("sparse_score", "dense_score", "fusion_score"):
+                        value = raw_hit.get(field)
+                        optional_scores[field] = float(value) if value is not None else None
+                    memory_hits.append(
+                        KnowledgeHit(
                             document=KnowledgeDocument(
                                 id=path,
                                 path=path,
@@ -1202,9 +1195,7 @@ class AssistantRuntime:
                             snippet=snippet,
                             line_start=raw_hit.get("line_start"),
                             line_end=raw_hit.get("line_end"),
-                            retrieval_backend=str(
-                                raw_hit.get("retrieval_backend", "memory")
-                            ),
+                            retrieval_backend=str(raw_hit.get("retrieval_backend", "memory")),
                             sparse_score=optional_scores["sparse_score"],
                             dense_score=optional_scores["dense_score"],
                             fusion_score=optional_scores["fusion_score"],
@@ -1220,24 +1211,14 @@ class AssistantRuntime:
                 if raw_status in {"supported", "weak", "insufficient", "unavailable"}
                 else "weak"
             )
-            evidence_reason = str(
-                tool_result.data.get("evidence_reason", "retrieved_hits")
-            )
-            rejected_hit_count = _int_metadata(
-                tool_result.data.get("rejected_hit_count", 0)
-            )
+            evidence_reason = str(tool_result.data.get("evidence_reason", "retrieved_hits"))
+            rejected_hit_count = _int_metadata(tool_result.data.get("rejected_hit_count", 0))
             top_relevance = _float_metadata(tool_result.data.get("top_relevance"))
-            relevance_margin = _float_metadata(
-                tool_result.data.get("relevance_margin")
-            )
+            relevance_margin = _float_metadata(tool_result.data.get("relevance_margin"))
             query_coverage = _float_metadata(tool_result.data.get("query_coverage"))
-            sparse_top_score = _float_metadata(
-                tool_result.data.get("sparse_top_score")
-            )
+            sparse_top_score = _float_metadata(tool_result.data.get("sparse_top_score"))
             dense_top_score = _float_metadata(tool_result.data.get("dense_top_score"))
-            score_separation = _float_metadata(
-                tool_result.data.get("score_separation")
-            )
+            score_separation = _float_metadata(tool_result.data.get("score_separation"))
             retrieval_state = str(tool_result.data.get("retrieval_state", "ready"))
             retrieval_reason = str(tool_result.data.get("retrieval_reason", ""))
             accepted_paths = {hit.document.path for hit in memory_hits}
@@ -1289,9 +1270,7 @@ class AssistantRuntime:
             citations=(),
             mode=str(tool_result.data.get("mode", "retrieved")),
             evidence_status=evidence_status,
-            evidence_reason=str(
-                tool_result.data.get("evidence_reason", retrieval_reason)
-            ),
+            evidence_reason=str(tool_result.data.get("evidence_reason", retrieval_reason)),
             retrieval_state=retrieval_state,
             retrieval_reason=retrieval_reason,
         )
@@ -1381,16 +1360,14 @@ class AssistantRuntime:
             repair_attempted=False,
         )
         if validation_action == "repair":
-            response_text, llm_result, repaired_usage, answer_validation = (
-                self._repair_answer_once(
-                    prompt,
-                    response_text,
-                    citations,
-                    evidence,
-                    draft,
-                    llm_result,
-                    usage,
-                )
+            response_text, llm_result, repaired_usage, answer_validation = self._repair_answer_once(
+                prompt,
+                response_text,
+                citations,
+                evidence,
+                draft,
+                llm_result,
+                usage,
             )
             if repaired_usage is not None:
                 usage = usage.combine(repaired_usage) if usage is not None else repaired_usage
@@ -1456,15 +1433,22 @@ class AssistantRuntime:
         try:
             llm = self.llm
             if llm is None:
-                return previous_answer, llm_result, usage, validate_grounded_answer(
+                return (
                     previous_answer,
-                    citations,
-                    evidence=evidence,
+                    llm_result,
+                    usage,
+                    validate_grounded_answer(
+                        previous_answer,
+                        citations,
+                        evidence=evidence,
+                    ),
                 )
+            valid_labels = ", ".join(expected_citation_labels(citations))
             repair_instruction = (
                 "Yêu cầu sửa câu trả lời trước khi gửi người dùng:\n"
                 "Viết lại duy nhất câu trả lời cuối. Chỉ dùng bằng chứng đã chọn. "
-                "Mỗi khẳng định dựa trên nguồn phải có citation hợp lệ [K#] hoặc [M#]. "
+                f"Nhãn citation hợp lệ duy nhất cho lượt này: {valid_labels}. "
+                "Mỗi khẳng định dựa trên nguồn phải có ít nhất một nhãn hợp lệ. "
                 "Không thêm thông tin không có trong bằng chứng; nếu bằng chứng không đủ, "
                 "nói rõ là chưa đủ thông tin."
             )
@@ -1488,9 +1472,15 @@ class AssistantRuntime:
                     ),
                     PromptComponent(
                         "previous_answer",
-                        previous_answer,
-                        priority=20,
-                        required=False,
+                        "Câu trả lời cần sửa:\n" + previous_answer,
+                        priority=0,
+                        required=True,
+                    ),
+                    PromptComponent(
+                        "repair_answer_prefix",
+                        "Câu trả lời đã sửa:",
+                        priority=0,
+                        required=True,
                     ),
                 ),
                 requested_output_tokens=self._effective_max_tokens(draft),
@@ -1498,27 +1488,69 @@ class AssistantRuntime:
             if isinstance(draft.prompt_manifest, dict):
                 draft.prompt_manifest["repair_prompt_manifest"] = repair_manifest.to_dict()
             with self._stage(draft, "answer_repair"):
-                repaired_result = llm.generate(
-                    repair_prompt,
-                    max_tokens=repair_manifest.effective_output_tokens,
-                    temperature=0.0,
-                    top_p=1.0,
-                    inject_persona=False,
-                )
+                if isinstance(llm, StructuredLLMEngine):
+                    repaired_result = llm.generate_structured(
+                        repair_prompt,
+                        schema_name="grounded_answer_repair",
+                        schema={
+                            "type": "object",
+                            "properties": {
+                                "answer": {"type": "string", "minLength": 1},
+                                "citations": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "string",
+                                        "enum": list(expected_citation_labels(citations)),
+                                    },
+                                    "minItems": 1,
+                                    "uniqueItems": True,
+                                },
+                            },
+                            "required": ["answer", "citations"],
+                            "additionalProperties": False,
+                        },
+                        max_tokens=repair_manifest.effective_output_tokens,
+                        temperature=0.0,
+                        top_p=1.0,
+                        inject_persona=False,
+                    )
+                else:
+                    repaired_result = llm.generate(
+                        repair_prompt,
+                        max_tokens=repair_manifest.effective_output_tokens,
+                        temperature=0.0,
+                        top_p=1.0,
+                        inject_persona=False,
+                    )
         except Exception:  # noqa: BLE001 - bounded repair is best effort
-            return previous_answer, llm_result, usage, validate_grounded_answer(
+            return (
                 previous_answer,
-                citations,
-                evidence=evidence,
+                llm_result,
+                usage,
+                validate_grounded_answer(
+                    previous_answer,
+                    citations,
+                    evidence=evidence,
+                ),
             )
 
         repaired_text = getattr(repaired_result, "text", "").strip()
+        if isinstance(llm, StructuredLLMEngine):
+            repaired_text = _render_structured_grounded_answer(
+                repaired_text,
+                allowed_labels=expected_citation_labels(citations),
+            )
         repaired_usage = LLMUsage.from_llm_result(repaired_result)
         if not repaired_text:
-            return previous_answer, llm_result, usage, validate_grounded_answer(
+            return (
                 previous_answer,
-                citations,
-                evidence=evidence,
+                llm_result,
+                usage,
+                validate_grounded_answer(
+                    previous_answer,
+                    citations,
+                    evidence=evidence,
+                ),
             )
         repaired_validation = validate_grounded_answer(
             repaired_text,
@@ -1529,10 +1561,15 @@ class AssistantRuntime:
             draft.answer_repair_succeeded = True
             self._record_prompt_calibration(draft, repaired_usage, source="answer_repair")
             return repaired_text, repaired_result, repaired_usage, repaired_validation
-        return previous_answer, llm_result, usage, validate_grounded_answer(
+        return (
             previous_answer,
-            citations,
-            evidence=evidence,
+            llm_result,
+            usage,
+            validate_grounded_answer(
+                previous_answer,
+                citations,
+                evidence=evidence,
+            ),
         )
 
     def _build_memory_context(
@@ -1651,8 +1688,7 @@ class AssistantRuntime:
                 route=RuntimeRoute.OUT_OF_SCOPE,
             )
         if decision.disposition == "unresolved" and (
-            decision.selected_routes == ("unresolved",)
-            or decision.reason.startswith("semantic_")
+            decision.selected_routes == ("unresolved",) or decision.reason.startswith("semantic_")
         ):
             return self._blocked_result(
                 frame,
@@ -1810,14 +1846,7 @@ class AssistantRuntime:
                 SOCA_RUNTIME_SYSTEM_PROMPT.strip(),
                 priority=0,
                 required=True,
-            ),
-            PromptComponent(
-                "current_input",
-                "Câu hỏi hiện tại:\n" + user_text.strip(),
-                priority=0,
-                required=True,
-            ),
-            PromptComponent("answer_prefix", "Trả lời:", priority=0, required=True),
+            )
         ]
         if len(source_set) > 1:
             components.append(
@@ -1853,8 +1882,7 @@ class AssistantRuntime:
                 memory_text = MEMORY_GROUNDING_INSTRUCTIONS.strip() + "\n\n" + memory_text
             memory_text = (
                 f"Evidence status: {memory_context.evidence_status} "
-                f"({memory_context.evidence_reason}).\n"
-                + memory_text
+                f"({memory_context.evidence_reason}).\n" + memory_text
             )
             components.append(
                 PromptComponent(
@@ -1882,6 +1910,22 @@ class AssistantRuntime:
                     required=bool(knowledge_context.citations),
                 )
             )
+        components.extend(
+            (
+                PromptComponent(
+                    "current_input",
+                    "Câu hỏi hiện tại:\n" + user_text.strip(),
+                    priority=0,
+                    required=True,
+                ),
+                PromptComponent(
+                    "answer_prefix",
+                    "Trả lời cuối cùng:",
+                    priority=0,
+                    required=True,
+                ),
+            )
+        )
         capability = capability_from_engine(
             self.llm,
             model_context_window=self.options.model_context_window,
@@ -2098,3 +2142,32 @@ class AssistantRuntime:
             yield
         finally:
             draft.stage_latencies_ms[name] = (time.perf_counter() - started) * 1000
+
+
+def _render_structured_grounded_answer(
+    raw_text: str,
+    *,
+    allowed_labels: tuple[str, ...],
+) -> str:
+    try:
+        payload = json.loads(raw_text)
+    except (json.JSONDecodeError, TypeError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    answer = payload.get("answer")
+    selected = payload.get("citations")
+    if not isinstance(answer, str) or not answer.strip():
+        return ""
+    if not isinstance(selected, list) or not selected:
+        return ""
+    labels: list[str] = []
+    for label in selected:
+        if not isinstance(label, str) or label not in allowed_labels:
+            return ""
+        if label not in labels:
+            labels.append(label)
+    if not labels:
+        return ""
+    missing = [label for label in labels if label not in answer]
+    return " ".join((answer.strip(), *missing))

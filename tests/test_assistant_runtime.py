@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -196,6 +197,47 @@ class SequenceLLM(SpyLLM):
         return super().generate(user_msg, max_tokens, temperature, top_p, inject_persona)
 
 
+class StructuredRepairLLM(SequenceLLM):
+    def __init__(self, first_response: str, structured_response: str) -> None:
+        super().__init__([first_response])
+        self.structured_response = structured_response
+        self.structured_calls: list[dict[str, Any]] = []
+
+    def generate_structured(
+        self,
+        user_msg: str,
+        *,
+        schema_name: str,
+        schema: Mapping[str, Any],
+        max_tokens: int,
+        temperature: float = 0.0,
+        top_p: float = 1.0,
+        inject_persona: bool = False,
+        zero_data_retention: bool = True,
+    ) -> LLMResult:
+        self.structured_calls.append(
+            {
+                "user_msg": user_msg,
+                "schema_name": schema_name,
+                "schema": schema,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "top_p": top_p,
+                "inject_persona": inject_persona,
+                "zero_data_retention": zero_data_retention,
+            }
+        )
+        return LLMResult(
+            text=self.structured_response,
+            prompt=user_msg,
+            n_prompt_tokens=10,
+            n_completion_tokens=5,
+            ttft_ms=1.0,
+            total_latency_ms=2.0,
+            tokens_per_second=100.0,
+        )
+
+
 def test_blocks_private_path_before_tool_or_llm() -> None:
     llm = SpyLLM()
     runtime = AssistantRuntime(llm=llm)
@@ -288,9 +330,33 @@ def test_llm_repair_retries_once_when_citations_are_missing() -> None:
     assert result.trace.answer_repair_attempted is True
     assert result.trace.answer_repair_succeeded is True
     assert len(llm.calls) == 2
+    repair_prompt = llm.calls[1]["user_msg"]
+    assert "Nhãn citation hợp lệ duy nhất cho lượt này: [K1]." in repair_prompt
+    assert repair_prompt.rstrip().endswith("Câu trả lời đã sửa:")
     assert result.usage is not None
     assert result.usage.prompt_tokens == 20
     assert result.usage.completion_tokens == 10
+
+
+def test_structured_repair_requires_model_to_select_a_valid_citation() -> None:
+    source = FakeKnowledgeSource()
+    llm = StructuredRepairLLM(
+        "Protein hỗ trợ duy trì cơ bắp.",
+        '{"answer":"Protein hỗ trợ duy trì cơ bắp.","citations":["[K1]"]}',
+    )
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        knowledge_builder=KnowledgeContextBuilder(source),
+    )
+
+    result = runtime.run_text_turn("wiki: chất đạm")
+
+    assert result.response_text == "Protein hỗ trợ duy trì cơ bắp. [K1]"
+    assert result.trace is not None
+    assert result.trace.answer_validation.status == "valid"
+    assert result.trace.answer_repair_succeeded is True
+    assert llm.structured_calls[0]["schema"]["properties"]["citations"]["items"]["enum"] == ["[K1]"]
 
 
 def test_llm_blocks_grounded_answer_when_single_repair_still_has_no_citation() -> None:
@@ -333,7 +399,7 @@ def test_llm_blocks_uncited_answer_when_repair_prompt_cannot_fit() -> None:
         knowledge_builder=KnowledgeContextBuilder(source),
         options=RuntimeOptions(
             max_tokens=64,
-            model_context_window=300,
+            model_context_window=350,
             context_safety_margin_tokens=0,
         ),
     )
@@ -362,9 +428,7 @@ def test_filtered_knowledge_citations_do_not_include_rejected_hits() -> None:
 
     result = runtime.run_text_turn("wiki: định lý Bayes")
 
-    assert [citation.path for citation in result.citations] == [
-        "wiki/dinh-duong/chat-dam.md"
-    ]
+    assert [citation.path for citation in result.citations] == ["wiki/dinh-duong/chat-dam.md"]
     assert "wiki/onnx.md" not in llm.calls[0]["user_msg"]
 
 
