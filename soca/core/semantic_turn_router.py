@@ -11,9 +11,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 
+from soca.core.route_catalog import source_profile, validate_route_fields
 from soca.core.tool_routing import SemanticRouterConfig, ToolRouterDecision, TurnDisposition
 from soca.knowledge.retrievers.dense import EmbeddingModel
 from soca.tools import ToolCall, ToolRuntime
@@ -35,7 +37,16 @@ class SemanticTurnExample:
     disposition: TurnDisposition
     text: str
     sources: tuple[str, ...] = ()
-    tool: str | None = None
+    handler: str | None = None
+
+    @property
+    def route(self) -> TurnDisposition:
+        return self.disposition
+
+    @property
+    def tool(self) -> str | None:
+        """Compatibility alias for pre-P1 callers; the schema calls this handler."""
+        return self.handler
 
 
 def _normalize_text(text: str) -> str:
@@ -59,10 +70,10 @@ def _load_examples(path: Path) -> tuple[SemanticTurnExample, ...]:
             if not isinstance(payload, dict):
                 raise ValueError(f"semantic turn example {line_number} must be an object")
             example_id = payload.get("id")
-            disposition = payload.get("disposition")
+            disposition = payload.get("route", payload.get("disposition"))
             text = _normalize_text(str(payload.get("text") or payload.get("query") or ""))
             sources = payload.get("sources", [])
-            tool = payload.get("tool")
+            handler = payload.get("handler", payload.get("tool"))
             if (
                 not isinstance(example_id, str)
                 or not example_id
@@ -72,22 +83,24 @@ def _load_examples(path: Path) -> tuple[SemanticTurnExample, ...]:
                 or len(text) > 512
                 or not isinstance(sources, list)
                 or not set(sources) <= _SOURCES
-                or (tool is not None and not isinstance(tool, str))
+                or (handler is not None and not isinstance(handler, str))
             ):
                 raise ValueError(f"invalid semantic turn example {line_number}")
-            if disposition == "direct_tool" and not tool:
-                raise ValueError(f"direct tool route needs tool at line {line_number}")
-            if disposition != "direct_tool" and tool is not None:
-                raise ValueError(f"only direct tool route can name a tool at line {line_number}")
-            if disposition != "retrieval_request" and sources:
-                raise ValueError(f"only retrieval route can choose sources at line {line_number}")
+            try:
+                _, normalized_sources, _ = validate_route_fields(
+                    disposition,
+                    handler=handler,
+                    sources=sources,
+                )
+            except ValueError as exc:
+                raise ValueError(f"invalid semantic turn example {line_number}: {exc}") from exc
             ids.add(example_id)
             result.append(
                 SemanticTurnExample(
                     disposition=disposition,
                     text=text,
-                    sources=tuple(sorted(sources)),
-                    tool=tool,
+                    sources=normalized_sources,
+                    handler=handler,
                 )
             )
     if not result:
@@ -153,6 +166,7 @@ class SemanticTurnRouter:
                 reason="below_threshold",
                 scores=score_map,
                 source_scores=source_score_map,
+                selected_routes=(),
                 runner_up=runner_up,
                 margin=margin,
             )
@@ -163,6 +177,7 @@ class SemanticTurnRouter:
                 reason="ambiguous_margin",
                 scores=score_map,
                 source_scores=source_score_map,
+                selected_routes=(),
                 runner_up=runner_up,
                 margin=margin,
             )
@@ -177,22 +192,25 @@ class SemanticTurnRouter:
                 if example.disposition == disposition
             ]
             chosen, _ = max(matching, key=lambda pair: pair[1])
-            tool = self._tool_runtime.get(chosen.tool or "")
+            tool = self._tool_runtime.get(chosen.handler or "")
             if tool is None or not tool.spec.enabled:
                 self.last_tier = "none"
                 self.last_decision = ToolRouterDecision(
                     reason="direct_tool_unavailable",
                     scores=score_map,
                     source_scores=source_score_map,
+                    selected_routes=(),
                     runner_up=runner_up,
                     margin=margin,
                 )
                 return None
-            call = ToolCall(chosen.tool or "", {})
+            call = ToolCall(chosen.handler or "", {})
             self.last_decision = ToolRouterDecision(
                 call=call,
                 reason="semantic_direct_tool",
                 disposition="direct_tool",
+                handler=chosen.handler,
+                selected_routes=("direct_tool",),
                 scores=score_map,
                 source_scores=source_score_map,
                 runner_up=runner_up,
@@ -204,7 +222,9 @@ class SemanticTurnRouter:
             self.last_decision = ToolRouterDecision(
                 reason="semantic_retrieval",
                 disposition="retrieval_request",
+                selected_routes=("retrieval_request",),
                 sources=sources,
+                source_profile=source_profile(sources),
                 scores=score_map,
                 source_scores=source_score_map,
                 runner_up=runner_up,
@@ -214,6 +234,7 @@ class SemanticTurnRouter:
         self.last_decision = ToolRouterDecision(
             reason=f"semantic_{disposition}",
             disposition=disposition,  # type: ignore[arg-type]
+            selected_routes=(cast(TurnDisposition, disposition),),
             scores=score_map,
             source_scores=source_score_map,
             runner_up=runner_up,
