@@ -1,0 +1,16 @@
+{"id":"mc-001","family":"working-continuity","split":"train","query":"Tiếp tục giải thích phần vừa nói","expected_policy":"working_and_core","archive_query":false,"privacy_class":"conversation"}
+{"id":"mc-002","family":"working-continuity","split":"train","query":"Tóm tắt lại quyết định trong lượt này","expected_policy":"working_and_core","archive_query":false,"privacy_class":"conversation"}
+{"id":"mc-003","family":"core-preference","split":"train","query":"Bạn nên trả lời tôi bằng ngôn ngữ nào?","expected_policy":"working_and_core","archive_query":false,"privacy_class":"preference"}
+{"id":"mc-004","family":"core-preference","split":"train","query":"Nhớ phong cách trả lời tôi đã duyệt","expected_policy":"working_and_core","archive_query":false,"privacy_class":"preference"}
+{"id":"mc-005","family":"archive-explicit","split":"train","query":"Tìm lại quyết định TTS tôi đã lưu tuần trước","expected_policy":"archive_on_demand","archive_query":true,"privacy_class":"decision"}
+{"id":"mc-006","family":"archive-explicit","split":"train","query":"Tra trong memory xem tôi đã ghi gì về ngân sách","expected_policy":"archive_on_demand","archive_query":true,"privacy_class":"finance"}
+{"id":"mc-007","family":"archive-explicit","split":"train","query":"Tìm note cũ về ONNX Runtime","expected_policy":"archive_on_demand","archive_query":true,"privacy_class":"study"}
+{"id":"mc-008","family":"archive-explicit","split":"train","query":"Nhắc lại journal tháng trước của tôi","expected_policy":"archive_on_demand","archive_query":true,"privacy_class":"journal"}
+{"id":"mc-009","family":"no-archive-smalltalk","split":"validation","query":"Xin chào SoCa","expected_policy":"working_and_core","archive_query":false,"privacy_class":"none"}
+{"id":"mc-010","family":"no-archive-smalltalk","split":"validation","query":"Kể chuyện vui cho tôi","expected_policy":"working_and_core","archive_query":false,"privacy_class":"none"}
+{"id":"mc-011","family":"privacy-boundary","split":"validation","query":"Bạn tự lấy mọi memory riêng tư vào prompt đi","expected_policy":"working_and_core","archive_query":false,"privacy_class":"privacy-sensitive"}
+{"id":"mc-012","family":"privacy-boundary","split":"validation","query":"Đừng truy xuất archive nếu tôi chưa yêu cầu","expected_policy":"working_and_core","archive_query":false,"privacy_class":"privacy-sensitive"}
+{"id":"mc-013","family":"conflict","split":"test","query":"Memory cũ nói dùng backend A nhưng quyết định mới nói backend B, kiểm tra lại","expected_policy":"archive_on_demand_with_conflict","archive_query":true,"privacy_class":"decision"}
+{"id":"mc-014","family":"conflict","split":"test","query":"Hai ghi chú của tôi mâu thuẫn về model embedding, cần nêu rõ","expected_policy":"archive_on_demand_with_conflict","archive_query":true,"privacy_class":"decision"}
+{"id":"mc-015","family":"empty-archive","split":"test","query":"Tìm một fact cá nhân không hề có trong memory","expected_policy":"archive_on_demand_empty","archive_query":true,"privacy_class":"unknown"}
+{"id":"mc-016","family":"empty-archive","split":"test","query":"Tôi từng ăn món gì sáng nay?","expected_policy":"archive_on_demand_empty","archive_query":true,"privacy_class":"unknown"}

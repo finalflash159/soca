@@ -1,0 +1,66 @@
+{"id":"tr-001","family":"local-time-current","split":"train","query":"Bây giờ là mấy giờ?","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"tr-002","family":"local-time-current","split":"train","query":"Cho tôi biết giờ hiện tại với","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"tr-003","family":"local-time-current","split":"train","query":"Đồng hồ đang chỉ mấy giờ rồi?","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"tr-004","family":"knowledge-study","split":"train","query":"Ghi chú của tôi nói định lý Bayes thế nào?","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-005","family":"knowledge-study","split":"train","query":"Trong note có giải thích xác suất Bayes không?","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-006","family":"knowledge-study","split":"train","query":"Tìm phần ghi chú học tập về Bayes giúp tôi","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-007","family":"memory-personal","split":"train","query":"Tôi đã chọn TTS nào và vì sao?","disposition":"retrieval_request","sources":["memory"]}
+{"id":"tr-008","family":"memory-personal","split":"train","query":"Nhắc lại quyết định cá nhân tôi đã lưu về TTS","disposition":"retrieval_request","sources":["memory"]}
+{"id":"tr-009","family":"memory-personal","split":"train","query":"Trong memory của tôi có lý do chọn giọng đọc nào không?","disposition":"retrieval_request","sources":["memory"]}
+{"id":"tr-010","family":"both-note-location","split":"train","query":"Tôi đã ghi gì về ONNX Runtime?","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"tr-011","family":"both-note-location","split":"train","query":"Những ghi chú của tôi về embedding nằm ở đâu?","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"tr-012","family":"both-note-location","split":"train","query":"Tôi từng note gì về RAG vậy?","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"tr-013","family":"smalltalk-greeting","split":"train","query":"Xin chào SoCa","disposition":"smalltalk","sources":[]}
+{"id":"tr-014","family":"smalltalk-greeting","split":"train","query":"Chào bạn nhé","disposition":"smalltalk","sources":[]}
+{"id":"tr-015","family":"smalltalk-greeting","split":"train","query":"Hôm nay bạn khỏe không?","disposition":"smalltalk","sources":[]}
+{"id":"tr-016","family":"oos-weather","split":"train","query":"Thời tiết hiện tại ở Hà Nội thế nào?","disposition":"out_of_scope","sources":[]}
+{"id":"tr-017","family":"oos-weather","split":"train","query":"Nhiệt độ ngoài trời bây giờ bao nhiêu?","disposition":"out_of_scope","sources":[]}
+{"id":"tr-018","family":"oos-weather","split":"train","query":"Ngày mai có mưa không?","disposition":"out_of_scope","sources":[]}
+{"id":"tr-019","family":"unresolved-reference","split":"train","query":"Cái đó thế nào rồi?","disposition":"unresolved","sources":[]}
+{"id":"tr-020","family":"unresolved-reference","split":"train","query":"Tìm cho tôi cái hôm trước","disposition":"unresolved","sources":[]}
+{"id":"tr-021","family":"unresolved-reference","split":"train","query":"Nó đã xong chưa?","disposition":"unresolved","sources":[]}
+{"id":"tr-022","family":"local-time-zone","split":"validation","query":"Theo giờ Việt Nam hiện tại là mấy giờ?","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"tr-023","family":"local-time-zone","split":"validation","query":"Ở Hà Nội lúc này là mấy giờ?","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"tr-024","family":"local-time-zone","split":"validation","query":"Bạn đọc giúp tôi ngày giờ địa phương nhé","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"tr-025","family":"knowledge-project","split":"validation","query":"Tài liệu dự án mô tả pipeline RAG như thế nào?","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-026","family":"knowledge-project","split":"validation","query":"Trong wiki có ghi cách dùng hybrid retrieval không?","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-027","family":"knowledge-project","split":"validation","query":"Tìm note nói về cách đánh giá semantic router","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-028","family":"memory-preference","split":"validation","query":"Tôi thích SoCa giải thích thế nào?","disposition":"retrieval_request","sources":["memory"]}
+{"id":"tr-029","family":"memory-preference","split":"validation","query":"Các sở thích trả lời đã lưu của tôi là gì?","disposition":"retrieval_request","sources":["memory"]}
+{"id":"tr-030","family":"memory-preference","split":"validation","query":"Tôi từng lưu preference nào cho câu trả lời?","disposition":"retrieval_request","sources":["memory"]}
+{"id":"tr-031","family":"both-onnx","split":"validation","query":"Tuần trước tôi note gì về ONNX?","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"tr-032","family":"both-onnx","split":"validation","query":"Thông tin ONNX Runtime của tôi nằm trong ghi chú nào?","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"tr-033","family":"both-onnx","split":"validation","query":"Có cả tài liệu học và memory nào nói về ONNX không?","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"tr-034","family":"smalltalk-casual","split":"validation","query":"Tôi chỉ muốn trò chuyện một chút thôi","disposition":"smalltalk","sources":[]}
+{"id":"tr-035","family":"smalltalk-casual","split":"validation","query":"Cho tôi một lời động viên nhé","disposition":"smalltalk","sources":[]}
+{"id":"tr-036","family":"smalltalk-casual","split":"validation","query":"Kể một câu chuyện ngắn vui đi","disposition":"smalltalk","sources":[]}
+{"id":"tr-037","family":"oos-alarm","split":"validation","query":"Đặt báo thức lúc bảy giờ sáng mai","disposition":"out_of_scope","sources":[]}
+{"id":"tr-038","family":"oos-alarm","split":"validation","query":"Hẹn giờ uống thuốc cho tôi","disposition":"out_of_scope","sources":[]}
+{"id":"tr-039","family":"oos-alarm","split":"validation","query":"Đặt timer năm phút giúp tôi","disposition":"out_of_scope","sources":[]}
+{"id":"tr-040","family":"oos-file-mention","split":"validation","query":"Tôi đang viết truyện có nhân vật mở file notes.md","disposition":"out_of_scope","sources":[]}
+{"id":"tr-041","family":"oos-file-mention","split":"validation","query":"Trong câu chuyện có nhắc đến wiki/project.md","disposition":"out_of_scope","sources":[]}
+{"id":"tr-042","family":"oos-file-mention","split":"validation","query":"Từ file private.md trong tiểu thuyết có nghĩa gì?","disposition":"out_of_scope","sources":[]}
+{"id":"tr-043","family":"local-time-asr","split":"test","query":"bây giờ là mấy giờ nhỉ","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"tr-044","family":"local-time-asr","split":"test","query":"cho mình biết giờ hiện tại với","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"tr-045","family":"local-time-asr","split":"test","query":"múi giờ việt nam đang là mấy giờ","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"tr-046","family":"knowledge-voice","split":"test","query":"ghi chú của tôi nói định lý Bayes ra sao","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-047","family":"knowledge-voice","split":"test","query":"trong tài liệu có benchmark TTFA nào không","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-048","family":"knowledge-voice","split":"test","query":"tìm phần safety disclaimer sức khỏe","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-049","family":"memory-budget","split":"test","query":"Ngân sách ăn uống tháng này của tôi thế nào?","disposition":"retrieval_request","sources":["memory"]}
+{"id":"tr-050","family":"memory-budget","split":"test","query":"Tháng này tôi đã lưu kế hoạch chi tiêu gì?","disposition":"retrieval_request","sources":["memory"]}
+{"id":"tr-051","family":"memory-budget","split":"test","query":"Tìm lại ghi chú tài chính cá nhân gần đây","disposition":"retrieval_request","sources":["memory"]}
+{"id":"tr-052","family":"both-decision","split":"test","query":"Tôi đã quyết chọn backend nào, có ghi ở đâu không?","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"tr-053","family":"both-decision","split":"test","query":"Lý do chọn model TTS của tôi nằm trong note hay memory?","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"tr-054","family":"both-decision","split":"test","query":"Tìm cả tài liệu và ký ức về quyết định embedding","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"tr-055","family":"smalltalk-closing","split":"test","query":"Cảm ơn bạn nhé","disposition":"smalltalk","sources":[]}
+{"id":"tr-056","family":"smalltalk-closing","split":"test","query":"Chúc bạn một ngày tốt lành","disposition":"smalltalk","sources":[]}
+{"id":"tr-057","family":"smalltalk-closing","split":"test","query":"Tạm biệt, hẹn gặp lại","disposition":"smalltalk","sources":[]}
+{"id":"tr-058","family":"oos-no-wiki","split":"test","query":"Đừng tìm trong wiki, chỉ nói chuyện với tôi thôi","disposition":"out_of_scope","sources":[]}
+{"id":"tr-059","family":"oos-no-wiki","split":"test","query":"Không cần tra knowledge, giải thích chung cho tôi","disposition":"out_of_scope","sources":[]}
+{"id":"tr-060","family":"oos-no-wiki","split":"test","query":"Từ knowledge có nghĩa là gì?","disposition":"out_of_scope","sources":[]}
+{"id":"tr-061","family":"oos-device","split":"test","query":"Mở Chrome giúp tôi","disposition":"out_of_scope","sources":[]}
+{"id":"tr-062","family":"oos-device","split":"test","query":"Tắt máy tính cho tôi","disposition":"out_of_scope","sources":[]}
+{"id":"tr-063","family":"oos-device","split":"test","query":"Bật đèn phòng khách giúp tôi","disposition":"out_of_scope","sources":[]}
+{"id":"tr-064","family":"unresolved-ellipsis","split":"test","query":"Ừ, vậy cái kia thì sao?","disposition":"unresolved","sources":[]}
+{"id":"tr-065","family":"unresolved-ellipsis","split":"test","query":"Nói tiếp phần đó đi","disposition":"unresolved","sources":[]}
+{"id":"tr-066","family":"unresolved-ellipsis","split":"test","query":"Còn cái hôm qua tôi hỏi thì sao?","disposition":"unresolved","sources":[]}

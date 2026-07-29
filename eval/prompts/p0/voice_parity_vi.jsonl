@@ -1,0 +1,14 @@
+{"id":"vp-001-text","parity_id":"vp-001","family":"local-time","split":"train","input_mode":"text","transcript":"Bây giờ là mấy giờ?","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"vp-001-asr","parity_id":"vp-001","family":"local-time","split":"train","input_mode":"asr","transcript":"bây giờ là mấy giờ","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"vp-002-text","parity_id":"vp-002","family":"knowledge","split":"train","input_mode":"text","transcript":"Ghi chú của tôi nói về Bayes thế nào?","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"vp-002-asr","parity_id":"vp-002","family":"knowledge","split":"train","input_mode":"asr","transcript":"ghi chú của tôi nói về bay ét thế nào","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"vp-003-text","parity_id":"vp-003","family":"memory","split":"validation","input_mode":"text","transcript":"Tôi đã chọn TTS nào và vì sao?","disposition":"retrieval_request","sources":["memory"]}
+{"id":"vp-003-asr","parity_id":"vp-003","family":"memory","split":"validation","input_mode":"asr","transcript":"tôi đã chọn t t ét ét nào vì sao","disposition":"retrieval_request","sources":["memory"]}
+{"id":"vp-004-text","parity_id":"vp-004","family":"both","split":"validation","input_mode":"text","transcript":"Tôi đã ghi gì về ONNX Runtime?","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"vp-004-asr","parity_id":"vp-004","family":"both","split":"validation","input_mode":"asr","transcript":"tôi đã ghi gì về on n ích runtime","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"vp-005-text","parity_id":"vp-005","family":"smalltalk","split":"test","input_mode":"text","transcript":"Xin chào SoCa","disposition":"smalltalk","sources":[]}
+{"id":"vp-005-asr","parity_id":"vp-005","family":"smalltalk","split":"test","input_mode":"asr","transcript":"xin chào so ca","disposition":"smalltalk","sources":[]}
+{"id":"vp-006-text","parity_id":"vp-006","family":"weather-hard-negative","split":"test","input_mode":"text","transcript":"Thời tiết Hà Nội hôm nay thế nào?","disposition":"out_of_scope","sources":[]}
+{"id":"vp-006-asr","parity_id":"vp-006","family":"weather-hard-negative","split":"test","input_mode":"asr","transcript":"thời tiết hà nội hôm nay thế nào","disposition":"out_of_scope","sources":[]}
+{"id":"vp-007-text","parity_id":"vp-007","family":"file-hard-negative","split":"test","input_mode":"text","transcript":"Tôi đang viết truyện có nhân vật mở file notes.md","disposition":"out_of_scope","sources":[]}
+{"id":"vp-007-asr","parity_id":"vp-007","family":"file-hard-negative","split":"test","input_mode":"asr","transcript":"tôi đang viết truyện có nhân vật mở file notes chấm md","disposition":"out_of_scope","sources":[]}
