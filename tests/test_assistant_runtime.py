@@ -166,6 +166,9 @@ class SequenceLLM(SpyLLM):
         super().__init__(text=responses[0])
         self.responses = responses
 
+    def count_tokens(self, text: str) -> int:
+        return len(text.split())
+
     def generate(
         self,
         user_msg: str,
@@ -270,6 +273,37 @@ def test_llm_repair_retries_once_when_citations_are_missing() -> None:
     assert result.trace.answer_repair_attempted is True
     assert result.trace.answer_repair_succeeded is True
     assert len(llm.calls) == 2
+    assert result.usage is not None
+    assert result.usage.prompt_tokens == 20
+    assert result.usage.completion_tokens == 10
+
+
+def test_llm_repair_skips_second_call_when_repair_prompt_cannot_fit() -> None:
+    source = FakeKnowledgeSource()
+    llm = SequenceLLM(
+        [
+            "Protein hỗ trợ duy trì cơ bắp.",
+            "Theo [K1], protein hỗ trợ duy trì cơ bắp.",
+        ]
+    )
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        knowledge_builder=KnowledgeContextBuilder(source),
+        options=RuntimeOptions(
+            max_tokens=64,
+            model_context_window=300,
+            context_safety_margin_tokens=0,
+        ),
+    )
+
+    result = runtime.run_text_turn("wiki: " + ("Bayes " * 90))
+
+    assert result.response_text == "Protein hỗ trợ duy trì cơ bắp."
+    assert result.trace is not None
+    assert result.trace.answer_repair_attempted is True
+    assert result.trace.answer_repair_succeeded is False
+    assert len(llm.calls) == 1
 
 
 def test_filtered_knowledge_citations_do_not_include_rejected_hits() -> None:
@@ -306,6 +340,7 @@ def test_explicit_memory_search_synthesizes_retrieved_context_with_llm() -> None
     assert result.citations[0].source == "memory"
     assert "Memory:" in llm.calls[0]["user_msg"]
     assert "Chọn TTS local vì riêng tư" in llm.calls[0]["user_msg"]
+    assert result.trace.evidence_decisions[-1].status == "weak"
 
 
 def test_empty_knowledge_search_result_does_not_require_citation() -> None:

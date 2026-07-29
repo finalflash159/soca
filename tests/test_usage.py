@@ -49,6 +49,31 @@ def test_llm_usage_from_none_is_none() -> None:
     assert LLMUsage.from_llm_result(None) is None
 
 
+def test_llm_usage_combines_sequential_calls() -> None:
+    first = LLMUsage(
+        prompt_tokens=100,
+        completion_tokens=20,
+        ttft_ms=50.0,
+        total_latency_ms=500.0,
+        tokens_per_second=50.0,
+    )
+    repair = LLMUsage(
+        prompt_tokens=80,
+        completion_tokens=10,
+        ttft_ms=40.0,
+        total_latency_ms=300.0,
+        tokens_per_second=50.0,
+    )
+
+    combined = first.combine(repair)
+
+    assert combined.prompt_tokens == 180
+    assert combined.completion_tokens == 30
+    assert combined.total_latency_ms == 800.0
+    assert combined.ttft_ms == 540.0
+    assert combined.tokens_per_second == 50.0
+
+
 def test_turn_usage_from_runtime_result_reads_route_and_llm() -> None:
     llm = LLMUsage.from_llm_result(FakeLLMResult())
     result = FakeResult(
