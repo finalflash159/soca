@@ -5,8 +5,8 @@ from collections.abc import Iterable, Iterator
 from soca.core.turn import RuntimeResult, RuntimeStreamEvent
 
 from .contracts import TerminalOutcome, TerminalStatus, TurnState
-from .events import WorkflowEvent, WorkflowEventStream
 from .errors import DuplicateTerminalError
+from .events import WorkflowEvent, WorkflowEventStream
 
 
 def terminal_from_runtime_result(result: RuntimeResult) -> TerminalOutcome:
