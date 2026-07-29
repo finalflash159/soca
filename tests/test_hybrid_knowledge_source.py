@@ -101,6 +101,8 @@ def test_hybrid_keeps_two_chunks_from_one_document_as_distinct_hits(tmp_path: Pa
     assert len({hit.document.id for hit in nutrition_hits}) == len(nutrition_hits)
     assert all(hit.document.id.startswith("wiki/") for hit in nutrition_hits)
     assert all(hit.line_end >= hit.line_start >= 1 for hit in nutrition_hits)
+    assert all(hit.retrieval_backend in {"hybrid", "dense", "lexical_custom"} for hit in hits)
+    assert all(hit.fusion_score is not None for hit in hits)
 
 
 def test_dense_retrieval_is_not_blocked_by_a_lexical_miss(tmp_path: Path) -> None:
