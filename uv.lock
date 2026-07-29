@@ -3169,7 +3169,6 @@ dependencies = [
     { name = "llama-cpp-python" },
     { name = "numpy" },
     { name = "onnxruntime" },
-    { name = "pyahocorasick" },
     { name = "pywebrtc-audio" },
     { name = "pyyaml" },
     { name = "rich" },
@@ -3194,6 +3193,7 @@ eval = [
     { name = "datasets" },
     { name = "jiwer" },
     { name = "matplotlib" },
+    { name = "pyahocorasick" },
 ]
 llm = [
     { name = "llama-cpp-python" },
@@ -3237,7 +3237,7 @@ requires-dist = [
     { name = "onnx", marker = "extra == 'valtec-build'", specifier = ">=1.17,<2.0" },
     { name = "onnxruntime", specifier = ">=1.20" },
     { name = "openai", marker = "extra == 'llm-remote'", specifier = ">=1.0" },
-    { name = "pyahocorasick", specifier = ">=2.3.1" },
+    { name = "pyahocorasick", marker = "extra == 'eval'", specifier = ">=2.3.1" },
     { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1.400" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pywebrtc-audio", specifier = ">=0.1.0" },

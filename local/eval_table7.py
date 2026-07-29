@@ -7,10 +7,10 @@ Compares 6 configurations on a mix of real speech + non-speech:
     raw              — ASR only, no post-processing
     deloop           — ASR + consecutive-repeat collapse
     vad              — Silero VAD pre-filter + ASR
-    boh              — ASR + Aho-Corasick BoH match
-    deloop_boh       — ASR + de-loop + BoH
-    vad_deloop_boh   — production RobustASR pipeline
-                       (VAD + ASR + confidence guard + de-loop + BoH + heuristics)
+    boh              — ASR + research-only Aho-Corasick BoH match
+    deloop_boh       — ASR + de-loop + research-only BoH
+    vad_deloop_boh   — production RobustASR pipeline, with optional BoH
+                       applied only after production for historical ablation
 
 Reports per config:
   - WER + CER on real Vietnamese speech (FLEURS vi_vn)
@@ -26,7 +26,7 @@ Usage:
     # one-time setup
     uv run python -m local.collect_noise          # build noise dataset
     uv run python -m local.download_fleurs        # build speech dataset
-    uv run python -m local.build_boh              # build BoH artifact
+    uv run python -m local.build_boh              # build research artifact
 
     # main run
     uv run python -m local.eval_table7
@@ -51,6 +51,7 @@ from rich.console import Console
 from rich.progress import track
 from rich.table import Table
 
+from eval.experimental.asr_boh import VietnameseBoH
 from eval.robustness_metrics import (
     STAGE_ORDER,
     Diagnostic,
@@ -62,7 +63,6 @@ from soca.asr import (
     RobustASR,
     SpeechDetector,
     VietnameseASR,
-    VietnameseBoH,
     remove_consecutive_repeats,
 )
 from soca.asr.registry import ASR_MODEL_REGISTRY, DEFAULT_ASR_MODEL_KEY
@@ -145,7 +145,7 @@ CONFIG_LABELS = {
     "vad": "(3) Silero VAD only",
     "boh": "(4) BoH only",
     "deloop_boh": "(5) De-loop + BoH",
-    "vad_deloop_boh": "(6) Full pipeline (RobustASR production path)",
+    "vad_deloop_boh": "(6) RobustASR + experimental BoH",
 }
 
 
@@ -252,17 +252,27 @@ def run_config(
             if robust_asr is None:
                 raise RuntimeError("robust_asr is required for vad_deloop_boh config")
             result = robust_asr.transcribe(audio)
-            predictions.append(result.text.strip())
+            eval_text = result.text.strip()
+            boh_matches: tuple[str, ...] = ()
+            rejection_reason = result.rejection_reason
+            if boh is not None and eval_text:
+                boh_result = boh.match_and_clean(eval_text)
+                eval_text = boh_result.cleaned_text.strip()
+                boh_matches = boh_result.matched_phrases
+                if not eval_text and not rejection_reason:
+                    rejection_reason = "empty_after_boh"
+            predictions.append(eval_text)
             latencies_ms.append(result.total_latency_ms)
             diagnostics.append(
                 {
                     "kind": item.kind,
                     "raw_text": result.raw_text,
-                    "final_text": result.text,
-                    "rejection_reason": result.rejection_reason,
+                    "production_final_text": result.text,
+                    "final_text": eval_text,
+                    "rejection_reason": rejection_reason,
                     "has_speech": result.has_speech,
                     "was_looping": result.was_looping,
-                    "boh_matches": list(result.boh_matches),
+                    "boh_matches": list(boh_matches),
                     "avg_logprob": result.avg_logprob,
                     "compression_ratio": result.compression_ratio,
                     "speech_duration_ms": (
@@ -413,7 +423,7 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str, model_key: s
     except FileNotFoundError:
         boh = None
         console.print("  [yellow]ASR + VAD ready; BoH artifact missing → BoH configs will skip stage 4[/yellow]\n")
-    robust_asr = RobustASR(asr=asr, vad=vad, boh=boh)
+    robust_asr = RobustASR(asr=asr, vad=vad)
     console.print(
         "  RobustASR thresholds: "
         f"min_avg_logprob={robust_asr.min_avg_logprob:.3f}, "
@@ -492,8 +502,8 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str, model_key: s
             "configs": config_list,
             "providers": provider_list,
             "asr_runtime_identity": asr.runtime_metadata(),
-            "boh_n_phrases": len(boh) if boh else 0,
-            "boh_loaded": boh is not None,
+            "experimental_boh_n_phrases": len(boh) if boh else 0,
+            "experimental_boh_loaded": boh is not None,
             "vad_params": {
                 "threshold": vad.threshold,
                 "min_speech_ms": vad.min_speech_ms,
@@ -503,6 +513,8 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str, model_key: s
             "robust_asr": {
                 "full_pipeline_config": "vad_deloop_boh",
                 "uses_production_class": True,
+                "boh_applied_in_production": False,
+                "boh_applied_after_production_for_ablation": True,
                 "min_avg_logprob": robust_asr.min_avg_logprob,
                 "max_compression_ratio": robust_asr.max_compression_ratio,
             },

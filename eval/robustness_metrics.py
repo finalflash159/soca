@@ -13,8 +13,9 @@ Canonical stages (pipeline order) mirror ``RobustASR.transcribe``:
     empty_asr        — model produced nothing (stage 2)
     low_confidence   — avg-logprob guard (stage 2b)
     high_compression — compression-ratio guard (stage 2b)
-    empty_after_boh  — BoH cleaning emptied the text (stage 4)
-    heuristic        — heuristic safety net (stage 5)
+    empty_after_cleanup — post-processing emptied the text (production stage 4)
+    empty_after_boh  — historical BoH artifact bucket (legacy eval only)
+    heuristic        — heuristic safety net (production stage 4)
     empty_output     — empty with no reason (a silent catch, manual configs)
     accepted         — survived every stage (a hallucination when the input was noise)
 """
@@ -31,6 +32,7 @@ STAGE_ORDER: tuple[str, ...] = (
     "empty_asr",
     "low_confidence",
     "high_compression",
+    "empty_after_cleanup",
     "empty_after_boh",
     "heuristic",
     "empty_output",
