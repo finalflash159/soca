@@ -3,19 +3,25 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from soca.core.text_budget import truncate
 from soca.memory.base import MemoryRole, MemoryTurn
 from soca.memory.compaction_coordinator import CompactionResult, WorkingMemoryCompactionCoordinator
+from soca.memory.session_store import CheckpointConflictError, SessionCheckpointStore
 from soca.memory.summary import LocalSummaryWorkerProcess, build_production_summary_worker
 from soca.memory.working import WorkingMemory, WorkingMemoryPolicy, approximate_tokens
 
 RECENT_CONVERSATION_HEADER = "Recent conversation:"
 VALID_ROLES = {"user", "assistant"}
+SessionPersistence = Literal["ram_only", "local_resumable"]
 
 
 @dataclass(frozen=True)
 class SessionMemoryStats:
+    thread_id: str
+    persistence: SessionPersistence
+    checkpoint_enabled: bool
     current_tokens: int
     rendered_tokens: int
     hard_limit_tokens: int
@@ -51,6 +57,9 @@ class SessionMemory:
         summary_model_root: Path | None = None,
         summary_threads: int | None = None,
         summary_gpu_layers: int = -1,
+        persistence: SessionPersistence = "ram_only",
+        checkpoint_store: SessionCheckpointStore | None = None,
+        resume: bool = False,
     ) -> None:
         if max_turns <= 0:
             raise ValueError("max_turns must be greater than 0")
@@ -58,9 +67,17 @@ class SessionMemory:
             raise ValueError("max_chars must leave room for the session memory header")
         if max_turn_chars <= 0:
             raise ValueError("max_turn_chars must be greater than 0")
+        if persistence not in {"ram_only", "local_resumable"}:
+            raise ValueError("unknown session persistence mode")
+        if persistence == "local_resumable" and checkpoint_store is None:
+            raise ValueError("local_resumable sessions require a checkpoint store")
+        if resume and persistence != "local_resumable":
+            raise ValueError("resume requires local_resumable persistence")
         self.max_turns = max_turns
         self.max_chars = max_chars
         self.max_turn_chars = max_turn_chars
+        self.persistence = persistence
+        self.checkpoint_store = checkpoint_store
         self._summary_worker = (
             summary_worker
             if summary_worker is not None
@@ -80,11 +97,18 @@ class SessionMemory:
                 mode="background_summary" if summary_enabled else "trim_only"
             ),
         )
+        if resume and checkpoint_store is not None:
+            loaded = checkpoint_store.load(thread_id)
+            if loaded is not None:
+                self.working = loaded
         self.compaction = WorkingMemoryCompactionCoordinator(
             self.working,
             self._summary_worker,
         )
         self._pending_sequences: list[int] = []
+        self._pending_sequences.extend(
+            turn.sequence for turn in self.working.snapshot.turns if turn.status == "pending"
+        )
         # A completed async failure remains visible through the coordinator so
         # the UI can report it.  Its deterministic trim fallback, however,
         # must run only once: repeatedly trimming keeps the prompt below the
@@ -115,6 +139,7 @@ class SessionMemory:
             turn = self.working.begin_turn(bounded)
             self._pending_sequences.append(turn.sequence)
             self._enforce_hard_limit()
+            self._save_checkpoint()
             return
         if not self._pending_sequences:
             # An assistant response without a user request has no trustworthy
@@ -127,6 +152,7 @@ class SessionMemory:
             result = self.compaction.request()
             if result.status in {"trim_only", "unavailable", "failed"}:
                 self.working.trim_only()
+        self._save_checkpoint()
 
     def clear(self) -> None:
         self.compaction.cancel()
@@ -140,6 +166,7 @@ class SessionMemory:
         )
         self._pending_sequences.clear()
         self._trimmed_failure_generation = None
+        self._delete_checkpoint()
 
     def render(self) -> str:
         self._poll_compaction()
@@ -173,6 +200,9 @@ class SessionMemory:
         snapshot = self.working.snapshot
         summary_section, recent_section = self.working.render_sections()
         return SessionMemoryStats(
+            thread_id=snapshot.thread_id,
+            persistence=self.persistence,
+            checkpoint_enabled=self.checkpoint_path is not None,
             current_tokens=snapshot.token_count,
             rendered_tokens=approximate_tokens(self.render()),
             hard_limit_tokens=self.working.policy.hard_limit_tokens,
@@ -203,6 +233,7 @@ class SessionMemory:
 
     def close(self) -> None:
         self.compaction.cancel()
+        self._save_checkpoint()
 
     @property
     def summary_model_key(self) -> str | None:
@@ -216,6 +247,12 @@ class SessionMemory:
     def summary_telemetry(self) -> dict[str, object] | None:
         return self.compaction.last_telemetry
 
+    @property
+    def checkpoint_path(self) -> Path | None:
+        if self.persistence != "local_resumable" or self.checkpoint_store is None:
+            return None
+        return self.checkpoint_store._path(self.working.thread_id)
+
     def _poll_compaction(self) -> CompactionResult:
         result = self.compaction.status()
         if (
@@ -224,6 +261,8 @@ class SessionMemory:
         ):
             self.working.trim_only()
             self._trimmed_failure_generation = result.generation
+        if result.status in {"published", "trim_only", "unavailable", "failed"}:
+            self._save_checkpoint()
         return result
 
     def _enforce_hard_limit(self) -> None:
@@ -232,5 +271,19 @@ class SessionMemory:
         self.compaction.cancel()
         self.working.trim_only()
 
+    def _save_checkpoint(self) -> None:
+        if self.persistence != "local_resumable" or self.checkpoint_store is None:
+            return
+        try:
+            self.checkpoint_store.save(self.working)
+        except CheckpointConflictError:
+            # A second process owns this thread. Do not overwrite its newer
+            # state or turn a local privacy feature into data loss.
+            return
 
-__all__ = ["SessionMemory", "SessionMemoryStats"]
+    def _delete_checkpoint(self) -> None:
+        if self.persistence == "local_resumable" and self.checkpoint_store is not None:
+            self.checkpoint_store.delete(self.working.thread_id)
+
+
+__all__ = ["SessionMemory", "SessionMemoryStats", "SessionPersistence"]

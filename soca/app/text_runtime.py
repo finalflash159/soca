@@ -34,7 +34,12 @@ from soca.knowledge.retrievers.dense import EmbeddingModel, FastEmbedModel
 from soca.llm import LLMEngine, LocalLlamaCppLLM
 from soca.llm.factory import SecretReader, build_llm_engine
 from soca.llm.registry import LLM_MODEL_REGISTRY
-from soca.memory import SessionMemory
+from soca.memory import (
+    SessionCheckpointStore,
+    SessionMemory,
+    SessionPersistence,
+    default_session_checkpoint_home,
+)
 from soca.tools import LocalTimeTool, MemorySearchTool, Tool, ToolRuntime
 
 
@@ -64,6 +69,9 @@ class TextRuntimeConfig:
     session_chars: int = 60_000
     session_turns: int = 6
     turn_chars: int = 500
+    session_persistence: SessionPersistence = "ram_only"
+    session_id: str = "default"
+    session_resume: bool = False
     llm_threads: int = 8
     llm_gpu_layers: int = -1
     tool_router_mode: str = "cascade"
@@ -97,6 +105,9 @@ def resolve_text_runtime_config(
     session_chars: int = 60_000,
     session_turns: int = 6,
     turn_chars: int = 500,
+    session_persistence: SessionPersistence = "ram_only",
+    session_id: str = "default",
+    session_resume: bool = False,
     llm_threads: int = 8,
     llm_gpu_layers: int = -1,
     tool_router_mode: str = "cascade",
@@ -136,6 +147,9 @@ def resolve_text_runtime_config(
         session_chars=session_chars,
         session_turns=session_turns,
         turn_chars=turn_chars,
+        session_persistence=session_persistence,
+        session_id=session_id,
+        session_resume=session_resume,
         llm_threads=llm_threads,
         llm_gpu_layers=llm_gpu_layers,
         tool_router_mode=tool_router_mode,
@@ -232,12 +246,20 @@ def build_text_runtime(
             session_memory
             if session_memory is not None
             else SessionMemory(
+                thread_id=config.session_id,
                 max_turns=config.session_turns,
                 max_chars=config.session_chars,
                 max_turn_chars=config.turn_chars,
                 summary_enabled=not config.no_llm,
                 summary_threads=config.llm_threads,
                 summary_gpu_layers=config.llm_gpu_layers,
+                persistence=config.session_persistence,
+                checkpoint_store=(
+                    SessionCheckpointStore(default_session_checkpoint_home())
+                    if config.session_persistence == "local_resumable"
+                    else None
+                ),
+                resume=config.session_resume,
             )
         )
         memory_setup = build_memory_runtime_setup(

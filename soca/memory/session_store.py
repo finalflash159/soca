@@ -10,6 +10,18 @@ from pathlib import Path
 
 from soca.memory.working import WorkingMemory
 
+CHECKPOINT_SCHEMA_VERSION = 1
+
+
+class CheckpointConflictError(ValueError):
+    """Raised when a newer checkpoint would be overwritten."""
+
+
+def default_session_checkpoint_home() -> Path:
+    configured = os.environ.get("XDG_STATE_HOME", "").strip()
+    base = Path(configured).expanduser() if configured else Path.home() / ".local" / "state"
+    return base / "soca" / "sessions"
+
 
 class SessionCheckpointStore:
     def __init__(self, root: str | Path) -> None:
@@ -23,7 +35,21 @@ class SessionCheckpointStore:
         target = self._path(memory.thread_id)
         if target.exists() and target.is_symlink():
             raise ValueError("session checkpoint must not be a symlink")
-        payload = json.dumps(memory.to_dict(), ensure_ascii=False, sort_keys=True).encode("utf-8")
+        current = self._read_payload(target) if target.exists() else None
+        current_revision = _payload_revision(current)
+        if current_revision is not None and current_revision > memory.snapshot.revision:
+            raise CheckpointConflictError("session checkpoint is newer than working memory")
+        payload = json.dumps(
+            {
+                "schema_version": CHECKPOINT_SCHEMA_VERSION,
+                "thread_id": memory.thread_id,
+                "revision": memory.snapshot.revision,
+                "persistence": "local_resumable",
+                "working": memory.to_dict(),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ).encode("utf-8")
         descriptor, temporary = tempfile.mkstemp(prefix=".working-", suffix=".json", dir=self.root)
         try:
             os.fchmod(descriptor, 0o600)
@@ -51,7 +77,7 @@ class SessionCheckpointStore:
             raise ValueError("session checkpoint must be a real file")
         if target.stat().st_mode & 0o077:
             raise ValueError("session checkpoint permissions must be private")
-        return WorkingMemory.from_dict(json.loads(target.read_text(encoding="utf-8")))
+        return WorkingMemory.from_dict(_working_payload(self._read_payload(target)))
 
     def delete(self, thread_id: str) -> bool:
         target = self._path(thread_id)
@@ -68,5 +94,37 @@ class SessionCheckpointStore:
         digest = hashlib.sha256(thread_id.encode("utf-8")).hexdigest()
         return self.root / f"{digest}.json"
 
+    @staticmethod
+    def _read_payload(target: Path) -> object:
+        return json.loads(target.read_text(encoding="utf-8"))
 
-__all__ = ["SessionCheckpointStore"]
+
+def _working_payload(payload: object) -> object:
+    if isinstance(payload, dict) and payload.get("schema_version") == CHECKPOINT_SCHEMA_VERSION:
+        if payload.get("persistence") != "local_resumable":
+            raise ValueError("unsupported checkpoint persistence mode")
+        working = payload.get("working")
+        if not isinstance(working, dict):
+            raise ValueError("checkpoint working payload must be an object")
+        return working
+    # Version-1 working-memory checkpoints predate the session wrapper. They
+    # remain readable, but every new write uses the wrapped schema above.
+    return payload
+
+
+def _payload_revision(payload: object) -> int | None:
+    if isinstance(payload, dict) and payload.get("schema_version") == CHECKPOINT_SCHEMA_VERSION:
+        value = payload.get("revision")
+    elif isinstance(payload, dict):
+        value = payload.get("revision")
+    else:
+        return None
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+__all__ = [
+    "CHECKPOINT_SCHEMA_VERSION",
+    "CheckpointConflictError",
+    "SessionCheckpointStore",
+    "default_session_checkpoint_home",
+]

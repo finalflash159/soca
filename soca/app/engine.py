@@ -66,7 +66,14 @@ from soca.llm.providers import (
     search_models,
 )
 from soca.llm.registry import LLM_MODEL_REGISTRY
-from soca.memory import MarkdownLongTermMemory, MemoryCommands, ProposalStore, SessionMemory
+from soca.memory import (
+    MarkdownLongTermMemory,
+    MemoryCommands,
+    ProposalStore,
+    SessionCheckpointStore,
+    SessionMemory,
+    default_session_checkpoint_home,
+)
 from soca.memory.working import approximate_tokens
 from soca.prompts import SOCA_RUNTIME_SYSTEM_PROMPT, build_runtime_prompt
 from soca.tts import VALTEC_TTS_CONFIG
@@ -498,7 +505,8 @@ class SocaEngine:
                 "memory",
                 "Archive memory",
                 "configured",
-                f"{self.text_config.memory_mode}/{self.text_config.memory_retrieval_mode}",
+                f"{self.text_config.memory_mode}/{self.text_config.memory_retrieval_mode}"
+                f" · session {self.session_memory.persistence}",
             )
 
         embedding_detail = "fastembed-e5-small · provisioned"
@@ -1444,12 +1452,20 @@ class SocaEngine:
         if config.no_memory:
             return None
         return SessionMemory(
+            thread_id=config.session_id,
             max_turns=config.session_turns,
             max_chars=config.session_chars,
             max_turn_chars=config.turn_chars,
             summary_enabled=not self.no_model,
             summary_threads=config.llm_threads,
             summary_gpu_layers=config.llm_gpu_layers,
+            persistence=config.session_persistence,
+            checkpoint_store=(
+                SessionCheckpointStore(default_session_checkpoint_home())
+                if config.session_persistence == "local_resumable"
+                else None
+            ),
+            resume=config.session_resume,
         )
 
     # --- voice ------------------------------------------------------------------
