@@ -57,6 +57,7 @@ class RuntimeTrace:
     evidence_decisions: tuple[Any, ...] = ()
     evidence_bundle: Any | None = None
     answer_validation: Any | None = None
+    prompt_manifest: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
