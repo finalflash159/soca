@@ -47,6 +47,12 @@ class FakeKnowledgeSource:
         return self.document
 
 
+class EmptyKnowledgeSource:
+    def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
+        del query, limit
+        return []
+
+
 class StreamSpyLLM:
     """Fake LLM whose generate_stream yields a fixed list of tokens."""
 
@@ -162,6 +168,27 @@ def test_stream_llm_route_emits_tokens_then_sentences_then_result() -> None:
     assert result.blocked is False
     assert result.response_text == "Xin chào bạn. Mình là SoCa."
     assert llm.stream_calls and llm.stream_calls[0]["inject_persona"] is False
+    assert llm.generate_calls == []
+
+
+def test_empty_retrieval_streams_when_citations_are_not_required() -> None:
+    llm = StreamSpyLLM(["Mình không tìm thấy nội dung này trong ghi chú của bạn."])
+    runtime = AssistantRuntime(
+        llm=llm,
+        knowledge_builder=KnowledgeContextBuilder(EmptyKnowledgeSource()),
+        tool_router=SemanticRetrievalRouter(),
+    )
+
+    tokens, sentences, result, _ = _collect(
+        runtime.stream_text_turn("Tìm ghi chú về Sao Bắc Cực X9", min_sentence_chars=8)
+    )
+
+    assert tokens == ["Mình không tìm thấy nội dung này trong ghi chú của bạn."]
+    assert sentences == ["Mình không tìm thấy nội dung này trong ghi chú của bạn."]
+    assert result is not None
+    assert result.blocked is False
+    assert result.trace is not None
+    assert result.trace.answer_policy == "abstain"
     assert llm.generate_calls == []
 
 

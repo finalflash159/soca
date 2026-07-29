@@ -669,7 +669,7 @@ class AssistantRuntime:
             return
 
         grounding_policy = self._grounding_policy(draft)
-        if grounding_policy.name != "free_chat":
+        if grounding_policy.requires_citations:
             result = self._run_llm_turn(
                 frame,
                 draft,
