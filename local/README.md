@@ -19,7 +19,8 @@ Phiên bản chạy thẳng trên Mac không cần Colab. Mirror của `notebook
 uv sync --extra dev --extra eval
 ```
 
-`silero-vad`, `pyahocorasick`, `torchcodec` đã trong base deps.
+`silero-vad` và `torchcodec` nằm trong base deps; `pyahocorasick` chỉ có trong
+extra `eval` vì BoH là tooling nghiên cứu, không phải production runtime.
 
 ## Pipeline đầy đủ — 5 CLI tuần tự
 
@@ -134,7 +135,9 @@ Sample output:
 └─────────────────────┴────────┴───────┴─────────────┴────────────┴────────────┘
 ```
 
-→ Đây là pattern paper Barański et al. ICASSP 2025 chứng minh: VAD là gate chính, BoH catch các residual.
+→ Đây là benchmark ablation nghiên cứu. Production `RobustASR` hiện chỉ dùng
+VAD, confidence guard, de-loop và heuristics; BoH nếu bật chỉ được áp dụng
+trong evaluator sau production để giữ khả năng so sánh lịch sử.
 
 Options:
 
@@ -204,6 +207,6 @@ Lý do:
 
 ## Quan hệ với `notebooks/`
 
-`local/` và `notebooks/02` cùng config (model registry, MIN_COUNT, MIN_CHARS, normalization), output JSON cùng schema. BoH file từ `local/` và `notebooks/02` có thể swap được cho nhau ở runtime — chỉ khác metadata field `execution_mode` (`"local"` vs `"colab"`).
+`local/` và `notebooks/02` cùng config (model registry, MIN_COUNT, MIN_CHARS, normalization), output JSON cùng schema. BoH file từ `local/` và `notebooks/02` chỉ dùng cho evaluator/ablation; không được auto-load vào voice runtime. Metadata phân biệt `execution_mode` (`"local"` vs `"colab"`).
 
 Notebooks 03/04 hiện tại là placeholder rỗng — `local/calibrate_thresholds.py` và `local/eval_table7.py` là implementation chính cho 2 deliverable đó. Khi nào cần share workflow trên Colab GPU thì port logic từ `local/` sang notebook.
