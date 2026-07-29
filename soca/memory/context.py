@@ -42,6 +42,7 @@ class MemoryContextBuilder:
         self,
         long_term: LongTermMemorySource | None = None,
         session: SessionMemorySource | None = None,
+        core: LongTermMemorySource | None = None,
         max_chars: int = 64_000,
         profile_chars: int = 800,
         relevance_policy: RelevancePolicy | None = None,
@@ -53,6 +54,7 @@ class MemoryContextBuilder:
 
         self.long_term = long_term
         self.session = session
+        self.core = core
         self.max_chars = max_chars
         self.profile_chars = profile_chars
         self.relevance_policy = relevance_policy or RelevancePolicy()
@@ -66,22 +68,28 @@ class MemoryContextBuilder:
         include_working: bool = True,
     ) -> MemoryContext:
         profile = MemoryProfileResult(text="")
+        core_profile_text = ""
+        archive_profile_text = ""
         session_text = ""
         parts: list[str] = []
 
         accepted_hits: tuple[object, ...] = ()
         assessment = None
-        if self.long_term is not None and (include_core or include_archive):
-            if (
-                include_archive
-                and query is not None
-                and isinstance(self.long_term, QueryAwareLongTermMemorySource)
-            ):
-                profile = self.long_term.retrieve_profile(query)
-            else:
-                profile = MemoryProfileResult(
-                    text=self.long_term.read_profile() if include_core else ""
-                )
+        if include_core:
+            core_source = self.core or self.long_term
+            if core_source is not None:
+                core_profile_text = truncate(core_source.read_profile(), self.profile_chars)
+                if core_profile_text:
+                    header = "Core memory" if self.core is not None else "Long-term memory"
+                    parts.append(header + ":\n" + core_profile_text)
+
+        if (
+            include_archive
+            and self.long_term is not None
+            and query is not None
+            and isinstance(self.long_term, QueryAwareLongTermMemorySource)
+        ):
+            profile = self.long_term.retrieve_profile(query)
             raw_hits = tuple(profile.hits)
             accepted_hits = raw_hits
             if profile.mode == "retrieved":
@@ -107,20 +115,14 @@ class MemoryContextBuilder:
                     )
                 else:
                     accepted_hits = ()
-                profile_text = truncate(
+                archive_profile_text = truncate(
                     _format_retrieved_hits(accepted_hits),
                     self.profile_chars,
                 )
             else:
-                profile_text = truncate(profile.text, self.profile_chars)
-            if profile_text:
-                parts.append(
-                    f"Long-term memory:\n{profile_text}"
-                    if profile.mode != "retrieved"
-                    else profile_text
-                )
-        else:
-            profile_text = ""
+                archive_profile_text = truncate(profile.text, self.profile_chars)
+            if archive_profile_text:
+                parts.append(archive_profile_text)
 
         if include_working and self.session is not None:
             session_text = self.session.render().strip()
@@ -139,7 +141,7 @@ class MemoryContextBuilder:
             for hit in accepted_hits
             if str(getattr(getattr(hit, "document", None), "path", ""))
         )
-        if profile.mode == "retrieved":
+        if profile.mode == "retrieved" and include_archive:
             if assessment is not None:
                 evidence_status = assessment.status
                 evidence_reason = assessment.reason
@@ -159,26 +161,26 @@ class MemoryContextBuilder:
                 top_relevance = profile.top_relevance
                 relevance_margin = profile.relevance_margin
         else:
-            evidence_status = "weak" if profile_text else "insufficient"
-            evidence_reason = "profile_blob" if profile_text else "no_hits"
+            evidence_status = "weak" if archive_profile_text else "insufficient"
+            evidence_reason = "profile_blob" if archive_profile_text else "no_hits"
             rejected_hit_count = 0
             top_relevance = None
             relevance_margin = None
         return MemoryContext(
-            profile_text=profile_text,
+            profile_text=core_profile_text or archive_profile_text,
             session_text=session_text,
             prompt_text=prompt_text,
             hits=accepted_hits,
             citations=citations,
-            mode=profile.mode,
+            mode=profile.mode if include_archive else "blob",
             degraded_reason=profile.degraded_reason,
             evidence_status=evidence_status,
             evidence_reason=evidence_reason,
             rejected_hit_count=rejected_hit_count,
             top_relevance=top_relevance,
             relevance_margin=relevance_margin,
-            core_text=(profile_text if include_core and profile.mode != "retrieved" else ""),
-            archive_text=(profile_text if include_archive and profile.mode == "retrieved" else ""),
+            core_text=core_profile_text if include_core else "",
+            archive_text=archive_profile_text if include_archive else "",
         )
 
 

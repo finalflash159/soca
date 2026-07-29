@@ -13,6 +13,7 @@ from soca.memory.compaction import CompactionConfig, WorkingMemory, WorkingMemor
 from soca.memory.compaction_coordinator import CompactionResult, WorkingMemoryCompactionCoordinator
 from soca.memory.composite import CompositeMemoryConfig, CompositeMemorySource
 from soca.memory.context import MemoryContext, MemoryContextBuilder
+from soca.memory.core import CoreMemoryItem, CoreMemoryStore
 from soca.memory.episodes import EpisodeStore, MemoryEpisode
 from soca.memory.longterm import MarkdownLongTermMemory
 from soca.memory.proposals import MemoryProposal, ProposalStore
@@ -38,6 +39,8 @@ __all__ = [
     "MarkdownLongTermMemory",
     "MemoryContext",
     "MemoryContextBuilder",
+    "CoreMemoryItem",
+    "CoreMemoryStore",
     "MemoryCommandResult",
     "MemoryCommands",
     "CompactionResult",

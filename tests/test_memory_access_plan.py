@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from soca.memory import (
+    CoreMemoryStore,
     MemoryAccessPlan,
     MemoryContextBuilder,
     MemoryProfileResult,
@@ -74,3 +75,18 @@ def test_assembler_rejects_archive_without_explicit_plan() -> None:
         assert "explicit archive mode" in str(exc)
     else:
         raise AssertionError("archive must require an explicit access plan")
+
+
+def test_core_store_is_separate_from_archive_profile(tmp_path) -> None:
+    memory_dir = tmp_path / "memory"
+    memory_dir.mkdir()
+    (memory_dir / "profile.md").write_text("old archive profile", encoding="utf-8")
+    (memory_dir / "core.json").write_text(
+        '{"schema_version":1,"items":[{"id":"language","value":"Tiếng Việt",'
+        '"approved_at":"2026-01-01T00:00:00Z","sensitivity":"normal",'
+        '"updated_at":"2026-01-01T00:00:00Z","provenance":"user"}]}',
+        encoding="utf-8",
+    )
+
+    core = CoreMemoryStore(tmp_path)
+    assert core.read_profile() == "- [language] Tiếng Việt"
