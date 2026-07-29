@@ -88,7 +88,14 @@ def load_cases(path: Path, *, quality_suite: bool = False) -> tuple[RemediationC
             expected_sources = payload.get("expected_sources", [])
             expected_tools = payload.get("expected_tools", [])
             expected_citations = payload.get("expected_citations", [])
-            if not all(isinstance(value, str) for value in (*expected_sources, *expected_tools, *expected_citations)):
+            expected_values = (expected_sources, expected_tools, expected_citations)
+            if not all(isinstance(values, list) for values in expected_values):
+                raise ValueError(f"{path}:{line_no} expected values must be JSON lists")
+            if not all(
+                isinstance(value, str)
+                for values in expected_values
+                for value in values
+            ):
                 raise ValueError(f"{path}:{line_no} expected values must be strings")
             seen.add(case_id)
             cases.append(

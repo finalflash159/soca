@@ -24,7 +24,7 @@ jobs:
       - name: Install audio runtime libraries
         run: sudo apt-get update && sudo apt-get install --yes portaudio19-dev
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
       - name: Static type check
         run: uv run pyright soca
       - name: Lint

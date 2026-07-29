@@ -35,6 +35,8 @@ class EvalArtifactMetadata:
     generated_at_utc: str
     python_version: str
     platform: str
+    source_dirty: bool
+    source_state_digest: str
     data_files: tuple[dict[str, Any], ...]
     config: dict[str, Any]
 
@@ -47,6 +49,11 @@ class EvalArtifactMetadata:
             "environment": {
                 "python": self.python_version,
                 "platform": self.platform,
+            },
+            "source": {
+                "commit": self.git_commit,
+                "dirty": self.source_dirty,
+                "state_digest": self.source_state_digest,
             },
             "data_files": list(self.data_files),
             "config": self.config,
@@ -72,6 +79,36 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _git_source_state() -> tuple[bool, str]:
+    """Return dirty state and a digest of tracked/untracked source changes."""
+
+    try:
+        diff = subprocess.check_output(
+            ["git", "diff", "HEAD", "--binary"],
+            stderr=subprocess.DEVNULL,
+        )
+        status = subprocess.check_output(
+            ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+            stderr=subprocess.DEVNULL,
+        )
+        untracked = subprocess.check_output(
+            ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+            stderr=subprocess.DEVNULL,
+        )
+        untracked_digests: list[bytes] = []
+        for raw_path in untracked.split(b"\0"):
+            if not raw_path:
+                continue
+            file_path = Path(raw_path.decode("utf-8", errors="surrogateescape"))
+            if file_path.is_file():
+                untracked_digests.append(raw_path + b"\0" + bytes.fromhex(_sha256(file_path)))
+        state = b"\0".join((status, diff, *sorted(untracked_digests)))
+        digest = hashlib.sha256(state).hexdigest()
+        return bool(status or diff or untracked_digests), digest
+    except (OSError, subprocess.CalledProcessError):
+        return True, "unknown"
+
+
 def make_eval_artifact_metadata(
     *,
     suite: str,
@@ -81,6 +118,7 @@ def make_eval_artifact_metadata(
 ) -> EvalArtifactMetadata:
     """Capture provenance required for a reproducible quality result."""
 
+    source_dirty, source_state_digest = _git_source_state()
     files = tuple(
         {
             "path": str(path),
@@ -96,6 +134,8 @@ def make_eval_artifact_metadata(
         generated_at_utc=datetime.now(UTC).isoformat(),
         python_version=platform.python_version(),
         platform=platform.platform(),
+        source_dirty=source_dirty,
+        source_state_digest=source_state_digest,
         data_files=files,
         config=dict(config or {}),
     )

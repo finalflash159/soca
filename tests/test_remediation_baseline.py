@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,25 @@ def test_loader_rejects_explicit_demo_derivative(tmp_path: Path) -> None:
         load_cases(path, quality_suite=True)
 
 
+@pytest.mark.parametrize("field", ["expected_sources", "expected_tools", "expected_citations"])
+def test_loader_rejects_scalar_expectation_fields(tmp_path: Path, field: str) -> None:
+    payload = {
+        "id": "bad-shape",
+        "dataset_class": "sanitized_benchmark",
+        "split": "test",
+        "category": "malformed",
+        "turns": ["x"],
+        "expected_terminal": "safe_failure",
+        "provenance": "independently authored",
+        field: "knowledge",
+    }
+    path = tmp_path / "bad-shape.jsonl"
+    path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be JSON lists"):
+        load_cases(path, quality_suite=True)
+
+
 def test_manifest_contains_provenance_and_dataset_breakdown() -> None:
     manifest = build_dataset_manifest((WORKFLOW_CASES, RAG_CASES))
 
@@ -58,3 +78,5 @@ def test_manifest_contains_provenance_and_dataset_breakdown() -> None:
     assert manifest["artifact"]["suite"] == "remediation_baseline"
     assert all(dataset["dataset_classes"] for dataset in manifest["datasets"])
     assert all("sha256" in item for item in manifest["artifact"]["data_files"])
+    assert manifest["corpora"][0]["file_count"] > 0
+    assert manifest["artifact"]["source"]["state_digest"]
