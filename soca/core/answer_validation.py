@@ -21,7 +21,7 @@ class AnswerValidationDecision:
     uncited_claim_count: int = 0
 
 
-_CITATION_RE = re.compile(r"\[(?P<source>[KM])(?P<index>[1-9][0-9]*)\]")
+_CITATION_LIKE_RE = re.compile(r"\[(?P<token>[KMkm][A-Za-z0-9]*)\]")
 
 
 def validate_grounded_answer(
@@ -44,8 +44,7 @@ def validate_grounded_answer(
     if not expected:
         return AnswerValidationDecision("not_applicable", (), (), "no_evidence_context")
     mentioned = tuple(
-        f"[{match.group('source')}{match.group('index')}]"
-        for match in _CITATION_RE.finditer(text)
+        f"[{match.group('token')}]" for match in _CITATION_LIKE_RE.finditer(text)
     )
     unknown = tuple(label for label in mentioned if label not in expected)
     if unknown:

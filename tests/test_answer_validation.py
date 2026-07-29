@@ -40,3 +40,21 @@ def test_answer_validation_rejects_unknown_citation_ids() -> None:
 
     assert decision.status == "invalid"
     assert decision.unknown_labels == ("[K2]",)
+
+
+def test_answer_validation_rejects_malformed_citation_mixed_with_valid_label() -> None:
+    citations = (KnowledgeCitation("wiki/a.md", "A"),)
+
+    decision = validate_grounded_answer("Theo [K1] nhưng cũng có [K0].", citations)
+
+    assert decision.status == "invalid"
+    assert decision.unknown_labels == ("[K0]",)
+
+
+def test_answer_validation_rejects_zero_padded_citation_label() -> None:
+    citations = (KnowledgeCitation("wiki/a.md", "A"),)
+
+    decision = validate_grounded_answer("Theo [K01] thì đúng.", citations)
+
+    assert decision.status == "invalid"
+    assert decision.unknown_labels == ("[K01]",)
