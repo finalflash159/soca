@@ -5,7 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-EvidenceStatus = Literal["supported", "insufficient", "unavailable"]
+EvidenceStatus = Literal[
+    "supported",
+    "weak",
+    "conflicting",
+    "insufficient",
+    "unavailable",
+]
 
 
 @dataclass(frozen=True)
@@ -14,6 +20,8 @@ class EvidenceDecision:
     status: EvidenceStatus
     hit_count: int
     top_score: float | None
+    margin: float | None
+    rejected_count: int
     reason: str
 
 
@@ -45,21 +53,48 @@ def decide_evidence(
     hits: tuple[object, ...],
     *,
     unavailable: bool = False,
+    status: EvidenceStatus | None = None,
+    reason: str | None = None,
+    top_score: float | None = None,
+    margin: float | None = None,
+    rejected_count: int = 0,
 ) -> EvidenceDecision:
     if unavailable:
-        return EvidenceDecision(source, "unavailable", 0, None, "retrieval_unavailable")
+        return EvidenceDecision(
+            source,
+            "unavailable",
+            0,
+            None,
+            None,
+            rejected_count,
+            "retrieval_unavailable",
+        )
     if not hits:
-        return EvidenceDecision(source, "insufficient", 0, None, "no_hits")
-    score = getattr(hits[0], "score", None)
-    raw_score = getattr(score, "total", score)
-    if raw_score is None:
-        top_score = None
-    else:
+        return EvidenceDecision(
+            source,
+            status or "insufficient",
+            0,
+            top_score,
+            margin,
+            rejected_count,
+            reason or "no_hits",
+        )
+    if top_score is None:
+        score = getattr(hits[0], "score", None)
+        raw_score = getattr(score, "total", score)
         try:
-            top_score = float(raw_score)
+            top_score = float(raw_score) if raw_score is not None else None
         except (TypeError, ValueError):
             top_score = None
-    return EvidenceDecision(source, "supported", len(hits), top_score, "hits_present")
+    return EvidenceDecision(
+        source,
+        status or "supported",
+        len(hits),
+        top_score,
+        margin,
+        rejected_count,
+        reason or "hits_present",
+    )
 
 
 __all__ = [

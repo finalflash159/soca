@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from soca.core.text_budget import truncate
 from soca.knowledge import KnowledgeSource
+from soca.knowledge.relevance import assess_relevance
 from soca.memory.base import LongTermMemorySource, MemoryProfileResult
 from soca.memory.scoring import MemoryHit, MemoryScoreConfig, rerank_memory_hits
 
@@ -67,9 +68,25 @@ class RetrievedMemory:
                 degraded_reason="retrieval_unavailable",
             )
         if not hits:
-            return MemoryProfileResult(text="", mode="retrieved")
+            return MemoryProfileResult(
+                text="",
+                mode="retrieved",
+                evidence_status="insufficient",
+                evidence_reason="no_hits",
+            )
+        assessment = assess_relevance(normalized, hits)
+        if not assessment.accepted_hits:
+            return MemoryProfileResult(
+                text="",
+                mode="retrieved",
+                evidence_status=assessment.status,
+                evidence_reason=assessment.reason,
+                rejected_hit_count=assessment.rejected_count,
+                top_relevance=assessment.top_score,
+                relevance_margin=assessment.margin,
+            )
         memory_hits = rerank_memory_hits(
-            hits,
+            assessment.accepted_hits,
             top_k=self._config.top_k,
             config=self._config.score,
         )
@@ -77,6 +94,11 @@ class RetrievedMemory:
             text=self._format_hits(memory_hits),
             hits=memory_hits,
             mode="retrieved",
+            evidence_status=assessment.status,
+            evidence_reason=assessment.reason,
+            rejected_hit_count=assessment.rejected_count,
+            top_relevance=assessment.top_score,
+            relevance_margin=assessment.margin,
         )
 
     def _safe_fallback(self) -> str:

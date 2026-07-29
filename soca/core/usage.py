@@ -51,6 +51,32 @@ class LLMUsage:
             tokens_per_second=_as_float(getattr(result, "tokens_per_second", 0.0)),
         )
 
+    def combine(self, other: LLMUsage) -> LLMUsage:
+        """Aggregate sequential provider calls into one turn-level usage record."""
+        first_generation_ms = (
+            self.completion_tokens / self.tokens_per_second * 1000
+            if self.tokens_per_second > 0
+            else self.total_latency_ms
+        )
+        second_generation_ms = (
+            other.completion_tokens / other.tokens_per_second * 1000
+            if other.tokens_per_second > 0
+            else other.total_latency_ms
+        )
+        total_generation_ms = first_generation_ms + second_generation_ms
+        total_completion = self.completion_tokens + other.completion_tokens
+        return LLMUsage(
+            prompt_tokens=self.prompt_tokens + other.prompt_tokens,
+            completion_tokens=total_completion,
+            ttft_ms=self.total_latency_ms + other.ttft_ms,
+            total_latency_ms=self.total_latency_ms + other.total_latency_ms,
+            tokens_per_second=(
+                total_completion / (total_generation_ms / 1000)
+                if total_generation_ms > 0
+                else 0.0
+            ),
+        )
+
 
 @dataclass(frozen=True)
 class TurnUsage:

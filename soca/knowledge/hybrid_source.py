@@ -19,7 +19,6 @@ from soca.knowledge.markdown_vault import (
     DEFAULT_INCLUDE_GLOBS,
     MarkdownVaultKnowledgeSource,
     SearchScoringConfig,
-    prepare_lexical_snapshot,
 )
 from soca.knowledge.retriever import RankedHit
 from soca.knowledge.retrievers.dense import DenseIndex, DenseRetriever, EmbeddingModel
@@ -173,13 +172,14 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
             return self._retrieve_v2(query, limit=limit)
 
         vault_index, dense_index, sparse = self._refresh_indexes()
-        document_snapshot = prepare_lexical_snapshot(vault_index.documents)
-        if not self._search_lexical_snapshot(query, document_snapshot, limit=1):
-            return RetrievalBatch((), None)
         rank_lists: list[list[RankedHit]] = []
+        sparse_scores: dict[str, float] = {}
+        dense_scores: dict[str, float] = {}
         retriever_limit = max(limit, self._config.per_retriever_limit)
         if sparse is not None:
-            rank_lists.append(sparse.rank(query, limit=retriever_limit))
+            sparse_hits = sparse.rank(query, limit=retriever_limit)
+            rank_lists.append(sparse_hits)
+            sparse_scores = {hit.chunk_id: hit.score for hit in sparse_hits}
 
         max_dense_score: float | None = None
         if self._config.dense_enabled and dense_index is not None and self._model is not None:
@@ -193,31 +193,34 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
                     raise DenseUnavailableError("dense-only query failed") from exc
                 LOGGER.warning("Dense query failed; using sparse retrieval", exc_info=True)
             else:
-                rank_lists.append(list(dense_ranking.hits))
+                dense_hits = list(dense_ranking.hits)
+                rank_lists.append(dense_hits)
+                dense_scores = {hit.chunk_id: hit.score for hit in dense_hits}
                 max_dense_score = dense_ranking.max_score
 
         return self._build_batch(
             vault_index,
             reciprocal_rank_fusion(rank_lists, k=self._config.rrf_k)[:limit],
             max_dense_score,
+            sparse_scores=sparse_scores,
+            dense_scores=dense_scores,
         )
 
     def _retrieve_v2(self, query: str, *, limit: int) -> RetrievalBatch:
         assert self._coordinator is not None
         snapshot = self._coordinator.snapshot()
         vault_index = snapshot.sparse_index
-        document_snapshot = prepare_lexical_snapshot(vault_index.documents)
-        if not self._search_lexical_snapshot(query, document_snapshot, limit=1):
-            return RetrievalBatch((), None)
         rank_lists: list[list[RankedHit]] = []
+        sparse_scores: dict[str, float] = {}
+        dense_scores: dict[str, float] = {}
         retriever_limit = max(limit, self._config.per_retriever_limit)
         if self._config.sparse_enabled:
-            rank_lists.append(
-                SparseChunkRetriever(vault_index.chunks, self.scoring).rank(
-                    query,
-                    limit=retriever_limit,
-                )
+            sparse_hits = SparseChunkRetriever(vault_index.chunks, self.scoring).rank(
+                query,
+                limit=retriever_limit,
             )
+            rank_lists.append(sparse_hits)
+            sparse_scores = {hit.chunk_id: hit.score for hit in sparse_hits}
         max_dense_score: float | None = None
         if (
             self._config.dense_enabled
@@ -235,12 +238,16 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
                     raise DenseUnavailableError("dense-only query failed") from exc
                 LOGGER.warning("Dense query failed; using sparse retrieval", exc_info=True)
             else:
-                rank_lists.append(list(dense_ranking.hits))
+                dense_hits = list(dense_ranking.hits)
+                rank_lists.append(dense_hits)
+                dense_scores = {hit.chunk_id: hit.score for hit in dense_hits}
                 max_dense_score = dense_ranking.max_score
         return self._build_batch(
             vault_index,
             reciprocal_rank_fusion(rank_lists, k=self._config.rrf_k)[:limit],
             max_dense_score,
+            sparse_scores=sparse_scores,
+            dense_scores=dense_scores,
         )
 
     @property
@@ -257,6 +264,9 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
         vault_index: VaultIndex,
         fused: tuple[tuple[str, float], ...],
         max_dense_score: float | None,
+        *,
+        sparse_scores: dict[str, float],
+        dense_scores: dict[str, float],
     ) -> RetrievalBatch:
         hits: list[KnowledgeHit] = []
         for chunk_id, score in fused:
@@ -277,6 +287,16 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
                     snippet=chunk.text,
                     line_start=chunk.line_start,
                     line_end=chunk.line_end,
+                    retrieval_backend=(
+                        "hybrid"
+                        if chunk_id in sparse_scores and chunk_id in dense_scores
+                        else "dense"
+                        if chunk_id in dense_scores
+                        else "lexical_custom"
+                    ),
+                    sparse_score=sparse_scores.get(chunk_id),
+                    dense_score=dense_scores.get(chunk_id),
+                    fusion_score=score,
                 )
             )
         return RetrievalBatch(tuple(hits), max_dense_score)

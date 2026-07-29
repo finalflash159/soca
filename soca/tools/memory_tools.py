@@ -18,7 +18,7 @@ def _hit_payload(hit: object) -> dict[str, Any]:
     }
     score = getattr(hit, "score", None)
     if score is not None:
-        payload["score"] = score
+        payload["score"] = getattr(score, "total", score)
     for field in ("line_start", "line_end"):
         value = getattr(hit, field, None)
         if value is not None:
@@ -59,7 +59,15 @@ class MemorySearchTool:
                 name=self.spec.name,
                 ok=True,
                 content="Mình chưa tìm thấy ghi chú phù hợp trong memory.",
-                data={"hits": [], "mode": context.mode},
+                data={
+                    "hits": [],
+                    "mode": context.mode,
+                    "evidence_status": context.evidence_status,
+                    "evidence_reason": context.evidence_reason,
+                    "rejected_hit_count": context.rejected_hit_count,
+                    "top_relevance": context.top_relevance,
+                    "relevance_margin": context.relevance_margin,
+                },
             )
         lines = [
             f"[M{index}] {item['title']} ({item['path']})\n{item['snippet']}"
@@ -69,7 +77,15 @@ class MemorySearchTool:
             name=self.spec.name,
             ok=True,
             content="\n\n".join(lines),
-            data={"hits": data_hits, "mode": context.mode},
+            data={
+                "hits": data_hits,
+                "mode": context.mode,
+                "evidence_status": context.evidence_status,
+                "evidence_reason": context.evidence_reason,
+                "rejected_hit_count": context.rejected_hit_count,
+                "top_relevance": context.top_relevance,
+                "relevance_margin": context.relevance_margin,
+            },
         )
 
 

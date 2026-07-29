@@ -101,6 +101,24 @@ def test_hybrid_keeps_two_chunks_from_one_document_as_distinct_hits(tmp_path: Pa
     assert len({hit.document.id for hit in nutrition_hits}) == len(nutrition_hits)
     assert all(hit.document.id.startswith("wiki/") for hit in nutrition_hits)
     assert all(hit.line_end >= hit.line_start >= 1 for hit in nutrition_hits)
+    assert all(hit.retrieval_backend in {"hybrid", "dense", "lexical_custom"} for hit in hits)
+    assert all(hit.fusion_score is not None for hit in hits)
+
+
+def test_dense_retrieval_is_not_blocked_by_a_lexical_miss(tmp_path: Path) -> None:
+    _make_vault(tmp_path)
+    model = FakeEmbeddingModel()
+    source = _source(
+        tmp_path,
+        tmp_path / "index",
+        model=model,
+        config=HybridConfig(sparse_enabled=False, dense_enabled=True),
+    )
+
+    batch = source.retrieve("khái niệm không xuất hiện trong vault", limit=2)
+
+    assert batch.hits
+    assert model.query_calls == ["khái niệm không xuất hiện trong vault"]
 
 
 def test_dense_construction_failure_degrades_to_sparse_when_enabled(

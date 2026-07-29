@@ -31,3 +31,30 @@ def test_answer_validation_reports_partial_provenance() -> None:
     assert decision.expected_labels == ("[K1]", "[K2]", "[M1]")
     assert decision.found_labels == ("[K1]", "[M1]")
     assert decision.reason == "partial_provenance_labels"
+
+
+def test_answer_validation_rejects_unknown_citation_ids() -> None:
+    citations = (KnowledgeCitation("wiki/a.md", "A"),)
+
+    decision = validate_grounded_answer("Theo [K2] thì đúng.", citations)
+
+    assert decision.status == "invalid"
+    assert decision.unknown_labels == ("[K2]",)
+
+
+def test_answer_validation_rejects_malformed_citation_mixed_with_valid_label() -> None:
+    citations = (KnowledgeCitation("wiki/a.md", "A"),)
+
+    decision = validate_grounded_answer("Theo [K1] nhưng cũng có [K0].", citations)
+
+    assert decision.status == "invalid"
+    assert decision.unknown_labels == ("[K0]",)
+
+
+def test_answer_validation_rejects_zero_padded_citation_label() -> None:
+    citations = (KnowledgeCitation("wiki/a.md", "A"),)
+
+    decision = validate_grounded_answer("Theo [K01] thì đúng.", citations)
+
+    assert decision.status == "invalid"
+    assert decision.unknown_labels == ("[K01]",)

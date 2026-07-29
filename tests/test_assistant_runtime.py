@@ -10,8 +10,14 @@ import pytest
 from soca.core import AssistantRuntime, RuntimeOptions, RuntimeRoute
 from soca.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
 from soca.llm import LLMResult
-from soca.memory import MemoryContextBuilder, RetrievedMemory, SessionMemory
-from soca.tools import KnowledgeReadTool, KnowledgeSearchTool, LocalTimeTool, ToolRuntime
+from soca.memory import MemoryContextBuilder, MemoryProfileResult, RetrievedMemory, SessionMemory
+from soca.tools import (
+    KnowledgeReadTool,
+    KnowledgeSearchTool,
+    LocalTimeTool,
+    MemorySearchTool,
+    ToolRuntime,
+)
 
 
 @dataclass(frozen=True)
@@ -55,9 +61,56 @@ class EmptyKnowledgeSource(FakeKnowledgeSource):
         return []
 
 
+class DistractorKnowledgeSource(FakeKnowledgeSource):
+    def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
+        self.search_calls.append((query, limit))
+        relevant = KnowledgeHit(
+            document=self.document,
+            score=4.0,
+            snippet="Định lý Bayes cập nhật xác suất khi có bằng chứng mới.",
+            retrieval_backend="lexical_custom",
+            sparse_score=4.0,
+        )
+        distractor = KnowledgeHit(
+            document=KnowledgeDocument(
+                id="onnx",
+                path="wiki/onnx.md",
+                title="ONNX Runtime",
+                text="ONNX Runtime chạy model.",
+            ),
+            score=1.0,
+            snippet="ONNX Runtime chạy model.",
+            retrieval_backend="lexical_custom",
+            sparse_score=1.0,
+        )
+        return [relevant, distractor][:limit]
+
+
 class FailingMemorySource(FakeKnowledgeSource):
     def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
         raise RuntimeError("memory index unavailable")
+
+
+class FakeRetrievedMemory:
+    def read_profile(self) -> str:
+        return ""
+
+    def retrieve_profile(self, query: str) -> MemoryProfileResult:
+        hit = KnowledgeHit(
+            document=KnowledgeDocument(
+                id="memory/decision.md",
+                path="memory/decision.md",
+                title="Quyết định TTS",
+                text="Chọn TTS local vì riêng tư.",
+            ),
+            score=0.9,
+            snippet="Chọn TTS local vì riêng tư.",
+        )
+        return MemoryProfileResult(
+            text=hit.snippet,
+            hits=(hit,),
+            mode="retrieved",
+        )
 
 
 class SpyLLM:
@@ -106,6 +159,26 @@ class SpyLLM:
 class TokenCountingSpyLLM(SpyLLM):
     def count_tokens(self, text: str) -> int:
         return len(text.split())
+
+
+class SequenceLLM(SpyLLM):
+    def __init__(self, responses: list[str]) -> None:
+        super().__init__(text=responses[0])
+        self.responses = responses
+
+    def count_tokens(self, text: str) -> int:
+        return len(text.split())
+
+    def generate(
+        self,
+        user_msg: str,
+        max_tokens: int = 128,
+        temperature: float = 0.7,
+        top_p: float = 0.95,
+        inject_persona: bool = True,
+    ) -> LLMResult:
+        self.text = self.responses.pop(0)
+        return super().generate(user_msg, max_tokens, temperature, top_p, inject_persona)
 
 
 def test_blocks_private_path_before_tool_or_llm() -> None:
@@ -176,6 +249,98 @@ def test_explicit_wiki_search_synthesizes_retrieved_context_with_llm() -> None:
     assert "Knowledge:" in llm.calls[0]["user_msg"]
     assert "Protein hỗ trợ" in llm.calls[0]["user_msg"]
     assert result.response_text.startswith("Theo [K1]")
+
+
+def test_llm_repair_retries_once_when_citations_are_missing() -> None:
+    source = FakeKnowledgeSource()
+    llm = SequenceLLM(
+        [
+            "Protein hỗ trợ duy trì cơ bắp.",
+            "Theo [K1], protein hỗ trợ duy trì cơ bắp.",
+        ]
+    )
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        knowledge_builder=KnowledgeContextBuilder(source),
+    )
+
+    result = runtime.run_text_turn("wiki: chất đạm")
+
+    assert result.response_text == "Theo [K1], protein hỗ trợ duy trì cơ bắp."
+    assert result.trace is not None
+    assert result.trace.answer_validation.status == "valid"
+    assert result.trace.answer_repair_attempted is True
+    assert result.trace.answer_repair_succeeded is True
+    assert len(llm.calls) == 2
+    assert result.usage is not None
+    assert result.usage.prompt_tokens == 20
+    assert result.usage.completion_tokens == 10
+
+
+def test_llm_repair_skips_second_call_when_repair_prompt_cannot_fit() -> None:
+    source = FakeKnowledgeSource()
+    llm = SequenceLLM(
+        [
+            "Protein hỗ trợ duy trì cơ bắp.",
+            "Theo [K1], protein hỗ trợ duy trì cơ bắp.",
+        ]
+    )
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        knowledge_builder=KnowledgeContextBuilder(source),
+        options=RuntimeOptions(
+            max_tokens=64,
+            model_context_window=300,
+            context_safety_margin_tokens=0,
+        ),
+    )
+
+    result = runtime.run_text_turn("wiki: " + ("Bayes " * 90))
+
+    assert result.response_text == "Protein hỗ trợ duy trì cơ bắp."
+    assert result.trace is not None
+    assert result.trace.answer_repair_attempted is True
+    assert result.trace.answer_repair_succeeded is False
+    assert len(llm.calls) == 1
+
+
+def test_filtered_knowledge_citations_do_not_include_rejected_hits() -> None:
+    source = DistractorKnowledgeSource()
+    llm = SpyLLM(text="Theo [K1], định lý Bayes cập nhật xác suất.")
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        knowledge_builder=KnowledgeContextBuilder(source),
+    )
+
+    result = runtime.run_text_turn("wiki: định lý Bayes")
+
+    assert [citation.path for citation in result.citations] == [
+        "wiki/dinh-duong/chat-dam.md"
+    ]
+    assert "wiki/onnx.md" not in llm.calls[0]["user_msg"]
+
+
+def test_explicit_memory_search_synthesizes_retrieved_context_with_llm() -> None:
+    llm = SpyLLM(text="Theo [M1], bạn chọn TTS local vì riêng tư.")
+    builder = MemoryContextBuilder(long_term=FakeRetrievedMemory())
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([MemorySearchTool(builder)]),
+    )
+
+    result = runtime.run_text_turn("memory: lựa chọn TTS của tôi")
+
+    assert result.route == RuntimeRoute.MEMORY_LLM
+    assert result.trace is not None
+    assert result.trace.used_tool is True
+    assert result.trace.used_llm is True
+    assert result.citations[0].source == "memory"
+    assert "Memory:" in llm.calls[0]["user_msg"]
+    assert "Chọn TTS local vì riêng tư" in llm.calls[0]["user_msg"]
+    assert result.trace.evidence_decisions[-1].status == "weak"
 
 
 def test_empty_knowledge_search_result_does_not_require_citation() -> None:
