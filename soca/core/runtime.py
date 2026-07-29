@@ -4,7 +4,7 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 
 from soca.core.answer_validation import AnswerValidationDecision, validate_grounded_answer
 from soca.core.evidence import (
@@ -52,6 +52,16 @@ from soca.memory import MemoryContext, MemoryContextBuilder
 from soca.prompts import build_runtime_prompt
 from soca.tools import ToolCall, ToolResult, ToolRuntime
 
+from .workflow import (
+    ActiveGoalStore,
+    AuthorizationPolicy,
+    ControlledWorkflowRunner,
+    GoalResolver,
+    TurnBudget,
+    WorkflowPlanner,
+    WorkflowRun,
+)
+
 
 @dataclass(frozen=True)
 class RuntimeOptions:
@@ -60,10 +70,13 @@ class RuntimeOptions:
     top_p: float = 0.95
     knowledge_limit: int = 3
     voice_knowledge_mode: VoiceKnowledgeMode = "off"
+    turn_workflow: Literal["legacy", "shadow", "controlled"] = "legacy"
 
     def __post_init__(self) -> None:
         if self.voice_knowledge_mode not in {"off", "intent", "always"}:
             raise ValueError("voice_knowledge_mode must be off, intent, or always")
+        if self.turn_workflow not in {"legacy", "shadow", "controlled"}:
+            raise ValueError("turn_workflow must be legacy, shadow, or controlled")
 
 
 class KnowledgeIntentGate(Protocol):
@@ -240,6 +253,8 @@ class AssistantRuntime:
         self.guardrail_policy = guardrail_policy
         self.options = options or RuntimeOptions()
         self._progress_callback: Callable[[str], None] | None = None
+        self._active_goal_store = ActiveGoalStore()
+        self._goal_resolver = GoalResolver(self._active_goal_store)
 
     def set_progress_callback(self, callback: Callable[[str], None] | None) -> None:
         """Attach a transient observer for user-visible runtime stages.
@@ -259,6 +274,41 @@ class AssistantRuntime:
             callback(stage)
         except Exception:  # noqa: BLE001 - telemetry must not break a turn
             return
+
+    def run_controlled_workflow(
+        self,
+        text: str,
+        *,
+        planner: WorkflowPlanner | None = None,
+        explicit_call: ToolCall | None = None,
+        source: Literal["text", "voice"] = "text",
+        continues_active_goal: bool = False,
+        authorize: AuthorizationPolicy | None = None,
+        cancelled: Callable[[], bool] | None = None,
+        turn_id: str = "",
+        budget: TurnBudget | None = None,
+    ) -> WorkflowRun:
+        """Run the opt-in bounded workflow; normal turns remain legacy."""
+        if self.options.turn_workflow == "legacy":
+            raise RuntimeError("controlled workflow is disabled by turn_workflow=legacy")
+        resolution = self._goal_resolver.resolve(
+            text,
+            source=source,
+            continues_active_goal=continues_active_goal,
+        )
+        runner = ControlledWorkflowRunner(
+            self.tool_runtime,
+            budget=budget or TurnBudget(),
+            guardrail_policy=self.guardrail_policy,
+        )
+        return runner.run(
+            resolution.goal,
+            planner=planner,
+            explicit_call=explicit_call,
+            authorize=authorize,
+            cancelled=cancelled,
+            turn_id=turn_id,
+        )
 
     def run_text_turn(
         self,

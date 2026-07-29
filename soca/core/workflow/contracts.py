@@ -58,18 +58,27 @@ class GoalContract:
         object.__setattr__(self, "statement", statement)
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
 
+    def planner_text(self) -> str:
+        parts = [f"Objective: {self.statement}"]
+        follow_up = self.metadata.get("follow_up")
+        if isinstance(follow_up, str) and follow_up.strip():
+            parts.append(f"Follow-up constraint: {follow_up.strip()}")
+        return "\n".join(parts)
+
 
 @dataclass(frozen=True)
 class TurnBudget:
-    max_transitions: int = 8
+    max_transitions: int = 23
     max_tool_calls: int = 4
-    max_model_calls: int = 3
+    max_model_calls: int = 4
     max_retries: int = 1
-    max_elapsed_ms: int = 90_000
+    max_elapsed_ms: int | None = 120_000
 
     def __post_init__(self) -> None:
         for name, value in self.__dict__.items():
-            if isinstance(value, bool) or value < 0:
+            if value is None and name == "max_elapsed_ms":
+                continue
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ValueError(f"{name} must be a non-negative integer")
 
 
