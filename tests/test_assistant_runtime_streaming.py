@@ -47,6 +47,12 @@ class FakeKnowledgeSource:
         return self.document
 
 
+class EmptyKnowledgeSource:
+    def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
+        del query, limit
+        return []
+
+
 class StreamSpyLLM:
     """Fake LLM whose generate_stream yields a fixed list of tokens."""
 
@@ -94,6 +100,29 @@ class StreamSpyLLM:
         yield from self.tokens
 
 
+class SequenceGenerateLLM(StreamSpyLLM):
+    def __init__(self, responses: list[str]) -> None:
+        super().__init__([responses[0]])
+        self.responses = list(responses)
+
+    def generate(
+        self,
+        user_msg: str,
+        max_tokens: int = 128,
+        temperature: float = 0.7,
+        top_p: float = 0.95,
+        inject_persona: bool = True,
+    ) -> LLMResult:
+        self.tokens = [self.responses.pop(0)]
+        return super().generate(
+            user_msg,
+            max_tokens,
+            temperature,
+            top_p,
+            inject_persona,
+        )
+
+
 class SemanticRetrievalRouter:
     last_tier = "semantic"
     last_decision = ToolRouterDecision(
@@ -139,6 +168,27 @@ def test_stream_llm_route_emits_tokens_then_sentences_then_result() -> None:
     assert result.blocked is False
     assert result.response_text == "Xin chào bạn. Mình là SoCa."
     assert llm.stream_calls and llm.stream_calls[0]["inject_persona"] is False
+    assert llm.generate_calls == []
+
+
+def test_empty_retrieval_streams_when_citations_are_not_required() -> None:
+    llm = StreamSpyLLM(["Mình không tìm thấy nội dung này trong ghi chú của bạn."])
+    runtime = AssistantRuntime(
+        llm=llm,
+        knowledge_builder=KnowledgeContextBuilder(EmptyKnowledgeSource()),
+        tool_router=SemanticRetrievalRouter(),
+    )
+
+    tokens, sentences, result, _ = _collect(
+        runtime.stream_text_turn("Tìm ghi chú về Sao Bắc Cực X9", min_sentence_chars=8)
+    )
+
+    assert tokens == ["Mình không tìm thấy nội dung này trong ghi chú của bạn."]
+    assert sentences == ["Mình không tìm thấy nội dung này trong ghi chú của bạn."]
+    assert result is not None
+    assert result.blocked is False
+    assert result.trace is not None
+    assert result.trace.answer_policy == "abstain"
     assert llm.generate_calls == []
 
 
@@ -196,9 +246,7 @@ def test_stream_without_first_min_chars_merges_short_first_sentence() -> None:
     llm = StreamSpyLLM(["Vâng ạ. ", "Tôi sẽ giúp bạn ngay bây giờ nhé."])
     runtime = AssistantRuntime(llm=llm)
 
-    _, sentences, _, _ = _collect(
-        runtime.stream_text_turn("giúp tôi", min_sentence_chars=24)
-    )
+    _, sentences, _, _ = _collect(runtime.stream_text_turn("giúp tôi", min_sentence_chars=24))
 
     # Default behaviour keeps merging the tiny leading fragment.
     assert sentences[0].startswith("Vâng ạ. Tôi")
@@ -224,9 +272,7 @@ def test_stream_tool_route_has_no_tokens_and_returns_tool_result() -> None:
     llm = StreamSpyLLM(["ignored"])
     runtime = AssistantRuntime(llm=llm, tool_runtime=tool_runtime)
 
-    tokens, sentences, result, _ = _collect(
-        runtime.stream_text_turn("time:", min_sentence_chars=8)
-    )
+    tokens, sentences, result, _ = _collect(runtime.stream_text_turn("time:", min_sentence_chars=8))
 
     assert tokens == []
     assert sentences  # tool text is chunked into at least one sentence
@@ -277,7 +323,8 @@ def test_stream_knowledge_llm_route_when_metadata_requests_knowledge() -> None:
     assert sentences
     # Session memory is updated after a successful streamed turn.
     assert [turn.role for turn in session.turns] == ["user", "assistant"]
-    prompt = llm.stream_calls[0]["user_msg"]
+    assert llm.stream_calls == []
+    prompt = llm.generate_calls[0]
     assert "Knowledge:" in prompt
     assert "Memory:" in prompt
 
@@ -301,11 +348,11 @@ def test_stream_explicit_knowledge_search_synthesizes_with_llm() -> None:
     assert result.trace.used_tool is True
     assert result.trace.used_llm is True
     assert sentences == ["Theo [K1], protein hỗ trợ cơ bắp."]
-    assert llm.stream_calls
-    assert "Knowledge:" in llm.stream_calls[0]["user_msg"]
+    assert llm.stream_calls == []
+    assert "Knowledge:" in llm.generate_calls[0]
 
 
-def test_stream_semantic_retrieval_uses_incremental_llm_path() -> None:
+def test_stream_semantic_retrieval_holds_output_until_validation() -> None:
     source = FakeKnowledgeSource()
     llm = StreamSpyLLM(["Theo [K1], protein hỗ trợ cơ bắp."])
     runtime = AssistantRuntime(
@@ -314,16 +361,71 @@ def test_stream_semantic_retrieval_uses_incremental_llm_path() -> None:
         tool_router=SemanticRetrievalRouter(),
     )
 
-    _, sentences, result, _ = _collect(
+    tokens, sentences, result, events = _collect(
         runtime.stream_text_turn("Protein có tác dụng gì?", min_sentence_chars=8)
     )
 
     assert result is not None
     assert result.route == RuntimeRoute.KNOWLEDGE_LLM
+    assert tokens == []
     assert sentences == ["Theo [K1], protein hỗ trợ cơ bắp."]
-    assert llm.stream_calls
-    assert llm.generate_calls == []
+    assert [event.type for event in events] == ["sentence", "result"]
+    assert llm.stream_calls == []
+    assert len(llm.generate_calls) == 1
     assert source.search_calls == [("Protein có tác dụng gì?", 4)]
+
+
+def test_grounded_stream_never_emits_uncited_draft_before_repair() -> None:
+    source = FakeKnowledgeSource()
+    llm = SequenceGenerateLLM(
+        [
+            "Protein hỗ trợ cơ bắp.",
+            "Theo [K1], protein hỗ trợ cơ bắp.",
+        ]
+    )
+    runtime = AssistantRuntime(
+        llm=llm,
+        knowledge_builder=KnowledgeContextBuilder(source),
+        tool_router=SemanticRetrievalRouter(),
+    )
+
+    tokens, sentences, result, events = _collect(
+        runtime.stream_text_turn("Protein có tác dụng gì?", min_sentence_chars=8)
+    )
+
+    assert tokens == []
+    assert sentences == ["Theo [K1], protein hỗ trợ cơ bắp."]
+    assert all("Protein hỗ trợ cơ bắp." != event.text for event in events)
+    assert result is not None
+    assert result.blocked is False
+    assert result.trace is not None
+    assert result.trace.answer_repair_succeeded is True
+
+
+def test_grounded_stream_releases_only_block_message_after_failed_repair() -> None:
+    source = FakeKnowledgeSource()
+    llm = SequenceGenerateLLM(
+        [
+            "Protein hỗ trợ cơ bắp.",
+            "Protein vẫn hỗ trợ cơ bắp.",
+        ]
+    )
+    runtime = AssistantRuntime(
+        llm=llm,
+        knowledge_builder=KnowledgeContextBuilder(source),
+        tool_router=SemanticRetrievalRouter(),
+    )
+
+    tokens, sentences, result, events = _collect(
+        runtime.stream_text_turn("Protein có tác dụng gì?", min_sentence_chars=8)
+    )
+
+    assert tokens == []
+    assert all("Protein hỗ trợ cơ bắp." not in event.text for event in events)
+    assert all("Protein vẫn hỗ trợ cơ bắp." not in event.text for event in events)
+    assert result is not None
+    assert result.blocked is True
+    assert " ".join(sentences) == result.response_text
 
 
 def test_stream_blocked_input_does_not_update_session_memory() -> None:
