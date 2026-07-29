@@ -136,6 +136,23 @@ class TokenCountingSpyLLM(SpyLLM):
         return len(text.split())
 
 
+class SequenceLLM(SpyLLM):
+    def __init__(self, responses: list[str]) -> None:
+        super().__init__(text=responses[0])
+        self.responses = responses
+
+    def generate(
+        self,
+        user_msg: str,
+        max_tokens: int = 128,
+        temperature: float = 0.7,
+        top_p: float = 0.95,
+        inject_persona: bool = True,
+    ) -> LLMResult:
+        self.text = self.responses.pop(0)
+        return super().generate(user_msg, max_tokens, temperature, top_p, inject_persona)
+
+
 def test_blocks_private_path_before_tool_or_llm() -> None:
     llm = SpyLLM()
     runtime = AssistantRuntime(llm=llm)
@@ -204,6 +221,30 @@ def test_explicit_wiki_search_synthesizes_retrieved_context_with_llm() -> None:
     assert "Knowledge:" in llm.calls[0]["user_msg"]
     assert "Protein hỗ trợ" in llm.calls[0]["user_msg"]
     assert result.response_text.startswith("Theo [K1]")
+
+
+def test_llm_repair_retries_once_when_citations_are_missing() -> None:
+    source = FakeKnowledgeSource()
+    llm = SequenceLLM(
+        [
+            "Protein hỗ trợ duy trì cơ bắp.",
+            "Theo [K1], protein hỗ trợ duy trì cơ bắp.",
+        ]
+    )
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        knowledge_builder=KnowledgeContextBuilder(source),
+    )
+
+    result = runtime.run_text_turn("wiki: chất đạm")
+
+    assert result.response_text == "Theo [K1], protein hỗ trợ duy trì cơ bắp."
+    assert result.trace is not None
+    assert result.trace.answer_validation.status == "valid"
+    assert result.trace.answer_repair_attempted is True
+    assert result.trace.answer_repair_succeeded is True
+    assert len(llm.calls) == 2
 
 
 def test_explicit_memory_search_synthesizes_retrieved_context_with_llm() -> None:

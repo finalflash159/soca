@@ -57,6 +57,8 @@ class RuntimeTrace:
     evidence_decisions: tuple[Any, ...] = ()
     evidence_bundle: Any | None = None
     answer_validation: Any | None = None
+    answer_repair_attempted: bool = False
+    answer_repair_succeeded: bool = False
     prompt_manifest: dict[str, Any] | None = None
 
 

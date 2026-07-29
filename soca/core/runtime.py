@@ -247,6 +247,8 @@ class _TraceDraft:
     evidence_decisions: list[EvidenceDecision] = field(default_factory=list)
     evidence_bundle: EvidenceBundleDecision | None = None
     answer_validation: AnswerValidationDecision | None = None
+    answer_repair_attempted: bool = False
+    answer_repair_succeeded: bool = False
     prompt_manifest: dict[str, Any] | None = None
 
 
@@ -750,7 +752,11 @@ class AssistantRuntime:
             yield RuntimeStreamEvent(type="result", result=result)
             return
 
-        draft.answer_validation = validate_grounded_answer(full_text, tuple(draft.citations))
+        draft.answer_validation = validate_grounded_answer(
+            full_text,
+            tuple(draft.citations),
+            evidence=tuple([*draft.knowledge_hits, *draft.memory_hits]),
+        )
         self._append_safe_session_turn(frame.text, full_text)
         result = self._result(
             frame,
@@ -908,9 +914,17 @@ class AssistantRuntime:
         )
 
         knowledge_used = bool(citations)
+        response_text = tool_result.content.strip()
+        evidence = tuple([*draft.knowledge_hits, *draft.memory_hits])
+        answer_validation = validate_grounded_answer(
+            response_text,
+            citations,
+            evidence=evidence,
+        )
+
         with self._stage(draft, "output_guardrail"):
             output_event = check_final_output(
-                tool_result.content,
+                response_text,
                 knowledge_used=knowledge_used,
                 citations=tuple(citations),
                 tool_results=(tool_result,),
@@ -926,8 +940,7 @@ class AssistantRuntime:
                 route=RuntimeRoute.BLOCKED,
             )
 
-        response_text = tool_result.content.strip()
-        draft.answer_validation = validate_grounded_answer(response_text, citations)
+        draft.answer_validation = answer_validation
         self._append_safe_session_turn(frame.text, response_text)
         return self._result(
             frame,
@@ -1171,6 +1184,27 @@ class AssistantRuntime:
                 usage=usage,
             )
 
+        evidence = tuple([*draft.knowledge_hits, *draft.memory_hits])
+        answer_validation = validate_grounded_answer(
+            response_text,
+            citations,
+            evidence=evidence,
+        )
+        if answer_validation.status in {"missing", "invalid"} and citations:
+            response_text, llm_result, repaired_usage, answer_validation = (
+                self._repair_answer_once(
+                    prompt,
+                    response_text,
+                    citations,
+                    evidence,
+                    draft,
+                    llm_result,
+                    usage,
+                )
+            )
+            if repaired_usage is not None:
+                usage = repaired_usage
+
         with self._stage(draft, "output_guardrail"):
             output_event = check_final_output(
                 response_text,
@@ -1191,7 +1225,7 @@ class AssistantRuntime:
                 usage=usage,
             )
 
-        draft.answer_validation = validate_grounded_answer(response_text, citations)
+        draft.answer_validation = answer_validation
         self._append_safe_session_turn(frame.text, response_text)
         return self._result(
             frame,
@@ -1208,6 +1242,66 @@ class AssistantRuntime:
             used_llm=True,
             llm_result=llm_result,
             usage=usage,
+        )
+
+    def _repair_answer_once(
+        self,
+        prompt: str,
+        previous_answer: str,
+        citations: tuple[KnowledgeCitation, ...],
+        evidence: tuple[Any, ...],
+        draft: _TraceDraft,
+        llm_result: Any,
+        usage: LLMUsage | None,
+    ) -> tuple[str, Any, LLMUsage | None, AnswerValidationDecision]:
+        draft.answer_repair_attempted = True
+        repair_prompt = (
+            prompt
+            + "\n\nYêu cầu sửa câu trả lời trước khi gửi người dùng:\n"
+            + "Viết lại duy nhất câu trả lời cuối. Chỉ dùng bằng chứng đã chọn. "
+            + "Mỗi khẳng định dựa trên nguồn phải có citation hợp lệ [K#] hoặc [M#]. "
+            + "Không thêm thông tin không có trong bằng chứng; nếu bằng chứng không đủ, "
+            + "nói rõ là chưa đủ thông tin.\n"
+            + "Bản nháp trước đó:\n"
+            + previous_answer[:4_000]
+        )
+        try:
+            with self._stage(draft, "answer_repair"):
+                repaired_result = self.llm.generate(
+                    repair_prompt,
+                    max_tokens=self._effective_max_tokens(draft),
+                    temperature=0.0,
+                    top_p=1.0,
+                    inject_persona=False,
+                )
+        except RemoteLLMError:
+            return previous_answer, llm_result, usage, validate_grounded_answer(
+                previous_answer,
+                citations,
+                evidence=evidence,
+            )
+
+        repaired_text = getattr(repaired_result, "text", "").strip()
+        repaired_usage = LLMUsage.from_llm_result(repaired_result)
+        if not repaired_text:
+            return previous_answer, llm_result, usage, validate_grounded_answer(
+                previous_answer,
+                citations,
+                evidence=evidence,
+            )
+        repaired_validation = validate_grounded_answer(
+            repaired_text,
+            citations,
+            evidence=evidence,
+        )
+        if repaired_validation.status not in {"missing", "invalid"}:
+            draft.answer_repair_succeeded = True
+            self._record_prompt_calibration(draft, repaired_usage, source="answer_repair")
+            return repaired_text, repaired_result, repaired_usage, repaired_validation
+        return previous_answer, llm_result, usage, validate_grounded_answer(
+            previous_answer,
+            citations,
+            evidence=evidence,
         )
 
     def _build_memory_context(
@@ -1555,6 +1649,8 @@ class AssistantRuntime:
             evidence_decisions=tuple(draft.evidence_decisions),
             evidence_bundle=draft.evidence_bundle,
             answer_validation=draft.answer_validation,
+            answer_repair_attempted=draft.answer_repair_attempted,
+            answer_repair_succeeded=draft.answer_repair_succeeded,
             prompt_manifest=draft.prompt_manifest,
         )
         return RuntimeResult(
