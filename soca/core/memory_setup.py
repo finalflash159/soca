@@ -11,6 +11,7 @@ from soca.knowledge.factory import (
     build_retrieval_source,
 )
 from soca.knowledge.index.persistence import default_index_home
+from soca.knowledge.relevance import RelevancePolicy
 from soca.memory import CoreMemoryStore, MarkdownLongTermMemory, MemoryContextBuilder, SessionMemory
 from soca.memory.retrieved import RetrievedMemory, RetrievedMemoryConfig
 from soca.memory.scoring import MemoryScoreConfig
@@ -125,6 +126,7 @@ def build_memory_runtime_setup(
             core=core,
             max_chars=config.context_chars,
             profile_chars=config.profile_chars,
+            relevance_policy=RelevancePolicy.for_retrieval_mode(config.retrieval_mode),
         ),
         long_term=long_term,
         core=core,

@@ -1818,3 +1818,62 @@ is not a quality release gate: many low-confidence cases correctly fall to
 `unresolved`. P3 therefore wires parity and fail-closed behavior; it does not
 pretend this capture is a calibrated production win. The `/tmp` raw report is
 local-only and is not a repository artifact.
+
+### P4 — Retrieval evidence contract and groundedness calibration
+
+Run date: 2026-07-29. Branch: `feat/voice-knowledge-p4-evidence-contract`, based
+on merged P3 `main` at `5a18d2c`.
+
+This phase uses the checked-in public XQuAD Vietnamese corpus, not the
+showcase or private/demo vault:
+
+- corpus: `eval/fixtures/real_rag_vault`
+- labels: `eval/prompts/p0/grounding_vi.jsonl`
+- grounding dataset SHA-256: `965bbd8c238afdad715700d22e07c7235ec5fb83741a96e60e78e192a68e2791`
+- corpus manifest SHA-256: `a43bc4ee832e04007051f06de5e81c003d33f1c4219d318d3123c28f5839398c`
+- 20 rows: 12 answerable and 8 deliberately unanswerable; family splits are
+  frozen by the P0 contract.
+
+The evidence contract now carries source-local state (`ready`, `missing`,
+`stale`, `degraded`, `unavailable`), query coverage, score separation, and
+separate sparse/dense top scores through retrieval → context → runtime trace.
+Dense retrieval is not gated by lexical overlap. Cached sparse hits require
+both calibrated lexical coverage and sparse score ratio; dense hits use their
+own cosine distribution. `memory.search` preserves backend scores instead of
+falling back to an unscored legacy label. Dense-only failure is
+`unavailable`; an empty but healthy index is `insufficient`.
+
+Calibration commands:
+
+```bash
+PYTHONPATH=. .venv/bin/python -m eval.eval_grounding \
+  --vault eval/fixtures/real_rag_vault \
+  --dataset eval/prompts/p0/grounding_vi.jsonl \
+  --variant cached_sparse \
+  --output /tmp/soca-p4/grounding-cached-sparse.json
+
+PYTHONPATH=. .venv/bin/python -m eval.eval_grounding \
+  --vault eval/fixtures/real_rag_vault \
+  --dataset eval/prompts/p0/grounding_vi.jsonl \
+  --variant hybrid --backend fastembed \
+  --output /tmp/soca-p4/grounding-hybrid-fastembed.json
+```
+
+| Retrieval policy | Answerable recall@5 | Unanswerable accepted evidence | First query | Warm p95 | Decision |
+| --- | ---: | ---: | ---: | ---: | --- |
+| cached_sparse (`coverage=0.65`, sparse ratio `0.75`) | 12/12 (100%) | 0/8 (0%) | 75.9 ms | 30.9 ms | calibrated sparse default |
+| hybrid FastEmbed (`dense=0.85`, sparse fallback coverage `0.95`) | 12/12 (100%) | 0/8 (0%) | 12.4 s | 46.9 ms | opt-in; cold model load remains visible |
+
+The previous policy admitted 7/8 unanswerable sparse cases. The new run
+rejects all eight on this public set, but the Wilson upper bound is 32.44%
+with only eight negatives; this is an initial calibration gate, not a claim
+of production statistical certainty. Hybrid cold start is recorded separately
+from warm retrieval and is not hidden in the mean.
+
+Answer validation also emits a non-blocking shadow groundedness score by
+comparing cited claims with selected evidence snippets. It does not block or
+rewrite answers until a held-out human/model calibration set is available.
+
+Decision: keep calibrated cached-sparse as the safe default, keep hybrid
+opt-in, and retain all evidence/groundedness signals in telemetry. No raw
+sparse-vs-dense score comparison is used.

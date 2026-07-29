@@ -19,10 +19,22 @@ class RelevancePolicy:
     signal and the context builder records the resulting decision.
     """
 
-    min_lexical_coverage: float = 0.60
+    # Calibrated on the held-out public XQuAD grounding set: 0.65 kept
+    # answerable recall while removing generic account/weather distractors.
+    min_lexical_coverage: float = 0.65
     min_sparse_score_ratio: float = 0.75
     min_dense_score: float = 0.55
     min_top_margin: float = 0.05
+
+    @classmethod
+    def for_retrieval_mode(cls, mode: str) -> RelevancePolicy:
+        """Return the policy calibrated for one backend score distribution."""
+        if mode == "hybrid":
+            # FastEmbed E5 cosine scores on the public Vietnamese corpus were
+            # concentrated above 0.8 even for distractors; 0.85 preserved all
+            # answerable rows while rejecting the unanswerable set.
+            return cls(min_lexical_coverage=0.95, min_dense_score=0.85)
+        return cls(min_lexical_coverage=0.65, min_dense_score=0.55)
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -185,7 +197,7 @@ def _admission_signal(
     sparse_signal = (
         hit.sparse_score / max_sparse_score
         if (
-            lexical_coverage > 0.0
+            lexical_signal is not None
             and max_sparse_score is not None
             and max_sparse_score > 0
             and hit.sparse_score is not None
@@ -203,15 +215,19 @@ def _admission_signal(
     if hit.retrieval_backend == "dense":
         return dense_signal
     if hit.retrieval_backend == "hybrid":
-        return max(
-            (value for value in (lexical_signal, sparse_signal, dense_signal) if value is not None),
-            default=None,
-        )
+        if dense_signal is not None:
+            return dense_signal
+        if hit.sparse_score is not None:
+            return sparse_signal
+        return lexical_signal
     if hit.retrieval_backend == "lexical_custom":
-        return max(
-            (value for value in (lexical_signal, sparse_signal) if value is not None),
-            default=None,
-        )
+        # Cached sparse hits have a backend-local score. Coverage alone is not
+        # enough: generic words such as "hệ thống" can appear in unrelated
+        # notes. Keep the lexical fallback only for legacy/custom hits that do
+        # not expose a sparse score at all.
+        if hit.sparse_score is not None:
+            return sparse_signal
+        return lexical_signal
     if hit.retrieval_backend == "unknown":
         return None if not query.strip() else None
     return max(

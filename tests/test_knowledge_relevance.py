@@ -91,6 +91,16 @@ def test_relevance_policy_is_calibratable_without_code_changes() -> None:
     assert assessment.reason == "all_hits_below_floor"
 
 
+def test_retrieval_modes_keep_separate_score_distributions() -> None:
+    sparse = RelevancePolicy.for_retrieval_mode("cached_sparse")
+    hybrid = RelevancePolicy.for_retrieval_mode("hybrid")
+
+    assert sparse.min_lexical_coverage == 0.65
+    assert sparse.min_dense_score == 0.55
+    assert hybrid.min_lexical_coverage == 0.95
+    assert hybrid.min_dense_score == 0.85
+
+
 def test_generic_lexical_overlap_is_not_enough_when_sparse_score_is_weak() -> None:
     assessment = assess_relevance(
         "hệ thống hoạt động hiệu quả",

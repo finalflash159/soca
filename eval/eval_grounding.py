@@ -14,6 +14,7 @@ from typing import Any
 
 from eval.eval_hybrid_retrieval import _build_source
 from soca.knowledge.context import KnowledgeContextBuilder
+from soca.knowledge.relevance import RelevancePolicy
 
 
 def load_dataset(path: Path) -> tuple[dict[str, Any], ...]:
@@ -84,7 +85,11 @@ def run_benchmark(
             index_home=index_home or Path(temporary_index),
             rrf_k=60,
         )
-        builder = KnowledgeContextBuilder(source, max_hits=5)
+        builder = KnowledgeContextBuilder(
+            source,
+            max_hits=5,
+            relevance_policy=RelevancePolicy.for_retrieval_mode(variant),
+        )
         records: list[dict[str, Any]] = []
         for row in rows:
             started = time.perf_counter()
@@ -130,6 +135,12 @@ def run_benchmark(
     false_evidence = sum(bool(record["accepted_paths"]) for record in unanswerable)
     latencies = sorted(float(record["latency_ms"]) for record in records)
     p95 = latencies[min(len(latencies) - 1, math.ceil(len(latencies) * 0.95) - 1)] if latencies else 0.0
+    warm_latencies = sorted(float(record["latency_ms"]) for record in records[1:])
+    warm_p95 = (
+        warm_latencies[min(len(warm_latencies) - 1, math.ceil(len(warm_latencies) * 0.95) - 1)]
+        if warm_latencies
+        else 0.0
+    )
     return {
         "dataset": str(dataset),
         "dataset_sha256": hashlib.sha256(dataset.read_bytes()).hexdigest(),
@@ -142,6 +153,8 @@ def run_benchmark(
         "latency_ms": {
             "mean": statistics.fmean(latencies) if latencies else 0.0,
             "p95": p95,
+            "first_query": float(records[0]["latency_ms"]) if records else 0.0,
+            "warm_p95": warm_p95,
         },
         "records": records,
     }

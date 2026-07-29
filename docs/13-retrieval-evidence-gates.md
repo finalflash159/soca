@@ -23,12 +23,22 @@ corresponding backend is enabled. Dense is not blocked by a lexical miss. Each
 - `sparse_score`, `dense_score`, `fusion_score`;
 - chunk id, path and line range for trace/citation.
 
+The retrieval batch also exposes backend-local diagnostics: sparse/dense index
+state (`ready`, `missing`, `stale`, `degraded` or `unavailable`), top scores,
+and backend-local separation. `EvidenceDecision` carries those fields plus
+query coverage into `RuntimeTrace`; an empty healthy result is
+`insufficient`, while a missing model/index or failed dense-only call is
+`unavailable`. The runtime never compares a sparse score with a dense cosine.
+
 `RelevancePolicy` does not compare scores from different backends blindly. It
 uses lexical coverage/normalized sparse score for sparse, a dense floor for dense,
 and records top score, margin, accepted/rejected count. Known-backend hits below
 the floor are rejected before prompt construction. Legacy sources without score
 metadata remain accepted as `weak` for compatibility; that is a migration signal,
-not a calibrated evidence claim.
+not a calibrated evidence claim. Cached sparse and hybrid have separate
+calibrated policies: public XQuAD Vietnamese screening uses coverage `0.65` plus
+sparse ratio `0.75` for cached sparse, and dense floor `0.85` with a conservative
+sparse fallback coverage `0.95` for hybrid FastEmbed.
 
 ## Context and citations
 
@@ -47,8 +57,9 @@ return snippets directly as the final answer when an LLM is available.
 The validator checks whether `[K#]`/`[M#]` provenance labels exist in the selected
 citation set. `partial` does not automatically mean the answer is wrong: a model
 may cite only the source directly used when several references were supplied.
-Full entailment/factuality remains a shadow signal that needs a held-out
-evaluation set; regex is not pretending to be a judge.
+It also emits a non-blocking shadow claim/evidence overlap score and
+`supported`/`mixed`/`unsupported` label. This is telemetry for calibration, not
+a regex pretending to be a factuality judge and not a production blocking rule.
 
 For non-streaming LLM answers, if citations exist but labels are missing or
 invalid, runtime makes at most one repair call. The repair prompt is limited to
@@ -96,6 +107,12 @@ an artifact.
 These are wiring/abstention smoke checks, not release-quality retrieval scores.
 Entailment and citation correctness still need an independent labeled dataset;
 the showcase corpus must not be used to claim benchmark quality.
+
+The P4 public screening result is recorded in `BENCHMARKS.md` and uses the
+real XQuAD Vietnamese corpus under `eval/fixtures/real_rag_vault`, not the
+showcase vault. Both calibrated policies reached 12/12 answerable recall@5 and
+0/8 accepted evidence on the unanswerable rows. Hybrid FastEmbed had a 12.4 s
+cold model load and 46.9 ms warm p95; the cold event is reported separately.
 
 ## Remaining gaps
 
