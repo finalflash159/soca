@@ -1726,7 +1726,7 @@ logging memory text.
 P1b calibration uses only the 42 route rows and 28 source rows in train plus
 validation. The 24 route test rows and 12 source test rows remain sealed and
 are not used for fitting. Candidate artifact SHA-256:
-`dc7f68862f072a2243983bd7859a514298dbf5c3e6cc34cba10c6d1a1f378324`.
+`55d3e99c4ba9c31a06c7fcc3644e3e19d0d7b5d05cd4aae29279e93df81cae6d`.
 
 | Candidate metric | Fit result | Release interpretation |
 | --- | ---: | --- |
