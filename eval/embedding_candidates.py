@@ -43,13 +43,13 @@ class VietnameseEvalEmbedding:
     ) -> None:
         if candidate not in EVAL_CANDIDATES:
             raise ValueError("unknown Vietnamese eval candidate")
-        from sentence_transformers import SentenceTransformer
-
         self._candidate = candidate
         self._remote_id = EVAL_CANDIDATES[candidate]
         path = (model_home or default_model_home()) / "eval" / candidate
         if not path.is_dir():
             raise FileNotFoundError(f"eval model is not provisioned at {path}")
+        from sentence_transformers import SentenceTransformer
+
         self._model = SentenceTransformer(str(path), local_files_only=True)
 
     @property
