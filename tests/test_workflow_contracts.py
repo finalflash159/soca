@@ -42,6 +42,8 @@ def test_event_stream_allows_exactly_one_terminal_event() -> None:
     assert [event.sequence for event in stream] == [0, 1]
     assert started.terminal is False
     assert terminal.terminal is True
+    with pytest.raises(ValueError):
+        stream.emit("terminal", TurnState.COMPLETED)
     with pytest.raises(DuplicateTerminalError):
         stream.emit_terminal(TerminalOutcome(status=TerminalStatus.FAILED))
 
@@ -71,3 +73,16 @@ def test_stream_without_result_emits_failed_terminal_not_complete() -> None:
     assert events[-1].kind == "terminal"
     assert events[-1].payload["status"] == "failed"
     assert events[-1].payload["error_code"] == "missing_terminal_result"
+
+
+def test_duplicate_stream_results_are_rejected_instead_of_emitting_two_terminals() -> None:
+    result = RuntimeResult(response_text="ok", route=RuntimeRoute.FREE_CHAT)
+    source = iter(
+        [
+            RuntimeStreamEvent(type="result", result=result),
+            RuntimeStreamEvent(type="result", result=result),
+        ]
+    )
+
+    with pytest.raises(DuplicateTerminalError):
+        list(iter_workflow_events(source))

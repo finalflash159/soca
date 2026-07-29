@@ -37,6 +37,8 @@ class WorkflowEventStream:
         state: TurnState,
         payload: Mapping[str, Any] | None = None,
     ) -> WorkflowEvent:
+        if kind == "terminal":
+            raise ValueError("use emit_terminal for terminal events")
         if self._terminal is not None:
             raise DuplicateTerminalError()
         event = WorkflowEvent(
