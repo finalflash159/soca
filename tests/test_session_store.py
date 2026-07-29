@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import stat
 from pathlib import Path
 
@@ -16,6 +17,9 @@ def test_checkpoint_round_trip_is_atomic_and_private(tmp_path: Path) -> None:
     store = SessionCheckpointStore(tmp_path / "sessions")
     path = store.save(memory)
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 1
+    assert payload["persistence"] == "local_resumable"
     loaded = store.load("chat-1")
     assert loaded is not None
     assert loaded.snapshot.turns == memory.snapshot.turns
@@ -30,3 +34,38 @@ def test_checkpoint_rejects_non_private_file(tmp_path: Path) -> None:
     path.chmod(0o644)
     with pytest.raises(ValueError, match="permissions"):
         store.load("chat-1")
+
+
+def test_checkpoint_reads_legacy_working_payload(tmp_path: Path) -> None:
+    memory = WorkingMemory(thread_id="legacy")
+    turn = memory.begin_turn("cũ")
+    memory.finish_turn(turn.sequence, "đã đọc")
+    store = SessionCheckpointStore(tmp_path / "sessions")
+    path = store._path("legacy")
+    path.write_text(json.dumps(memory.to_dict()), encoding="utf-8")
+    path.chmod(0o600)
+
+    loaded = store.load("legacy")
+
+    assert loaded is not None
+    assert loaded.snapshot.turns == memory.snapshot.turns
+
+
+def test_checkpoint_rejects_stale_equal_revision_state(tmp_path: Path) -> None:
+    store = SessionCheckpointStore(tmp_path / "sessions")
+    first = WorkingMemory(thread_id="same")
+    turn = first.begin_turn("first")
+    first.finish_turn(turn.sequence, "one")
+    path = store.save(first)
+    loaded, revision, digest = store.load_with_metadata("same")
+    assert loaded is not None
+    assert revision == first.snapshot.revision
+    assert digest is not None
+
+    divergent = WorkingMemory(thread_id="same")
+    turn = divergent.begin_turn("other")
+    divergent.finish_turn(turn.sequence, "two")
+    divergent._revision = first.snapshot.revision  # noqa: SLF001 - adversarial fixture
+    with pytest.raises(ValueError, match="advance revision"):
+        store.save(divergent, expected_revision=revision, expected_digest=digest)
+    assert path.exists()

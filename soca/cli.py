@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 import click
 from rich.console import Console
@@ -29,6 +30,7 @@ from soca.knowledge.indexing.models import MODEL_REGISTRY, load_model, model_spe
 from soca.knowledge.markdown_vault import MarkdownVaultKnowledgeSource
 from soca.knowledge.retrievers.dense import default_model_home
 from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
+from soca.memory import SessionPersistence
 
 console = Console()
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -346,6 +348,15 @@ def profiles_command(show_paths: bool) -> None:
 @click.option("--session-chars", type=int, default=60_000, show_default=True)
 @click.option("--session-turns", type=int, default=6, show_default=True)
 @click.option("--turn-chars", type=int, default=500, show_default=True)
+@click.option(
+    "--session-persistence",
+    type=click.Choice(["ram_only", "local_resumable"]),
+    default="ram_only",
+    show_default=True,
+    help="Working-memory persistence; local_resumable is opt-in.",
+)
+@click.option("--session-id", default="default", show_default=True)
+@click.option("--resume-session", is_flag=True, help="Resume the selected local session checkpoint.")
 @click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="cascade", show_default=True)
 @click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", show_default=True)
 @click.option("--semantic-router/--no-semantic-router", default=True, show_default=True)
@@ -374,6 +385,9 @@ def ask(
     session_chars: int,
     session_turns: int,
     turn_chars: int,
+    session_persistence: str,
+    session_id: str,
+    resume_session: bool,
     tool_router: str,
     router_response: str,
     semantic_router: bool,
@@ -403,6 +417,9 @@ def ask(
         session_chars=session_chars,
         session_turns=session_turns,
         turn_chars=turn_chars,
+        session_persistence=session_persistence,
+        session_id=session_id,
+        session_resume=resume_session,
         tool_router_mode=tool_router,
         tool_router_response_mode=router_response,
         semantic_router_enabled=semantic_router,
@@ -449,6 +466,15 @@ def ask(
 @click.option("--session-chars", type=int, default=60_000, show_default=True)
 @click.option("--session-turns", type=int, default=6, show_default=True)
 @click.option("--turn-chars", type=int, default=500, show_default=True)
+@click.option(
+    "--session-persistence",
+    type=click.Choice(["ram_only", "local_resumable"]),
+    default="ram_only",
+    show_default=True,
+    help="Working-memory persistence; local_resumable is opt-in.",
+)
+@click.option("--session-id", default="default", show_default=True)
+@click.option("--resume-session", is_flag=True, help="Resume the selected local session checkpoint.")
 @click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="cascade", show_default=True)
 @click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", show_default=True)
 @click.option("--semantic-router/--no-semantic-router", default=True, show_default=True)
@@ -480,6 +506,9 @@ def chat(
     session_chars: int,
     session_turns: int,
     turn_chars: int,
+    session_persistence: str,
+    session_id: str,
+    resume_session: bool,
     tool_router: str,
     router_response: str,
     semantic_router: bool,
@@ -509,6 +538,9 @@ def chat(
         session_chars=session_chars,
         session_turns=session_turns,
         turn_chars=turn_chars,
+        session_persistence=session_persistence,
+        session_id=session_id,
+        session_resume=resume_session,
         tool_router_mode=tool_router,
         tool_router_response_mode=router_response,
         semantic_router_enabled=semantic_router,
@@ -554,6 +586,15 @@ def chat(
     show_default=True,
     help="Knowledge vault root for the UI session.",
 )
+@click.option(
+    "--session-persistence",
+    type=click.Choice(["ram_only", "local_resumable"]),
+    default="ram_only",
+    show_default=True,
+    help="Working-memory persistence; local_resumable is opt-in.",
+)
+@click.option("--session-id", default="default", show_default=True)
+@click.option("--resume-session", is_flag=True, help="Resume the selected local session checkpoint.")
 @click.pass_context
 def ui(
     ctx: click.Context,
@@ -561,12 +602,27 @@ def ui(
     quick_profile: str | None,
     no_model: bool,
     vault: Path,
+    session_persistence: str,
+    session_id: str,
+    resume_session: bool,
 ) -> None:
     """Open the SoCa terminal UI (Ink) on top of `soca engine`.
 
     Quick form: soca ui [status|chat|voice] [profile]. Without a mode the UI
     opens on the splash screen.
     """
+    if session_persistence != "ram_only" or session_id != "default" or resume_session:
+        ctx.exit(
+            _launch_ink_ui(
+                mode=quick_mode,
+                profile=quick_profile,
+                no_model=no_model,
+                vault=vault,
+                session_persistence=session_persistence,
+                session_id=session_id,
+                resume_session=resume_session,
+            )
+        )
     ctx.exit(
         _launch_ink_ui(
             mode=quick_mode,
@@ -593,6 +649,9 @@ def build_text_runtime_config(
     session_chars: int,
     session_turns: int,
     turn_chars: int,
+    session_persistence: str = "ram_only",
+    session_id: str = "default",
+    session_resume: bool = False,
     tool_router_mode: str = "cascade",
     tool_router_response_mode: str = "prompt_json",
     semantic_router_enabled: bool = True,
@@ -620,6 +679,9 @@ def build_text_runtime_config(
             session_chars=session_chars,
             session_turns=session_turns,
             turn_chars=turn_chars,
+            session_persistence=cast(SessionPersistence, session_persistence),
+            session_id=session_id,
+            session_resume=session_resume,
             tool_router_mode=tool_router_mode,
             tool_router_response_mode=tool_router_response_mode,
             semantic_router_enabled=semantic_router_enabled,
@@ -635,7 +697,16 @@ def build_text_runtime_config(
         raise click.ClickException(str(exc)) from exc
 
 
-def _launch_ink_ui(*, mode: str | None, profile: str | None, no_model: bool, vault: Path) -> int:
+def _launch_ink_ui(
+    *,
+    mode: str | None,
+    profile: str | None,
+    no_model: bool,
+    vault: Path,
+    session_persistence: str = "ram_only",
+    session_id: str = "default",
+    resume_session: bool = False,
+) -> int:
     """Spawn the Ink UI (ui/dist), which owns the terminal and spawns `soca engine`."""
     import shutil
 
@@ -655,6 +726,9 @@ def _launch_ink_ui(*, mode: str | None, profile: str | None, no_model: bool, vau
         args.append(profile)
     if no_model:
         args.append("--no-model")
+    args.extend(["--session-persistence", session_persistence, "--session-id", session_id])
+    if resume_session:
+        args.append("--resume-session")
     args.extend(["--vault", str(vault.expanduser().resolve())])
     return subprocess.run(args, cwd=repo_root, check=False).returncode
 
@@ -684,6 +758,15 @@ def _launch_ink_ui(*, mode: str | None, profile: str | None, no_model: bool, vau
     is_flag=True,
     help="Do not load model runtimes (protocol smoke tests).",
 )
+@click.option(
+    "--session-persistence",
+    type=click.Choice(["ram_only", "local_resumable"]),
+    default="ram_only",
+    show_default=True,
+    help="Working-memory persistence; local_resumable is opt-in.",
+)
+@click.option("--session-id", default="default", show_default=True)
+@click.option("--resume-session", is_flag=True, help="Resume the selected local session checkpoint.")
 @click.pass_context
 def engine(
     ctx: click.Context,
@@ -692,6 +775,9 @@ def engine(
     vault: Path,
     no_memory: bool,
     no_model: bool,
+    session_persistence: str,
+    session_id: str,
+    resume_session: bool,
 ) -> None:
     """Run the headless NDJSON engine (stdio protocol for external UIs).
 
@@ -707,6 +793,9 @@ def engine(
             llm_model=llm_model,
             vault=vault,
             no_memory=no_memory,
+            session_persistence=cast(SessionPersistence, session_persistence),
+            session_id=session_id,
+            session_resume=resume_session,
         )
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
@@ -726,6 +815,9 @@ def engine(
         session_chars=60_000,
         session_turns=6,
         turn_chars=500,
+        session_persistence=session_persistence,
+        session_id=session_id,
+        session_resume=resume_session,
     )
     ctx.exit(
         run_engine(
@@ -786,6 +878,14 @@ def engine(
 @click.option("--session-chars", type=int, default=60_000, hidden=True)
 @click.option("--session-turns", type=int, default=6, hidden=True)
 @click.option("--turn-chars", type=int, default=500, hidden=True)
+@click.option(
+    "--session-persistence",
+    type=click.Choice(["ram_only", "local_resumable"]),
+    default="ram_only",
+    hidden=True,
+)
+@click.option("--session-id", default="default", hidden=True)
+@click.option("--resume-session", is_flag=True, hidden=True)
 @click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="deterministic", hidden=True)
 @click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", hidden=True)
 @click.option("--llm-router-in-voice/--no-llm-router-in-voice", default=False, hidden=True)
@@ -854,6 +954,9 @@ def voice(
     session_chars: int,
     session_turns: int,
     turn_chars: int,
+    session_persistence: str,
+    session_id: str,
+    resume_session: bool,
     tool_router: str,
     router_response: str,
     llm_router_in_voice: bool,
@@ -900,6 +1003,9 @@ def voice(
             session_chars=session_chars,
             session_turns=session_turns,
             turn_chars=turn_chars,
+            session_persistence=cast(SessionPersistence, session_persistence),
+            session_id=session_id,
+            session_resume=resume_session,
             tool_router_mode=tool_router,
             tool_router_response_mode=router_response,
             llm_router_in_voice=llm_router_in_voice,

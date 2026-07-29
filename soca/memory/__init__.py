@@ -1,3 +1,5 @@
+from soca.memory.access import ArchiveMode, MemoryAccessPlan, MemoryArchiveMode
+from soca.memory.assembler import PromptContextAssembler
 from soca.memory.base import (
     LongTermMemorySource,
     MemoryProfileResult,
@@ -11,14 +13,20 @@ from soca.memory.compaction import CompactionConfig, WorkingMemory, WorkingMemor
 from soca.memory.compaction_coordinator import CompactionResult, WorkingMemoryCompactionCoordinator
 from soca.memory.composite import CompositeMemoryConfig, CompositeMemorySource
 from soca.memory.context import MemoryContext, MemoryContextBuilder
+from soca.memory.core import CoreMemoryItem, CoreMemoryStore
 from soca.memory.episodes import EpisodeStore, MemoryEpisode
 from soca.memory.longterm import MarkdownLongTermMemory
 from soca.memory.proposals import MemoryProposal, ProposalStore
 from soca.memory.reflection import BackgroundReflection, ReflectionConfig, ReflectionService
 from soca.memory.retrieved import RetrievedMemory, RetrievedMemoryConfig
 from soca.memory.scoring import MemoryHit, MemoryScore, MemoryScoreConfig
-from soca.memory.session import SessionMemory, SessionMemoryStats
-from soca.memory.session_store import SessionCheckpointStore
+from soca.memory.session import SessionMemory, SessionMemoryStats, SessionPersistence
+from soca.memory.session_store import (
+    CHECKPOINT_SCHEMA_VERSION,
+    CheckpointConflictError,
+    SessionCheckpointStore,
+    default_session_checkpoint_home,
+)
 from soca.memory.working import (
     SUMMARY_CONTENT_BUDGET_TOKENS,
     CompactionJob,
@@ -29,9 +37,15 @@ from soca.memory.working import (
 
 __all__ = [
     "LongTermMemorySource",
+    "ArchiveMode",
+    "MemoryArchiveMode",
+    "MemoryAccessPlan",
+    "PromptContextAssembler",
     "MarkdownLongTermMemory",
     "MemoryContext",
     "MemoryContextBuilder",
+    "CoreMemoryItem",
+    "CoreMemoryStore",
     "MemoryCommandResult",
     "MemoryCommands",
     "CompactionResult",
@@ -59,7 +73,11 @@ __all__ = [
     "QueryAwareLongTermMemorySource",
     "SessionMemory",
     "SessionMemoryStats",
+    "SessionPersistence",
     "SessionCheckpointStore",
+    "CHECKPOINT_SCHEMA_VERSION",
+    "CheckpointConflictError",
+    "default_session_checkpoint_home",
     "CompactionJob",
     "ConversationTurn",
     "SUMMARY_CONTENT_BUDGET_TOKENS",

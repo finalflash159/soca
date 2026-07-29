@@ -11,7 +11,7 @@ from soca.knowledge.factory import (
     build_retrieval_source,
 )
 from soca.knowledge.index.persistence import default_index_home
-from soca.memory import MarkdownLongTermMemory, MemoryContextBuilder, SessionMemory
+from soca.memory import CoreMemoryStore, MarkdownLongTermMemory, MemoryContextBuilder, SessionMemory
 from soca.memory.retrieved import RetrievedMemory, RetrievedMemoryConfig
 from soca.memory.scoring import MemoryScoreConfig
 
@@ -56,6 +56,7 @@ class MemoryRuntimeConfig:
 class MemoryRuntimeSetup:
     builder: MemoryContextBuilder
     long_term: MarkdownLongTermMemory | RetrievedMemory | None
+    core: CoreMemoryStore | None
     status: str
 
 
@@ -75,6 +76,7 @@ def build_memory_runtime_setup(
                 profile_chars=config.profile_chars,
             ),
             long_term=None,
+            core=None,
             status=f"session-only:vault_missing:{vault}",
         )
 
@@ -107,15 +109,26 @@ def build_memory_runtime_setup(
             ),
         )
         status = f"enabled:retrieved:{config.retrieval_mode}"
+    core = CoreMemoryStore(vault, max_chars=config.profile_chars)
+    if not core.path.is_file():
+        core_state = "empty"
+    else:
+        try:
+            core.items()
+            core_state = "ready"
+        except (OSError, UnicodeError, ValueError):
+            core_state = "degraded"
     return MemoryRuntimeSetup(
         builder=MemoryContextBuilder(
             long_term=long_term,
             session=session,
+            core=core,
             max_chars=config.context_chars,
             profile_chars=config.profile_chars,
         ),
         long_term=long_term,
-        status=status,
+        core=core,
+        status=status + f":core:{core_state}",
     )
 
 
