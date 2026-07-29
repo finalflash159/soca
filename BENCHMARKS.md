@@ -1763,3 +1763,30 @@ behavior was changed.
 Exact command and gate policy:
 `eval/gates/voice_knowledge_p1.json` and
 `eval/results/voice_knowledge_p1/router_calibration.json` (ignored artifact).
+
+### P3 — Shared chat/voice semantic routing wiring
+
+Run date: 2026-07-29. Branch: `feat/voice-knowledge-p3-shared-routing`, based
+on merged P2 `main` at `bb4d4f2`.
+
+This phase removes the ASR-only `RetrievalIntentGate` and the
+`voice_knowledge_mode`/`knowledge_intent_threshold` configuration path. Text
+and voice now build the same deterministic + semantic router policy, including
+the same explicit knowledge prefixes, route catalog, source selection and
+fail-closed behavior when the local embedder is unavailable. The optional LLM
+router remains disabled for voice; this phase does not promote an uncalibrated
+router artifact or claim a new quality score.
+
+Regression verification on the branch:
+
+| Check | Result |
+| --- | ---: |
+| shared routing/parity targeted tests | 45 passed |
+| semantic router voice setup test | passed |
+| Pyright (`soca`, eval voice loop) | 0 errors |
+| Ruff (touched production/eval/tests) | passed |
+
+The parity test uses the same route contract with `source="text"` and
+`source="asr"`, verifies the same `retrieval_request`/Knowledge decision, and
+asserts one retrieval call per surface. It is a control-flow regression, not a
+quality benchmark; calibration and real voice latency remain P4/P6 gates.

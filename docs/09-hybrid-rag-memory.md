@@ -88,11 +88,15 @@ vault and are not committed to the repository.
 
 ### Voice capability policy
 
-Chat and voice can construct the same semantic policy from
-`eval/prompts/turn_routing_vi.jsonl`; voice now provisions the same local
-embedder when semantic routing is enabled.  The old `RetrievalIntentGate` is a
-legacy compatibility path, not the target policy.  Semantic voice routing is
-still opt-in until its full paired chat/ASR calibration and TTFA gate pass.
+Chat and voice construct the same semantic policy from
+`eval/prompts/turn_routing_vi.jsonl` and use the same local route embedder.
+The old ASR-only `RetrievalIntentGate` and `voice_knowledge_mode` path have
+been removed. A transcript is routed once, regardless of whether it came from
+text or ASR; retrieval then selects Knowledge/Memory and the runtime performs
+the same evidence and answer policy. If the local embedder is unavailable,
+both surfaces fail closed to deterministic explicit commands. The semantic
+router remains disable-able with the shared `--no-semantic-router` flag for
+diagnostics; this P3 wiring does not claim a new calibration-quality result.
 
 ## Tool router cascade
 
@@ -124,9 +128,9 @@ Invariants worth remembering:
 - **`none` is no longer a policy.** `smalltalk`, `out_of_scope`, and
   `unresolved` have distinct dispositions. OOS never falls through to an answer
   model and cannot execute a direct tool.
-- **Text and voice use the same semantic contract.** The LLM router tier is
-  intentionally not enabled as a text-only fallback while voice has not passed
-  its privacy/latency gate.
+- **Text and voice use the same semantic contract.** The optional LLM-router
+  tier remains independently gated off for voice; semantic capability routing
+  itself is not ASR-specific.
 - **The executable catalog has four product tools only:** `knowledge.search`,
   `knowledge.read`, `local_time.now`, and `memory.search`. There are no weather,
   device-control, scheduling, or memory-write tools.
