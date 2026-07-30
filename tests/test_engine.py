@@ -7,7 +7,12 @@ from pathlib import Path
 
 import numpy as np
 
-from soca.app.engine import _memory_protocol_mode, _retrieval_trace_payload, run_engine
+from soca.app.engine import (
+    SocaEngine,
+    _memory_protocol_mode,
+    _retrieval_trace_payload,
+    run_engine,
+)
 from soca.app.text_runtime import TextRuntimeBundle, TextRuntimeConfig
 from soca.core import ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
 from soca.core.turn import RuntimeResult, RuntimeRoute, RuntimeTrace
@@ -122,6 +127,21 @@ def test_retrieval_trace_preserves_backend_scores_and_rejections() -> None:
         }
     ]
     assert payload["rejected_count"] == 2
+
+
+def test_pending_proposal_telemetry_reports_unavailable_state(caplog) -> None:
+    class BrokenCommands:
+        def list_pending(self):
+            raise OSError("proposal store unavailable")
+
+    engine = object.__new__(SocaEngine)
+    engine._memory_commands = lambda: BrokenCommands()
+
+    with caplog.at_level("WARNING", logger="soca.app.engine"):
+        count = engine._pending_proposal_count()
+
+    assert count is None
+    assert "proposal telemetry unavailable" in caplog.text
 
 
 def test_engine_hello_then_quit_emits_bye() -> None:
@@ -378,6 +398,13 @@ def test_engine_chat_exception_does_not_emit_completed_progress() -> None:
     assert not any(event["status"] == "done" for event in progress)
     assert progress[-1]["status"] == "failed"
     assert progress[-1]["terminal_status"] == "system_failure"
+    workflow = [
+        event
+        for event in capture.events()
+        if event["event"] in {"turn_started", "turn_terminal"}
+    ]
+    assert workflow[-1]["event"] == "turn_terminal"
+    assert workflow[-1]["payload"]["terminal_status"] == "system_failure"
 
 
 @dataclass

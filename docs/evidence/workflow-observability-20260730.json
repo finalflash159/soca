@@ -1,4 +1,5 @@
 {
+  "schema_version": "workflow-observability.v2",
   "artifact": "workflow-observability-real-flow",
   "recorded_at": "2026-07-30",
   "hardware": "MacBook Pro Mac16,8 · Apple M4 Pro · 12 cores · 48 GB · macOS 15.7.4",
@@ -10,13 +11,59 @@
     "memory": "disabled_for_isolated_run",
     "knowledge_backend": "hybrid"
   },
+  "trajectory_schema": {
+    "required": [
+      "provider_called",
+      "goal_decision",
+      "planned_action",
+      "tool_receipt",
+      "evidence",
+      "terminal_outcome",
+      "usage",
+      "latency",
+      "response"
+    ],
+    "redaction": "Responses are sanitized summaries or non-sensitive grounded text; raw stdout, transcripts, and private-vault paths remain local."
+  },
   "trajectories": [
     {
+      "id": "smalltalk-greeting",
       "class": "answerable_smalltalk",
       "provider_called": true,
-      "used_llm": true,
-      "route": "free_chat",
-      "terminal_status": "achieved",
+      "goal_decision": {
+        "status": "resolved",
+        "intent": "smalltalk",
+        "route": "free_chat"
+      },
+      "planned_action": ["llm.generate"],
+      "tool_receipt": {
+        "called": false,
+        "calls": []
+      },
+      "evidence": {
+        "status": "not_requested",
+        "items": []
+      },
+      "terminal_outcome": {
+        "status": "achieved",
+        "goal_status": "achieved",
+        "error_code": null
+      },
+      "usage": {
+        "prompt_tokens": 170,
+        "completion_tokens": 11,
+        "ttft_ms": null,
+        "total_latency_ms": 1068.7,
+        "tokens_per_second": null
+      },
+      "latency": {
+        "total_ms": 1068.7,
+        "source": "provider_usage"
+      },
+      "response": {
+        "kind": "sanitized_summary",
+        "text": "Vietnamese greeting returned successfully."
+      },
       "workflow_events": [
         "turn_started",
         "step_progress",
@@ -31,26 +78,78 @@
         "synthesis",
         "validation",
         "complete"
-      ],
-      "observed_usage": {
-        "prompt_tokens": 170,
-        "completion_tokens": 11,
-        "latency_ms": 1068.7
-      }
+      ]
     },
     {
+      "id": "knowledge-bayes",
       "class": "answerable_knowledge",
       "provider_called": true,
-      "used_llm": true,
-      "route": "knowledge_llm",
-      "terminal_status": "achieved",
-      "retrieval": {
-        "backend": "hybrid",
+      "goal_decision": {
+        "status": "resolved",
+        "intent": "knowledge_lookup",
+        "route": "retrieval_request",
+        "answer_policy": "grounded"
+      },
+      "planned_action": ["knowledge.search", "llm.generate"],
+      "tool_receipt": {
+        "called": true,
+        "calls": [
+          {
+            "tool": "knowledge.search",
+            "status": "completed",
+            "backend": "hybrid",
+            "accepted_hits": 1,
+            "rejected_hits": 10
+          }
+        ]
+      },
+      "evidence": {
+        "status": "weak",
+        "reason": "ambiguous_top_margin",
         "accepted_hits": 1,
         "rejected_count": 10,
-        "evidence_status": "weak",
-        "evidence_reason": "ambiguous_top_margin"
+        "top_score": 0.576147,
+        "margin": 0.041748,
+        "query_coverage": 0.5,
+        "citation_count": 1
       },
+      "terminal_outcome": {
+        "status": "achieved",
+        "goal_status": "achieved",
+        "error_code": null
+      },
+      "usage": {
+        "prompt_tokens": 402,
+        "completion_tokens": 84,
+        "ttft_ms": 3051.636,
+        "total_latency_ms": 3051.72,
+        "tokens_per_second": 27.5262
+      },
+      "latency": {
+        "total_ms": 3051.72,
+        "router_ms": 4.331,
+        "source": "provider_usage_and_router_trace"
+      },
+      "response": {
+        "kind": "sanitized_grounded_text",
+        "text": "Grounded Vietnamese answer returned with one [K1] citation; raw transcript retained locally."
+      },
+      "retrieval": {
+        "backend": "hybrid",
+        "columns": ["hybrid"],
+        "accepted_hits": 1,
+        "rejected_count": 10,
+        "sparse_top_score": 5.185637,
+        "dense_top_score": 0.576147,
+        "fusion_top_score": 1.0
+      },
+      "workflow_events": [
+        "turn_started",
+        "step_progress",
+        "step_completed",
+        "answer_delta",
+        "turn_terminal"
+      ],
       "progress_phases": [
         "preparing",
         "analyzing",
@@ -62,19 +161,83 @@
       ]
     },
     {
+      "id": "knowledge-hard-negative",
       "class": "empty_evidence_hard_negative",
       "provider_called": true,
-      "used_llm": true,
-      "route": "knowledge_llm",
-      "terminal_status": "insufficient_evidence",
-      "retrieval": {
-        "backend": "hybrid",
+      "goal_decision": {
+        "status": "resolved",
+        "intent": "knowledge_lookup",
+        "route": "retrieval_request",
+        "answer_policy": "abstain"
+      },
+      "planned_action": ["knowledge.search", "llm.generate"],
+      "tool_receipt": {
+        "called": true,
+        "calls": [
+          {
+            "tool": "knowledge.search",
+            "status": "completed",
+            "backend": "hybrid",
+            "accepted_hits": 0,
+            "rejected_hits": 12
+          }
+        ]
+      },
+      "evidence": {
+        "status": "insufficient",
+        "reason": "all_hits_below_floor",
         "accepted_hits": 0,
         "rejected_count": 12,
-        "evidence_status": "insufficient",
-        "evidence_reason": "all_hits_below_floor"
+        "query_coverage": 0.352941,
+        "dense_top_score": 0.378324
       },
-      "answer_policy": "abstain"
+      "terminal_outcome": {
+        "status": "insufficient_evidence",
+        "goal_status": "failed",
+        "unmet_criteria": ["grounded_answer_or_abstention"],
+        "error_code": null
+      },
+      "usage": {
+        "prompt_tokens": 379,
+        "completion_tokens": 17,
+        "ttft_ms": 4746.576,
+        "total_latency_ms": 4746.679,
+        "tokens_per_second": 3.5815
+      },
+      "latency": {
+        "total_ms": 4746.679,
+        "router_ms": 3.245,
+        "source": "provider_usage_and_router_trace"
+      },
+      "response": {
+        "kind": "sanitized_abstention",
+        "text": "Insufficient evidence response returned; the model did not invent an answer."
+      },
+      "retrieval": {
+        "backend": "hybrid",
+        "columns": [],
+        "accepted_hits": 0,
+        "rejected_count": 12,
+        "sparse_top_score": 3.473702,
+        "dense_top_score": 0.378324,
+        "fusion_top_score": null
+      },
+      "workflow_events": [
+        "turn_started",
+        "step_progress",
+        "step_completed",
+        "answer_delta",
+        "turn_terminal"
+      ],
+      "progress_phases": [
+        "preparing",
+        "analyzing",
+        "routing",
+        "retrieval",
+        "synthesis",
+        "validation",
+        "complete"
+      ]
     }
   ],
   "raw_output": "kept outside Git; private vault paths and transcripts omitted"

@@ -289,7 +289,6 @@ function reduceVoiceCore(
       return {
         ...state,
         voiceState: "processing",
-        pendingAnswer: state.pendingAnswer + event.text,
       };
     case "tts":
       return { ...state, voiceState: "speaking" };

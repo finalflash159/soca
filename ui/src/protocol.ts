@@ -92,7 +92,7 @@ export interface MemoryTraceEvent {
   summary_worker_state: string;
   summary_generation: number | null;
   pending_compaction: boolean;
-  pending_proposal_count: number;
+  pending_proposal_count: number | null;
 }
 
 export interface MemoryProposalEvent {

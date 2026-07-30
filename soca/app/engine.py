@@ -1559,11 +1559,6 @@ class SocaEngine:
             trace = result.trace
             if trace is not None:
                 self._last_prompt_manifest = trace.prompt_manifest
-                commands = self._memory_commands()
-                try:
-                    pending_count = len(commands.list_pending()) if commands is not None else 0
-                except (OSError, ValueError):
-                    pending_count = 0
                 self.writer.emit(
                     {
                         "event": "router_trace",
@@ -1598,12 +1593,23 @@ class SocaEngine:
                 )
                 if knowledge_hits or has_knowledge_decision:
                     self.writer.emit(_retrieval_trace_payload(result, trace, knowledge_hits))
-                self.writer.emit(
-                    self._memory_trace_payload(trace, pending_count)
-                )
+                self.writer.emit(self._memory_trace_payload(trace, self._pending_proposal_count()))
             self._cmd_context()
         except Exception as exc:  # noqa: BLE001 - protocol boundary must not crash
             if not terminal_emitted:
+                outcome = TerminalOutcome(
+                    status=TerminalStatus.SYSTEM_FAILURE,
+                    final_text="",
+                    goal_status=GoalStatus.FAILED,
+                    error_code="chat_exception",
+                    metadata={
+                        "surface": "chat",
+                        "source": "engine",
+                        "exception_type": type(exc).__name__,
+                    },
+                )
+                terminal = progress.workflow.emit_terminal(outcome)
+                self.writer.emit(workflow_event_to_protocol(terminal))
                 self._emit_turn_progress(
                     "chat",
                     "complete",
@@ -1662,7 +1668,7 @@ class SocaEngine:
         )
         return bundle
 
-    def _memory_trace_payload(self, trace: Any, pending_count: int) -> dict[str, Any]:
+    def _memory_trace_payload(self, trace: Any, pending_count: int | None) -> dict[str, Any]:
         stats = self.session_memory.stats() if self.session_memory is not None else None
         compaction = (
             self.session_memory.compaction_status() if self.session_memory is not None else None
@@ -1951,14 +1957,15 @@ class SocaEngine:
         terminal = context.workflow.emit_terminal(outcome)
         self.writer.emit(workflow_event_to_protocol(terminal))
 
-    def _pending_proposal_count(self) -> int:
+    def _pending_proposal_count(self) -> int | None:
         commands = self._memory_commands()
         if commands is None:
             return 0
         try:
             return len(commands.list_pending())
         except (OSError, ValueError):
-            return 0
+            LOGGER.warning("proposal telemetry unavailable", exc_info=True)
+            return None
 
     def _cmd_voice_stop(self) -> None:
         if self.voice_stop_event is not None:

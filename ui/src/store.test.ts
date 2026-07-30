@@ -153,4 +153,36 @@ describe("progress reducer", () => {
     expect(state.pendingAnswer).toBe("");
     expect(state.workflowEvents).toHaveLength(2);
   });
+
+  it("does not duplicate voice draft text mirrored by workflow events", () => {
+    let state = reduce(initialState, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "llm_token",
+        text: "xin chào",
+        latency_ms: null,
+        metadata: {},
+        usage: null,
+      },
+    });
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "answer_delta",
+        protocol_version: 2,
+        session_id: "session",
+        run_id: "voice-run",
+        goal_id: "voice-goal",
+        sequence: 1,
+        surface: "voice",
+        timestamp: "2026-07-30T00:00:00Z",
+        node: "synthesize",
+        status: "active",
+        payload: { text: "xin chào" },
+      },
+    });
+
+    expect(state.pendingAnswer).toBe("xin chào");
+  });
 });
