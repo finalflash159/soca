@@ -85,6 +85,9 @@ def test_chat_reuses_one_runtime_across_multiple_turns(monkeypatch, tmp_path: Pa
             "--vault",
             str(tmp_path),
             "--no-memory",
+            "--no-semantic-router",
+            "--tool-router",
+            "deterministic",
         ],
         input="xin chào\nbạn nhớ lượt trước không?\n/exit\n",
     )
@@ -93,8 +96,6 @@ def test_chat_reuses_one_runtime_across_multiple_turns(monkeypatch, tmp_path: Pa
     assert "SoCa · chat" in result.output
     assert "Route: free_chat" in result.output
     assert "Phản hồi số 1." in result.output
-    # Capability routing is embedding-only for both chat and voice until its
-    # separate LLM-router privacy/latency gate is benchmarked.
     assert "Phản hồi số 2." in result.output
     assert len(FakeChatLLM.instances) == 1
     assert FakeChatLLM.instances[0].model_key == "arcee_vylinh_3b_q4_k_m"
@@ -186,7 +187,7 @@ def test_chat_help_and_trace_toggle(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert "Lệnh chat" in result.output
     assert "Trace: on" in result.output
-    assert "Route: blocked" in result.output
+    assert "Route: out_of_scope" in result.output
     assert "unsupported_capability" not in result.output
 
 

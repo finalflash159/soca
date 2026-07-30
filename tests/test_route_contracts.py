@@ -46,6 +46,12 @@ class _FakeRouterLLM:
         return LLMResult(self.response, "", 0, 0, 0.0, 0.0, 0.0)
 
 
+class _FailingRouterLLM:
+    def generate(self, user_msg: str, **kwargs: object) -> LLMResult:
+        del user_msg, kwargs
+        raise RuntimeError("provider unavailable")
+
+
 def test_llm_router_uses_route_contract_for_direct_and_retrieval() -> None:
     config = ToolRouterConfig(mode="llm", repair_attempts=0)
     direct = LLMToolRouter(
@@ -88,3 +94,28 @@ def test_llm_unresolved_route_becomes_clarification_not_free_chat() -> None:
     assert result.route == RuntimeRoute.CLARIFICATION
     assert result.trace is not None
     assert result.trace.disposition == "unresolved"
+
+
+def test_llm_invalid_output_fails_closed_without_deterministic_fallback() -> None:
+    router = LLMToolRouter(
+        _FakeRouterLLM("not json"),
+        ToolRuntime([LocalTimeTool()]),
+        config=ToolRouterConfig(mode="llm", repair_attempts=0),
+    )
+
+    assert router.select("mấy giờ rồi", knowledge_limit=3) is None
+    assert router.last_tier == "llm"
+    assert router.last_decision.reason == "llm_invalid_output:no_json_object"
+    assert router.last_decision.disposition == "unresolved"
+
+
+def test_llm_provider_failure_fails_closed_with_observable_reason() -> None:
+    router = LLMToolRouter(
+        _FailingRouterLLM(),
+        ToolRuntime([LocalTimeTool()]),
+        config=ToolRouterConfig(mode="llm", repair_attempts=0),
+    )
+
+    assert router.select("mấy giờ rồi", knowledge_limit=3) is None
+    assert router.last_decision.reason == "llm_provider_failed"
+    assert router.last_decision.disposition == "unresolved"

@@ -118,7 +118,7 @@ def run_local(
     predictions: Path,
     *,
     threshold: float = 0.58,
-    margin: float = 0.04,
+    margin: float = 0.0,
 ) -> dict[str, Any]:
     rows = load_dataset(dataset)
     router = _build_router(examples, threshold=threshold, margin=margin)
@@ -313,7 +313,7 @@ def main() -> int:
     parser.add_argument("--predictions", type=Path, required=True)
     parser.add_argument("--run-local", action="store_true")
     parser.add_argument("--threshold", type=float, default=0.58)
-    parser.add_argument("--margin", type=float, default=0.04)
+    parser.add_argument("--margin", type=float, default=0.0)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.run_local and args.examples is None:

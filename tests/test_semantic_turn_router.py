@@ -114,3 +114,27 @@ def test_source_threshold_uses_raw_score_not_rounded_telemetry() -> None:
 
     assert router.last_decision.sources == ("knowledge",)
     assert router.last_decision.source_scores["memory"] == 0.58
+
+
+def test_production_loader_excludes_sealed_test_split(tmp_path: Path) -> None:
+    examples = tmp_path / "split.jsonl"
+    examples.write_text(
+        '{"id":"train","split":"train","query":"Bayes",'
+        '"route":"retrieval_request","sources":["knowledge"]}\n'
+        '{"id":"test","split":"test","query":"weather",'
+        '"route":"out_of_scope","sources":[]}\n',
+        encoding="utf-8",
+    )
+    router = build_semantic_turn_router(
+        tool_runtime=ToolRuntime([]),
+        config=SemanticRouterConfig(
+            enabled=True,
+            threshold=0.0,
+            margin=0.0,
+            examples_path=examples,
+        ),
+        embedding_model=_Embedding(),
+    )
+
+    assert router is not None
+    assert len(router._examples) == 1

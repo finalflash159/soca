@@ -30,6 +30,7 @@ _DISPOSITIONS: set[str] = {
 _SOURCES = {"knowledge", "memory"}
 MAX_EXAMPLES = 512
 MAX_EXAMPLE_BYTES = 32_768
+_PRODUCTION_EXAMPLE_SPLITS = frozenset({"train", "validation"})
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,9 @@ def _load_examples(path: Path) -> tuple[SemanticTurnExample, ...]:
             payload = json.loads(raw_line)
             if not isinstance(payload, dict):
                 raise ValueError(f"semantic turn example {line_number} must be an object")
+            split = payload.get("split")
+            if split is not None and split not in _PRODUCTION_EXAMPLE_SPLITS:
+                continue
             example_id = payload.get("id")
             disposition = payload.get("route", payload.get("disposition"))
             text = _normalize_text(str(payload.get("text") or payload.get("query") or ""))

@@ -457,7 +457,7 @@ def profiles_command(show_paths: bool) -> None:
 @click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", show_default=True)
 @click.option("--semantic-router/--no-semantic-router", default=True, show_default=True)
 @click.option("--semantic-router-threshold", type=float, default=0.58, show_default=True)
-@click.option("--semantic-router-margin", type=float, default=0.04, show_default=True)
+@click.option("--semantic-router-margin", type=float, default=0.0, show_default=True)
 @click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None)
 @click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", show_default=True)
 @click.option("--memory-limit", type=int, default=3, show_default=True)
@@ -575,7 +575,7 @@ def ask(
 @click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", show_default=True)
 @click.option("--semantic-router/--no-semantic-router", default=True, show_default=True)
 @click.option("--semantic-router-threshold", type=float, default=0.58, show_default=True)
-@click.option("--semantic-router-margin", type=float, default=0.04, show_default=True)
+@click.option("--semantic-router-margin", type=float, default=0.0, show_default=True)
 @click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None)
 @click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", show_default=True)
 @click.option("--memory-limit", type=int, default=3, show_default=True)
@@ -752,7 +752,7 @@ def build_text_runtime_config(
     tool_router_response_mode: str = "prompt_json",
     semantic_router_enabled: bool = True,
     semantic_router_threshold: float = 0.58,
-    semantic_router_margin: float = 0.04,
+    semantic_router_margin: float = 0.0,
     semantic_router_examples: Path | None = None,
     memory_mode: str = "retrieved",
     memory_limit: int = 3,
@@ -986,7 +986,7 @@ def engine(
 @click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", hidden=True)
 @click.option("--semantic-router/--no-semantic-router", default=True, hidden=True)
 @click.option("--semantic-router-threshold", type=float, default=0.58, hidden=True)
-@click.option("--semantic-router-margin", type=float, default=0.04, hidden=True)
+@click.option("--semantic-router-margin", type=float, default=0.0, hidden=True)
 @click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None, hidden=True)
 @click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", hidden=True)
 @click.option("--memory-limit", type=int, default=3, hidden=True)

@@ -82,7 +82,7 @@ class ResolvedVoiceRuntimeConfig:
     tool_router_response_mode: str = "prompt_json"
     semantic_router_enabled: bool = True
     semantic_router_threshold: float = 0.58
-    semantic_router_margin: float = 0.04
+    semantic_router_margin: float = 0.0
     semantic_router_examples: Path | None = None
     memory_mode: MemoryMode = "retrieved"
     memory_limit: int = 3
@@ -123,7 +123,13 @@ class VoiceRuntimeWarmupResult:
 
 
 def default_semantic_turn_examples() -> Path:
-    return Path(__file__).resolve().parents[2] / "eval" / "prompts" / "turn_routing_vi.jsonl"
+    return (
+        Path(__file__).resolve().parents[2]
+        / "eval"
+        / "prompts"
+        / "p0"
+        / "turn_routing_vi.jsonl"
+    )
 
 
 def resolve_voice_runtime_config(
@@ -158,7 +164,7 @@ def resolve_voice_runtime_config(
     tool_router_response_mode: str = "prompt_json",
     semantic_router_enabled: bool = True,
     semantic_router_threshold: float = 0.58,
-    semantic_router_margin: float = 0.04,
+    semantic_router_margin: float = 0.0,
     semantic_router_examples: str | Path | None = None,
     memory_mode: str = "retrieved",
     memory_limit: int = 3,

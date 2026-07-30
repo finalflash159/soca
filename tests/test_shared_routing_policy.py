@@ -9,7 +9,8 @@ from soca.core.router_setup import build_runtime_tool_router
 from soca.core.semantic_turn_router import build_semantic_turn_router
 from soca.core.tool_routing import SemanticRouterConfig, ToolRouterConfig
 from soca.knowledge import KnowledgeContextBuilder
-from soca.tools import ToolRuntime
+from soca.llm.base import LLMResult
+from soca.tools import LocalTimeTool, ToolRuntime
 from tests.test_assistant_runtime import FakeKnowledgeSource, SpyLLM
 
 
@@ -27,6 +28,20 @@ class _SharedEmbedding:
         return np.array(
             [1.0, 0.0] if "bayes" in text.lower() else [0.0, 1.0],
             dtype=np.float32,
+        )
+
+
+class _RouteFallbackLLM:
+    def generate(self, user_msg: str, **kwargs: object) -> LLMResult:
+        del user_msg, kwargs
+        return LLMResult(
+            '{"route":"retrieval_request","handler":null,"arguments":{},"sources":["knowledge"]}',
+            "",
+            0,
+            0,
+            0.0,
+            0.0,
+            0.0,
         )
 
 
@@ -126,3 +141,31 @@ def test_router_setup_keeps_semantic_policy_enabled_for_voice(tmp_path: Path) ->
     assert router.select("Ghi chú nói Bayes thế nào?", knowledge_limit=3) is None
     assert router.last_tier == "semantic"
     assert router.last_decision.sources == ("knowledge",)
+
+
+def test_cascade_uses_one_llm_attempt_after_semantic_uncertainty(tmp_path: Path) -> None:
+    (tmp_path / "turns.jsonl").write_text(
+        '{"id":"only","query":"một câu chắc chắn khác",'
+        '"route":"smalltalk","sources":[]}\n',
+        encoding="utf-8",
+    )
+    router = build_runtime_tool_router(
+        llm=_RouteFallbackLLM(),
+        tool_runtime=ToolRuntime([LocalTimeTool()]),
+        deterministic=DefaultRuntimeToolRouter(enable_memory_search=False),
+        config=ToolRouterConfig(
+            mode="cascade",
+            semantic=SemanticRouterConfig(
+                enabled=True,
+                threshold=0.99,
+                margin=0.0,
+                examples_path=tmp_path / "turns.jsonl",
+            ),
+        ),
+        embedding_model=_SharedEmbedding(),
+        voice=True,
+    )
+
+    assert router.select("Ghi chú Bayes của tôi ở đâu?", knowledge_limit=3) is None
+    assert router.last_tier == "llm"
+    assert router.last_decision.disposition == "retrieval_request"

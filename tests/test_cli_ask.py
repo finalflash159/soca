@@ -91,7 +91,7 @@ def test_ask_time_question_uses_tool_without_llm(tmp_path: Path) -> None:
     assert "used_llm" in result.output
 
 
-def test_ask_without_llm_stays_blocked_without_a_tool_call(tmp_path: Path) -> None:
+def test_ask_without_llm_stays_out_of_scope_without_a_tool_call(tmp_path: Path) -> None:
     result = CliRunner().invoke(
         main,
         [
@@ -105,7 +105,7 @@ def test_ask_without_llm_stays_blocked_without_a_tool_call(tmp_path: Path) -> No
     )
 
     assert result.exit_code == 0, result.output
-    assert "Route: blocked" in result.output
+    assert "Route: out_of_scope" in result.output
     assert "router_reason" in result.output
     assert "unsupported_capability" not in result.output
 

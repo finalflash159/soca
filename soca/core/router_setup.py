@@ -27,8 +27,8 @@ def build_runtime_tool_router(
         return deterministic
     if config.mode == "llm":
         if llm is None or (voice and not config.enabled_in_voice):
-            return deterministic
-        return LLMToolRouter(llm, tool_runtime, config=config, fallback=deterministic)
+            raise RuntimeError("llm_tool_router_unavailable")
+        return LLMToolRouter(llm, tool_runtime, config=config)
 
     # Capability routing is surface-independent: the ASR transcript enters
     # the same semantic policy as text.  Only the optional LLM-router tier has
@@ -43,16 +43,12 @@ def build_runtime_tool_router(
     except (FileNotFoundError, ImportError, OSError, RuntimeError, ValueError) as exc:
         LOGGER.warning("Semantic tool router unavailable; using lower tiers (%s)", type(exc).__name__)
         semantic_router = None
-    if semantic_router is None and config.semantic.enabled and embedding_model is None:
-        # Text's semantic default is explicitly offline-safe: without an
-        # embedder, degrade to Tier 0 instead of paying a second LLM call for
-        # every ordinary chat turn.
-        return deterministic
-    # The cascade is intentionally deterministic + semantic only until the
-    # shared LLM-router tier has passed its privacy, latency and parity gate.
-    # `mode="llm"` remains an explicit diagnostic choice above.
     llm_router = None
-    if semantic_router is None:
+    if llm is not None and (not voice or config.enabled_in_voice):
+        # Deterministic and semantic tiers have already had their chance. The
+        # LLM tier is a bounded capability classifier, not an answer fallback.
+        llm_router = LLMToolRouter(llm, tool_runtime, config=config)
+    if semantic_router is None and llm_router is None:
         return deterministic
     return CascadeToolRouter(deterministic, semantic_router, llm_router)
 

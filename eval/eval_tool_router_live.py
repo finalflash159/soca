@@ -92,7 +92,10 @@ def run_live(
     max_cases: int,
 ) -> dict[str, Any]:
     rows = _load(dataset)[:max_cases]
-    settings = LlmSettings(backend="remote", provider_key=provider, model_id=model, max_tokens=96)
+    # Provider settings enforce the product-wide minimum output budget.  The
+    # router's own request remains bounded below; it is passed separately in
+    # ToolRouterConfig rather than weakening LlmSettings validation.
+    settings = LlmSettings(backend="remote", provider_key=provider, model_id=model, max_tokens=2048)
     llm = build_llm_engine(settings, SecretStore())
     runtime = _catalog()
     router = LLMToolRouter(

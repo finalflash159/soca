@@ -48,7 +48,7 @@ class ToolRouterConfig:
     max_output_chars: int = 8_192
     repair_attempts: int = 1
     zero_data_retention: bool = True
-    enabled_in_voice: bool = False
+    enabled_in_voice: bool = True
     semantic: SemanticRouterConfig = field(default_factory=SemanticRouterConfig)
 
     def __post_init__(self) -> None:
