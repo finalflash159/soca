@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from soca.memory.working import WorkingMemory, WorkingSummaryArtifact
+from soca.memory.working import WorkingMemory, WorkingMemoryPolicy, WorkingSummaryArtifact
 
 
 def _complete(memory: WorkingMemory, user: str, assistant: str) -> None:
@@ -45,6 +45,26 @@ def test_working_memory_job_is_not_created_before_high_watermark() -> None:
     memory = WorkingMemory(token_counter=lambda _: 12)
     _complete(memory, "xin chào", "chào bạn")
     assert memory.prepare_compaction() is None
+
+
+def test_working_memory_policy_scales_to_model_input_budget() -> None:
+    small = WorkingMemoryPolicy.for_context_budget(
+        context_window=2_048,
+        output_reserve_tokens=1_024,
+    )
+    large = WorkingMemoryPolicy.for_context_budget(
+        context_window=32_768,
+        output_reserve_tokens=4_096,
+        mode="background_summary",
+    )
+
+    assert small.hard_limit_tokens < large.hard_limit_tokens
+    assert small.summary_budget_tokens < large.summary_budget_tokens
+    assert small.target_tokens < small.high_watermark_tokens < small.hard_limit_tokens
+    assert large.hard_limit_tokens == 16_384
+    assert large.high_watermark_tokens == 15_000
+    assert large.target_tokens == 12_000
+    assert large.mode == "background_summary"
 
 
 def test_manual_compaction_requires_five_complete_turns() -> None:

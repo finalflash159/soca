@@ -28,6 +28,13 @@ from soca.app.voice_controller import (
 )
 from soca.config import DEFAULT_SETTINGS, LlmSettings, SecretStore, load_settings, save_settings
 from soca.core import AudioSink, ResolvedVoiceRuntimeConfig
+from soca.core.context_budget import (
+    PromptAssembler,
+    PromptBudgetError,
+    PromptComponent,
+    Utf8TokenCounter,
+    capability_from_values,
+)
 from soca.core.usage import SessionUsage, TurnUsage
 from soca.core.workflow.protocol import (
     CURRENT_PROTOCOL_VERSION,
@@ -52,8 +59,7 @@ from soca.memory import (
     SessionMemory,
     default_session_checkpoint_home,
 )
-from soca.memory.working import approximate_tokens
-from soca.prompts import SOCA_RUNTIME_SYSTEM_PROMPT, build_runtime_prompt
+from soca.prompts import SOCA_RUNTIME_SYSTEM_PROMPT
 from soca.tts import VALTEC_TTS_CONFIG
 
 PROTOCOL_VERSION = CURRENT_PROTOCOL_VERSION
@@ -936,148 +942,163 @@ class SocaEngine:
         stats = self.session_memory.stats() if self.session_memory is not None else None
         manifest = self._last_prompt_manifest
         if isinstance(manifest, dict):
-            raw_components = manifest.get("components")
-            components: list[dict[str, Any]] = []
-            if isinstance(raw_components, list):
-                labels = {
-                    "system": "System instructions",
-                    "current_input": "Current user input",
-                    "answer_prefix": "Prompt scaffolding",
-                    "memory": "Memory retrieval",
-                    "knowledge": "Knowledge retrieval",
-                }
-                for item in raw_components:
-                    if not isinstance(item, dict):
-                        continue
-                    component_id = str(item.get("component_id") or "unknown")
-                    components.append(
-                        {
-                            "id": component_id,
-                            "label": labels.get(component_id, component_id),
-                            "tokens": item.get("tokens"),
-                            "included": bool(item.get("included")),
-                            "required": bool(item.get("required")),
-                            "priority": item.get("priority"),
-                            "policy": "always" if bool(item.get("required")) else "on_demand",
-                        }
-                    )
-            prompt_tokens = manifest.get("prompt_tokens")
-            input_budget = manifest.get("input_budget_tokens")
-            available = (
-                max(0, input_budget - prompt_tokens)
-                if isinstance(input_budget, int) and isinstance(prompt_tokens, int)
-                else None
-            )
+            self._emit_context_manifest(manifest, stats=stats, estimated=False)
+            return
+
+        try:
+            manifest = self._build_resident_context_manifest()
+        except PromptBudgetError as exc:
             self.writer.emit(
                 {
                     "event": "context",
-                    "estimated": False,
-                    "token_counter": manifest.get("token_counter"),
-                    "prompt_hash": manifest.get("prompt_hash"),
-                    "prompt_manifest": manifest,
+                    "estimated": True,
+                    "ready": False,
+                    "context_error": exc.code,
+                    "context_error_detail": exc.detail,
+                    "token_counter": Utf8TokenCounter.name,
                     "session": dataclasses.asdict(stats) if stats is not None else None,
-                    "resident_prompt_tokens": prompt_tokens,
-                    "output_reserve_tokens": manifest.get("effective_output_tokens"),
-                    "model_context_tokens": manifest.get("context_window"),
-                    "input_budget_tokens": input_budget,
-                    "available_dynamic_tokens": available,
-                    "observed_prompt_tokens": manifest.get("observed_prompt_tokens"),
-                    "observed_prompt_token_source": manifest.get("observed_prompt_token_source"),
-                    "provider_prompt_tokens": manifest.get("provider_prompt_tokens"),
-                    "prompt_token_delta": manifest.get("prompt_token_delta"),
-                    "components": components,
+                    "model_context_tokens": self._model_context_length(),
+                    "output_reserve_tokens": self.llm_settings.effective_max_tokens,
+                    "components": [],
                 }
             )
             return
+
+        self._emit_context_manifest(manifest, stats=stats, estimated=True)
+
+    def _context_component_rows(
+        self,
+        manifest: dict[str, Any],
+        *,
+        include_dynamic: bool = True,
+    ) -> list[dict[str, Any]]:
+        labels = {
+            "system": "System instructions",
+            "current_input": "Current user input",
+            "answer_prefix": "Prompt scaffolding",
+            "joint_grounding_policy": "Grounding policy",
+            "answer_policy": "Answer policy",
+            "memory": "Memory context",
+            "core_memory": "Core memory",
+            "working_summary": "Working summary",
+            "recent_conversation": "Recent conversation",
+            "knowledge": "Knowledge retrieval",
+            "archive_memory": "Archive memory retrieval",
+            "prompt_scaffolding": "Prompt scaffolding",
+        }
+        rows: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        raw_components = manifest.get("components")
+        if isinstance(raw_components, list):
+            for item in raw_components:
+                if not isinstance(item, dict):
+                    continue
+                component_id = str(item.get("component_id") or "unknown")
+                seen.add(component_id)
+                required = bool(item.get("required"))
+                rows.append(
+                    {
+                        "id": component_id,
+                        "label": labels.get(component_id, component_id),
+                        "tokens": item.get("tokens"),
+                        "included": bool(item.get("included")),
+                        "required": required,
+                        "priority": item.get("priority"),
+                        "policy": "always" if required else "on_demand",
+                    }
+                )
+        if include_dynamic:
+            for component_id, label, policy in (
+                ("archive_memory", "Archive memory retrieval", "on_demand"),
+                ("knowledge", "Knowledge retrieval", "on_demand"),
+                ("current_input", "Current user input", "per_turn"),
+            ):
+                if component_id in seen:
+                    continue
+                rows.append(
+                    {
+                        "id": component_id,
+                        "label": label,
+                        "tokens": None,
+                        "included": False,
+                        "required": False,
+                        "priority": None,
+                        "policy": policy,
+                    }
+                )
+        return rows
+
+    def _emit_context_manifest(
+        self,
+        manifest: dict[str, Any],
+        *,
+        stats: Any,
+        estimated: bool,
+    ) -> None:
+        prompt_tokens = manifest.get("prompt_tokens")
+        input_budget = manifest.get("input_budget_tokens")
+        available = (
+            max(0, input_budget - prompt_tokens)
+            if isinstance(input_budget, int) and isinstance(prompt_tokens, int)
+            else None
+        )
+        payload: dict[str, Any] = {
+            "event": "context",
+            "estimated": estimated,
+            "ready": True,
+            "token_counter": manifest.get("token_counter"),
+            "prompt_hash": manifest.get("prompt_hash"),
+            "prompt_manifest": manifest,
+            "session": dataclasses.asdict(stats) if stats is not None else None,
+            "resident_prompt_tokens": prompt_tokens,
+            "output_reserve_tokens": manifest.get("effective_output_tokens"),
+            "model_context_tokens": manifest.get("context_window"),
+            "input_budget_tokens": input_budget,
+            "available_dynamic_tokens": available,
+            "observed_prompt_tokens": manifest.get("observed_prompt_tokens"),
+            "observed_prompt_token_source": manifest.get("observed_prompt_token_source"),
+            "provider_prompt_tokens": manifest.get("provider_prompt_tokens"),
+            "prompt_token_delta": manifest.get("prompt_token_delta"),
+            "components": self._context_component_rows(manifest),
+        }
+        self.writer.emit(payload)
+
+    def _build_resident_context_manifest(self) -> dict[str, Any]:
         core_memory = self._core_memory_text()
         core_section = f"Long-term memory:\n{core_memory}" if core_memory else ""
         summary_section = ""
         recent_section = ""
         if self.session_memory is not None:
             summary_section, recent_section = self.session_memory.working.render_sections()
-        memory_prompt = "\n\n".join(
-            part for part in (core_section, summary_section, recent_section) if part
-        )
-        resident_prompt = build_runtime_prompt(
-            user_text="",
-            memory_prompt_text=memory_prompt,
-        )
-        system_tokens = approximate_tokens(SOCA_RUNTIME_SYSTEM_PROMPT.strip())
-        core_tokens = approximate_tokens(core_section)
-        summary_tokens = approximate_tokens(summary_section)
-        recent_tokens = approximate_tokens(recent_section)
-        resident_tokens = approximate_tokens(resident_prompt)
-        accounted = system_tokens + core_tokens + summary_tokens + recent_tokens
         components = [
-            {
-                "id": "system",
-                "label": "System instructions",
-                "tokens": system_tokens,
-                "policy": "always",
-            },
-            {
-                "id": "core_memory",
-                "label": "Core memory (memory/profile.md)",
-                "tokens": core_tokens,
-                "policy": "always",
-            },
-            {
-                "id": "working_summary",
-                "label": "Working summary",
-                "tokens": summary_tokens,
-                "policy": "always_when_present",
-            },
-            {
-                "id": "recent_conversation",
-                "label": "Recent conversation",
-                "tokens": recent_tokens,
-                "policy": "always_when_present",
-            },
-            {
-                "id": "prompt_scaffolding",
-                "label": "Prompt labels / separators",
-                "tokens": max(0, resident_tokens - accounted),
-                "policy": "always",
-            },
-            {
-                "id": "archive_memory",
-                "label": "Archive memory retrieval",
-                "tokens": None,
-                "policy": "on_demand",
-            },
-            {
-                "id": "knowledge",
-                "label": "Knowledge retrieval",
-                "tokens": None,
-                "policy": "on_demand",
-            },
-            {
-                "id": "current_input",
-                "label": "Current user input",
-                "tokens": None,
-                "policy": "per_turn",
-            },
+            PromptComponent(
+                "system",
+                SOCA_RUNTIME_SYSTEM_PROMPT.strip(),
+                priority=0,
+                required=True,
+            ),
+            PromptComponent("core_memory", core_section, priority=30),
+            PromptComponent("working_summary", summary_section, priority=30),
+            PromptComponent("recent_conversation", recent_section, priority=30),
+            PromptComponent("answer_prefix", "Trả lời cuối cùng:", priority=0, required=True),
         ]
-        model_context = self._model_context_length()
-        output_reserve = self.llm_settings.effective_max_tokens
-        available = (
-            max(0, model_context - resident_tokens - output_reserve)
-            if model_context is not None
-            else None
+        model_id = self.text_config.llm_model if self.text_config.llm_model_is_override else self.llm_settings.model_id
+        source = "remote_catalog" if self.llm_settings.backend == "remote" else "local_registry"
+        capability = capability_from_values(
+            model_id=model_id,
+            context_window=self._model_context_length(),
+            max_output_tokens=self.llm_settings.model_max_output_tokens,
+            tokenizer=Utf8TokenCounter.name,
+            source=source,
         )
-        self.writer.emit(
-            {
-                "event": "context",
-                "estimated": True,
-                "token_counter": "utf8_bytes_div_4",
-                "session": dataclasses.asdict(stats) if stats is not None else None,
-                "resident_prompt_tokens": resident_tokens,
-                "output_reserve_tokens": output_reserve,
-                "model_context_tokens": model_context,
-                "available_dynamic_tokens": available,
-                "components": components,
-            }
+        _, manifest = PromptAssembler(
+            capability,
+            counter=Utf8TokenCounter(),
+        ).assemble(
+            components,
+            requested_output_tokens=self.llm_settings.effective_max_tokens,
         )
+        return manifest.to_dict()
 
     def _core_memory_text(self) -> str:
         vault = self.text_config.vault

@@ -329,7 +329,9 @@ export interface ContextComponent {
     | "knowledge"
     | "current_input"
     | "answer_prefix"
-    | "memory";
+    | "memory"
+    | "joint_grounding_policy"
+    | "answer_policy";
   label: string;
   tokens: number | null;
   policy: "always" | "always_when_present" | "on_demand" | "per_turn";

@@ -38,6 +38,7 @@ from soca.memory import (
     SessionCheckpointStore,
     SessionMemory,
     SessionPersistence,
+    WorkingMemoryPolicy,
     default_session_checkpoint_home,
 )
 from soca.tools import LocalTimeTool, MemorySearchTool, Tool, ToolRuntime
@@ -242,6 +243,24 @@ def build_text_runtime(
         tools.extend([knowledge.search_tool, knowledge.read_tool])
         knowledge_status = knowledge.status
 
+    selected_settings = llm_settings or load_settings()
+    if config.llm_model_is_override:
+        # An explicit CLI model key is a local runtime override. This
+        # prevents a persisted remote UI selection from silently turning
+        # `soca ask --llm-model ...` (and its tests) into a paid network call.
+        selected_settings = selected_settings.with_backend("local").with_model(config.llm_model)
+    model_context_window = (
+        LLM_MODEL_REGISTRY[selected_settings.model_id].context_window
+        if selected_settings.backend == "local"
+        and selected_settings.model_id in LLM_MODEL_REGISTRY
+        else selected_settings.model_context_window
+    )
+    working_policy = WorkingMemoryPolicy.for_context_budget(
+        context_window=model_context_window,
+        output_reserve_tokens=selected_settings.effective_max_tokens,
+        mode="background_summary" if not config.no_llm else "trim_only",
+    )
+
     runtime_session_memory = None
     memory_builder = None
     if config.no_memory:
@@ -259,6 +278,7 @@ def build_text_runtime(
                 max_chars=config.session_chars,
                 max_turn_chars=config.turn_chars,
                 summary_enabled=not config.no_llm,
+                working_policy=working_policy,
                 summary_threads=config.llm_threads,
                 summary_gpu_layers=config.llm_gpu_layers,
                 persistence=config.session_persistence,
@@ -290,18 +310,10 @@ def build_text_runtime(
         memory_status = memory_setup.status
         tools.append(MemorySearchTool(memory_builder, max_limit=config.knowledge_limit))
 
-    selected_settings = llm_settings or load_settings()
     if config.no_llm:
         llm = None
         llm_status = "disabled"
     else:
-        if config.llm_model_is_override:
-            # An explicit CLI model key is a local runtime override. This
-            # prevents a persisted remote UI selection from silently turning
-            # `soca ask --llm-model ...` (and its tests) into a paid network call.
-            selected_settings = (
-                selected_settings.with_backend("local").with_model(config.llm_model)
-            )
         llm = engine_factory(
             selected_settings,
             secret_store or SecretStore(),
@@ -353,12 +365,7 @@ def build_text_runtime(
             temperature=config.temperature,
             top_p=config.top_p,
             knowledge_limit=config.knowledge_limit,
-            model_context_window=(
-                LLM_MODEL_REGISTRY[selected_settings.model_id].context_window
-                if selected_settings.backend == "local"
-                and selected_settings.model_id in LLM_MODEL_REGISTRY
-                else selected_settings.model_context_window
-            ),
+            model_context_window=model_context_window,
             model_max_output_tokens=selected_settings.model_max_output_tokens,
         ),
     )

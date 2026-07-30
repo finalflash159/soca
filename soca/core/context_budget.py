@@ -5,6 +5,8 @@ from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from typing import Any, Protocol
 
+DEFAULT_CONTEXT_SAFETY_MARGIN_TOKENS = 128
+
 
 class TokenCounter(Protocol):
     name: str
@@ -64,7 +66,9 @@ class ModelCapability:
             ("context_window", self.context_window),
             ("max_output_tokens", self.max_output_tokens),
         ):
-            if value is not None and (isinstance(value, bool) or value < 1):
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int) or value < 1
+            ):
                 raise ValueError(f"{name} must be a positive integer or null")
 
 
@@ -95,6 +99,8 @@ class PromptComponentUsage:
 class PromptManifest:
     model_id: str
     context_window: int | None
+    capability_source: str
+    tokenizer: str
     token_counter: str
     requested_output_tokens: int
     effective_output_tokens: int
@@ -128,7 +134,7 @@ class PromptAssembler:
         capability: ModelCapability,
         *,
         counter: TokenCounter | None = None,
-        safety_margin_tokens: int = 32,
+        safety_margin_tokens: int = DEFAULT_CONTEXT_SAFETY_MARGIN_TOKENS,
         minimum_input_tokens: int = 128,
     ) -> None:
         if safety_margin_tokens < 0 or minimum_input_tokens < 1:
@@ -202,6 +208,8 @@ class PromptAssembler:
         manifest = PromptManifest(
             model_id=self.capability.model_id,
             context_window=self.capability.context_window,
+            capability_source=self.capability.source,
+            tokenizer=self.capability.tokenizer,
             token_counter=self.counter.name,
             requested_output_tokens=requested_output_tokens,
             effective_output_tokens=output_tokens,
@@ -258,13 +266,52 @@ def capability_from_engine(
 ) -> ModelCapability:
     config = getattr(engine, "config", None)
     model_id = str(getattr(engine, "model_key", "") or getattr(engine, "model", "") or "unknown")
-    context_window = model_context_window or getattr(config, "context_window", None)
-    max_output = model_max_output_tokens
+    context_window = (
+        model_context_window
+        if model_context_window is not None
+        else getattr(config, "context_window", None)
+    )
+    if context_window is None:
+        context_window = getattr(engine, "n_ctx", None)
+    max_output = (
+        model_max_output_tokens
+        if model_max_output_tokens is not None
+        else getattr(engine, "model_max_output_tokens", None)
+    )
+    tokenizer = str(getattr(engine, "tokenizer_name", "") or "")
+    source = "runtime"
+    if model_context_window is not None or model_max_output_tokens is not None:
+        source = "runtime_options"
+    elif config is not None and context_window is not None:
+        source = "local_registry"
+        tokenizer = tokenizer or "llama_cpp"
+    elif model_id != "unknown":
+        source = "engine_metadata"
+    tokenizer = tokenizer or "utf8_bytes_div_4"
     return ModelCapability(
         model_id=model_id,
         context_window=context_window if isinstance(context_window, int) else None,
         max_output_tokens=max_output,
-        source="runtime",
+        tokenizer=tokenizer,
+        source=source,
+    )
+
+
+def capability_from_values(
+    *,
+    model_id: str,
+    context_window: int | None,
+    max_output_tokens: int | None,
+    tokenizer: str = "utf8_bytes_div_4",
+    source: str = "settings",
+) -> ModelCapability:
+    """Build a capability contract for a surface without an active engine."""
+    return ModelCapability(
+        model_id=model_id.strip() or "unknown",
+        context_window=context_window,
+        max_output_tokens=max_output_tokens,
+        tokenizer=tokenizer,
+        source=source,
     )
 
 
@@ -276,6 +323,7 @@ def token_counter_from_engine(engine: object | None) -> TokenCounter | None:
 
 __all__ = [
     "ModelCapability",
+    "DEFAULT_CONTEXT_SAFETY_MARGIN_TOKENS",
     "PromptAssembler",
     "PromptBudgetError",
     "PromptComponent",
@@ -285,5 +333,6 @@ __all__ = [
     "EngineTokenCounter",
     "Utf8TokenCounter",
     "capability_from_engine",
+    "capability_from_values",
     "token_counter_from_engine",
 ]

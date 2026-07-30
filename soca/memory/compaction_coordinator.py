@@ -135,6 +135,9 @@ class WorkingMemoryCompactionCoordinator:
                 open_items=tuple(raw.get("open_items", ())),
                 continuity_refs=tuple(raw.get("continuity_refs", ())),
                 prompt_fingerprint=str(raw.get("prompt_fingerprint", "")),
+                content_budget_tokens=int(
+                    raw.get("content_budget_tokens", job.summary_budget_tokens)
+                ),
             )
         except (KeyError, TypeError, ValueError):
             self.memory.cancel_compaction(job.generation)

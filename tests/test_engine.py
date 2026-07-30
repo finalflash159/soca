@@ -498,6 +498,10 @@ def test_engine_memory_and_usage_commands() -> None:
     assert context["session"]["high_watermark_tokens"] == 15_000
     assert context["model_context_tokens"] == 32_768
     assert context["output_reserve_tokens"] == 4_096
+    assert context["ready"] is True
+    assert context["prompt_hash"]
+    assert context["input_budget_tokens"] == 28_544
+    assert context["available_dynamic_tokens"] <= context["input_budget_tokens"]
     assert {component["id"] for component in context["components"]} >= {
         "system",
         "core_memory",

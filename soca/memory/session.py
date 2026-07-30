@@ -64,6 +64,7 @@ class SessionMemory:
         persistence: SessionPersistence = "ram_only",
         checkpoint_store: SessionCheckpointStore | None = None,
         resume: bool = False,
+        working_policy: WorkingMemoryPolicy | None = None,
     ) -> None:
         if max_turns <= 0:
             raise ValueError("max_turns must be greater than 0")
@@ -99,12 +100,16 @@ class SessionMemory:
         )
         self.working = WorkingMemory(
             thread_id=thread_id,
-            policy=WorkingMemoryPolicy(
+            policy=working_policy
+            or WorkingMemoryPolicy(
                 mode="background_summary" if summary_enabled else "trim_only"
             ),
         )
         if resume and checkpoint_store is not None:
-            loaded, revision, digest = checkpoint_store.load_with_metadata(thread_id)
+            loaded, revision, digest = checkpoint_store.load_with_metadata(
+                thread_id,
+                policy=self.working.policy,
+            )
             if loaded is not None:
                 self.working = loaded
                 self._checkpoint_revision = revision
