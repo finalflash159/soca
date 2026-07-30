@@ -238,6 +238,10 @@ export function App({
     }
     if (value && state.activeInfo !== null)
       dispatch({ type: "clear_info" });
+    if (value) {
+      setWorkflowVisible(false);
+      setRetrievalVisible(false);
+    }
     setCommandIndex(0);
     setInput(value);
   }

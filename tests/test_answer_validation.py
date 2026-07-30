@@ -42,6 +42,27 @@ def test_expected_citation_labels_follow_each_source_sequence() -> None:
     assert expected_citation_labels(citations) == ("[K1]", "[M1]", "[K2]", "[M2]")
 
 
+def test_display_text_removes_structured_source_footer() -> None:
+    citations = (KnowledgeCitation("wiki/attention.md", "Attention"),)
+    text = (
+        "Attention tập trung vào phần liên quan [K1].\n\n"
+        "Nguồn:\n"
+        "[K1] Attention · wiki/attention.md"
+    )
+
+    assert (
+        answer_text_without_citation_labels(text, citations)
+        == "Attention tập trung vào phần liên quan."
+    )
+
+
+def test_display_text_preserves_uncited_source_heading() -> None:
+    citations = (KnowledgeCitation("wiki/attention.md", "Attention"),)
+    text = "Nguồn:\nĐây là phần nội dung người dùng yêu cầu, không phải citation footer."
+
+    assert answer_text_without_citation_labels(text, citations) == text
+
+
 def test_answer_validation_records_shadow_groundedness_against_selected_evidence() -> None:
     citations = (KnowledgeCitation("wiki/bayes.md", "Bayes"),)
     evidence = (

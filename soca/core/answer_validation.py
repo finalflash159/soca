@@ -34,6 +34,9 @@ class _ShadowGroundedness:
 
 
 _CITATION_LIKE_RE = re.compile(r"\[(?P<token>[KMkm][A-Za-z0-9]*)\]")
+_SOURCE_FOOTER_RE = re.compile(
+    r"(?im)^[ \t]*(?:#{1,6}[ \t]+)?(?:nguồn|sources?)[ \t]*:[ \t]*(?:\n|$)"
+)
 
 
 def expected_citation_labels(
@@ -57,8 +60,19 @@ def answer_text_without_citation_labels(
     if not allowed:
         return text.strip()
 
+    footer_matches = tuple(_SOURCE_FOOTER_RE.finditer(text))
+    if footer_matches:
+        footer = footer_matches[-1]
+        footer_text = text[footer.end() :]
+        footer_labels = {
+            f"[{match.group('token').upper()}]"
+            for match in _CITATION_LIKE_RE.finditer(footer_text)
+        }
+        if footer_labels & allowed:
+            text = text[: footer.start()]
+
     def replace(match: re.Match[str]) -> str:
-        label = f"[{match.group('token')}]"
+        label = f"[{match.group('token').upper()}]"
         return "" if label in allowed else match.group(0)
 
     cleaned = _CITATION_LIKE_RE.sub(replace, text)

@@ -54,6 +54,7 @@ describe("TimelineLine", () => {
     expect(frame.indexOf("── nguồn")).toBeGreaterThan(
       frame.indexOf("Attention dùng query, key và value."),
     );
+    expect(frame.match(/nguồn/gi)).toHaveLength(1);
     view.unmount();
   });
 });

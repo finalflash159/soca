@@ -314,6 +314,7 @@ describe("App slash command interaction", () => {
 
     view.stdin.write("transformer");
     await tick();
+    expect(view.lastFrame()).not.toContain("turn started");
     view.stdin.write("\r");
     await tick();
     expect(view.lastFrame()).not.toContain("turn started");
