@@ -51,8 +51,6 @@ class PlanStep:
 class ActionPlan:
     steps: tuple[PlanStep, ...]
     public_update: str = ""
-    final_instruction: str = ""
-    rationale: str = ""
 
 
 class PlanOutputError(ValueError):
@@ -113,10 +111,8 @@ def plan_schema(tool_runtime: ToolRuntime, *, max_actions: int = 4) -> dict[str,
         "properties": {
             "steps": {"type": "array", "items": {"oneOf": tools}, "maxItems": max_actions},
             "public_update": {"type": "string"},
-            "final_instruction": {"type": "string"},
-            "rationale": {"type": "string"},
         },
-        "required": ["steps", "public_update", "final_instruction", "rationale"],
+        "required": ["steps", "public_update"],
         "additionalProperties": False,
     }
 
@@ -188,22 +184,13 @@ def parse_action_plan(
         )
 
     public_update = payload.get("public_update")
-    final_instruction = payload.get("final_instruction")
-    rationale = payload.get("rationale")
-    if (
-        not isinstance(public_update, str)
-        or not isinstance(final_instruction, str)
-        or not isinstance(rationale, str)
-    ):
+    if not isinstance(public_update, str):
         raise PlanOutputError("invalid_plan_text")
+    if "rationale" in payload or "final_instruction" in payload:
+        raise PlanOutputError("forbidden_plan_fields")
     if public_update.strip() and not steps:
         raise PlanOutputError("public_update_without_action")
-    return ActionPlan(
-        tuple(steps),
-        public_update.strip(),
-        final_instruction.strip(),
-        rationale.strip(),
-    )
+    return ActionPlan(tuple(steps), public_update.strip())
 
 
 class StructuredWorkflowPlanner:
@@ -231,7 +218,6 @@ class StructuredWorkflowPlanner:
         self.context_safety_margin_tokens = context_safety_margin_tokens
         self._prompt_safety_margin_tokens = context_safety_margin_tokens
         self.last_prompt_manifest: dict[str, Any] | None = None
-        self.last_raw_output = ""
         self.last_validation_error = ""
         self._model_call_hook: Callable[[], None] | None = None
         self._repair_hook: Callable[[], None] | None = None
@@ -254,7 +240,6 @@ class StructuredWorkflowPlanner:
         except PromptBudgetError as exc:
             raise PlanOutputError("context_budget_exceeded") from exc
         raw = self._generate(prompt)
-        self.last_raw_output = raw
         try:
             return parse_action_plan(
                 raw,
@@ -275,7 +260,6 @@ class StructuredWorkflowPlanner:
             except PromptBudgetError as exc:
                 raise PlanOutputError("context_budget_exceeded") from exc
             repaired = self._generate(repair_prompt)
-            self.last_raw_output = repaired
             return parse_action_plan(
                 repaired,
                 self.tool_runtime,
@@ -356,7 +340,7 @@ class StructuredWorkflowPlanner:
                         "A goal with a required source must schedule a matching catalog action.",
                         "A public update is not a terminal answer; actions must be executed before success.",
                         "Every action must state its capability, expected observation, and whether it is required.",
-                        "Return JSON with steps, public_update, final_instruction, and rationale.",
+                        "Return JSON with only steps and public_update. Do not include reasoning or rationale.",
                     ]
                 ),
                 priority=0,

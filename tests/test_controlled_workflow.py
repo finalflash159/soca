@@ -148,8 +148,6 @@ def make_plan(*calls: ToolCall) -> ActionPlan:
             )
             for index, call in enumerate(calls, start=1)
         ),
-        final_instruction="Đã tìm thấy bằng chứng.",
-        rationale="read-only retrieval",
     )
 
 
@@ -180,8 +178,6 @@ def test_public_update_is_followed_by_scheduled_action() -> None:
     plan = ActionPlan(
         steps=base_plan.steps,
         public_update="Tôi sẽ kiểm tra ghi chú của bạn.",
-        final_instruction=base_plan.final_instruction,
-        rationale=base_plan.rationale,
     )
 
     result = ControlledWorkflowRunner(ToolRuntime([tool])).run(
@@ -529,8 +525,7 @@ def test_structured_planner_repairs_once_and_debits_each_model_call() -> None:
         '"capability":"knowledge_search","arguments":{"query":"Bayes"},'
         '"purpose":"retrieve","expected_observation":"matching note",'
         '"required":true,"requires_authorization":false}],'
-        '"public_update":"","final_instruction":"ok",'
-        '"rationale":"evidence"}'
+        '"public_update":""}'
     )
     from soca.core.workflow import StructuredWorkflowPlanner
 
@@ -554,7 +549,7 @@ def test_structured_planner_repairs_once_and_debits_each_model_call() -> None:
 
 def test_structured_planner_clamps_output_to_model_capability() -> None:
     runtime = ToolRuntime([ScriptedTool([])])
-    valid = '{"steps":[],"public_update":"","final_instruction":"ok","rationale":"no action"}'
+    valid = '{"steps":[],"public_update":""}'
     llm = RepairLLM([valid])
     from soca.core.workflow import StructuredWorkflowPlanner
 
@@ -596,8 +591,7 @@ def test_runner_budget_covers_planner_repair_calls() -> None:
         '"capability":"knowledge_search","arguments":{"query":"Bayes"},'
         '"purpose":"retrieve","expected_observation":"matching note",'
         '"required":true,"requires_authorization":false}],'
-        '"public_update":"","final_instruction":"ok",'
-        '"rationale":"evidence"}'
+        '"public_update":""}'
     )
     from soca.core.workflow import StructuredWorkflowPlanner
 
@@ -627,9 +621,19 @@ def test_planner_rejects_public_update_without_action() -> None:
     from soca.core.workflow import PlanOutputError
     from soca.core.workflow.planner import parse_action_plan
 
-    raw = '{"steps":[],"public_update":"Tôi sẽ kiểm tra.","final_instruction":"","rationale":"ack"}'
+    raw = '{"steps":[],"public_update":"Tôi sẽ kiểm tra."}'
 
     with pytest.raises(PlanOutputError, match="public_update_without_action"):
+        parse_action_plan(raw, ToolRuntime([ScriptedTool([])]))
+
+
+def test_planner_rejects_reasoning_fields() -> None:
+    from soca.core.workflow import PlanOutputError
+    from soca.core.workflow.planner import parse_action_plan
+
+    raw = '{"steps":[],"public_update":"","rationale":"hidden reasoning"}'
+
+    with pytest.raises(PlanOutputError, match="forbidden_plan_fields"):
         parse_action_plan(raw, ToolRuntime([ScriptedTool([])]))
 
 
@@ -648,6 +652,54 @@ def test_unexpected_tool_exception_is_an_explicit_system_failure() -> None:
     assert result.terminal.status is TerminalStatus.SYSTEM_FAILURE
     assert result.terminal.error_code == "workflow_error"
     assert result.terminal.metadata["detail"] == "RuntimeError"
+
+
+@pytest.mark.parametrize(
+    ("status", "error", "expected_status", "expected_code"),
+    [
+        (
+            ToolExecutionStatus.NOT_FOUND,
+            "raw path exception",
+            TerminalStatus.INSUFFICIENT_EVIDENCE,
+            "tool_not_found",
+        ),
+        (
+            ToolExecutionStatus.INVALID,
+            "empty_query",
+            TerminalStatus.SAFE_FAILURE,
+            "empty_query",
+        ),
+        (
+            ToolExecutionStatus.PERMANENT_ERROR,
+            "backend exception text",
+            TerminalStatus.SYSTEM_FAILURE,
+            "tool_failed",
+        ),
+    ],
+)
+def test_tool_failures_have_typed_terminal_classification(
+    status: ToolExecutionStatus,
+    error: str,
+    expected_status: TerminalStatus,
+    expected_code: str,
+) -> None:
+    result = ToolResult(
+        "knowledge.search",
+        ok=False,
+        content="",
+        error=error,
+        status=status,
+    )
+    run = ControlledWorkflowRunner(
+        ToolRuntime([ScriptedTool([result])]),
+    ).run(
+        make_goal(),
+        explicit_call=ToolCall("knowledge.search", {"query": "Bayes"}),
+    )
+
+    assert run.terminal.status is expected_status
+    assert run.terminal.error_code == expected_code
+    assert run.state.observations[0].error_code == expected_code
 
 
 def test_runtime_facade_is_opt_in_and_uses_active_goal_store() -> None:

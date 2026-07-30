@@ -170,4 +170,12 @@ def test_knowledge_read_tool_path_errors_are_returned_by_runtime(tmp_path: Path)
     assert result.status is ToolExecutionStatus.INVALID
 
     assert result.ok is False
-    assert "excluded" in result.error
+    assert result.error == "invalid_path"
+
+
+def test_knowledge_read_missing_path_uses_stable_error_code(tmp_path: Path) -> None:
+    source = make_vault(tmp_path)
+    result = KnowledgeReadTool(source).run({"path": "wiki/missing.md"})
+
+    assert result.status is ToolExecutionStatus.NOT_FOUND
+    assert result.error == "not_found"

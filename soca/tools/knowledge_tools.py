@@ -156,20 +156,20 @@ class KnowledgeReadTool:
 
         try:
             doc = self.source.read(path)
-        except FileNotFoundError as exc:
+        except FileNotFoundError:
             return ToolResult(
                 name=self.spec.name,
                 ok=False,
                 content="",
-                error=str(exc),
+                error="not_found",
                 status=ToolExecutionStatus.NOT_FOUND,
             )
-        except ValueError as exc:
+        except ValueError:
             return ToolResult(
                 name=self.spec.name,
                 ok=False,
                 content="",
-                error=str(exc),
+                error="invalid_path",
                 status=ToolExecutionStatus.INVALID,
             )
         text = doc.text.strip()

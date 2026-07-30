@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from soca.tools import ToolResult
+from soca.tools import ToolExecutionStatus, ToolResult
 
 from .contracts import Capability, GoalContract, PlannedAction, SourceKind
 
@@ -65,7 +65,7 @@ def verify_tool_result(
     action: PlannedAction | None = None,
 ) -> Verification:
     if not result.ok:
-        return Verification(False, result.error or "tool_failed")
+        return Verification(False, tool_error_code(result))
     if action is not None and goal.required_sources:
         action_source = source_for_capability(action.capability)
         if action_source not in goal.required_sources:
@@ -94,6 +94,29 @@ def verify_tool_result(
         "tool_observation_available",
         evidence_ids=tuple(dict.fromkeys(evidence_ids)),
     )
+
+
+_STATUS_FAILURE_CODES = {
+    ToolExecutionStatus.NOT_FOUND: "tool_not_found",
+    ToolExecutionStatus.INVALID: "invalid_tool_input",
+    ToolExecutionStatus.DENIED: "tool_denied",
+    ToolExecutionStatus.TRANSIENT_ERROR: "tool_transient_error",
+    ToolExecutionStatus.PERMANENT_ERROR: "tool_failed",
+    ToolExecutionStatus.CANCELLED: "cancelled",
+}
+
+
+def tool_error_code(result: ToolResult) -> str:
+    """Return stable telemetry without exposing exception text."""
+    raw = result.error.strip().lower()
+    if raw and raw.replace("_", "").isalnum() and all(
+        character.isalnum() or character == "_" for character in raw
+    ):
+        return raw
+    status = result.status
+    if status is not None:
+        return _STATUS_FAILURE_CODES[status]
+    return "tool_failed"
 
 
 class DeterministicVerifier:

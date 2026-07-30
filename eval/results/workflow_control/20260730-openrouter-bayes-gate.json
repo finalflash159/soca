@@ -115,7 +115,6 @@
       "prompt_token_delta": -13,
       "provider_completion_tokens": 245
     },
-    "planner_validation_error": "",
-    "planner_output": "{\n  \"steps\": [\n    {\n      \"action_id\": \"search_bayes_theorem\",\n      \"tool\": \"knowledge.search\",\n      \"capability\": \"knowledge_search\",\n      \"arguments\": {\n        \"query\": \"định lý Bayes\",\n        \"limit\": 5\n      },\n      \"purpose\": \"Tìm kiếm ghi chú liên quan đến định lý Bayes trong kho kiến thức của người dùng.\",\n      \"expected_observation\": \"Danh sách các đoạn văn bản hoặc ghi chú chứa từ khóa 'định lý Bayes'.\",\n      \"required\": true,\n      \"requires_authorization\": false\n    }\n  ],\n  \"public_update\": \"Đang tìm kiếm ghi chú về định lý Bayes trong cơ sở tri thức...\",\n  \"final_instruction\": \"Hãy tổng hợp thông tin tìm được từ ghi chú về định lý Bayes để trả lời người dùng.\",\n  \"rationale\": \"Mục tiêu yêu cầu tra cứu ghi chú của người dùng về định lý Bayes với nguồn bắt buộc là 'knowledge'. Công cụ phù hợp nhất là knowledge.search để tìm các ghi chú liên quan.\"\n}"
+    "planner_validation_error": ""
   }
 }

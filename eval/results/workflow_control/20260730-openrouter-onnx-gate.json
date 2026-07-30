@@ -118,7 +118,6 @@
       "prompt_token_delta": -14,
       "provider_completion_tokens": 186
     },
-    "planner_validation_error": "",
-    "planner_output": "{\n  \"steps\": [\n    {\n      \"action_id\": \"search_onnx_runtime\",\n      \"tool\": \"knowledge.search\",\n      \"capability\": \"knowledge_search\",\n      \"arguments\": {\n        \"query\": \"ONNX Runtime\",\n        \"limit\": 5\n      },\n      \"purpose\": \"Search local wiki markdown notes to check if ONNX Runtime is mentioned.\",\n      \"expected_observation\": \"A list of snippets or matching notes containing references to ONNX Runtime.\",\n      \"required\": true,\n      \"requires_authorization\": false\n    }\n  ],\n  \"public_update\": \"Đang tìm kiếm các ghi chú liên quan đến ONNX Runtime.\",\n  \"final_instruction\": \"Hãy kiểm tra kết quả tìm kiếm để xác định xem ghi chú có đề cập đến ONNX Runtime hay không.\",\n  \"rationale\": \"Mục tiêu yêu cầu kiểm tra ghi chú của người dùng về ONNX Runtime sử dụng nguồn tri thức (knowledge), do đó công cụ tìm kiếm tri thức (knowledge.search) được sử dụng.\"\n}"
+    "planner_validation_error": ""
   }
 }

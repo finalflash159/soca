@@ -50,6 +50,7 @@ from .verifier import (
     DeterministicVerifier,
     Verification,
     source_for_capability,
+    tool_error_code,
     unmet_goal_criteria,
 )
 
@@ -267,10 +268,7 @@ class ControlledWorkflowRunner:
 
             if explicit_call is not None:
                 step = self._explicit_step(explicit_call)
-                plan = ActionPlan(
-                    steps=(step,),
-                    rationale="explicit_command",
-                )
+                plan = ActionPlan(steps=(step,))
                 stream.emit(
                     EventType.STEP_COMPLETED,
                     state.node,
@@ -362,6 +360,7 @@ class ControlledWorkflowRunner:
                     return terminal(
                         self._failed_outcome(
                             verification.reason,
+                            tool_status=result.status,
                             unmet_criteria=verification.unmet_criteria,
                         )
                     )
@@ -451,8 +450,6 @@ class ControlledWorkflowRunner:
                     metadata={
                         "goal_id": goal.goal_id,
                         "observations": len(results),
-                        "planner_instruction": plan.final_instruction,
-                        "rationale": plan.rationale,
                     },
                 )
             )
@@ -661,7 +658,7 @@ class ControlledWorkflowRunner:
             action_id=step.action_id,
             status=status,
             data=data,
-            error_code=result.error or None,
+            error_code=tool_error_code(result) if not result.ok else None,
             retryable=result.retryable,
             committed=result.ok,
             receipt=action_fingerprint_stub(step, result),
@@ -756,6 +753,7 @@ class ControlledWorkflowRunner:
         code: str,
         *,
         detail: str = "",
+        tool_status: ToolExecutionStatus | None = None,
         unmet_criteria: tuple[str, ...] = (),
     ) -> TerminalOutcome:
         metadata: dict[str, Any] = {}
@@ -763,14 +761,22 @@ class ControlledWorkflowRunner:
             metadata["detail"] = detail
         if code == "budget_exhausted":
             terminal_status = TerminalStatus.BUDGET_EXHAUSTED
-        elif code in {
+        elif code == "cancelled" or tool_status is ToolExecutionStatus.CANCELLED:
+            terminal_status = TerminalStatus.CANCELLED
+        elif tool_status is ToolExecutionStatus.NOT_FOUND or code in {
             "no_matching_observation",
             "required_source_not_used",
             "expected_observation_missing",
             "goal_criteria_unmet",
+            "tool_returned_no_observation",
+            "not_found",
+            "tool_not_found",
         }:
             terminal_status = TerminalStatus.INSUFFICIENT_EVIDENCE
-        elif code in {
+        elif tool_status in {
+            ToolExecutionStatus.INVALID,
+            ToolExecutionStatus.DENIED,
+        } or code in {
             "authorization_denied",
             "duplicate_action",
             "guardrail_blocked",
@@ -779,6 +785,10 @@ class ControlledWorkflowRunner:
             "unknown_tool",
             "unsupported_tool_capability",
             "planner_output_invalid",
+            "forbidden_plan_fields",
+            "invalid_tool_input",
+            "empty_plan",
+            "planner_required",
         }:
             terminal_status = TerminalStatus.SAFE_FAILURE
         else:

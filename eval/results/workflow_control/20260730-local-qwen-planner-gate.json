@@ -112,7 +112,6 @@
       "prompt_token_delta": 11,
       "provider_completion_tokens": 358
     },
-    "planner_validation_error": "",
-    "planner_output": "{ \"final_instruction\": \"Tìm ghi chú ONNX Runtime từ knowledge vault.\", \"public_update\": \"Đang thực hiện việc tìm kiếm ghi chú ONNX Runtime trong knowledge vault.\", \"rationale\": \"Mục tiêu yêu cầu tìm kiếm một ghi chú cụ thể về ONNX Runtime từ nguồn knowledge. Vì vậy, cần sử dụng công cụ tìm kiếm trong knowledge để tra cứu nội dung liên quan. Công cụ knowledge.search phù hợp vì nó cho phép tìm kiếm các đoạn trích từ các ghi chú markdown. Việc sử dụng công cụ này là bắt buộc do yêu cầu nguồn 'knowledge'. Không cần thực hiện các hành động khác vì mục tiêu chỉ yêu cầu tìm kiếm thông tin từ knowledge.\", \"steps\": [ { \"action_id\": \"knowledge.search\", \"arguments\": { \"query\": \"ONNX Runtime\", \"limit\": 5 }, \"capability\": \"knowledge_search\", \"expected_observation\": \"Một danh sách các đoạn trích từ ghi chú markdown liên quan đến ONNX Runtime.\", \"purpose\": \"Tìm kiếm các ghi chú liên quan đến ONNX Runtime trong knowledge vault.\", \"required\": true, \"requires_authorization\": false, \"tool\": \"knowledge.search\"}, { \"action_id\": \"knowledge.read\", \"arguments\": { \"path\": \"notes/onnx_runtime.md\" }, \"capability\": \"knowledge_read\", \"expected_observation\": \"Nội dung đầy đủ của ghi chú ONNX Runtime tại đường dẫn đã chỉ định.\", \"purpose\": \"Đọc chi tiết ghi chú ONNX Runtime nếu có.\", \"required\": false, \"requires_authorization\": false, \"tool\": \"knowledge.read\"}] }"
+    "planner_validation_error": ""
   }
 }

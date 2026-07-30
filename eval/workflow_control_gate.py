@@ -152,7 +152,6 @@ def run_gate(
             "goal_resolver_usage": goal_resolver.last_usage,
             "planner_prompt_manifest": planner.last_prompt_manifest,
             "planner_validation_error": planner.last_validation_error,
-            "planner_output": planner.last_raw_output,
         },
     }
 
