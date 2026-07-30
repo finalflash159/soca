@@ -115,6 +115,21 @@ def test_capability_from_engine_marks_runtime_overrides() -> None:
     assert capability.source == "runtime_options"
 
 
+def test_capability_from_engine_distinguishes_n_ctx_from_registry_context() -> None:
+    class Config:
+        context_window = None
+
+    class Engine:
+        model_key = "local/model"
+        config = Config()
+        n_ctx = 4_096
+
+    capability = capability_from_engine(Engine())
+
+    assert capability.context_window == 4_096
+    assert capability.source == "engine_metadata"
+
+
 @pytest.mark.parametrize("context_window", [2_048, 4_096, 16_384, 32_768])
 def test_context_window_matrix_keeps_required_input_and_clamps_output(
     context_window: int,

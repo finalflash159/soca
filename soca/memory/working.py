@@ -77,10 +77,6 @@ class WorkingSummaryArtifact:
             or self.content_budget_tokens > SUMMARY_CONTENT_BUDGET_TOKENS
         ):
             raise ValueError("invalid working summary content budget")
-        if len(self.summary.split()) > self.content_budget_tokens:
-            raise ValueError(
-                f"working summary exceeds {self.content_budget_tokens}-token content budget"
-            )
         for values in (
             self.user_constraints,
             self.decisions,

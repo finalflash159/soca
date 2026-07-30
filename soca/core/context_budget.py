@@ -266,27 +266,31 @@ def capability_from_engine(
 ) -> ModelCapability:
     config = getattr(engine, "config", None)
     model_id = str(getattr(engine, "model_key", "") or getattr(engine, "model", "") or "unknown")
-    context_window = (
-        model_context_window
-        if model_context_window is not None
-        else getattr(config, "context_window", None)
-    )
-    if context_window is None:
+    configured_context_window = getattr(config, "context_window", None)
+    if model_context_window is not None:
+        context_window = model_context_window
+        context_source = "runtime_options"
+    elif configured_context_window is not None:
+        context_window = configured_context_window
+        context_source = "local_registry"
+    else:
         context_window = getattr(engine, "n_ctx", None)
+        context_source = "engine_metadata" if context_window is not None else "runtime"
     max_output = (
         model_max_output_tokens
         if model_max_output_tokens is not None
         else getattr(engine, "model_max_output_tokens", None)
     )
     tokenizer = str(getattr(engine, "tokenizer_name", "") or "")
-    source = "runtime"
-    if model_context_window is not None or model_max_output_tokens is not None:
+    source = context_source
+    if model_max_output_tokens is not None:
         source = "runtime_options"
-    elif config is not None and context_window is not None:
-        source = "local_registry"
+    elif context_source == "runtime" and max_output is not None:
+        source = "engine_metadata"
+    if configured_context_window is not None:
         tokenizer = tokenizer or "llama_cpp"
     elif model_id != "unknown":
-        source = "engine_metadata"
+        tokenizer = tokenizer or "utf8_bytes_div_4"
     tokenizer = tokenizer or "utf8_bytes_div_4"
     return ModelCapability(
         model_id=model_id,

@@ -107,3 +107,15 @@ def test_working_summary_accepts_a_summary_larger_than_the_old_256_token_limit()
     )
 
     assert len(artifact.summary.split()) == 1_500
+
+
+def test_working_summary_uses_token_budget_not_word_count() -> None:
+    artifact = WorkingSummaryArtifact(
+        version=1,
+        generation=1,
+        source_through_sequence=1,
+        summary="a " * 150,
+        content_budget_tokens=128,
+    )
+
+    assert len(artifact.summary.split()) == 150
