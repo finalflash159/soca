@@ -154,6 +154,7 @@ def test_voice_runtime_uses_shared_knowledge_setup(
 
 def test_voice_runtime_uses_selected_remote_llm_without_local_construction(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = resolve_voice_runtime_config(
         profile_key="baseline",
@@ -172,6 +173,18 @@ def test_voice_runtime_uses_selected_remote_llm_without_local_construction(
         calls.append((selected, secrets))
         del kwargs
         return object()
+
+    monkeypatch.setattr(voice_runtime, "SpeechDetector", lambda: object())
+    monkeypatch.setattr(voice_runtime, "VietnameseASR", lambda **kwargs: object())
+    monkeypatch.setattr(voice_runtime, "RobustASR", lambda **kwargs: object())
+    monkeypatch.setattr(
+        voice_runtime,
+        "load_confidence_guard_calibration",
+        lambda _model_key: None,
+    )
+    monkeypatch.setattr(voice_runtime, "create_tts_engine", lambda **kwargs: object())
+    monkeypatch.setattr(voice_runtime, "VoicePipeline", lambda **kwargs: object())
+    monkeypatch.setattr(voice_runtime, "default_repair_catalog", lambda: object())
 
     bundle = build_voice_runtime(
         config,
