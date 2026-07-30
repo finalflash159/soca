@@ -64,6 +64,16 @@ provenance manifest and reviewed labels before it can become a release gate.
 The baseline intentionally records current failures; it does not relabel them
 as passes.
 
+The Phase 0 freeze artifacts are:
+
+- `eval/results/remediation_baseline/20260730-dataset-manifest.json`;
+- blocking and streaming OpenRouter runs under
+  `eval/results/remediation_baseline/20260730-openrouter-*`;
+- the no-LLM wiring run under
+  `eval/results/remediation_baseline/20260730-no-llm-hybrid`;
+- the paired production-no-BoH/experimental-BoH ASR run under
+  `eval/results/asr_boh_ablation/20260730-phowhisper-small-paired`.
+
 ## Rollback
 
 The harness is evaluation-only and does not change production behavior. A

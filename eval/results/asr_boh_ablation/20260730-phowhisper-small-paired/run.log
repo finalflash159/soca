@@ -1,0 +1,41 @@
+ONNX providers: ['CoreMLExecutionProvider', 'CPUExecutionProvider']
+Loading 30 speech + 50 noise samples...
+  Loaded 30 speech, 50 noise
+
+Loading models... (ASR = phowhisper_small)
+2026-07-30 08:09:54.638 python3[1738:10174914] 2026-07-30 08:09:54.638698 [W:onnxruntime:, coreml_execution_provider.cc:113 GetCapability] CoreMLExecutionProvider::GetCapability, number of partitions supported by CoreML: 4 number of nodes in the graph: 803 number of nodes supported by CoreML: 25
+2026-07-30 08:09:55.153 python3[1738:10174914] 2026-07-30 08:09:55.153931 [W:onnxruntime:, coreml_execution_provider.cc:113 GetCapability] CoreMLExecutionProvider::GetCapability, number of partitions supported by CoreML: 2 number of nodes in the graph: 1467 number of nodes supported by CoreML: 29
+  ASR + VAD + BoH (56 phrases) ready
+
+  RobustASR thresholds: min_avg_logprob=-0.725, max_compression_ratio=2.400
+
+Production RobustASR (no BoH)
+  production_no_boh ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:03:56
+Production RobustASR + experimental BoH
+              Table VII replication — Vietnamese phowhisper_small               
+┏━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━┓
+┃            ┃        ┃       ┃    Halluc ┃           ┃            ┃   Lat p95 ┃
+┃ Config     ┃    WER ┃   CER ┃      rate ┃ False-rej ┃ Lat p50 ms ┃        ms ┃
+┡━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━┩
+│ Production │ 16.39% │ 7.34% │    10.00% │     0.00% │         31 │      9292 │
+│ RobustASR  │        │       │           │           │            │           │
+│ (no BoH)   │        │       │           │           │            │           │
+│ Production │ 16.39% │ 7.34% │    10.00% │     0.00% │         31 │      9292 │
+│ RobustASR  │        │       │           │           │            │           │
+│ +          │        │       │           │           │            │           │
+│ experimen… │        │       │           │           │            │           │
+│ BoH        │        │       │           │           │            │           │
+└────────────┴────────┴───────┴───────────┴───────────┴────────────┴───────────┘
+   Stage contribution — non-speech catches (full   
+                     pipeline)                     
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━┓
+┃ Stage                     ┃ Caught ┃ % of noise ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━┩
+│ no_speech                 │     45 │      90.0% │
+│ accepted (leaked through) │      5 │      10.0% │
+└───────────────────────────┴────────┴────────────┘
+  catch-rate=90.0%  false-reject=0.00%  WER(accepted)=16.39%
+  hallucination-rate by subtype: pure=0.0%, speech_like=100.0%
+
+✓ Saved 
+eval/results/asr_boh_ablation/20260730-phowhisper-small-paired/report.json

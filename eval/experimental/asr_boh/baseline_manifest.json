@@ -1,43 +1,86 @@
 {
-  "schema_version": 1,
-  "status": "historical_reference_pending_no_boh_rerun",
+  "schema_version": 2,
+  "status": "current_paired_ablation_complete",
   "scope": "ASR BoH ablation; research/eval only",
-  "production_before": {
-    "pipeline": "RobustASR",
-    "behavior": "auto-loaded model-specific BoH artifacts when present",
-    "evidence": [
-      "eval/results/asr_d1_baseline.json",
-      "eval/fixtures/real_rag_vault/wiki/project/benchmarks.md"
-    ]
-  },
-  "production_after": {
+  "production": {
     "pipeline": "RobustASR",
     "behavior": "VAD -> ASR -> confidence guard -> de-loop -> heuristics",
-    "boh_auto_loaded": false
+    "boh_auto_loaded": false,
+    "boh_runtime_dependency": false
   },
-  "historical_artifacts": [
-    "data/asr/boh/phowhisper_base_vi_boh_v1.json",
-    "data/asr/boh/phowhisper_small_vi_boh_v1.json",
-    "data/asr/boh/phowhisper_tiny_vi_boh_v1.json"
-  ],
-  "required_release_measurements": [
-    "no_boh_vs_experimental_boh WER and CER on Vietnamese speech",
-    "non-speech hallucination and catch rate by noise subtype",
-    "false-reject rate on real speech",
-    "p50/p95 latency and startup behavior"
-  ],
-  "data_governance": {
-    "allowed": [
-      "FLEURS Vietnamese speech",
-      "ESC-50 plus synthetic silence/white/pink noise",
-      "separate non-speech benchmark with provenance and hashes"
+  "run": {
+    "artifact": "eval/results/asr_boh_ablation/20260730-phowhisper-small-paired/report.json",
+    "log": "eval/results/asr_boh_ablation/20260730-phowhisper-small-paired/run.log",
+    "source_commit": "586412ac5ae9d603d40498f011bceef39d6b007b",
+    "source_dirty": false,
+    "model": "huuquyet/PhoWhisper-small",
+    "model_key": "phowhisper_small",
+    "providers": [
+      "CoreMLExecutionProvider",
+      "CPUExecutionProvider"
     ],
-    "forbidden": [
-      "demo_smoke fixtures",
-      "untracked private recordings",
-      "using a BoH artifact as production evidence without model identity"
-    ]
+    "speech": {
+      "dataset": "google/fleurs",
+      "language": "vi_vn",
+      "split": "test",
+      "license": "CC BY 4.0",
+      "samples": 30
+    },
+    "non_speech": {
+      "dataset": "ESC-50 filtered plus deterministic synthetic noise/babble",
+      "license": "ESC-50 CC BY-NC; synthetic samples project-generated",
+      "samples": 50,
+      "seed": 42
+    },
+    "paired_method": "Run production RobustASR once, then apply experimental BoH to the identical saved outputs.",
+    "results": {
+      "production_no_boh": {
+        "wer": 0.1638981173864895,
+        "cer": 0.07338787295476419,
+        "false_reject_rate": 0.0,
+        "hallucination_rate": 0.1,
+        "catch_rate": 0.9,
+        "latency_p50_ms": 31.28925000783056,
+        "latency_p95_ms": 9292.024386048433
+      },
+      "production_with_experimental_boh": {
+        "wer": 0.1638981173864895,
+        "cer": 0.07338787295476419,
+        "false_reject_rate": 0.0,
+        "hallucination_rate": 0.1,
+        "catch_rate": 0.9,
+        "latency_p50_ms": 31.28931249375455,
+        "latency_p95_ms": 9292.02656346024
+      },
+      "changed_predictions": 0,
+      "boh_match_items": 0,
+      "noise_breakdown": {
+        "pure_hallucination_rate": 0.0,
+        "speech_like_hallucination_rate": 1.0
+      }
+    }
   },
-  "rerun_command": "uv run python -m local.eval_table7 --configs vad_deloop_boh",
-  "notes": "This manifest records the boundary and required rerun; it is not a new benchmark result. local.eval_table7 labels BoH as experimental_boh and applies it only after production RobustASR."
+  "decision": {
+    "production_boh": "removed",
+    "reason": "The model-specific phrase list changed no output and improved no measured quality or robustness metric. Remaining speech-like leaks must be addressed in calibrated VAD/ASR logic, not by a hidden phrase-deletion fallback.",
+    "rollback": "No automatic rollback. Reintroducing BoH would require a new explicit production decision and release evidence."
+  },
+  "limitations": [
+    "This 80-item Phase 0 freeze is a paired characterization run, not a population-level ASR quality claim.",
+    "The non-speech sample contains only five speech-like rows; the 100% subtype leak rate has a wide confidence interval.",
+    "AEC is a separate duplex/barge-in signal-boundary component and is not exercised by clean FLEURS/ESC-50 ASR files. Existing real AEC-Challenge replay remains supporting evidence, not part of this paired BoH result.",
+    "Local manifests and every selected audio file are SHA-256 recorded in the full artifact, but the original download revision was not stored when the local dataset was first provisioned."
+  ],
+  "data_sources": [
+    {
+      "name": "FLEURS",
+      "primary": "https://huggingface.co/datasets/google/fleurs",
+      "paper": "https://arxiv.org/abs/2205.12446"
+    },
+    {
+      "name": "ESC-50",
+      "primary": "https://github.com/karolpiczak/ESC-50"
+    }
+  ],
+  "rerun_command": "uv run python -m local.eval_table7 --model phowhisper_small --n-speech 30 --n-noise 50 --configs production_no_boh,production_with_boh --output <report.json>"
 }

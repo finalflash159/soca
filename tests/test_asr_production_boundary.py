@@ -14,12 +14,12 @@ def test_production_asr_does_not_expose_or_reference_boh() -> None:
     assert "ahocorasick" not in inspect.getsource(RobustASR)
 
 
-def test_boh_ablation_manifest_marks_measurements_as_pending() -> None:
+def test_boh_ablation_manifest_records_current_paired_measurement() -> None:
     manifest_path = Path("eval/experimental/asr_boh/baseline_manifest.json")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-    assert manifest["status"] == "historical_reference_pending_no_boh_rerun"
-    assert manifest["production_after"]["boh_auto_loaded"] is False
-    assert "no_boh_vs_experimental_boh WER and CER on Vietnamese speech" in manifest[
-        "required_release_measurements"
-    ]
+    assert manifest["status"] == "current_paired_ablation_complete"
+    assert manifest["production"]["boh_auto_loaded"] is False
+    assert manifest["run"]["source_dirty"] is False
+    assert manifest["run"]["results"]["changed_predictions"] == 0
+    assert manifest["decision"]["production_boh"] == "removed"
