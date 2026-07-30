@@ -1,4 +1,5 @@
 from .budget import BudgetLedger, BudgetSnapshot
+from .checkpoint import GoalCheckpoint, GoalCheckpointStore, WorkflowRunCheckpoint
 from .contracts import (
     Advance,
     CancellationState,
@@ -88,6 +89,8 @@ __all__ = [
     "EvidenceStatus",
     "GoalConstraint",
     "GoalContract",
+    "GoalCheckpoint",
+    "GoalCheckpointStore",
     "GoalDecision",
     "GoalDecisionKind",
     "GoalResolution",
@@ -127,6 +130,7 @@ __all__ = [
     "WorkflowEventStream",
     "WorkflowPlanner",
     "WorkflowRun",
+    "WorkflowRunCheckpoint",
     "action_fingerprint",
     "verify_tool_result",
     "source_for_capability",

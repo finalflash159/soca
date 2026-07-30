@@ -7,8 +7,10 @@ import pytest
 from soca.core import AssistantRuntime, RuntimeOptions
 from soca.core.workflow import (
     ActionPlan,
+    ActiveGoalStore,
     Capability,
     ControlledWorkflowRunner,
+    GoalCheckpointStore,
     GoalConstraint,
     GoalContract,
     GoalDecision,
@@ -785,6 +787,42 @@ def test_follow_up_runs_get_unique_protocol_run_ids() -> None:
     assert first.events[0].goal_id == follow_up.events[0].goal_id
     assert first.events[0].run_id != follow_up.events[0].run_id
     assert first.events[0].sequence == follow_up.events[0].sequence == 0
+
+
+def test_runtime_restores_active_goal_for_a_resumed_session(tmp_path) -> None:
+    checkpoint_store = GoalCheckpointStore(tmp_path / "goals")
+    first_tool = ScriptedTool([knowledge_observation("Bayes")])
+    first = AssistantRuntime(
+        tool_runtime=ToolRuntime([first_tool]),
+        options=RuntimeOptions(turn_workflow="shadow"),
+        active_goal_store=ActiveGoalStore(
+            checkpoint_store=checkpoint_store,
+            session_id="session-1",
+        ),
+    )
+    first_run = first.run_controlled_workflow(
+        "Tìm ghi chú Bayes",
+        explicit_call=ToolCall("knowledge.search", {"query": "Bayes"}),
+    )
+
+    resumed_tool = ScriptedTool([knowledge_observation("Bayes chi tiết")])
+    resumed = AssistantRuntime(
+        tool_runtime=ToolRuntime([resumed_tool]),
+        options=RuntimeOptions(turn_workflow="shadow"),
+        active_goal_store=ActiveGoalStore(
+            checkpoint_store=checkpoint_store,
+            session_id="session-1",
+        ),
+    )
+    resumed_run = resumed.run_controlled_workflow(
+        "giải thích rõ hơn",
+        explicit_call=ToolCall("knowledge.search", {"query": "Bayes chi tiết"}),
+        goal_decision=GoalDecision(GoalDecisionKind.CONTINUE, objective=""),
+    )
+
+    assert first_run.terminal.status is TerminalStatus.ACHIEVED
+    assert resumed_run.terminal.status is TerminalStatus.ACHIEVED
+    assert resumed_run.state.goal.goal_id == first_run.state.goal.goal_id
 
 
 def test_output_guardrail_block_is_a_safe_failure(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,4 +1,4 @@
-"""Measure deterministic working-memory compaction."""
+"""Measure the canonical working-memory compaction contract."""
 
 from __future__ import annotations
 
@@ -6,20 +6,51 @@ import argparse
 import json
 from pathlib import Path
 
-from soca.memory import CompactionConfig, WorkingMemory
+from soca.core.text_budget import truncate
+from soca.memory.working import WorkingMemory, WorkingMemoryPolicy, WorkingSummaryArtifact
 
 
 def evaluate(turns: int, recent_turns: int, summary_chars: int) -> dict[str, int | float]:
-    memory = WorkingMemory(config=CompactionConfig(recent_turns=recent_turns, summary_chars=summary_chars))
+    policy = WorkingMemoryPolicy(
+        hard_limit_tokens=16_384,
+        high_watermark_tokens=15_000,
+        target_tokens=12_000,
+        summary_budget_tokens=2_048,
+        recent_budget_tokens=512,
+        minimum_recent_complete_turns=2,
+        preferred_recent_complete_turns=recent_turns,
+        manual_compaction_minimum_complete_turns=5,
+        mode="background_summary",
+    )
+    memory = WorkingMemory(policy=policy)
     for index in range(turns):
-        memory.append("user", f"turn {index} decision and context")
-        memory.append("assistant", f"answer {index}")
+        turn = memory.begin_turn(f"turn {index} decision and context")
+        memory.finish_turn(turn.sequence, f"answer {index}")
+    job = memory.prepare_compaction(force=True)
+    if job is None:
+        raise ValueError("canonical compaction requires at least five complete turns")
+    summary = truncate(
+        "\n".join(
+            f"User: {turn.user_text}\nAssistant: {turn.assistant_text}"
+            for turn in job.frozen_turns
+        ),
+        summary_chars,
+    )
+    memory.publish_summary(
+        job,
+        WorkingSummaryArtifact(
+            version=1,
+            generation=job.generation,
+            source_through_sequence=job.frozen_turns[-1].sequence,
+            summary=summary,
+        ),
+    )
     snapshot = memory.snapshot
     return {
         "turns": turns,
-        "recent_turn_count": len(snapshot.recent_turns),
-        "compacted_turn_count": snapshot.compacted_turn_count,
-        "summary_chars": len(snapshot.summary),
+        "recent_turn_count": len(snapshot.turns),
+        "compacted_turn_count": len(job.frozen_turns),
+        "summary_chars": len(snapshot.summary.summary) if snapshot.summary else 0,
     }
 
 

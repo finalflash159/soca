@@ -9,7 +9,6 @@ from soca.memory.base import (
     SessionMemorySource,
 )
 from soca.memory.commands import MemoryCommandResult, MemoryCommands
-from soca.memory.compaction import CompactionConfig, WorkingMemory, WorkingMemorySnapshot
 from soca.memory.compaction_coordinator import CompactionResult, WorkingMemoryCompactionCoordinator
 from soca.memory.composite import CompositeMemoryConfig, CompositeMemorySource
 from soca.memory.context import MemoryContext, MemoryContextBuilder
@@ -20,7 +19,12 @@ from soca.memory.proposals import MemoryProposal, ProposalStore
 from soca.memory.reflection import BackgroundReflection, ReflectionConfig, ReflectionService
 from soca.memory.retrieved import RetrievedMemory, RetrievedMemoryConfig
 from soca.memory.scoring import MemoryHit, MemoryScore, MemoryScoreConfig
-from soca.memory.session import SessionMemory, SessionMemoryStats, SessionPersistence
+from soca.memory.session import (
+    MemoryCapacityError,
+    SessionMemory,
+    SessionMemoryStats,
+    SessionPersistence,
+)
 from soca.memory.session_store import (
     CHECKPOINT_SCHEMA_VERSION,
     CheckpointConflictError,
@@ -31,6 +35,7 @@ from soca.memory.working import (
     SUMMARY_CONTENT_BUDGET_TOKENS,
     CompactionJob,
     ConversationTurn,
+    WorkingMemory,
     WorkingMemoryPolicy,
     WorkingSummaryArtifact,
 )
@@ -50,11 +55,10 @@ __all__ = [
     "MemoryCommands",
     "CompactionResult",
     "WorkingMemoryCompactionCoordinator",
-    "CompactionConfig",
     "CompositeMemoryConfig",
     "CompositeMemorySource",
     "WorkingMemory",
-    "WorkingMemorySnapshot",
+    "MemoryCapacityError",
     "EpisodeStore",
     "MemoryEpisode",
     "MemoryProposal",

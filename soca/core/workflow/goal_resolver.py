@@ -4,11 +4,12 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import uuid4
 
 from soca.llm import LLMEngine, StructuredLLMEngine
 
+from .checkpoint import GoalCheckpointStore, WorkflowRunCheckpoint, now_checkpoint_time
 from .contracts import (
     GoalConstraint,
     GoalContract,
@@ -17,6 +18,9 @@ from .contracts import (
     SuccessCriterion,
     UnresolvedEntity,
 )
+
+if TYPE_CHECKING:
+    from .runner import WorkflowRun
 
 _SUCCESS_CRITERIA = frozenset(
     {
@@ -62,19 +66,55 @@ class GoalResolutionError(ValueError):
 
 
 class ActiveGoalStore:
-    def __init__(self) -> None:
-        self._goal: GoalContract | None = None
+    def __init__(
+        self,
+        *,
+        checkpoint_store: GoalCheckpointStore | None = None,
+        session_id: str = "default",
+    ) -> None:
+        self._checkpoint_store = checkpoint_store
+        self._session_id = session_id
+        self._last_run: WorkflowRunCheckpoint | None = None
+        if checkpoint_store is None:
+            self._goal = None
+        else:
+            checkpoint = checkpoint_store.load(session_id)
+            self._goal = checkpoint.goal
+            self._last_run = checkpoint.last_run
 
     @property
     def current(self) -> GoalContract | None:
         return self._goal
 
+    @property
+    def last_run(self) -> WorkflowRunCheckpoint | None:
+        return self._last_run
+
     def set(self, goal: GoalContract) -> GoalContract:
         self._goal = goal
+        self._persist()
         return goal
 
     def clear(self) -> None:
         self._goal = None
+        self._persist()
+
+    def record_run(self, run: WorkflowRun) -> None:
+        self._last_run = WorkflowRunCheckpoint(
+            run_id=run.state.run_id,
+            goal_id=run.state.goal.goal_id,
+            terminal_status=run.terminal.status.value,
+            updated_at=now_checkpoint_time(),
+        )
+        self._persist()
+
+    def _persist(self) -> None:
+        if self._checkpoint_store is not None:
+            self._checkpoint_store.save(
+                self._session_id,
+                goal=self._goal,
+                last_run=self._last_run,
+            )
 
 
 class GoalResolver:

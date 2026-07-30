@@ -9,8 +9,10 @@ and revised the release gate after the original quality-first decision.
 Production now uses `background_summary`, triggers automatically at 15,000
 approximate working-memory tokens, keeps a 16,384-token emergency ceiling, and
 loads the local worker only for one compaction job. Missing, malformed, or
-non-private weights fall back to deterministic `trim_only`; there is no remote
-summary fallback or automatic runtime download.
+non-private weights produce an explicit unavailable state; source turns remain
+intact and the runtime does not silently switch to `trim_only` or another
+model. `trim_only` is reserved for an explicitly configured no-LLM session.
+There is no remote summary fallback or automatic runtime download.
 
 The revised gate is explicit in `PRODUCTION_SUMMARY_RELEASE_GATE`:
 
@@ -193,6 +195,27 @@ The production 15K auto-trigger was then exercised separately:
 | peak child RSS | 6,030 MiB |
 | child exit / stopped | 0 / true |
 | checkpoint + rendered round trip | pass |
+
+The lifecycle was re-run on 2026-07-30 after the fail-closed session change on
+an Apple M4 Pro (12 cores, 48 GB RAM, macOS arm64, Python 3.11.14):
+
+| Metric | Real result |
+| --- | ---: |
+| production model | `qwen3_4b_instruct_2507_q4_k_m` |
+| trigger token count | 15,288 |
+| summary lifecycle | `running → published → idle` |
+| load / generation | 1,879.6 ms / 49,321.1 ms |
+| total worker latency | 51,216.6 ms |
+| peak child RSS | 6,408.6 MiB |
+| worker context | 23,552 tokens (model runtime allocation) |
+| child exit / stopped | 0 / true |
+| private checkpoint mode | `0600` |
+| checkpoint + rendered round trip | pass |
+
+This was a cold-process run using the provisioned GGUF, not a fake worker. The
+raw JSON was kept outside Git. The same release run also verified that a failed
+summary preserves source turns and exposes `MemoryCapacityError` instead of
+silently trimming them.
 
 Context allocation is dynamic from 4K up to a 32K maximum, so a short manual
 compaction does not pay the 32K KV-cache cost. A real post-compaction answer

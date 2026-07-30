@@ -186,16 +186,23 @@ The summary artifact and decoder output budget are both 2,048 tokens; the model
 is instructed to shorten the structured JSON before reaching the hard decoder
 cap, with one in-process repair pass if the first candidate is invalid.
 Summary context is allocated dynamically from 4K to 32K. A missing or invalid
-private weight falls back to `trim_only`; there is no extractive/regex summary,
-remote summary fallback, or automatic runtime download. `/compact`,
+private weight is an explicit unavailable state: background-summary mode keeps
+the source turns and does not silently trim or switch models. `trim_only` is
+available only when the caller explicitly selects the no-LLM policy; there is
+no extractive/regex summary, remote summary fallback, or automatic runtime
+download. `/compact`,
 `status`, and `cancel` share the same coordinator in CLI and UI.
 
 Session state is `ram_only` by default. Explicit `local_resumable` mode uses
 `SessionCheckpointStore` under the XDG state directory with atomic writes,
 private `0700/0600` permissions, schema-versioned wrapper payloads, legacy
-working-checkpoint reads, and a revision guard. Checkpoints contain only
-working turns/summary state; they do not contain API keys, retrieved snippets,
-core values, tool results, or vectors. `clear` deletes the checkpoint.
+working-checkpoint reads, and a revision guard. It also enables a separate
+private goal checkpoint for the controlled workflow: the active typed goal and
+the last terminal run identity/status survive restart. Neither checkpoint
+contains API keys, retrieved snippets, core values, tool results, or vectors.
+Corrupt or unknown-schema goal state is surfaced as an error; it is never
+silently reset. `clear` deletes the working checkpoint; goal cancellation
+clears the active goal while retaining the last run record for diagnostics.
 
 ### Human-in-the-loop capture
 

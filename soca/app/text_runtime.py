@@ -29,6 +29,7 @@ from soca.core.tool_routing import (
 )
 from soca.core.turn import RuntimeResult
 from soca.core.usage import TurnUsage
+from soca.core.workflow import ActiveGoalStore, GoalCheckpointStore
 from soca.knowledge.factory import DenseBackend, RetrievalConfig, RetrievalMode
 from soca.knowledge.retrievers.dense import EmbeddingModel, FastEmbedModel
 from soca.llm import LLMEngine, LocalLlamaCppLLM
@@ -373,6 +374,14 @@ def build_text_runtime(
             knowledge_limit=config.knowledge_limit,
             model_context_window=model_context_window,
             model_max_output_tokens=selected_settings.model_max_output_tokens,
+        ),
+        active_goal_store=(
+            ActiveGoalStore(
+                checkpoint_store=GoalCheckpointStore(default_session_checkpoint_home() / "goals"),
+                session_id=config.session_id,
+            )
+            if config.session_persistence == "local_resumable"
+            else None
         ),
     )
     return TextRuntimeBundle(
