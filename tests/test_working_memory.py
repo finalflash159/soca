@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from soca.memory.working import WorkingMemory, WorkingSummaryArtifact
+from soca.memory.working import WorkingMemory, WorkingMemoryPolicy, WorkingSummaryArtifact
 
 
 def _complete(memory: WorkingMemory, user: str, assistant: str) -> None:
@@ -47,6 +47,26 @@ def test_working_memory_job_is_not_created_before_high_watermark() -> None:
     assert memory.prepare_compaction() is None
 
 
+def test_working_memory_policy_scales_to_model_input_budget() -> None:
+    small = WorkingMemoryPolicy.for_context_budget(
+        context_window=2_048,
+        output_reserve_tokens=1_024,
+    )
+    large = WorkingMemoryPolicy.for_context_budget(
+        context_window=32_768,
+        output_reserve_tokens=4_096,
+        mode="background_summary",
+    )
+
+    assert small.hard_limit_tokens < large.hard_limit_tokens
+    assert small.summary_budget_tokens < large.summary_budget_tokens
+    assert small.target_tokens < small.high_watermark_tokens < small.hard_limit_tokens
+    assert large.hard_limit_tokens == 16_384
+    assert large.high_watermark_tokens == 15_000
+    assert large.target_tokens == 12_000
+    assert large.mode == "background_summary"
+
+
 def test_manual_compaction_requires_five_complete_turns() -> None:
     memory = WorkingMemory()
     for index in range(4):
@@ -87,3 +107,15 @@ def test_working_summary_accepts_a_summary_larger_than_the_old_256_token_limit()
     )
 
     assert len(artifact.summary.split()) == 1_500
+
+
+def test_working_summary_uses_token_budget_not_word_count() -> None:
+    artifact = WorkingSummaryArtifact(
+        version=1,
+        generation=1,
+        source_through_sequence=1,
+        summary="a " * 150,
+        content_budget_tokens=128,
+    )
+
+    assert len(artifact.summary.split()) == 150

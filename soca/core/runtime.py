@@ -15,6 +15,7 @@ from soca.core.answer_validation import (
     validate_grounded_answer,
 )
 from soca.core.context_budget import (
+    DEFAULT_CONTEXT_SAFETY_MARGIN_TOKENS,
     PromptAssembler,
     PromptBudgetError,
     PromptComponent,
@@ -111,7 +112,7 @@ class RuntimeOptions:
     # Remote model tokenizers may count provider message wrappers differently
     # from the client adapter. Keep a conservative admission margin by default;
     # observed positive deltas can increase it for subsequent turns.
-    context_safety_margin_tokens: int = 128
+    context_safety_margin_tokens: int = DEFAULT_CONTEXT_SAFETY_MARGIN_TOKENS
 
     def __post_init__(self) -> None:
         if self.turn_workflow not in {"legacy", "shadow", "controlled"}:

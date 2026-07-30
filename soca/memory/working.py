@@ -14,6 +14,14 @@ from typing import Literal
 TurnStatus = Literal["pending", "complete", "interrupted", "failed"]
 SummaryMode = Literal["trim_only", "background_summary"]
 SUMMARY_CONTENT_BUDGET_TOKENS = 2_048
+DEFAULT_HARD_LIMIT_TOKENS = 16_384
+DEFAULT_HIGH_WATERMARK_TOKENS = 15_000
+DEFAULT_TARGET_TOKENS = 12_000
+DEFAULT_RECENT_BUDGET_TOKENS = 512
+MIN_MODEL_WORKING_BUDGET_TOKENS = 512
+MIN_MODEL_SUMMARY_BUDGET_TOKENS = 128
+MIN_MODEL_RECENT_BUDGET_TOKENS = 64
+MODEL_PROMPT_OVERHEAD_TOKENS = 512
 
 
 def _normalise(text: str) -> str:
@@ -57,14 +65,18 @@ class WorkingSummaryArtifact:
     open_items: tuple[str, ...] = ()
     continuity_refs: tuple[str, ...] = ()
     prompt_fingerprint: str = ""
+    content_budget_tokens: int = SUMMARY_CONTENT_BUDGET_TOKENS
 
     def __post_init__(self) -> None:
         if self.version != 1 or self.generation < 0 or self.source_through_sequence < 0:
             raise ValueError("invalid working summary version or sequence")
-        if len(self.summary.split()) > SUMMARY_CONTENT_BUDGET_TOKENS:
-            raise ValueError(
-                f"working summary exceeds {SUMMARY_CONTENT_BUDGET_TOKENS}-token content budget"
-            )
+        if (
+            isinstance(self.content_budget_tokens, bool)
+            or not isinstance(self.content_budget_tokens, int)
+            or self.content_budget_tokens < MIN_MODEL_SUMMARY_BUDGET_TOKENS
+            or self.content_budget_tokens > SUMMARY_CONTENT_BUDGET_TOKENS
+        ):
+            raise ValueError("invalid working summary content budget")
         for values in (
             self.user_constraints,
             self.decisions,
@@ -74,9 +86,9 @@ class WorkingSummaryArtifact:
         ):
             if any(not isinstance(value, str) or not value.strip() for value in values):
                 raise ValueError("working summary fields must contain non-empty strings")
-        if approximate_tokens(self.render()) > SUMMARY_CONTENT_BUDGET_TOKENS:
+        if approximate_tokens(self.render()) > self.content_budget_tokens:
             raise ValueError(
-                f"working summary artifact exceeds {SUMMARY_CONTENT_BUDGET_TOKENS}-token content budget"
+                f"working summary artifact exceeds {self.content_budget_tokens}-token content budget"
             )
 
     def to_dict(self) -> dict[str, object]:
@@ -100,38 +112,100 @@ class WorkingSummaryArtifact:
 
 @dataclass(frozen=True)
 class WorkingMemoryPolicy:
-    hard_limit_tokens: int = 16_384
-    high_watermark_tokens: int = 15_000
-    target_tokens: int = 12_000
+    hard_limit_tokens: int = DEFAULT_HARD_LIMIT_TOKENS
+    high_watermark_tokens: int = DEFAULT_HIGH_WATERMARK_TOKENS
+    target_tokens: int = DEFAULT_TARGET_TOKENS
     summary_budget_tokens: int = SUMMARY_CONTENT_BUDGET_TOKENS
-    recent_budget_tokens: int = 512
+    recent_budget_tokens: int = DEFAULT_RECENT_BUDGET_TOKENS
     minimum_recent_complete_turns: int = 2
     preferred_recent_complete_turns: int = 2
     manual_compaction_minimum_complete_turns: int = 5
     mode: SummaryMode = "trim_only"
 
     def __post_init__(self) -> None:
-        if (self.target_tokens, self.high_watermark_tokens, self.hard_limit_tokens) != (
-            12_000,
-            15_000,
-            16_384,
-        ):
-            raise ValueError("working_v2_16k requires target/high/hard = 12000/15000/16384")
-        if (self.summary_budget_tokens, self.recent_budget_tokens) != (
-            SUMMARY_CONTENT_BUDGET_TOKENS,
-            512,
-        ):
-            raise ValueError(
-                "working_v2_16k requires summary/recent = 2048/512"
-            )
-        if (
+        positive = (
+            self.hard_limit_tokens,
+            self.high_watermark_tokens,
+            self.target_tokens,
+            self.summary_budget_tokens,
+            self.recent_budget_tokens,
             self.minimum_recent_complete_turns,
             self.preferred_recent_complete_turns,
             self.manual_compaction_minimum_complete_turns,
-        ) != (2, 2, 5):
-            raise ValueError("working_v2_16k requires minimum/preferred/manual turns = 2/2/5")
+        )
+        if any(isinstance(value, bool) or not isinstance(value, int) or value < 1 for value in positive):
+            raise ValueError("working memory policy values must be positive integers")
+        if not (
+            self.target_tokens < self.high_watermark_tokens <= self.hard_limit_tokens
+        ):
+            raise ValueError("working memory watermarks must be target < high <= hard")
+        if self.summary_budget_tokens > SUMMARY_CONTENT_BUDGET_TOKENS:
+            raise ValueError("summary_budget_tokens exceeds the global summary budget")
+        if self.summary_budget_tokens + self.recent_budget_tokens >= self.hard_limit_tokens:
+            raise ValueError("working memory policy leaves no compaction headroom")
+        if self.minimum_recent_complete_turns > self.preferred_recent_complete_turns:
+            raise ValueError("minimum recent turns cannot exceed preferred recent turns")
+        if (
+            self.minimum_recent_complete_turns < 1
+            or self.preferred_recent_complete_turns < 1
+            or self.manual_compaction_minimum_complete_turns < 1
+        ):
+            raise ValueError("recent-turn limits must be positive")
         if self.mode not in {"trim_only", "background_summary"}:
             raise ValueError("unknown working summary mode")
+
+    @classmethod
+    def for_context_budget(
+        cls,
+        *,
+        context_window: int | None,
+        output_reserve_tokens: int,
+        safety_margin_tokens: int = 128,
+        mode: SummaryMode = "trim_only",
+    ) -> WorkingMemoryPolicy:
+        """Derive a bounded working window from the model's usable input budget."""
+        if output_reserve_tokens < 1 or safety_margin_tokens < 0:
+            raise ValueError("context budget values are invalid")
+        if context_window is None:
+            return cls(mode=mode)
+        if context_window < MIN_MODEL_WORKING_BUDGET_TOKENS:
+            raise ValueError("model context window is too small for working memory")
+        usable_input = max(
+            MIN_MODEL_WORKING_BUDGET_TOKENS,
+            context_window - safety_margin_tokens - output_reserve_tokens,
+        )
+        memory_budget = max(
+            MIN_MODEL_WORKING_BUDGET_TOKENS,
+            usable_input - MODEL_PROMPT_OVERHEAD_TOKENS,
+        )
+        hard = min(DEFAULT_HARD_LIMIT_TOKENS, memory_budget)
+        if hard == DEFAULT_HARD_LIMIT_TOKENS:
+            return cls(mode=mode)
+        summary_budget = min(
+            SUMMARY_CONTENT_BUDGET_TOKENS,
+            max(MIN_MODEL_SUMMARY_BUDGET_TOKENS, hard // 4),
+        )
+        recent_budget = min(
+            DEFAULT_RECENT_BUDGET_TOKENS,
+            max(MIN_MODEL_RECENT_BUDGET_TOKENS, hard // 8),
+        )
+        tail_budget = summary_budget + recent_budget
+        if tail_budget >= hard:
+            summary_budget = max(MIN_MODEL_SUMMARY_BUDGET_TOKENS, hard // 3)
+            recent_budget = max(MIN_MODEL_RECENT_BUDGET_TOKENS, hard // 6)
+            tail_budget = summary_budget + recent_budget
+        if tail_budget >= hard:
+            hard = tail_budget + 1
+        target = min(hard - 2, max(tail_budget + 1, int(hard * 0.75)))
+        high = min(hard - 1, max(target + 1, int(hard * 0.92)))
+        return cls(
+            hard_limit_tokens=hard,
+            high_watermark_tokens=high,
+            target_tokens=target,
+            summary_budget_tokens=summary_budget,
+            recent_budget_tokens=recent_budget,
+            mode=mode,
+        )
 
 
 @dataclass(frozen=True)
@@ -140,6 +214,7 @@ class CompactionJob:
     revision: int
     previous_summary: WorkingSummaryArtifact | None
     frozen_turns: tuple[ConversationTurn, ...]
+    summary_budget_tokens: int = SUMMARY_CONTENT_BUDGET_TOKENS
 
 
 @dataclass(frozen=True)
@@ -250,6 +325,7 @@ class WorkingMemory:
             revision=self._revision,
             previous_summary=self._summary,
             frozen_turns=frozen,
+            summary_budget_tokens=self.policy.summary_budget_tokens,
         )
 
     def publish_summary(self, job: CompactionJob, artifact: WorkingSummaryArtifact) -> bool:
@@ -354,6 +430,9 @@ class WorkingMemory:
                 open_items=tuple(summary_data.get("open_items", ())),
                 continuity_refs=tuple(summary_data.get("continuity_refs", ())),
                 prompt_fingerprint=str(summary_data.get("prompt_fingerprint", "")),
+                content_budget_tokens=int(
+                    summary_data.get("content_budget_tokens", SUMMARY_CONTENT_BUDGET_TOKENS)
+                ),
             )
         memory._turns = turns
         memory._generation = int(payload.get("generation", 0))

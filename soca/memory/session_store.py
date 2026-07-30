@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from soca.memory.working import WorkingMemory
+from soca.memory.working import WorkingMemory, WorkingMemoryPolicy
 
 try:
     import fcntl
@@ -100,7 +100,10 @@ class SessionCheckpointStore:
         return memory
 
     def load_with_metadata(
-        self, thread_id: str
+        self,
+        thread_id: str,
+        *,
+        policy: WorkingMemoryPolicy | None = None,
     ) -> tuple[WorkingMemory | None, int | None, str | None]:
         target = self._path(thread_id)
         with self._exclusive_lock():
@@ -112,7 +115,7 @@ class SessionCheckpointStore:
                 raise ValueError("session checkpoint permissions must be private")
             payload = self._read_payload(target)
             return (
-                WorkingMemory.from_dict(_working_payload(payload)),
+                WorkingMemory.from_dict(_working_payload(payload), policy=policy),
                 _payload_revision(payload),
                 _payload_digest(payload),
             )

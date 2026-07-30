@@ -261,8 +261,9 @@ def test_llm_select_invalidates_previous_prompt_manifest() -> None:
         )
         events = [json.loads(line) for line in output.getvalue().splitlines()]
         context = [event for event in events if event["event"] == "context"][-1]
-        assert "prompt_manifest" not in context
-        assert "prompt_hash" not in context
+        assert context["estimated"] is True
+        assert context["prompt_manifest"]["model_id"] == "llama-3.1-8b-instant"
+        assert context["prompt_hash"]
     finally:
         engine.shutdown()
 

@@ -7,6 +7,8 @@ from soca.core.context_budget import (
     PromptAssembler,
     PromptBudgetError,
     PromptComponent,
+    capability_from_engine,
+    capability_from_values,
 )
 
 
@@ -59,6 +61,73 @@ def test_manifest_hash_is_deterministic_and_unknown_context_is_reported() -> Non
     assert first.prompt_hash == second.prompt_hash
     assert first.context_window is None
     assert first.input_budget_tokens is None
+
+
+def test_manifest_records_capability_provenance() -> None:
+    capability = capability_from_values(
+        model_id="remote/model",
+        context_window=8_192,
+        max_output_tokens=2_048,
+        tokenizer="provider_estimate",
+        source="remote_catalog",
+    )
+    _, manifest = PromptAssembler(capability).assemble(
+        [PromptComponent("current", "xin chào", priority=0, required=True)],
+        requested_output_tokens=4_096,
+    )
+
+    payload = manifest.to_dict()
+    assert payload["capability_source"] == "remote_catalog"
+    assert payload["tokenizer"] == "provider_estimate"
+    assert payload["effective_output_tokens"] == 2_048
+
+
+def test_capability_from_engine_prefers_explicit_runtime_metadata() -> None:
+    class Engine:
+        model_key = "local/model"
+        n_ctx = 4_096
+        model_max_output_tokens = 1_024
+        tokenizer_name = "llama_cpp"
+        config = None
+
+    capability = capability_from_engine(Engine())
+
+    assert capability.model_id == "local/model"
+    assert capability.context_window == 4_096
+    assert capability.max_output_tokens == 1_024
+    assert capability.tokenizer == "llama_cpp"
+    assert capability.source == "engine_metadata"
+
+
+def test_capability_from_engine_marks_runtime_overrides() -> None:
+    class Engine:
+        model_key = "remote/model"
+        config = None
+
+    capability = capability_from_engine(
+        Engine(),
+        model_context_window=1_048_576,
+        model_max_output_tokens=65_536,
+    )
+
+    assert capability.context_window == 1_048_576
+    assert capability.max_output_tokens == 65_536
+    assert capability.source == "runtime_options"
+
+
+def test_capability_from_engine_distinguishes_n_ctx_from_registry_context() -> None:
+    class Config:
+        context_window = None
+
+    class Engine:
+        model_key = "local/model"
+        config = Config()
+        n_ctx = 4_096
+
+    capability = capability_from_engine(Engine())
+
+    assert capability.context_window == 4_096
+    assert capability.source == "engine_metadata"
 
 
 @pytest.mark.parametrize("context_window", [2_048, 4_096, 16_384, 32_768])

@@ -38,6 +38,7 @@ from soca.memory import (
     SessionCheckpointStore,
     SessionMemory,
     SessionPersistence,
+    WorkingMemoryPolicy,
     default_session_checkpoint_home,
 )
 from soca.tools import LocalTimeTool, MemorySearchTool, Tool, ToolRuntime
@@ -314,6 +315,11 @@ def build_voice_runtime(
             memory_status = f"disabled:not_found:{config.vault}"
 
     if not config.no_memory:
+        working_policy = WorkingMemoryPolicy.for_context_budget(
+            context_window=LLM_MODEL_REGISTRY[config.llm_model].context_window,
+            output_reserve_tokens=config.max_tokens,
+            mode="background_summary",
+        )
         session_memory = (
             session_memory
             if session_memory is not None
@@ -322,6 +328,7 @@ def build_voice_runtime(
                 max_turns=config.session_turns,
                 max_chars=config.session_chars,
                 max_turn_chars=config.turn_chars,
+                working_policy=working_policy,
                 summary_threads=config.llm_threads,
                 summary_gpu_layers=config.llm_gpu_layers,
                 persistence=config.session_persistence,

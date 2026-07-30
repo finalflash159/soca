@@ -18,7 +18,6 @@ from pathlib import Path
 from soca.llm import LLMResult, StructuredLLMEngine
 from soca.llm.registry import LLMModelConfig
 from soca.memory.working import (
-    SUMMARY_CONTENT_BUDGET_TOKENS,
     CompactionJob,
     WorkingSummaryArtifact,
     approximate_tokens,
@@ -234,8 +233,7 @@ _SUMMARY_POLICY = (
     "- Không bỏ trống structured field chỉ vì cùng fact đã xuất hiện trong summary.",
     "- Bỏ lời chào, câu xác nhận, sequence number và dữ liệu trích dẫn không tạo state.",
     "- Không suy luận fact, không tạo việc cần làm mới, không thêm lời khuyên.",
-    f"- Tổng nội dung artifact (summary và các array) không quá {SUMMARY_CONTENT_BUDGET_TOKENS} token.",
-    f"- Decoder có hard cap {SUMMARY_OUTPUT_MAX_TOKENS} generated tokens; phải tự rút gọn trước khi xuất, không chờ bị cắt.",
+    "- Tuân thủ đúng artifact budget và generation cap của JOB_BUDGET bên dưới.",
     "MERGE CHECKLIST:",
     "1. Bắt đầu từ toàn bộ entry đang active trong từng field của PREVIOUS_SUMMARY_JSON.",
     "2. Chỉ xóa hoặc thay entry cũ khi frozen turns nói rõ đã sửa, hủy hoặc hoàn tất.",
@@ -252,7 +250,11 @@ def build_summary_prompt(job: CompactionJob, *, repair: bool = False) -> str:
         {"sequence": turn.sequence, "user": turn.user_text, "assistant": turn.assistant_text}
         for turn in job.frozen_turns
     ]
-    policy = list(_SUMMARY_POLICY)
+    policy = [
+        *_SUMMARY_POLICY,
+        f"JOB_BUDGET: artifact tối đa {job.summary_budget_tokens} token; generation tối đa {_summary_output_budget(job)} token.",
+        "Tự rút gọn để nằm trong hai giới hạn trên, không chờ decoder cắt chuỗi.",
+    ]
     if repair:
         policy.extend(
             [
@@ -302,8 +304,13 @@ def artifact_from_json(job: CompactionJob, raw: str) -> WorkingSummaryArtifact:
         source_through_sequence=job.frozen_turns[-1].sequence,
         summary=summary.strip(),
         prompt_fingerprint=prompt_fingerprint(),
+        content_budget_tokens=job.summary_budget_tokens,
         **values,
     )
+
+
+def _summary_output_budget(job: CompactionJob) -> int:
+    return min(SUMMARY_OUTPUT_MAX_TOKENS, max(256, job.summary_budget_tokens * 2))
 
 
 def execute_summary_job(
@@ -315,7 +322,7 @@ def execute_summary_job(
             build_summary_prompt(job, repair=repair),
             schema_name="working_summary_v1",
             schema=SUMMARY_SCHEMA,
-            max_tokens=SUMMARY_OUTPUT_MAX_TOKENS,
+            max_tokens=_summary_output_budget(job),
             temperature=0.0,
             top_p=1.0,
             inject_persona=False,
@@ -336,7 +343,7 @@ def summary_context_window(job: CompactionJob, spec: SummaryModelSpec) -> int:
     """Size llama.cpp context for this job without allocating the 32K maximum eagerly."""
 
     prompt_tokens = approximate_tokens(build_summary_prompt(job))
-    required = int(prompt_tokens * 1.25) + SUMMARY_OUTPUT_MAX_TOKENS + 1024
+    required = int(prompt_tokens * 1.25) + _summary_output_budget(job) + 1024
     rounded = max(4096, ((required + 1023) // 1024) * 1024)
     if rounded > spec.context_window:
         raise ValueError("summary compaction input exceeds the selected model context")

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from soca.core.context_budget import (
+    DEFAULT_CONTEXT_SAFETY_MARGIN_TOKENS,
     PromptAssembler,
     PromptBudgetError,
     PromptComponent,
@@ -204,7 +205,7 @@ class StructuredWorkflowPlanner:
         repair_attempts: int = 1,
         model_context_window: int | None = None,
         model_max_output_tokens: int | None = None,
-        context_safety_margin_tokens: int = 128,
+        context_safety_margin_tokens: int = DEFAULT_CONTEXT_SAFETY_MARGIN_TOKENS,
     ) -> None:
         if max_tokens < 1 or max_actions < 1 or repair_attempts not in {0, 1}:
             raise ValueError("planner limits are invalid")
