@@ -91,7 +91,7 @@ def test_ask_time_question_uses_tool_without_llm(tmp_path: Path) -> None:
     assert "used_llm" in result.output
 
 
-def test_ask_without_llm_stays_out_of_scope_without_a_tool_call(tmp_path: Path) -> None:
+def test_ask_without_llm_blocks_unsupported_request_without_a_tool_call(tmp_path: Path) -> None:
     result = CliRunner().invoke(
         main,
         [
@@ -100,12 +100,14 @@ def test_ask_without_llm_stays_out_of_scope_without_a_tool_call(tmp_path: Path) 
             "--vault",
             str(tmp_path),
             "--no-llm",
+            "--tool-router",
+            "deterministic",
             "--trace",
         ],
     )
 
     assert result.exit_code == 0, result.output
-    assert "Route: out_of_scope" in result.output
+    assert "Route: blocked" in result.output
     assert "router_reason" in result.output
     assert "unsupported_capability" not in result.output
 
@@ -163,6 +165,8 @@ def test_ask_free_chat_uses_fake_llm(monkeypatch, tmp_path: Path) -> None:
             "--vault",
             str(tmp_path),
             "--no-memory",
+            "--tool-router",
+            "deterministic",
             "--trace",
         ],
     )
@@ -189,6 +193,9 @@ def test_ask_llm_override_controls_runtime_model(monkeypatch, tmp_path: Path) ->
             "--vault",
             str(tmp_path),
             "--no-memory",
+            "--no-semantic-router",
+            "--tool-router",
+            "deterministic",
         ],
     )
 
@@ -202,7 +209,16 @@ def test_ask_usage_flag_shows_token_metrics(monkeypatch, tmp_path: Path) -> None
 
     result = CliRunner().invoke(
         main,
-        ["ask", "xin chào", "--vault", str(tmp_path), "--no-memory", "--usage"],
+        [
+            "ask",
+            "xin chào",
+            "--vault",
+            str(tmp_path),
+            "--no-memory",
+            "--tool-router",
+            "deterministic",
+            "--usage",
+        ],
     )
 
     assert result.exit_code == 0, result.output
@@ -210,3 +226,20 @@ def test_ask_usage_flag_shows_token_metrics(monkeypatch, tmp_path: Path) -> None
     assert "route=free_chat" in result.output
     assert "tok/s" in result.output
     assert "out 8" in result.output
+
+
+@pytest.mark.parametrize("command", ["ask", "chat"])
+def test_llm_router_requires_an_llm(command: str, tmp_path: Path) -> None:
+    args = [command]
+    if command == "ask":
+        args.append("xin chào")
+    args.extend(["--vault", str(tmp_path), "--no-llm", "--tool-router", "llm"])
+    result = CliRunner().invoke(
+        main,
+        args,
+        input="/exit\n" if command == "chat" else None,
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "requires an LLM" in result.output
+    assert "Traceback" not in result.output

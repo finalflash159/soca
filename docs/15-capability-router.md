@@ -5,6 +5,14 @@ used to replace the superseded semantic-router path. It is intentionally about
 capability selection only; retrieval relevance, evidence reconciliation, and
 answer groundedness remain separate runtime gates.
 
+The structured provenance index for every result below is
+[`docs/evidence/capability-router-20260730.json`](evidence/capability-router-20260730.json).
+It records run IDs, explicit run types, source Git state, corpus/model
+revisions, hardware, metrics and external raw-artifact paths. The remote
+captures are characterization evidence only because the provider does not
+expose an immutable model revision and those runs were made from a dirty
+working tree; they are not release gates.
+
 ## Production contract
 
 Chat and voice use the same cascade:
@@ -45,7 +53,9 @@ Production semantic examples load only rows with `split=train` or
 `split=validation`. The sealed test rows are never loaded as runtime examples.
 The router benchmark uses FastEmbed `intfloat/multilingual-e5-small` for the
 capability classifier. This is distinct from the production knowledge dense
-backend (`AITeamVN/Vietnamese_Embedding_v2`).
+backend (`AITeamVN/Vietnamese_Embedding_v2`). The benchmark snapshot is
+`614241f622f53c4eeff9890bdc4f31cfecc418b3`; the production knowledge model is
+pinned to `18b44161e041bf1d3a333ab5144b5b7b93f914d2`.
 
 The selected router defaults are:
 
@@ -68,6 +78,10 @@ uv run python eval/eval_full_cascade.py \
   --predictions /tmp/soca-router-local/predictions.jsonl \
   --output /tmp/soca-router-local/report.json
 ```
+
+Evidence record: run ID `capability-local-heldout-20260730` in the structured
+provenance index. Its report and predictions are external artifacts under
+`/tmp/soca-router-local/`, not committed logs.
 
 The loader uses train/validation as examples and scores all three splits.
 
@@ -104,7 +118,9 @@ tier or clarification policy.
 
 All raw provider reports and per-turn logs were written outside the repository
 under `/tmp/soca-router-remote-20260730`. No API key or remote log is a release
-artifact.
+artifact. The blocking and streaming records are respectively identified as
+`runtime-openrouter-blocking-20260730` and
+`runtime-openrouter-streaming-20260730` in the structured provenance index.
 
 ### Runtime blocking and streaming
 

@@ -498,6 +498,7 @@ def ask(
     usage: bool,
 ) -> None:
     """Run one text-only SoCa turn without ASR/TTS."""
+    _validate_text_router_options(no_llm=no_llm, tool_router=tool_router)
     config = build_text_runtime_config(
         profile=profile,
         llm_model=llm_model,
@@ -619,6 +620,7 @@ def chat(
     usage: bool,
 ) -> None:
     """Run an interactive text chat session without ASR/TTS."""
+    _validate_text_router_options(no_llm=no_llm, tool_router=tool_router)
     config = build_text_runtime_config(
         profile=profile,
         llm_model=llm_model,
@@ -791,6 +793,14 @@ def build_text_runtime_config(
         )
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
+
+
+def _validate_text_router_options(*, no_llm: bool, tool_router: str) -> None:
+    if no_llm and tool_router == "llm":
+        raise click.UsageError(
+            "--tool-router llm requires an LLM; remove --no-llm or choose "
+            "--tool-router deterministic/cascade."
+        )
 
 
 def _launch_ink_ui(

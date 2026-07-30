@@ -2174,3 +2174,9 @@ and produced 18/18 route/terminal parity with zero provider errors. Their
 goal-level pass rate was 1/14 because several answer/citation goals still fail;
 this is retained as a failure, not promoted to a retrieval-quality pass. Raw
 remote logs remain outside Git under `/tmp/soca-router-remote-20260730`.
+
+Structured evidence and provenance: [`docs/evidence/capability-router-20260730.json`](docs/evidence/capability-router-20260730.json).
+That record includes run IDs, explicit run types, source SHA/dirty state,
+corpus and model revisions, hardware, metrics, and external report/raw-log
+references. The remote runs are explicitly characterization-only because the
+provider model has no immutable revision and the captured source was dirty.

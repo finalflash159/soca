@@ -116,6 +116,9 @@ def test_chat_llm_override_controls_runtime_model(monkeypatch, tmp_path: Path) -
             "--vault",
             str(tmp_path),
             "--no-memory",
+            "--no-semantic-router",
+            "--tool-router",
+            "deterministic",
         ],
         input="xin chào\n/exit\n",
     )
@@ -136,6 +139,9 @@ def test_chat_memory_commands_show_and_clear_session(monkeypatch, tmp_path: Path
             "chat",
             "--vault",
             str(tmp_path),
+            "--no-semantic-router",
+            "--tool-router",
+            "deterministic",
         ],
         input="xin chào\n/memory\n/clear\n/memory\n/exit\n",
     )
@@ -180,6 +186,9 @@ def test_chat_help_and_trace_toggle(tmp_path: Path) -> None:
             str(tmp_path),
             "--no-memory",
             "--no-llm",
+            "--no-semantic-router",
+            "--tool-router",
+            "deterministic",
         ],
         input="/help\n/trace\nđặt hẹn giờ 5 phút\n/exit\n",
     )
@@ -187,7 +196,7 @@ def test_chat_help_and_trace_toggle(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert "Lệnh chat" in result.output
     assert "Trace: on" in result.output
-    assert "Route: out_of_scope" in result.output
+    assert "Route: blocked" in result.output
     assert "unsupported_capability" not in result.output
 
 
@@ -198,7 +207,16 @@ def test_chat_usage_flag_and_session_command(monkeypatch, tmp_path: Path) -> Non
 
     result = CliRunner().invoke(
         main,
-        ["chat", "--vault", str(tmp_path), "--no-memory", "--usage"],
+        [
+            "chat",
+            "--vault",
+            str(tmp_path),
+            "--no-memory",
+            "--no-semantic-router",
+            "--tool-router",
+            "deterministic",
+            "--usage",
+        ],
         input="xin chào\n/usage\n/exit\n",
     )
 
