@@ -35,7 +35,7 @@ export const MEMORY_STYLE: Record<MemoryType, { tag: string; color: string }> =
     procedural: { tag: "proc", color: COLOR.muted },
   };
 
-export type RetrievalSource = "bm25" | "dense" | "rrf";
+export type RetrievalSource = string;
 export const RETRIEVAL_STYLE: Record<
   RetrievalSource,
   { tag: string; color: string }

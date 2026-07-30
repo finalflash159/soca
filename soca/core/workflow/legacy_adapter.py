@@ -56,15 +56,16 @@ def iter_runtime_events(
     source: RuntimeResult | Iterable[RuntimeStreamEvent],
     *,
     turn_id: str = "",
+    goal_id: str = "",
     session_id: str = "legacy-session",
     surface: TurnSource = "chat",
 ) -> Iterator[WorkflowEvent]:
     run_id = turn_id.strip() or uuid4().hex
-    goal_id = f"legacy-{run_id}"
+    resolved_goal_id = goal_id.strip() or f"legacy-{run_id}"
     stream = WorkflowEventStream(
         session_id=session_id,
         run_id=run_id,
-        goal_id=goal_id,
+        goal_id=resolved_goal_id,
         surface=surface,
     )
     yield stream.emit(
@@ -80,6 +81,12 @@ def iter_runtime_events(
             status=EventStatus.COMPLETED,
             payload={"route": source.route.value},
         )
+        if source.response_text.strip():
+            yield stream.emit(
+                EventType.ANSWER_DELTA,
+                TurnNode.SYNTHESIZE,
+                payload={"text": source.response_text},
+            )
         yield stream.emit_terminal(terminal_from_runtime_result(source))
         return
 

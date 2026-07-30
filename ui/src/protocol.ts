@@ -85,11 +85,14 @@ export interface MemoryTraceEvent {
     importance: number;
     total: number;
   }>;
-  compacted_turn_count: number;
-  recent_turn_count: number;
+  hit_count?: number;
+  compacted_turn_count: number | null;
+  recent_turn_count: number | null;
   background_status: "idle" | "queued" | "running" | "failed";
-  episodic_enabled: boolean;
-  pending_proposal_count: number;
+  summary_worker_state: string;
+  summary_generation: number | null;
+  pending_compaction: boolean;
+  pending_proposal_count: number | null;
 }
 
 export interface MemoryProposalEvent {
@@ -117,10 +120,23 @@ export interface RetrievalTraceEvent {
   tier: "deterministic" | "semantic" | "llm" | "none";
   latency_ms: number;
   columns: Array<{
-    source: "bm25" | "dense";
-    hits: Array<{ path: string; score: number }>;
+    source: string;
+    hits: Array<{
+      path: string;
+      score: number;
+      sparse_score?: number;
+      dense_score?: number;
+      fusion_score?: number;
+    }>;
   }>;
-  fused: Array<{ path: string; picked: boolean }>;
+  fused: Array<{
+    path: string;
+    picked: boolean;
+    backend?: string;
+    score?: number;
+  }>;
+  rejected_count?: number;
+  evidence?: Record<string, unknown> | null;
 }
 
 export type TurnProgressPhase =
@@ -140,7 +156,12 @@ export interface TurnProgressEvent {
   surface: "chat" | "voice";
   phase: TurnProgressPhase;
   operation: string;
-  status: "active" | "done";
+  status: "active" | "done" | "failed" | "cancelled";
+  run_id?: string;
+  goal_id?: string;
+  sequence?: number;
+  terminal_status?: string;
+  detail?: string;
 }
 
 export type WorkflowEventName =
@@ -265,6 +286,8 @@ export interface ChatEvent {
   llm_status?: string;
   knowledge_status?: string;
   memory_status?: string;
+  run_id?: string;
+  goal_id?: string;
 }
 
 export interface StatusEvent {

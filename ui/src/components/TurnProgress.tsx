@@ -1,4 +1,4 @@
-import { Box } from "ink";
+import { Box, Text } from "ink";
 import type {
   TurnProgressEvent,
   TurnProgressPhase,
@@ -40,6 +40,16 @@ export function TurnProgress({
   progress: TurnProgressEvent;
 }) {
   const view = PHASE_VIEW[progress.phase];
+  if (progress.status === "failed" || progress.status === "cancelled") {
+    return (
+      <Box paddingX={1} marginBottom={1}>
+        <Text color={progress.status === "failed" ? ROLE.danger : ROLE.busy}>
+          {progress.status === "failed" ? "✗" : "·"} {progress.status === "failed" ? "Failed" : "Cancelled"}
+          {progress.detail ? ` · ${progress.detail}` : ""}
+        </Text>
+      </Box>
+    );
+  }
   return (
     <Box paddingX={1} marginBottom={1}>
       <Spinner

@@ -84,12 +84,27 @@ Engine phát `turn_progress` từ stage runtime đang chạy thật; UI không d
 để giả lập tiến độ. Các phase ổn định gồm chuẩn bị, phân tích, định tuyến,
 memory, knowledge retrieval, tool, tổng hợp LLM, validation và TTS. Chat và
 voice dùng chung event này, còn chi tiết nội bộ nằm trong trường `operation`.
-Panel progress đổi accent theo loại công việc và giữ tối đa bốn phase vừa hoàn
-tất để người dùng thấy luồng xử lý mà không làm timeline quá ồn.
+Panel progress đổi accent theo loại công việc và chỉ giữ hàng đợi ngắn cho các
+stage đến quá nhanh. Mỗi event có `run_id`, `goal_id` và `sequence`; reducer bỏ
+event cũ hoặc event thuộc run cũ thay vì để một lượt xử lý ghi đè lượt mới.
+`/workflow` mở inspector của run hiện tại: mặc định là một dòng terminal summary,
+có thể mở rộng để xem node, action, public update, answer delta và terminal
+outcome. Answer delta chỉ là pending output; timeline chỉ nhận câu trả lời sau
+terminal event.
 
 Tin nhắn người dùng giữ layout phẳng hiện tại. Mỗi câu trả lời hoàn chỉnh của
 SoCa được đặt trong một khung hairline dùng màu dawn palette đã pha với border
-nền; progress biến mất khi engine phát trạng thái `done`.
+nền. Khi thất bại hoặc bị cancel, progress giữ terminal state và hiển thị lỗi;
+chỉ trạng thái `done` mới kết thúc progress bình thường.
+
+Retrieval inspector lấy backend, sparse/dense/fusion score, rejection count và
+evidence decision từ runtime trace. Empty retrieval vẫn được phát thành trace
+với `columns=[]` và lý do từ evidence gate. Memory trace lấy session stats,
+summary worker và compaction coordinator; dữ liệu không có nguồn được biểu diễn
+bằng `null`, không thay bằng số không hoặc chip episodic/procedural tĩnh.
+
+`/context` hiển thị prompt manifest, hash, component bị bỏ, output reserve,
+observed/provider token và delta nếu provider trả usage thật.
 
 ## Vietnamese/IME input boundary
 

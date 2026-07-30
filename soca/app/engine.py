@@ -11,6 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 from queue import Queue
 from typing import Any, Protocol, TextIO
+from uuid import uuid4
 
 import numpy as np
 
@@ -37,11 +38,23 @@ from soca.core.context_budget import (
 )
 from soca.core.usage import SessionUsage, TurnUsage
 from soca.core.voice_runtime import build_voice_runtime
-from soca.core.workflow import ActiveGoalStore, GoalCheckpointStore
+from soca.core.workflow import (
+    ActiveGoalStore,
+    EventStatus,
+    EventType,
+    GoalCheckpointStore,
+    GoalStatus,
+    TerminalOutcome,
+    TerminalStatus,
+    TurnNode,
+    WorkflowEventStream,
+)
+from soca.core.workflow.legacy_adapter import terminal_from_runtime_result
 from soca.core.workflow.protocol import (
     CURRENT_PROTOCOL_VERSION,
     adapt_legacy_command,
     protocol_hello,
+    workflow_event_to_protocol,
 )
 from soca.llm.providers import (
     PRICING_TABLE_AS_OF,
@@ -71,6 +84,15 @@ TextRuntimeBuilder = Callable[..., TextRuntimeBundle]
 SettingsLoader = Callable[[], LlmSettings]
 SettingsSaver = Callable[[LlmSettings], None]
 CatalogFetcher = Callable[[LLMProvider, str], list[RemoteModelInfo]]
+
+
+@dataclasses.dataclass
+class _TurnProgressContext:
+    surface: str
+    run_id: str
+    goal_id: str
+    workflow: WorkflowEventStream
+    sequence: int = 0
 
 
 def _memory_protocol_mode(
@@ -107,6 +129,84 @@ def _progress_phase_for_stage(stage: str) -> str:
     }:
         return "validation"
     return "analyzing"
+
+
+def _terminal_status_for_result(result: Any) -> str:
+    route = getattr(getattr(result, "route", None), "value", "")
+    if route == "clarification":
+        return "needs_clarification"
+    trace = getattr(result, "trace", None)
+    if getattr(trace, "evidence_status", "") == "insufficient":
+        return "insufficient_evidence"
+    if bool(getattr(result, "blocked", False)):
+        return "safe_failure"
+    return "achieved"
+
+
+def _workflow_node_for_phase(phase: str) -> TurnNode:
+    return {
+        "preparing": TurnNode.ADMIT,
+        "analyzing": TurnNode.RESOLVE_GOAL,
+        "routing": TurnNode.CHOOSE_CAPABILITY,
+        "memory": TurnNode.EXECUTE_ACTION,
+        "retrieval": TurnNode.EXECUTE_ACTION,
+        "tool": TurnNode.EXECUTE_ACTION,
+        "synthesis": TurnNode.SYNTHESIZE,
+        "validation": TurnNode.VERIFY_ANSWER,
+        "speech": TurnNode.FINALIZE,
+        "complete": TurnNode.FINALIZE,
+    }.get(phase, TurnNode.ADMIT)
+
+
+def _retrieval_trace_payload(
+    result: Any, trace: Any, hits: tuple[Any, ...] | list[Any]
+) -> dict[str, Any]:
+    columns: dict[str, list[dict[str, Any]]] = {}
+    fused: list[dict[str, Any]] = []
+    for hit in hits:
+        backend = str(getattr(hit, "retrieval_backend", "unknown") or "unknown")
+        item: dict[str, Any] = {
+            "path": str(getattr(getattr(hit, "document", None), "path", ""))[:240],
+            "score": float(getattr(hit, "score", 0.0)),
+        }
+        for field in ("sparse_score", "dense_score", "fusion_score"):
+            value = getattr(hit, field, None)
+            if value is not None:
+                item[field] = float(value)
+        columns.setdefault(backend, []).append(item)
+        fused.append(
+            {
+                "path": item["path"],
+                "picked": True,
+                "backend": backend,
+                "score": item["score"],
+            }
+        )
+    decision = next(
+        (
+            item
+            for item in getattr(trace, "evidence_decisions", ())
+            if getattr(item, "source", None) == "knowledge"
+        ),
+        None,
+    )
+    return {
+        "event": "retrieval_trace",
+        "query": getattr(getattr(result, "frame", None), "text", ""),
+        "tier": (
+            trace.tool_router_tier
+            if trace.tool_router_tier in {"deterministic", "semantic", "llm", "none"}
+            else "none"
+        ),
+        "latency_ms": trace.stage_latencies_ms.get("knowledge", 0.0),
+        "columns": [
+            {"source": source, "hits": source_hits}
+            for source, source_hits in columns.items()
+        ],
+        "fused": fused,
+        "rejected_count": int(getattr(decision, "rejected_count", 0) or 0),
+        "evidence": decision.as_dict() if decision is not None else None,
+    }
 
 
 class LlmSecretStore(Protocol):
@@ -244,6 +344,8 @@ class SocaEngine:
         self.session_usage = SessionUsage()
         self._usage_lock = threading.Lock()
         self._last_prompt_manifest: dict[str, Any] | None = None
+        self._progress_lock = threading.Lock()
+        self._progress_contexts: dict[str, _TurnProgressContext] = {}
 
     # --- lifecycle --------------------------------------------------------------
 
@@ -1277,23 +1379,106 @@ class SocaEngine:
         *,
         operation: str = "",
         status: str = "active",
+        context: _TurnProgressContext | None = None,
+        terminal_status: str | None = None,
+        detail: str | None = None,
     ) -> None:
-        self.writer.emit(
-            {
-                "event": "turn_progress",
-                "surface": surface,
-                "phase": phase,
-                "operation": operation,
-                "status": status,
-            }
+        selected = context
+        if selected is None:
+            with self._progress_lock:
+                selected = self._progress_contexts.get(surface)
+        if selected is None:
+            return
+        with self._progress_lock:
+            sequence = selected.sequence
+            selected.sequence += 1
+        payload: dict[str, Any] = {
+            "event": "turn_progress",
+            "surface": surface,
+            "phase": phase,
+            "operation": operation,
+            "status": status,
+            "run_id": selected.run_id,
+            "goal_id": selected.goal_id,
+            "sequence": sequence,
+        }
+        if terminal_status is not None:
+            payload["terminal_status"] = terminal_status
+        if detail:
+            payload["detail"] = detail
+        self.writer.emit(payload)
+
+    def _start_turn_progress(self, surface: str) -> _TurnProgressContext:
+        run_id = uuid4().hex
+        active_goal = self.active_goal_store.current
+        goal_id = active_goal.goal_id if active_goal is not None else f"pending-{run_id}"
+        workflow_surface = "voice" if surface == "voice" else "chat"
+        context = _TurnProgressContext(
+            surface,
+            run_id,
+            goal_id,
+            WorkflowEventStream(
+                session_id=self.text_config.session_id,
+                run_id=run_id,
+                goal_id=goal_id,
+                surface=workflow_surface,
+            ),
         )
+        with self._progress_lock:
+            self._progress_contexts[surface] = context
+        self._emit_workflow_event(context, EventType.TURN_STARTED, TurnNode.ADMIT, EventStatus.STARTED)
+        return context
+
+    def _clear_turn_progress(self, context: _TurnProgressContext) -> None:
+        with self._progress_lock:
+            if self._progress_contexts.get(context.surface) is context:
+                self._progress_contexts.pop(context.surface, None)
+
+    def _emit_workflow_event(
+        self,
+        context: _TurnProgressContext,
+        event: EventType,
+        node: TurnNode,
+        status: EventStatus = EventStatus.ACTIVE,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        item = context.workflow.emit(event, node, status=status, payload=payload)
+        self.writer.emit(workflow_event_to_protocol(item))
+
+    def _emit_workflow_for_result(self, result: Any, context: _TurnProgressContext) -> None:
+        self._emit_workflow_event(
+            context,
+            EventType.STEP_COMPLETED,
+            TurnNode.SYNTHESIZE,
+            EventStatus.COMPLETED,
+            {"route": result.route.value},
+        )
+        if result.response_text.strip():
+            self._emit_workflow_event(
+                context,
+                EventType.ANSWER_DELTA,
+                TurnNode.SYNTHESIZE,
+                payload={"text": result.response_text},
+            )
+        terminal = context.workflow.emit_terminal(terminal_from_runtime_result(result))
+        self.writer.emit(workflow_event_to_protocol(terminal))
 
     def _emit_runtime_progress(self, surface: str, stage: str) -> None:
+        phase = _progress_phase_for_stage(stage)
         self._emit_turn_progress(
             surface,
-            _progress_phase_for_stage(stage),
+            phase,
             operation=stage,
         )
+        with self._progress_lock:
+            context = self._progress_contexts.get(surface)
+        if context is not None:
+            self._emit_workflow_event(
+                context,
+                EventType.STEP_PROGRESS,
+                _workflow_node_for_phase(phase),
+                payload={"operation": stage},
+            )
 
     # --- chat -------------------------------------------------------------------
 
@@ -1315,12 +1500,22 @@ class SocaEngine:
 
     def _chat_worker(self, text: str) -> None:
         terminal_emitted = False
+        progress = self._start_turn_progress("chat")
         try:
-            self.writer.emit({"event": "chat", "type": "start", "text": text})
+            self.writer.emit(
+                {
+                    "event": "chat",
+                    "type": "start",
+                    "text": text,
+                    "run_id": progress.run_id,
+                    "goal_id": progress.goal_id,
+                }
+            )
             self._emit_turn_progress(
                 "chat",
                 "preparing",
                 operation="runtime",
+                context=progress,
             )
             bundle = self._ensure_text_bundle()
             normalized_text, metadata = normalize_text_turn(text)
@@ -1331,6 +1526,7 @@ class SocaEngine:
                 "chat",
                 "analyzing",
                 operation="normalize_input",
+                context=progress,
             )
             try:
                 result = bundle.runtime.run_text_turn(
@@ -1341,6 +1537,7 @@ class SocaEngine:
                     progress_setter(None)
             usage = TurnUsage.from_runtime_result(result)
             self._track_usage(usage)
+            self._emit_workflow_for_result(result, progress)
             self.writer.emit(
                 {
                     "event": "chat",
@@ -1352,15 +1549,16 @@ class SocaEngine:
                 }
             )
             terminal_emitted = True
-            self._emit_turn_progress("chat", "complete", status="done")
+            self._emit_turn_progress(
+                "chat",
+                "complete",
+                status="done",
+                context=progress,
+                terminal_status=_terminal_status_for_result(result),
+            )
             trace = result.trace
             if trace is not None:
                 self._last_prompt_manifest = trace.prompt_manifest
-                commands = self._memory_commands()
-                try:
-                    pending_count = len(commands.list_pending()) if commands is not None else 0
-                except (OSError, ValueError):
-                    pending_count = 0
                 self.writer.emit(
                     {
                         "event": "router_trace",
@@ -1389,76 +1587,43 @@ class SocaEngine:
                     }
                 )
                 knowledge_hits = trace.knowledge_hits[:16]
-                if knowledge_hits:
-                    self.writer.emit(
-                        {
-                            "event": "retrieval_trace",
-                            "query": result.frame.text if result.frame is not None else "",
-                            "tier": trace.tool_router_tier
-                            if trace.tool_router_tier
-                            in {"deterministic", "semantic", "llm", "none"}
-                            else "none",
-                            "latency_ms": trace.stage_latencies_ms.get("knowledge", 0.0),
-                            "columns": [
-                                {
-                                    "source": "bm25",
-                                    "hits": [
-                                        {
-                                            "path": str(hit.document.path)[:240],
-                                            "score": float(hit.score),
-                                        }
-                                        for hit in knowledge_hits
-                                    ],
-                                }
-                            ],
-                            "fused": [
-                                {"path": str(hit.document.path)[:240], "picked": True}
-                                for hit in knowledge_hits
-                            ],
-                        }
-                    )
-                self.writer.emit(
-                    {
-                        "event": "memory_trace",
-                        "mode": _memory_protocol_mode(
-                            trace.memory_mode,
-                            trace.memory_degraded_reason,
-                            len(trace.memory_hits),
-                        ),
-                        "degraded_reason": trace.memory_degraded_reason,
-                        "hits": [
-                            {
-                                "id": str(getattr(hit.document, "id", ""))[:120],
-                                "corpus": "profile",
-                                "relevance": float(
-                                    getattr(getattr(hit, "score", None), "relevance", 0.0)
-                                ),
-                                "recency": float(
-                                    getattr(getattr(hit, "score", None), "recency", 0.0)
-                                ),
-                                "importance": float(
-                                    getattr(getattr(hit, "score", None), "importance", 0.0)
-                                ),
-                                "total": float(getattr(getattr(hit, "score", None), "total", 0.0)),
-                            }
-                            for hit in trace.memory_hits[:16]
-                        ],
-                        "compacted_turn_count": 0,
-                        "recent_turn_count": len(self.session_memory.turns)
-                        if self.session_memory is not None
-                        else 0,
-                        "background_status": "idle",
-                        "episodic_enabled": False,
-                        "pending_proposal_count": pending_count,
-                    }
+                has_knowledge_decision = any(
+                    getattr(item, "source", None) == "knowledge"
+                    for item in trace.evidence_decisions
                 )
+                if knowledge_hits or has_knowledge_decision:
+                    self.writer.emit(_retrieval_trace_payload(result, trace, knowledge_hits))
+                self.writer.emit(self._memory_trace_payload(trace, self._pending_proposal_count()))
             self._cmd_context()
         except Exception as exc:  # noqa: BLE001 - protocol boundary must not crash
             if not terminal_emitted:
+                outcome = TerminalOutcome(
+                    status=TerminalStatus.SYSTEM_FAILURE,
+                    final_text="",
+                    goal_status=GoalStatus.FAILED,
+                    error_code="chat_exception",
+                    metadata={
+                        "surface": "chat",
+                        "source": "engine",
+                        "exception_type": type(exc).__name__,
+                    },
+                )
+                terminal = progress.workflow.emit_terminal(outcome)
+                self.writer.emit(workflow_event_to_protocol(terminal))
+                self._emit_turn_progress(
+                    "chat",
+                    "complete",
+                    operation="runtime_error",
+                    status="failed",
+                    context=progress,
+                    terminal_status="system_failure",
+                    detail=type(exc).__name__,
+                )
                 self.writer.emit({"event": "chat", "type": "error", "text": str(exc)})
             else:
                 LOGGER.exception("chat worker failed after terminal result")
         finally:
+            self._clear_turn_progress(progress)
             # Worker cleanup is not a product terminal. An exception before a
             # result therefore emits chat:error, but never chat completion.
             self._chat_lock.release()
@@ -1502,6 +1667,79 @@ class SocaEngine:
             }
         )
         return bundle
+
+    def _memory_trace_payload(self, trace: Any, pending_count: int | None) -> dict[str, Any]:
+        stats = self.session_memory.stats() if self.session_memory is not None else None
+        compaction = (
+            self.session_memory.compaction_status() if self.session_memory is not None else None
+        )
+        compaction_status = getattr(compaction, "status", "idle")
+        if compaction_status in {"accepted", "running"}:
+            background_status = "queued" if compaction_status == "accepted" else "running"
+        elif compaction_status in {"failed", "unavailable"}:
+            background_status = "failed"
+        else:
+            background_status = "idle"
+        compacted_turn_count = (
+            getattr(compaction, "compacted_turns", None)
+            if compaction_status in {"published", "trim_only", "stale"}
+            else None
+        )
+        return {
+            "event": "memory_trace",
+            "mode": _memory_protocol_mode(
+                trace.get("memory_mode", "blob")
+                if isinstance(trace, dict)
+                else getattr(trace, "memory_mode", "blob"),
+                trace.get("memory_degraded_reason", "")
+                if isinstance(trace, dict)
+                else getattr(trace, "memory_degraded_reason", ""),
+                int(trace.get("memory_hit_count", 0))
+                if isinstance(trace, dict)
+                else len(getattr(trace, "memory_hits", ())),
+            ),
+            "degraded_reason": (
+                trace.get("memory_degraded_reason", "")
+                if isinstance(trace, dict)
+                else getattr(trace, "memory_degraded_reason", "")
+            ),
+            "hits": [
+                {
+                    "id": str(getattr(hit.document, "id", ""))[:120],
+                    "corpus": (
+                        "episode"
+                        if str(getattr(hit.document, "path", "")).startswith("memory/episodes/")
+                        or getattr(hit.document, "retrieval_backend", "") == "memory_episode"
+                        else "profile"
+                    ),
+                    "relevance": float(
+                        getattr(getattr(hit, "score", None), "relevance", 0.0)
+                    ),
+                    "recency": float(getattr(getattr(hit, "score", None), "recency", 0.0)),
+                    "importance": float(
+                        getattr(getattr(hit, "score", None), "importance", 0.0)
+                    ),
+                    "total": float(getattr(getattr(hit, "score", None), "total", 0.0)),
+                }
+                for hit in (
+                    getattr(trace, "memory_hits", ())[:16]
+                    if not isinstance(trace, dict)
+                    else ()
+                )
+            ],
+            "hit_count": (
+                int(trace.get("memory_hit_count", 0))
+                if isinstance(trace, dict)
+                else len(getattr(trace, "memory_hits", ()))
+            ),
+            "compacted_turn_count": compacted_turn_count,
+            "recent_turn_count": stats.turn_count if stats is not None else None,
+            "background_status": background_status,
+            "summary_worker_state": stats.worker_state if stats is not None else "disabled",
+            "summary_generation": stats.summary_generation if stats is not None else None,
+            "pending_compaction": stats.pending_compaction if stats is not None else False,
+            "pending_proposal_count": pending_count,
+        }
 
     def _create_session_memory(self) -> SessionMemory | None:
         config = self.text_config
@@ -1571,7 +1809,15 @@ class SocaEngine:
                     "usage": event.usage,
                 }
             )
-            if event.type == "runtime":
+            if event.type == "turn_start":
+                progress = self._start_turn_progress("voice")
+                self._emit_turn_progress(
+                    "voice",
+                    "preparing",
+                    operation="voice_turn",
+                    context=progress,
+                )
+            elif event.type == "runtime":
                 metadata = event.metadata
                 prompt_manifest = metadata.get("prompt_manifest")
                 self._last_prompt_manifest = (
@@ -1612,28 +1858,20 @@ class SocaEngine:
                         "latency_ms": float(metadata.get("router_latency_ms", 0.0)),
                     }
                 )
-                self.writer.emit(
-                    {
-                        "event": "memory_trace",
-                        "mode": _memory_protocol_mode(
-                            metadata.get("memory_mode", "blob"),
-                            metadata.get("memory_degraded_reason", ""),
-                            metadata.get("memory_hit_count", 0),
-                        ),
-                        "degraded_reason": metadata.get("memory_degraded_reason", ""),
-                        "hits": [],
-                        "compacted_turn_count": 0,
-                        "recent_turn_count": len(self.session_memory.turns)
-                        if self.session_memory is not None
-                        else 0,
-                        "background_status": "idle",
-                        "episodic_enabled": False,
-                        "pending_proposal_count": 0,
-                    }
-                )
+                self.writer.emit(self._memory_trace_payload(metadata, self._pending_proposal_count()))
             elif event.type == "progress":
                 stage = str(event.metadata.get("stage") or "")
                 self._emit_runtime_progress("voice", stage)
+            elif event.type == "llm_token":
+                with self._progress_lock:
+                    progress = self._progress_contexts.get("voice")
+                if progress is not None and event.text:
+                    self._emit_workflow_event(
+                        progress,
+                        EventType.ANSWER_DELTA,
+                        TurnNode.SYNTHESIZE,
+                        payload={"text": event.text},
+                    )
             elif event.type == "recorded":
                 self._emit_turn_progress(
                     "voice",
@@ -1648,10 +1886,86 @@ class SocaEngine:
                 )
             self._track_usage(event.usage)
             if event.type == "done":
-                self._emit_turn_progress("voice", "complete", status="done")
+                with self._progress_lock:
+                    progress = self._progress_contexts.get("voice")
+                if progress is not None:
+                    terminal_status = str(event.metadata.get("terminal_status") or "system_failure")
+                    self._emit_voice_workflow_terminal(progress, event, terminal_status)
+                    progress_status = (
+                        "cancelled"
+                        if terminal_status == "cancelled"
+                        else "failed"
+                        if terminal_status in {"safe_failure", "budget_exhausted", "system_failure"}
+                        else "done"
+                    )
+                    self._emit_turn_progress(
+                        "voice",
+                        "complete",
+                        status=progress_status,
+                        context=progress,
+                        terminal_status=terminal_status,
+                    )
+                    self._clear_turn_progress(progress)
                 self._cmd_context()
+            elif event.type == "error":
+                with self._progress_lock:
+                    progress = self._progress_contexts.get("voice")
+                if progress is not None:
+                    self._emit_voice_workflow_terminal(progress, event, "system_failure")
+                    self._emit_turn_progress(
+                        "voice",
+                        "complete",
+                        operation="runtime_error",
+                        status="failed",
+                        context=progress,
+                        terminal_status="system_failure",
+                        detail=type(event.text).__name__,
+                    )
+                    self._clear_turn_progress(progress)
         if self.voice_stop_event is not None:
             self.voice_stop_event.set()
+
+    def _emit_voice_workflow_terminal(
+        self,
+        context: _TurnProgressContext,
+        event: VoiceMonitorEvent,
+        terminal_status: str,
+    ) -> None:
+        if context.workflow.terminal_outcome is not None:
+            return
+        try:
+            status = TerminalStatus(terminal_status)
+        except ValueError:
+            status = TerminalStatus.SYSTEM_FAILURE
+            terminal_status = status.value
+        goal_status = (
+            GoalStatus.WAITING_FOR_USER
+            if status is TerminalStatus.NEEDS_CLARIFICATION
+            else GoalStatus.ACHIEVED
+            if status is TerminalStatus.ACHIEVED
+            else GoalStatus.FAILED
+        )
+        outcome = TerminalOutcome(
+            status=status,
+            final_text=event.text,
+            goal_status=goal_status,
+            recoverable=status is TerminalStatus.NEEDS_CLARIFICATION,
+            route=str(event.metadata.get("runtime_route") or ""),
+            error_code=None if status is TerminalStatus.ACHIEVED else terminal_status,
+            metadata={"surface": "voice", "source": "pipeline"},
+        )
+        terminal = context.workflow.emit_terminal(outcome)
+        self.writer.emit(workflow_event_to_protocol(terminal))
+
+    def _pending_proposal_count(self) -> int | None:
+        commands = self._memory_commands()
+        if commands is None:
+            return 0
+        try:
+            return len(commands.list_pending())
+        except (OSError, ValueError):
+            LOGGER.warning("proposal telemetry unavailable", exc_info=True)
+            return None
 
     def _cmd_voice_stop(self) -> None:
         if self.voice_stop_event is not None:

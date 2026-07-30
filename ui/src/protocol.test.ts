@@ -170,6 +170,10 @@ describe("parseEngineEvent", () => {
         phase: "retrieval",
         operation: "tool:knowledge.search",
         status: "active",
+        run_id: "run-1",
+        goal_id: "goal-1",
+        sequence: 4,
+        node: "execute_action",
       }),
     );
 
@@ -177,6 +181,8 @@ describe("parseEngineEvent", () => {
     if (event?.event === "turn_progress") {
       expect(event.phase).toBe("retrieval");
       expect(event.operation).toBe("tool:knowledge.search");
+      expect(event.run_id).toBe("run-1");
+      expect(event.sequence).toBe(4);
     }
   });
 

@@ -4,10 +4,12 @@ import type {
   LlmConfigEvent,
   MemoryCompactionEvent,
   MemoryEvent,
+  MemoryTraceEvent,
   RemoteModelEvent,
   TurnProgressEvent,
   UsageEvent,
   RuntimeComponentStatus,
+  WorkflowEvent,
 } from "./protocol.js";
 
 export type Mode = "chat" | "voice" | "status" | "settings";
@@ -41,10 +43,23 @@ export interface RetrievalTrace {
   tier: "deterministic" | "semantic" | "llm" | "none";
   latencyMs: number;
   columns: Array<{
-    source: "bm25" | "dense";
-    hits: Array<{ path: string; score: number }>;
+    source: string;
+    hits: Array<{
+      path: string;
+      score: number;
+      sparse_score?: number;
+      dense_score?: number;
+      fusion_score?: number;
+    }>;
   }>;
-  fused: Array<{ path: string; picked: boolean }>;
+  fused: Array<{
+    path: string;
+    picked: boolean;
+    backend?: string;
+    score?: number;
+  }>;
+  rejectedCount: number;
+  evidence: Record<string, unknown> | null;
 }
 
 export interface StatusProfile {
@@ -120,6 +135,11 @@ export interface AppState {
   memoryCompaction: MemoryCompactionEvent | null;
   turnProgress: TurnProgressEvent | null;
   progressQueue: TurnProgressEvent[];
+  progressRunId: string | null;
+  pendingAnswer: string;
+  workflowEvents: WorkflowEvent[];
+  workflowTerminalStatus: string | null;
+  memoryTelemetry: MemoryTraceEvent | null;
 }
 
 export const initialState: AppState = {
@@ -164,6 +184,11 @@ export const initialState: AppState = {
   memoryCompaction: null,
   turnProgress: null,
   progressQueue: [],
+  progressRunId: null,
+  pendingAnswer: "",
+  workflowEvents: [],
+  workflowTerminalStatus: null,
+  memoryTelemetry: null,
 };
 
 export type Action =
@@ -261,7 +286,10 @@ function reduceVoiceCore(
         }),
       };
     case "llm_token":
-      return { ...state, voiceState: "processing" };
+      return {
+        ...state,
+        voiceState: "processing",
+      };
     case "tts":
       return { ...state, voiceState: "speaking" };
     case "done": {
@@ -271,6 +299,7 @@ function reduceVoiceCore(
         ...state,
         voiceState: "idle",
         voiceNote: "",
+        pendingAnswer: "",
         lastRoute: route,
         lastLatencyMs: event.latency_ms,
         bargeIn: "armed",
@@ -337,6 +366,46 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
     case "voice":
       return reduceVoice(state, event);
     case "turn_progress": {
+      const current = state.turnProgress;
+      if (
+        state.progressRunId &&
+        event.run_id &&
+        state.progressRunId !== event.run_id
+      ) {
+        if (event.sequence !== 0) return state;
+        return {
+          ...state,
+          progressRunId: event.run_id,
+          turnProgress: event,
+          progressQueue: [],
+        };
+      }
+      if (
+        current?.run_id &&
+        event.run_id &&
+        current.run_id === event.run_id &&
+        current.sequence !== undefined &&
+        event.sequence !== undefined &&
+        event.sequence <= current.sequence
+      ) {
+        return state;
+      }
+      if (current?.run_id && event.run_id && current.run_id !== event.run_id) {
+        return {
+          ...state,
+          progressRunId: event.run_id ?? state.progressRunId,
+          turnProgress: event,
+          progressQueue: [],
+        };
+      }
+      if (event.status === "failed" || event.status === "cancelled") {
+        return {
+          ...state,
+          progressRunId: event.run_id ?? state.progressRunId,
+          turnProgress: event,
+          progressQueue: [],
+        };
+      }
       if (event.status === "done") {
         return {
           ...state,
@@ -347,6 +416,7 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
       if (state.turnProgress === null) {
         return {
           ...state,
+          progressRunId: event.run_id ?? state.progressRunId,
           turnProgress: event,
           progressQueue: [],
         };
@@ -374,6 +444,7 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
           return {
             ...state,
             chatBusy: false,
+            pendingAnswer: "",
             turnProgress: null,
             progressQueue: [],
             lastRoute: event.route ?? "",
@@ -391,8 +462,6 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
           return {
             ...state,
             chatBusy: false,
-            turnProgress: null,
-            progressQueue: [],
             timeline: push(state.timeline, {
               kind: "error",
               text: event.text ?? "lỗi chat",
@@ -429,7 +498,8 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
       return {
         ...state,
         memoryMode: event.mode,
-        memoryHits: event.hits.length,
+        memoryHits: event.hit_count ?? event.hits.length,
+        memoryTelemetry: event,
       };
     case "memory_proposals":
       return {
@@ -460,8 +530,49 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
           latencyMs: event.latency_ms,
           columns: event.columns,
           fused: event.fused,
+          rejectedCount: event.rejected_count ?? 0,
+          evidence: event.evidence ?? null,
         },
       };
+    case "turn_started":
+    case "goal_resolved":
+    case "step_started":
+    case "step_progress":
+    case "step_completed":
+    case "public_update":
+    case "answer_delta":
+    case "verification_started":
+    case "verification_completed":
+    case "turn_terminal": {
+      const last = state.workflowEvents.at(-1);
+      if (
+        last &&
+        last.run_id === event.run_id &&
+        event.sequence <= last.sequence
+      ) {
+        return state;
+      }
+      const workflowEvents =
+        last && last.run_id !== event.run_id
+          ? [event]
+          : [...state.workflowEvents, event];
+      const payload = event.payload;
+      const delta = typeof payload["text"] === "string" ? payload["text"] : "";
+      return {
+        ...state,
+        workflowEvents,
+        pendingAnswer:
+          event.event === "answer_delta"
+            ? state.pendingAnswer + delta
+            : event.event === "turn_terminal"
+              ? ""
+              : state.pendingAnswer,
+        workflowTerminalStatus:
+          event.event === "turn_terminal" && typeof payload["terminal_status"] === "string"
+            ? payload["terminal_status"]
+            : state.workflowTerminalStatus,
+      };
+    }
     case "llm_providers":
       return { ...state, llmProviders: event.providers, settingsNotice: "" };
     case "llm_catalog":
@@ -513,8 +624,6 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
       return {
         ...state,
         chatBusy: false,
-        turnProgress: null,
-        progressQueue: [],
         settingsNotice: event.message,
         timeline: push(state.timeline, { kind: "error", text: event.message }),
       };
@@ -537,6 +646,10 @@ export function reduce(state: AppState, action: Action): AppState {
         chatBusy: true,
         turnProgress: null,
         progressQueue: [],
+        progressRunId: null,
+        pendingAnswer: "",
+        workflowEvents: [],
+        workflowTerminalStatus: null,
         retrievalTrace: null,
         timeline: push(state.timeline, { kind: "user", text: action.text }),
       };

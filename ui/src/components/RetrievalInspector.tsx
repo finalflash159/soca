@@ -11,13 +11,18 @@ import {
 export interface RetrievalHitView {
   path: string;
   score: number;
+  sparse_score?: number;
+  dense_score?: number;
+  fusion_score?: number;
 }
 export interface RetrievalTraceView {
   query: string;
   tier: "deterministic" | "semantic" | "llm" | "none";
   latencyMs: number;
-  columns: Array<{ source: "bm25" | "dense"; hits: RetrievalHitView[] }>;
-  fused: Array<{ path: string; picked: boolean }>;
+  columns: Array<{ source: string; hits: RetrievalHitView[] }>;
+  fused: Array<{ path: string; picked: boolean; backend?: string; score?: number }>;
+  rejectedCount?: number;
+  evidence?: Record<string, unknown> | null;
   citation?: { path: string; lineStart?: number; lineEnd?: number };
 }
 
@@ -49,6 +54,10 @@ export function RetrievalInspector({
         <Text color={COLOR.muted}>query </Text>
         <Text color={COLOR.text}>{trace.query}</Text>
       </Text>
+      <Text color={COLOR.muted}>
+        backend {trace.columns.map((column) => column.source).join(" + ") || "none"}
+        {` · rejected ${trace.rejectedCount ?? 0}`}
+      </Text>
       <Text>
         <Text color={COLOR.muted}>router </Text>
         <Text color={ROLE.focus}>{trace.tier}</Text>
@@ -65,7 +74,7 @@ export function RetrievalInspector({
               marginRight={1}
             >
               <Text bold color={style.color}>
-                {style.tag}
+                {style.tag === "·" ? column.source : style.tag}
               </Text>
               {column.hits.map((hit) => (
                 <ScoreRow key={hit.path} hit={hit} color={style.color} />
@@ -77,13 +86,14 @@ export function RetrievalInspector({
           <Text bold color={ROLE.focus}>
             {styleOf(RETRIEVAL_STYLE, "rrf").tag}
           </Text>
-          {trace.fused.map((item) => (
+              {trace.fused.map((item) => (
             <Text
               key={item.path}
               color={item.picked ? ROLE.focus : COLOR.muted}
               bold={item.picked}
             >
               {item.picked ? `${ICON.pointer} ${item.path}` : `  ${item.path}`}
+              {item.backend ? ` · ${item.backend}` : ""}
             </Text>
           ))}
         </Box>
@@ -92,6 +102,12 @@ export function RetrievalInspector({
         <Text
           color={ROLE.info}
         >{`[K1] ${trace.citation.path}${trace.citation.lineStart ? `:${trace.citation.lineStart}-${trace.citation.lineEnd}` : ""}`}</Text>
+      ) : null}
+      {trace.evidence ? (
+        <Text color={COLOR.muted}>
+          evidence {String(trace.evidence["status"] ?? "unknown")} ·{" "}
+          {String(trace.evidence["reason"] ?? "")}
+        </Text>
       ) : null}
     </Box>
   );
