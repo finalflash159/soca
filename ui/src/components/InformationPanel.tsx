@@ -89,6 +89,16 @@ function ContextBody({
 }) {
   if (context === null)
     return <Text color={COLOR.muted}>đang lấy context breakdown…</Text>;
+  const manifest = context.prompt_manifest;
+  const manifestComponents = Array.isArray(manifest?.["components"])
+    ? manifest["components"].filter(
+        (item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null && !Array.isArray(item),
+      )
+    : [];
+  const omittedComponents = manifestComponents.filter(
+    (item) => item["included"] === false,
+  );
   return (
     <Box flexDirection="column">
       {context.components.map((component) => (
@@ -123,6 +133,30 @@ function ContextBody({
             ? "chưa tính được"
             : `~${compactTokens(context.available_dynamic_tokens)} tok`}
         </Text>
+      </Box>
+      <Box marginTop={1} flexDirection="column">
+        <Text color={ROLE.info}>
+          prompt manifest {context.estimated ? "estimated" : "observed"}
+          {context.prompt_hash ? ` · ${context.prompt_hash.slice(0, 12)}` : ""}
+        </Text>
+        {manifestComponents.length > 0 ? (
+          <Text color={COLOR.muted}>
+            {manifestComponents.length} components · {omittedComponents.length} omitted
+          </Text>
+        ) : (
+          <Text color={COLOR.muted}>manifest component detail chưa có</Text>
+        )}
+        {context.observed_prompt_tokens !== null && context.observed_prompt_tokens !== undefined ? (
+          <Text color={COLOR.muted}>
+            observed {compactTokens(context.observed_prompt_tokens)} tok
+            {context.provider_prompt_tokens !== null && context.provider_prompt_tokens !== undefined
+              ? ` · provider ${compactTokens(context.provider_prompt_tokens)} tok`
+              : ""}
+            {context.prompt_token_delta !== null && context.prompt_token_delta !== undefined
+              ? ` · delta ${context.prompt_token_delta >= 0 ? "+" : ""}${compactTokens(context.prompt_token_delta)}`
+              : ""}
+          </Text>
+        ) : null}
       </Box>
       <SessionUsageSection usage={usage} />
     </Box>

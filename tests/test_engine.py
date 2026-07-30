@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from soca.app.engine import _memory_protocol_mode, run_engine
+from soca.app.engine import _memory_protocol_mode, _retrieval_trace_payload, run_engine
 from soca.app.text_runtime import TextRuntimeBundle, TextRuntimeConfig
 from soca.core import ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
 from soca.core.turn import RuntimeResult, RuntimeRoute, RuntimeTrace
@@ -80,6 +80,48 @@ def make_voice_config() -> ResolvedVoiceRuntimeConfig:
 def test_memory_protocol_mode_exposes_degraded_fallback() -> None:
     assert _memory_protocol_mode("blob", "retrieval_unavailable", 0) == "degraded"
     assert _memory_protocol_mode("retrieved", "", 0) == "retrieved"
+
+
+def test_retrieval_trace_preserves_backend_scores_and_rejections() -> None:
+    from types import SimpleNamespace
+
+    hit = SimpleNamespace(
+        document=SimpleNamespace(path="wiki/learning/bayes.md"),
+        score=0.91,
+        retrieval_backend="hybrid",
+        sparse_score=0.7,
+        dense_score=0.8,
+        fusion_score=0.91,
+    )
+    decision = SimpleNamespace(
+        source="knowledge",
+        rejected_count=2,
+        as_dict=lambda: {"status": "supported", "rejected_count": 2},
+    )
+    trace = SimpleNamespace(
+        tool_router_tier="semantic",
+        stage_latencies_ms={"knowledge": 4.5},
+        evidence_decisions=(decision,),
+    )
+    result = SimpleNamespace(frame=SimpleNamespace(text="định lý Bayes"))
+
+    payload = _retrieval_trace_payload(result, trace, (hit,))
+
+    assert payload["columns"] == [
+        {
+            "source": "hybrid",
+            "hits": [
+                {
+                    "path": "wiki/learning/bayes.md",
+                    "score": 0.91,
+                    "sparse_score": 0.7,
+                    "dense_score": 0.8,
+                    "fusion_score": 0.91,
+                }
+            ],
+        }
+    ]
+    assert payload["rejected_count"] == 2
 
 
 def test_engine_hello_then_quit_emits_bye() -> None:
@@ -271,6 +313,16 @@ def test_engine_chat_roundtrip_emits_done_with_response() -> None:
         "complete",
     ]
     assert progress[-1]["status"] == "done"
+    assert all(progress_event["run_id"] == progress[0]["run_id"] for progress_event in progress)
+    assert all(isinstance(progress_event["sequence"], int) for progress_event in progress)
+    assert progress[-1]["terminal_status"] == "achieved"
+    workflow = [
+        event
+        for event in capture.events()
+        if event["event"] in {"turn_started", "answer_delta", "turn_terminal"}
+    ]
+    assert workflow[-1]["event"] == "turn_terminal"
+    assert workflow[-1]["payload"]["terminal_status"] == "achieved"
 
 
 def test_engine_context_exposes_last_prompt_manifest() -> None:
@@ -324,6 +376,8 @@ def test_engine_chat_exception_does_not_emit_completed_progress() -> None:
     assert code == 0
     progress = [event for event in capture.events() if event["event"] == "turn_progress"]
     assert not any(event["status"] == "done" for event in progress)
+    assert progress[-1]["status"] == "failed"
+    assert progress[-1]["terminal_status"] == "system_failure"
 
 
 @dataclass

@@ -52,6 +52,12 @@ export const SLASH_COMMANDS: readonly SlashCommandDefinition[] = [
     group: "information",
   },
   {
+    value: "/workflow",
+    usage: "/workflow",
+    description: "mở/đóng workflow trace của lượt hiện tại",
+    group: "information",
+  },
+  {
     value: "/memory",
     usage: "/memory",
     description: "xem working session memory",

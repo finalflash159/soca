@@ -106,8 +106,17 @@ def iter_workflow_events(
     source: RuntimeResult | Iterable[RuntimeStreamEvent],
     *,
     turn_id: str = "",
+    goal_id: str = "",
+    session_id: str = "legacy-session",
+    surface: Literal["ask", "cli", "chat", "voice"] = "chat",
 ) -> Iterator[Any]:
     """Compatibility entry point for the shared blocking/streaming adapter."""
     from .workflow.legacy_adapter import iter_runtime_events
 
-    yield from iter_runtime_events(source, turn_id=turn_id)
+    yield from iter_runtime_events(
+        source,
+        turn_id=turn_id,
+        goal_id=goal_id,
+        session_id=session_id,
+        surface=surface,
+    )

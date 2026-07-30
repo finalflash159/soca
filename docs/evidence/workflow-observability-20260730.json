@@ -1,0 +1,81 @@
+{
+  "artifact": "workflow-observability-real-flow",
+  "recorded_at": "2026-07-30",
+  "hardware": "MacBook Pro Mac16,8 · Apple M4 Pro · 12 cores · 48 GB · macOS 15.7.4",
+  "provider": "openrouter",
+  "model": "google/gemini-3.5-flash-lite",
+  "configuration": {
+    "backend": "remote",
+    "max_output_tokens": 4096,
+    "memory": "disabled_for_isolated_run",
+    "knowledge_backend": "hybrid"
+  },
+  "trajectories": [
+    {
+      "class": "answerable_smalltalk",
+      "provider_called": true,
+      "used_llm": true,
+      "route": "free_chat",
+      "terminal_status": "achieved",
+      "workflow_events": [
+        "turn_started",
+        "step_progress",
+        "step_completed",
+        "answer_delta",
+        "turn_terminal"
+      ],
+      "progress_phases": [
+        "preparing",
+        "analyzing",
+        "routing",
+        "synthesis",
+        "validation",
+        "complete"
+      ],
+      "observed_usage": {
+        "prompt_tokens": 170,
+        "completion_tokens": 11,
+        "latency_ms": 1068.7
+      }
+    },
+    {
+      "class": "answerable_knowledge",
+      "provider_called": true,
+      "used_llm": true,
+      "route": "knowledge_llm",
+      "terminal_status": "achieved",
+      "retrieval": {
+        "backend": "hybrid",
+        "accepted_hits": 1,
+        "rejected_count": 10,
+        "evidence_status": "weak",
+        "evidence_reason": "ambiguous_top_margin"
+      },
+      "progress_phases": [
+        "preparing",
+        "analyzing",
+        "routing",
+        "retrieval",
+        "synthesis",
+        "validation",
+        "complete"
+      ]
+    },
+    {
+      "class": "empty_evidence_hard_negative",
+      "provider_called": true,
+      "used_llm": true,
+      "route": "knowledge_llm",
+      "terminal_status": "insufficient_evidence",
+      "retrieval": {
+        "backend": "hybrid",
+        "accepted_hits": 0,
+        "rejected_count": 12,
+        "evidence_status": "insufficient",
+        "evidence_reason": "all_hits_below_floor"
+      },
+      "answer_policy": "abstain"
+    }
+  ],
+  "raw_output": "kept outside Git; private vault paths and transcripts omitted"
+}

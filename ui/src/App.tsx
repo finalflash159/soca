@@ -9,7 +9,7 @@ import {
   type Mode,
   type TimelineEntry,
 } from "./store.js";
-import { COLOR, ICON } from "./theme.js";
+import { COLOR, ICON, ROLE } from "./theme.js";
 import {
   canonicalCommand,
   filterSlashCommands,
@@ -23,7 +23,6 @@ import { HelpOverlay } from "./components/HelpOverlay.js";
 import { SettingsScreen } from "./components/SettingsScreen.js";
 import { Bird, Wordmark } from "./components/Logo.js";
 import { Empty } from "./components/Empty.js";
-import { MemoryChips } from "./components/MemoryChips.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { MemoryProposalInbox } from "./components/MemoryProposalInbox.js";
 import { RetrievalInspector } from "./components/RetrievalInspector.js";
@@ -32,6 +31,7 @@ import { CommandPalette } from "./components/CommandPalette.js";
 import { InformationPanel } from "./components/InformationPanel.js";
 import { SessionTokenMeter } from "./components/SessionTokenMeter.js";
 import { TurnProgress } from "./components/TurnProgress.js";
+import { WorkflowInspector } from "./components/WorkflowInspector.js";
 import { ImeTextInput } from "./imeInput.js";
 
 export interface AppProps {
@@ -104,6 +104,7 @@ export function App({
   });
   const [input, setInput] = useState("");
   const [showHelp, setShowHelp] = useState(false);
+  const [workflowExpanded, setWorkflowExpanded] = useState(false);
   const [commandIndex, setCommandIndex] = useState(0);
   const [settingsReturnMode, setSettingsReturnMode] = useState<
     "chat" | "voice"
@@ -330,6 +331,9 @@ export function App({
         showInfo("status");
       } else if (cmd === "/context") {
         showInfo("context");
+      } else if (cmd === "/workflow") {
+        setWorkflowExpanded((expanded) => !expanded);
+        dispatch({ type: "clear_info" });
       } else if (cmd === "/listen") {
         dispatch({ type: "clear_info" });
         switchMode("voice");
@@ -378,6 +382,7 @@ export function App({
       });
       return;
     }
+    setWorkflowExpanded(false);
     dispatch({ type: "user_message", text });
     engine?.send({ cmd: "chat", text });
   }
@@ -474,6 +479,17 @@ export function App({
         />
       ) : null}
 
+      {state.workflowEvents.length > 0 ? (
+        <WorkflowInspector
+          events={state.workflowEvents}
+          pendingAnswer={state.pendingAnswer}
+          terminalStatus={state.workflowTerminalStatus}
+          expanded={workflowExpanded}
+          width={panelWidth}
+          onToggle={() => setWorkflowExpanded((expanded) => !expanded)}
+        />
+      ) : null}
+
       {state.mode === "chat" &&
       state.timeline.length === 0 &&
       state.activeInfo === null &&
@@ -518,34 +534,12 @@ export function App({
           <Text
             color={COLOR.muted}
           >{`router ${state.routerTier} · ${state.routerLatencyMs.toFixed(1)}ms`}</Text>
-          <MemoryChips
-            chips={[
-              {
-                type: "working",
-                label: "working",
-                detail: `${state.memoryHits} hits`,
-                active: state.memoryHits > 0,
-              },
-              {
-                type: "semantic",
-                label: "semantic",
-                detail: state.memoryMode,
-                active: state.memoryMode === "retrieved",
-              },
-              {
-                type: "episodic",
-                label: "episodic",
-                detail: "consent gated",
-                active: false,
-              },
-              {
-                type: "procedural",
-                label: "procedural",
-                detail: "approval gated",
-                active: false,
-              },
-            ]}
-          />
+          <Text color={state.memoryMode === "degraded" ? ROLE.danger : COLOR.muted}>
+            memory {state.memoryMode} · {state.memoryHits} hits
+            {state.memoryTelemetry?.background_status
+              ? ` · summary ${state.memoryTelemetry.background_status}`
+              : ""}
+          </Text>
         </Box>
       ) : null}
 
