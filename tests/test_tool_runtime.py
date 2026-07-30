@@ -204,6 +204,7 @@ def test_knowledge_read_tool_returns_bounded_line_receipt_and_continuation(
     [
         ({"path": "wiki/nutrition.md", "start_line": 0}, "invalid_start_line"),
         ({"path": "wiki/nutrition.md", "end_line": 0}, "invalid_end_line"),
+        ({"path": "wiki/nutrition.md", "start_column": 0}, "invalid_start_column"),
         (
             {"path": "wiki/nutrition.md", "start_line": 2, "end_line": 1},
             "invalid_line_range",
@@ -224,6 +225,48 @@ def test_knowledge_read_tool_rejects_invalid_line_ranges(
 
     assert result.status is ToolExecutionStatus.INVALID
     assert result.error == error
+
+
+def test_knowledge_read_tool_continues_an_oversized_line_without_data_loss(
+    tmp_path: Path,
+) -> None:
+    source = make_vault(tmp_path)
+    payload = "".join(str(index % 10) for index in range(700))
+    (tmp_path / "wiki" / "long-line.md").write_text(
+        f"# Long line\n{payload}",
+        encoding="utf-8",
+    )
+    tool = KnowledgeReadTool(source, max_chars=256, max_lines=10)
+    arguments: dict[str, object] = {
+        "path": "wiki/long-line.md",
+        "start_line": 2,
+    }
+    recovered = ""
+    receipts = []
+
+    for _ in range(10):
+        result = tool.run(arguments)
+        receipts.append(result.data)
+        rendered_line = result.content.rsplit("\n", maxsplit=1)[-1]
+        segment = rendered_line.removeprefix("2: ")
+        if segment.endswith("..."):
+            segment = segment[:-3]
+        recovered += segment
+        if result.data["complete"]:
+            break
+        arguments = {
+            "path": "wiki/long-line.md",
+            "start_line": result.data["next_start_line"],
+            "start_column": result.data["next_start_column"],
+        }
+
+    assert recovered == payload
+    assert len(receipts) > 1
+    assert receipts[0]["line_truncated"] is True
+    assert receipts[0]["next_start_line"] == 2
+    assert receipts[0]["next_start_column"] > 1
+    assert receipts[-1]["complete"] is True
+    assert receipts[-1]["document_complete"] is True
 
 
 def test_knowledge_read_tool_path_errors_are_returned_by_runtime(tmp_path: Path) -> None:

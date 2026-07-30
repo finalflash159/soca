@@ -159,7 +159,7 @@ def _parse_single_json_object(raw: str, *, max_chars: int) -> dict[str, Any]:
 def build_evidence_completion_schema(specs: tuple[ToolSpec, ...]) -> dict[str, Any]:
     branches: list[dict[str, Any]] = []
     for spec in specs:
-        if spec.name not in {"knowledge.search", "knowledge.read", "memory.search"}:
+        if spec.name not in {"knowledge.search", "knowledge.read"}:
             continue
         branches.append(
             {

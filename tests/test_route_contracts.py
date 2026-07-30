@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from soca.core.llm_tool_router import LLMToolRouter, _build_prompt
+from soca.core.llm_tool_router import (
+    LLMToolRouter,
+    _build_evidence_completion_prompt,
+    _build_prompt,
+)
 from soca.core.route_catalog import source_profile, validate_route_fields
 from soca.core.runtime import AssistantRuntime
 from soca.core.tool_routing import (
@@ -107,6 +111,28 @@ def test_evidence_completion_contract_binds_continuation_to_a_tool_schema() -> N
     assert decision.status == "continue"
     assert decision.call is not None
     assert decision.call.arguments["query"] == "attention"
+
+
+def test_evidence_completion_contract_does_not_offer_memory_actions() -> None:
+    prompt = _build_evidence_completion_prompt(
+        "check the whole note",
+        "{}",
+        (
+            {
+                "name": "knowledge.read",
+                "description": "read",
+                "input_schema": {"type": "object"},
+            },
+            {
+                "name": "memory.search",
+                "description": "memory",
+                "input_schema": {"type": "object"},
+            },
+        ),
+    )
+
+    assert '"name": "knowledge.read"' in prompt
+    assert '"name": "memory.search"' not in prompt
 
 
 class _FakeRouterLLM:
@@ -281,6 +307,24 @@ def test_llm_router_assesses_goal_coverage_before_finalizing() -> None:
     assert decision.call.name == "knowledge.search"
     assert llm.prompts[0].startswith("You are SoCa's evidence-completion controller.")
     assert "covers every requested aspect" in llm.prompts[0]
+
+
+def test_evidence_completion_provider_failure_returns_typed_insufficient() -> None:
+    router = LLMToolRouter(
+        _FailingRouterLLM(),
+        ToolRuntime([ReadOnlySearchTool()]),
+        config=ToolRouterConfig(mode="llm", repair_attempts=0),
+    )
+
+    decision = router.assess_evidence(
+        "check every unfinished task",
+        observation="{}",
+        knowledge_limit=3,
+    )
+
+    assert decision.status == "insufficient"
+    assert decision.call is None
+    assert decision.reason_code == "completion_provider_failed"
 
 
 def test_llm_router_logs_manifest_provider_failure(

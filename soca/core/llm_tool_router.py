@@ -152,7 +152,7 @@ def _build_evidence_completion_prompt(
     retrieval_catalog = tuple(
         item
         for item in catalog
-        if item.get("name") in {"knowledge.search", "knowledge.read", "memory.search"}
+        if item.get("name") in {"knowledge.search", "knowledge.read"}
     )
     return "\n".join(
         (
@@ -168,7 +168,8 @@ def _build_evidence_completion_prompt(
             "Use continue with exactly one enabled read-only retrieval handler when one "
             "different bounded operation can materially improve coverage.",
             "Prefer an exact read of a clearly identified candidate document. Continue "
-            "an incomplete read from next_start_line and preserve its path.",
+            "an incomplete read from next_start_line and next_start_column when present, "
+            "and preserve its path.",
             "Use a revised search only when no candidate path can be read directly.",
             "Do not repeat a prior tool call. Do not answer the user. Do not infer facts "
             "from the vault manifest because it is navigation metadata only.",
@@ -450,7 +451,6 @@ class LLMToolRouter:
         if decision.call.name not in {
             "knowledge.search",
             "knowledge.read",
-            "memory.search",
         }:
             raise RouterOutputError("unsafe_completion_tool")
         if validate_arguments(tool.spec.input_schema, decision.call.arguments):

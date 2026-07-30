@@ -344,9 +344,9 @@ class KnowledgeReadTool:
             name="knowledge.read",
             description=(
                 "Read a known local wiki Markdown path as note-body evidence. Optional "
-                "1-indexed start_line/end_line select an exact bounded range. The receipt "
-                "reports total lines and a continuation cursor when the requested content "
-                "does not fit. Use search when the path is unknown."
+                "1-indexed start_line/end_line and start_column select an exact bounded "
+                "range. The receipt reports total lines and continuation cursors when the "
+                "requested content does not fit. Use search when the path is unknown."
             ),
             input_schema=object_schema(
                 properties={
@@ -362,6 +362,13 @@ class KnowledgeReadTool:
                         "type": "integer",
                         "description": "Optional inclusive 1-indexed last line.",
                     },
+                    "start_column": {
+                        "type": "integer",
+                        "description": (
+                            "Optional 1-indexed character offset in start_line, used only "
+                            "with a continuation receipt."
+                        ),
+                    },
                 },
                 required=["path"],
             ),
@@ -375,6 +382,7 @@ class KnowledgeReadTool:
             raise InvalidToolInput("empty_path")
         start_line = self._line_argument(arguments, "start_line", default=1)
         end_line = self._optional_line_argument(arguments, "end_line")
+        start_column = self._line_argument(arguments, "start_column", default=1)
         if end_line is not None and end_line < start_line:
             raise InvalidToolInput("invalid_line_range")
         if end_line is not None and end_line - start_line + 1 > self.max_lines:
@@ -405,34 +413,59 @@ class KnowledgeReadTool:
             total_lines = 1
         if start_line > total_lines:
             raise InvalidToolInput("start_line_out_of_range")
+        first_line = lines[start_line - 1]
+        if start_column > max(1, len(first_line)):
+            raise InvalidToolInput("start_column_out_of_range")
 
         explicit_end = end_line is not None
         requested_end = min(
             total_lines,
             end_line if end_line is not None else start_line + self.max_lines - 1,
         )
+        display_title = doc.title
+        if len(display_title) > 80:
+            display_title = display_title[:77].rstrip() + "..."
         header_budget = (
-            f"# {doc.title}\n\nLines {start_line}-{requested_end} of {total_lines}:\n"
+            f"# {display_title}\n\nLines {start_line}-{requested_end} of {total_lines}:\n"
         )
         selected: list[str] = []
         used_chars = len(header_budget)
         actual_end = start_line - 1
+        line_truncated = False
+        next_start_column: int | None = None
         for line_number in range(start_line, requested_end + 1):
-            rendered = f"{line_number}: {lines[line_number - 1]}"
-            added_chars = len(rendered) + (1 if selected else 0)
+            column = start_column if line_number == start_line else 1
+            prefix = f"{line_number}: "
+            line_segment = lines[line_number - 1][column - 1 :]
+            separator_chars = 1 if selected else 0
+            rendered = prefix + line_segment
+            added_chars = len(rendered) + separator_chars
             if used_chars + added_chars > self.max_chars:
-                if not selected:
-                    raise PermanentToolError("knowledge_read_line_too_large")
+                available = self.max_chars - used_chars - separator_chars - len(prefix)
+                if available >= 4:
+                    consumed = available - 3
+                    selected.append(prefix + line_segment[:consumed] + "...")
+                    actual_end = line_number
+                    line_truncated = True
+                    next_start_column = column + consumed
                 break
             selected.append(rendered)
             used_chars += added_chars
             actual_end = line_number
 
-        range_complete = actual_end == requested_end
-        document_complete = actual_end == total_lines
+        range_complete = actual_end == requested_end and not line_truncated
+        document_complete = actual_end == total_lines and not line_truncated
         complete = range_complete and (explicit_end or document_complete)
-        next_start_line = None if complete else actual_end + 1
-        header = f"# {doc.title}\n\nLines {start_line}-{actual_end} of {total_lines}:\n"
+        next_start_line = (
+            None
+            if complete
+            else actual_end
+            if line_truncated
+            else actual_end + 1
+        )
+        header = (
+            f"# {display_title}\n\nLines {start_line}-{actual_end} of {total_lines}:\n"
+        )
         content = header + "\n".join(selected)
 
         return ToolResult(
@@ -447,7 +480,10 @@ class KnowledgeReadTool:
                 "line_end": actual_end,
                 "total_lines": total_lines,
                 "requested_end_line": end_line,
+                "requested_start_column": start_column,
                 "next_start_line": next_start_line,
+                "next_start_column": next_start_column,
+                "line_truncated": line_truncated,
                 "complete": complete,
                 "document_complete": document_complete,
                 "truncated": not complete,
