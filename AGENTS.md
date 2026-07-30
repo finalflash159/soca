@@ -85,6 +85,15 @@ production code directly on `main`.
   usage, latency, and response.
 - Retrieval and RAG testing must cover answerable, unanswerable, hard-negative,
   citation, empty-evidence, backend-failure, and no-silent-fallback paths.
+- Real-flow LLM testing must use a reviewed trajectory matrix on the private
+  release vault, not a single happy-path prompt. Include answerable paraphrases,
+  explicit-source requests, multi-turn correction and follow-up, ASR or phonetic
+  noise, knowledge-versus-memory ambiguity, hard negatives, empty or conflicting
+  evidence, citation/groundedness checks, and typed tool/backend failures. Each
+  variant must record the actual provider/model, route, goal decision, planned
+  action, tool receipt, evidence, terminal outcome, usage, latency, and response.
+  Raw stdout, transcripts, and private-vault content stay local and must not be
+  committed; only sanitized, reproducible evidence artifacts belong in Git.
 - A text-only voice dry run may prove controller parity, but it must not be
   described as a microphone or audio-hardware test.
 - Merge only when the phase exit gate has evidence. Anything unproven must be
