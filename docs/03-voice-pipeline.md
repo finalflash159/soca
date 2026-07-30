@@ -51,6 +51,10 @@ asr → [repair]? → runtime → (llm_token | answer_delta | tts | audio)* → 
 ```
 
 - `asr`: transcript, `rejection_reason`, and backend-provided alternatives when available.
+- When ASR provides alternatives, the selected runtime LLM resolves them through the
+  typed goal resolver before routing. The canonical transcript and a bounded repair
+  status are retained in the frame metadata; uncertain candidates remain unchanged
+  instead of being guessed.
 - `repair`: only when ASR rejects; contains follow-up text plus
   `repair_kind/action/attempt`.
 - `runtime`: route/blocked/citations/usage summary.
@@ -155,6 +159,12 @@ flowchart LR
 Both paths call `bundle.pipeline.turn_streaming(...)`, so the **audio pipeline
 and selected LLM are the same**. The controller/console only differ in event
 presentation and loop control.
+
+Chat and voice also receive the same selected LLM settings and active goal store
+from `SocaEngine`. A persisted session uses the same checkpoint namespace for both
+surfaces; an in-memory session shares the same store only for the lifetime of that
+engine. Changing provider, model, or key while voice is active is rejected rather
+than silently rebuilding the running turn.
 
 ## Clause Chunking And PCM Join
 

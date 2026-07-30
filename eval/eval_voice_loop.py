@@ -20,6 +20,7 @@ from rich.table import Table
 
 from eval.result_io import EvalRunPaths, make_eval_run_paths, update_latest_eval_report
 from eval.system_metrics import get_current_memory_mb
+from soca.config import SecretStore
 from soca.core import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
     VOICE_RUNTIME_PROFILES,
@@ -209,12 +210,6 @@ def cleanup_runtime() -> None:
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    mps = getattr(torch, "mps", None)
-    if mps is not None and hasattr(mps, "empty_cache"):
-        try:
-            mps.empty_cache()
-        except RuntimeError:
-            pass
 
 
 def sample_audio_duration_s(audio: np.ndarray, sample_rate: int = ASR_SAMPLE_RATE) -> float:
@@ -370,6 +365,21 @@ def runtime_config_to_dict(config: ResolvedVoiceRuntimeConfig) -> dict[str, Any]
     }
 
 
+def selected_llm_to_dict(bundle: Any) -> dict[str, Any]:
+    engine = getattr(bundle, "llm", None)
+    settings = getattr(bundle, "llm_settings", None)
+    provider = getattr(getattr(engine, "provider", None), "key", None)
+    backend = getattr(settings, "backend", None)
+    return {
+        "backend": backend or ("remote" if provider else "local"),
+        "provider": provider,
+        "model": getattr(engine, "model", None) or getattr(engine, "model_key", None),
+        "max_tokens": getattr(settings, "effective_max_tokens", None),
+        "reasoning_enabled": getattr(settings, "effective_reasoning_enabled", None),
+        "engine_type": type(engine).__name__ if engine is not None else None,
+    }
+
+
 def run_profile_eval(
     profile_key: str,
     samples: Sequence[VoiceLoopSample],
@@ -397,7 +407,10 @@ def run_profile_eval(
     )
     load_started = time.perf_counter()
     try:
-        bundle = build_voice_runtime(config)
+        bundle = build_voice_runtime(
+            config,
+            secret_store=SecretStore(dotenv_path=REPO_ROOT / ".env"),
+        )
     except (FileNotFoundError, TTSRuntimeUnavailableError, ImportError, RuntimeError) as exc:
         return {
             "profile": profile_key,
@@ -471,6 +484,7 @@ def run_profile_eval(
     result = {
         "profile": profile_key,
         "config": runtime_config_to_dict(config),
+        "selected_llm": selected_llm_to_dict(bundle),
         "status": "ok" if len(ok_rows) == len(rows) else "partial",
         "playback_sink": type(audio_sink).__name__,
         "load_ms": load_ms,
@@ -543,11 +557,13 @@ def render_summary(results: Sequence[dict[str, Any]]) -> None:
 
     for result in results:
         config = result.get("config", {})
+        selected_llm = result.get("selected_llm", {})
+        llm_label = selected_llm.get("model") or config.get("llm_model", "")
         if result["status"] == "skipped_unavailable":
             table.add_row(
                 result["profile"],
                 config.get("asr_model", ""),
-                config.get("llm_model", ""),
+                llm_label,
                 config.get("tts_model", ""),
                 str(config.get("tts_voice", "")),
                 "skipped",
@@ -569,7 +585,7 @@ def render_summary(results: Sequence[dict[str, Any]]) -> None:
         table.add_row(
             result["profile"],
             config.get("asr_model", ""),
-            config.get("llm_model", ""),
+            llm_label,
             config.get("tts_model", ""),
             str(config.get("tts_voice", "")),
             result["status"],
@@ -631,10 +647,12 @@ def write_outputs(
     ]
     for result in results:
         config = result.get("config", {})
+        selected_llm = result.get("selected_llm", {})
+        llm_label = selected_llm.get("model") or config.get("llm_model", "")
         if result["status"] == "skipped_unavailable":
             lines.append(
                 f"| {result['profile']} | {config.get('asr_model', '')} | "
-                f"{config.get('llm_model', '')} | {config.get('tts_model', '')} | "
+                f"{llm_label} | {config.get('tts_model', '')} | "
                 f"{config.get('tts_voice', '')} | skipped | n/a | n/a | n/a | n/a | n/a | "
                 f"n/a | n/a | n/a | {markdown_cell(result.get('skip_reason', ''))} |"
             )
@@ -644,7 +662,7 @@ def write_outputs(
         peak_memory = result.get("peak_memory_mb")
         lines.append(
             f"| {result['profile']} | {config.get('asr_model', '')} | "
-            f"{config.get('llm_model', '')} | {config.get('tts_model', '')} | "
+            f"{llm_label} | {config.get('tts_model', '')} | "
             f"{config.get('tts_voice', '')} | {result['status']} | "
             f"{result.get('load_ms', 0):.0f} | {format_ms(ttfa.get('median'))} | "
             f"{format_ms(ttfa.get('p95'))} | {format_ms(total.get('median'))} | "

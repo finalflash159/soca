@@ -286,6 +286,7 @@ def build_voice_runtime(
     llm_settings: LlmSettings | None = None,
     secret_store: SecretReader | None = None,
     engine_factory=build_llm_engine,
+    active_goal_store: ActiveGoalStore | None = None,
 ) -> VoiceRuntimeBundle:
     selected_settings = llm_settings or load_settings()
     if config.llm_model_is_override:
@@ -457,7 +458,8 @@ def build_voice_runtime(
             model_context_window=model_context_window,
             model_max_output_tokens=selected_settings.model_max_output_tokens,
         ),
-        active_goal_store=(
+        active_goal_store=active_goal_store
+        or (
             ActiveGoalStore(
                 checkpoint_store=GoalCheckpointStore(default_session_checkpoint_home() / "goals"),
                 session_id=config.session_id,

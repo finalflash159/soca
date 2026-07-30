@@ -92,6 +92,7 @@ from .workflow import (
     ControlledWorkflowRunner,
     GoalContract,
     GoalDecision,
+    GoalDecisionKind,
     GoalResolver,
     StructuredGoalResolver,
     TurnBudget,
@@ -113,6 +114,7 @@ class RuntimeOptions:
     # from the client adapter. Keep a conservative admission margin by default;
     # observed positive deltas can increase it for subsequent turns.
     context_safety_margin_tokens: int = DEFAULT_CONTEXT_SAFETY_MARGIN_TOKENS
+    asr_goal_repair_min_confidence: float = 0.70
 
     def __post_init__(self) -> None:
         if self.turn_workflow not in {"legacy", "shadow", "controlled"}:
@@ -127,6 +129,8 @@ class RuntimeOptions:
                 raise ValueError(f"{name} must be a positive integer or null")
         if self.context_safety_margin_tokens < 0:
             raise ValueError("context_safety_margin_tokens must be non-negative")
+        if not 0.0 <= self.asr_goal_repair_min_confidence <= 1.0:
+            raise ValueError("asr goal repair confidence must be between zero and one")
 
 
 class RuntimeToolRouter(Protocol):
@@ -465,7 +469,12 @@ class AssistantRuntime:
         source: str = "text",
         metadata: dict[str, Any] | None = None,
     ) -> RuntimeResult:
-        frame = TurnFrame(text=text, source=source, metadata=metadata or {})
+        frame_text, frame_metadata = self._prepare_turn_input(
+            text,
+            source=source,
+            metadata=metadata,
+        )
+        frame = TurnFrame(text=frame_text, source=source, metadata=frame_metadata)
         draft = _TraceDraft([], [], [], [], [], {})
 
         with self._stage(draft, "input_guardrail"):
@@ -525,7 +534,12 @@ class AssistantRuntime:
         (lower time-to-first-audio). When ``None`` every chunk uses
         ``min_sentence_chars``.
         """
-        frame = TurnFrame(text=text, source=source, metadata=metadata or {})
+        frame_text, frame_metadata = self._prepare_turn_input(
+            text,
+            source=source,
+            metadata=metadata,
+        )
+        frame = TurnFrame(text=frame_text, source=source, metadata=frame_metadata)
         draft = _TraceDraft([], [], [], [], [], {})
 
         with self._stage(draft, "input_guardrail"):
@@ -615,6 +629,64 @@ class AssistantRuntime:
             first_clause_min_words=first_clause_min_words,
             first_clause_max_scan_chars=first_clause_max_scan_chars,
         )
+
+    def repair_asr_transcript(
+        self,
+        text: str,
+        alternatives: tuple[str, ...],
+    ) -> tuple[str, dict[str, Any]]:
+        """Resolve a spoken entity only when ASR supplies N-best candidates."""
+        if not alternatives:
+            return text, {"status": "not_requested", "alternatives": []}
+        if self.llm is None:
+            return text, {"status": "unavailable", "alternatives": list(alternatives)}
+
+        resolver = StructuredGoalResolver(self.llm, repair_attempts=1, max_tokens=512)
+        decision = resolver.decide(
+            text,
+            active_goal=self._active_goal_store.current,
+            asr_alternatives=alternatives,
+        )
+        repair_metadata: dict[str, Any] = {
+            "status": "unchanged",
+            "alternatives": list(alternatives),
+            "confidence": decision.confidence,
+            "decision": decision.kind.value,
+            "model_calls": decision.model_calls,
+        }
+        if decision.confidence < self.options.asr_goal_repair_min_confidence:
+            repair_metadata["status"] = "low_confidence"
+            return text, repair_metadata
+        if decision.kind in {GoalDecisionKind.NEW, GoalDecisionKind.CORRECT}:
+            objective = decision.objective.strip()
+            if objective and objective != text.strip():
+                repair_metadata["status"] = "repaired"
+                return objective, repair_metadata
+        return text, repair_metadata
+
+    def _prepare_turn_input(
+        self,
+        text: str,
+        *,
+        source: str,
+        metadata: dict[str, Any] | None,
+    ) -> tuple[str, dict[str, Any]]:
+        frame_metadata = dict(metadata or {})
+        raw_alternatives = frame_metadata.get("asr_alternatives", ())
+        alternatives = (
+            tuple(
+                item.strip()
+                for item in raw_alternatives
+                if isinstance(item, str) and item.strip()
+            )
+            if isinstance(raw_alternatives, (list, tuple))
+            else ()
+        )
+        if source != "asr" or not alternatives:
+            return text, frame_metadata
+        repaired_text, repair_metadata = self.repair_asr_transcript(text, alternatives)
+        frame_metadata["asr_goal_repair"] = repair_metadata
+        return repaired_text, frame_metadata
 
     def _emit_fixed_result(
         self,

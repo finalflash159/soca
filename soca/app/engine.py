@@ -37,6 +37,7 @@ from soca.core.context_budget import (
 )
 from soca.core.usage import SessionUsage, TurnUsage
 from soca.core.voice_runtime import build_voice_runtime
+from soca.core.workflow import ActiveGoalStore, GoalCheckpointStore
 from soca.core.workflow.protocol import (
     CURRENT_PROTOCOL_VERSION,
     adapt_legacy_command,
@@ -225,6 +226,14 @@ class SocaEngine:
         self._key_validation_tokens: dict[str, str] = {}
 
         self.session_memory = self._create_session_memory()
+        self.active_goal_store = ActiveGoalStore(
+            checkpoint_store=(
+                GoalCheckpointStore(default_session_checkpoint_home() / "goals")
+                if self.text_config.session_persistence == "local_resumable"
+                else None
+            ),
+            session_id=self.text_config.session_id,
+        )
         self.text_bundle: TextRuntimeBundle | None = None
         self.voice_controller: VoiceMonitorController | None = None
         self.voice_stop_event: threading.Event | None = None
@@ -1473,6 +1482,7 @@ class SocaEngine:
                 session_memory=self.session_memory,
                 llm_settings=self.llm_settings,
                 secret_store=self.secret_store,
+                active_goal_store=self.active_goal_store,
             )
         except TypeError:
             try:
@@ -1698,6 +1708,7 @@ class SocaEngine:
                     session_memory=session_memory,
                     llm_settings=self._selected_voice_settings(),
                     secret_store=self.secret_store,
+                    active_goal_store=self.active_goal_store,
                 )
 
             kwargs["runtime_builder"] = build_selected_voice_runtime

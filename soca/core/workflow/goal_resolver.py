@@ -334,6 +334,7 @@ class StructuredGoalResolver:
                 "A request that requires any source is not smalltalk.",
                 "Do not infer a source unless the user or active goal requires it.",
                 "If the user explicitly asks for their notes, set required_sources to knowledge and include success criterion knowledge_queried.",
+                "ASR alternatives are candidate transcriptions, not facts. If one resolves an entity, use that candidate in the objective; do not invent entities. If candidates conflict or remain unclear, preserve the unresolved entity and ask a clarification question.",
                 "Put ambiguous entities in unresolved_entities and provide a clarification question.",
                 "Return JSON only.",
                 json.dumps(payload, ensure_ascii=False, sort_keys=True),

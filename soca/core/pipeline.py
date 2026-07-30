@@ -156,10 +156,7 @@ class VoicePipeline:
                 runtime_result = self.assistant_runtime.run_text_turn(
                     transcript,
                     source="asr",
-                    metadata={
-                        "asr_rejection_reason": rejection_reason,
-                        "asr_alternatives": list(asr_alternatives),
-                    },
+                    metadata=_runtime_input_metadata(rejection_reason, asr_alternatives),
                 )
             response_text = getattr(runtime_result, "response_text", "").strip()
             llm_result = getattr(runtime_result, "llm_result", None)
@@ -365,10 +362,7 @@ class VoicePipeline:
             runtime_result = runtime.run_text_turn(
                 transcript,
                 source="asr",
-                metadata={
-                    "asr_rejection_reason": rejection_reason,
-                    "asr_alternatives": list(asr_alternatives),
-                },
+                metadata=_runtime_input_metadata(rejection_reason, asr_alternatives),
             )
 
         response_text = getattr(runtime_result, "response_text", "").strip()
@@ -435,10 +429,7 @@ class VoicePipeline:
         stream = runtime.stream_text_turn(
             transcript,
             source="asr",
-            metadata={
-                "asr_rejection_reason": rejection_reason,
-                "asr_alternatives": list(asr_alternatives),
-            },
+            metadata=_runtime_input_metadata(rejection_reason, asr_alternatives),
             min_sentence_chars=min_sentence_chars,
             first_sentence_min_chars=first_sentence_min_chars,
             first_clause_enabled=self.first_clause_enabled,
@@ -897,3 +888,13 @@ def _asr_alternatives(asr_result: Any) -> tuple[str, ...]:
         if value and value not in values:
             values.append(value)
     return tuple(values)
+
+
+def _runtime_input_metadata(
+    rejection_reason: str,
+    alternatives: tuple[str, ...],
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {"asr_rejection_reason": rejection_reason}
+    if alternatives:
+        metadata["asr_alternatives"] = list(alternatives)
+    return metadata
