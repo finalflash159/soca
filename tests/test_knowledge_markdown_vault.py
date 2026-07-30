@@ -137,6 +137,29 @@ def test_snippet_prefers_strongest_body_overlap(tmp_path: Path):
     assert "yến mạch" in hits[0].snippet
 
 
+def test_snippet_selects_the_best_markdown_section_not_the_first_matching_line(
+    tmp_path: Path,
+):
+    (tmp_path / "weekly.md").write_text(
+        "# Tổng kết tuần\n\n"
+        "## Đã hoàn tất\n\n"
+        "- Làm xong phần đo độ trễ.\n"
+        "- Đã ghi lại kết quả.\n\n"
+        "## Chưa hoàn tất\n\n"
+        "- Chưa viết phần giải thích lỗi.\n"
+        "- Chưa kiểm tra lại dữ liệu đầu vào.\n"
+        "- Việc đo bộ nhớ vẫn đang làm dở.\n",
+        encoding="utf-8",
+    )
+
+    vault = MarkdownVaultKnowledgeSource(tmp_path)
+    hits = vault.search("những việc chưa làm")
+
+    assert len(hits) == 1
+    assert "Chưa viết phần giải thích lỗi" in hits[0].snippet
+    assert "Làm xong phần đo độ trễ" not in hits[0].snippet
+
+
 def test_include_globs_can_scope_runtime_to_compiled_wiki(tmp_path: Path):
     raw = tmp_path / "raw" / "sources"
     raw.mkdir(parents=True)

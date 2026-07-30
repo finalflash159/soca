@@ -7,7 +7,9 @@ from soca.core.route_catalog import source_profile, validate_route_fields
 from soca.core.runtime import AssistantRuntime
 from soca.core.tool_routing import (
     ToolRouterConfig,
+    build_evidence_completion_schema,
     build_route_decision_schema,
+    parse_evidence_completion,
     parse_route_decision,
 )
 from soca.core.turn import RuntimeRoute
@@ -84,6 +86,27 @@ def test_route_schema_binds_each_handler_to_its_argument_contract() -> None:
     assert search_branch["properties"]["arguments"]["required"] == ["query"]
     assert inspect_branch["properties"]["arguments"]["required"] == []
     assert search_branch["properties"]["sources"]["maxItems"] == 0
+
+
+def test_evidence_completion_contract_binds_continuation_to_a_tool_schema() -> None:
+    tools = ToolRuntime([ReadOnlySearchTool()])
+    schema = build_evidence_completion_schema(tools.list_specs(include_disabled=False))
+    search_branch = next(
+        branch
+        for branch in schema["oneOf"]
+        if branch["properties"]["status"].get("const") == "continue"
+    )
+
+    assert search_branch["properties"]["arguments"]["required"] == ["query"]
+    decision = parse_evidence_completion(
+        '{"status":"continue","handler":"knowledge.search",'
+        '"arguments":{"query":"attention","limit":3},'
+        '"reason_code":"coverage_gap"}',
+        max_chars=512,
+    )
+    assert decision.status == "continue"
+    assert decision.call is not None
+    assert decision.call.arguments["query"] == "attention"
 
 
 class _FakeRouterLLM:
@@ -231,6 +254,33 @@ def test_llm_router_receives_manifest_context_and_can_refine_once() -> None:
     assert llm.prompts[1].startswith("You are SoCa's bounded retrieval refiner.")
     assert "Original user request:" in llm.prompts[1]
     assert "User text:" not in llm.prompts[1]
+
+
+def test_llm_router_assesses_goal_coverage_before_finalizing() -> None:
+    llm = _SequenceRouterLLM(
+        [
+            '{"status":"continue","handler":"knowledge.search",'
+            '"arguments":{"query":"unfinished work","limit":3},'
+            '"reason_code":"partial_scope"}'
+        ]
+    )
+    router = LLMToolRouter(
+        llm,
+        ToolRuntime([ReadOnlySearchTool()]),
+        config=ToolRouterConfig(mode="llm", repair_attempts=0),
+    )
+
+    decision = router.assess_evidence(
+        "check every unfinished task",
+        observation='{"receipt":{"hits":[{"path":"wiki/weekly.md"}]}}',
+        knowledge_limit=3,
+    )
+
+    assert decision.status == "continue"
+    assert decision.call is not None
+    assert decision.call.name == "knowledge.search"
+    assert llm.prompts[0].startswith("You are SoCa's evidence-completion controller.")
+    assert "covers every requested aspect" in llm.prompts[0]
 
 
 def test_llm_router_logs_manifest_provider_failure(

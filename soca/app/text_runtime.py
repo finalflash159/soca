@@ -486,6 +486,14 @@ def render_trace(console: Console, result: RuntimeResult) -> None:
     summary.add_row("router_tier", trace.tool_router_tier)
     summary.add_row("router_reason", trace.tool_router_reason)
     summary.add_row("evidence_status", trace.evidence_status)
+    summary.add_row(
+        "goal_coverage",
+        (
+            f"{trace.evidence_completion_status}"
+            f":{trace.evidence_completion_reason or '-'}"
+            f" · {trace.evidence_completion_actions} action"
+        ),
+    )
     summary.add_row("answer_policy", trace.answer_policy)
     summary.add_row("citation_count", str(trace.citation_count))
     if trace.memory_access_plan is not None:

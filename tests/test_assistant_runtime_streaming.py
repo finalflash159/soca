@@ -4,12 +4,12 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 
 from soca.core import AssistantRuntime, RuntimeRoute
-from soca.core.tool_routing import ToolRouterDecision
+from soca.core.tool_routing import EvidenceCompletionDecision, ToolRouterDecision
 from soca.core.turn import RuntimeResult
 from soca.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
 from soca.llm import LLMResult
 from soca.memory import MemoryContextBuilder, SessionMemory
-from soca.tools import KnowledgeSearchTool, ToolCall, ToolRuntime
+from soca.tools import KnowledgeReadTool, KnowledgeSearchTool, ToolCall, ToolRuntime
 from tests.fake_tools import ReadOnlyInspectTool
 
 
@@ -173,6 +173,35 @@ class StaticToolRouter:
         return self.call
 
 
+class CompletingToolRouter(StaticToolRouter):
+    def __init__(self, call: ToolCall) -> None:
+        super().__init__(call)
+        self.decisions = [
+            EvidenceCompletionDecision(
+                status="continue",
+                call=ToolCall(
+                    "knowledge.read",
+                    {"path": "wiki/dinh-duong/chat-dam.md"},
+                ),
+                reason_code="exact_document_needed",
+            ),
+            EvidenceCompletionDecision(
+                status="complete",
+                reason_code="document_covered",
+            ),
+        ]
+
+    def assess_evidence(
+        self,
+        text: str,
+        *,
+        observation: str,
+        knowledge_limit: int,
+    ) -> EvidenceCompletionDecision:
+        del text, observation, knowledge_limit
+        return self.decisions.pop(0)
+
+
 def _collect(
     events: Iterator,
 ) -> tuple[list[str], list[str], RuntimeResult | None, list]:
@@ -218,6 +247,31 @@ def test_stream_sets_router_context_before_selecting_capability() -> None:
 
     assert result is not None
     assert router.contexts == ["Current surface: asr"]
+
+
+def test_streaming_retrieval_completes_search_with_an_exact_read() -> None:
+    source = FakeKnowledgeSource()
+    llm = StreamSpyLLM(["Protein hỗ trợ cơ bắp [K1]."])
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source), KnowledgeReadTool(source)]),
+        tool_router=CompletingToolRouter(
+            ToolCall("knowledge.search", {"query": "protein", "limit": 3})
+        ),
+        knowledge_builder=KnowledgeContextBuilder(source),
+    )
+
+    _, _, result, _ = _collect(
+        runtime.stream_text_turn("Ghi chú đầy đủ nói gì về protein?", min_sentence_chars=8)
+    )
+
+    assert result is not None and result.trace is not None
+    assert [call.name for call in result.trace.tool_calls] == [
+        "knowledge.search",
+        "knowledge.read",
+    ]
+    assert result.trace.evidence_completion_status == "complete"
+    assert "Exact read" in llm.generate_calls[0]
 
 
 def test_empty_retrieval_streams_when_citations_are_not_required() -> None:

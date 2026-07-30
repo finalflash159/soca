@@ -330,26 +330,38 @@ class KnowledgeReadTool:
         self,
         source: KnowledgeSource,
         max_chars: int = 4000,
+        max_lines: int = 200,
     ) -> None:
+        if max_chars < 256 or max_lines < 1:
+            raise ValueError("knowledge read limits are invalid")
         self.source = source
         self.max_chars = max_chars
+        self.max_lines = max_lines
 
     @property
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="knowledge.read",
             description=(
-                "Read one known local wiki Markdown path as note-body evidence. Prefer "
-                "this for a broad summary when navigation metadata identifies one clear "
-                "document; use search when the path is unknown or a specific passage "
-                "must be located."
+                "Read a known local wiki Markdown path as note-body evidence. Optional "
+                "1-indexed start_line/end_line select an exact bounded range. The receipt "
+                "reports total lines and a continuation cursor when the requested content "
+                "does not fit. Use search when the path is unknown."
             ),
             input_schema=object_schema(
                 properties={
                     "path": {
                         "type": "string",
                         "description": "Vault-relative markdown path.",
-                    }
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "description": "Optional 1-indexed first line.",
+                    },
+                    "end_line": {
+                        "type": "integer",
+                        "description": "Optional inclusive 1-indexed last line.",
+                    },
                 },
                 required=["path"],
             ),
@@ -361,6 +373,12 @@ class KnowledgeReadTool:
         path = str(arguments["path"]).strip()
         if not path:
             raise InvalidToolInput("empty_path")
+        start_line = self._line_argument(arguments, "start_line", default=1)
+        end_line = self._optional_line_argument(arguments, "end_line")
+        if end_line is not None and end_line < start_line:
+            raise InvalidToolInput("invalid_line_range")
+        if end_line is not None and end_line - start_line + 1 > self.max_lines:
+            raise InvalidToolInput("line_range_too_large")
 
         try:
             doc = self.source.read(path)
@@ -380,20 +398,82 @@ class KnowledgeReadTool:
                 error="invalid_path",
                 status=ToolExecutionStatus.INVALID,
             )
-        text = doc.text.strip()
-        truncated = False
-        if len(text) > self.max_chars:
-            text = text[: max(0, self.max_chars - 3)].rstrip() + "..."
-            truncated = True
+        lines = doc.text.splitlines()
+        total_lines = len(lines)
+        if total_lines == 0:
+            lines = [""]
+            total_lines = 1
+        if start_line > total_lines:
+            raise InvalidToolInput("start_line_out_of_range")
+
+        explicit_end = end_line is not None
+        requested_end = min(
+            total_lines,
+            end_line if end_line is not None else start_line + self.max_lines - 1,
+        )
+        header_budget = (
+            f"# {doc.title}\n\nLines {start_line}-{requested_end} of {total_lines}:\n"
+        )
+        selected: list[str] = []
+        used_chars = len(header_budget)
+        actual_end = start_line - 1
+        for line_number in range(start_line, requested_end + 1):
+            rendered = f"{line_number}: {lines[line_number - 1]}"
+            added_chars = len(rendered) + (1 if selected else 0)
+            if used_chars + added_chars > self.max_chars:
+                if not selected:
+                    raise PermanentToolError("knowledge_read_line_too_large")
+                break
+            selected.append(rendered)
+            used_chars += added_chars
+            actual_end = line_number
+
+        range_complete = actual_end == requested_end
+        document_complete = actual_end == total_lines
+        complete = range_complete and (explicit_end or document_complete)
+        next_start_line = None if complete else actual_end + 1
+        header = f"# {doc.title}\n\nLines {start_line}-{actual_end} of {total_lines}:\n"
+        content = header + "\n".join(selected)
 
         return ToolResult(
             name=self.spec.name,
             ok=True,
-            content=f"# {doc.title}\n\n{text}",
+            content=content,
             data={
                 "path": doc.path,
                 "title": doc.title,
                 "tags": list(doc.tags),
-                "truncated": truncated,
+                "line_start": start_line,
+                "line_end": actual_end,
+                "total_lines": total_lines,
+                "requested_end_line": end_line,
+                "next_start_line": next_start_line,
+                "complete": complete,
+                "document_complete": document_complete,
+                "truncated": not complete,
             },
         )
+
+    @staticmethod
+    def _line_argument(
+        arguments: dict[str, Any],
+        name: str,
+        *,
+        default: int,
+    ) -> int:
+        value = arguments.get(name, default)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise InvalidToolInput(f"invalid_{name}")
+        return value
+
+    @staticmethod
+    def _optional_line_argument(
+        arguments: dict[str, Any],
+        name: str,
+    ) -> int | None:
+        value = arguments.get(name)
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise InvalidToolInput(f"invalid_{name}")
+        return value

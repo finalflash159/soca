@@ -53,7 +53,7 @@ from soca.core.guardrails import (
 )
 from soca.core.streaming import pop_ready_first_clause, pop_ready_sentence
 from soca.core.text_chunking import chunk_text_for_tts
-from soca.core.tool_routing import ToolRouterDecision
+from soca.core.tool_routing import EvidenceCompletionDecision, ToolRouterDecision
 from soca.core.turn import (
     RuntimeResult,
     RuntimeRoute,
@@ -69,6 +69,7 @@ from soca.knowledge import (
     KnowledgeDocument,
     KnowledgeHit,
 )
+from soca.knowledge.context import UNTRUSTED_KNOWLEDGE_WARNING
 from soca.llm import LLMEngine, StructuredLLMEngine
 from soca.llm.providers import RemoteLLMError
 from soca.memory import (
@@ -119,6 +120,7 @@ class RuntimeOptions:
     context_safety_margin_tokens: int = DEFAULT_CONTEXT_SAFETY_MARGIN_TOKENS
     vault_manifest_chars: int = DEFAULT_VAULT_MANIFEST_CHARS
     max_retrieval_refinements: int = 1
+    max_evidence_completion_actions: int = 2
     asr_goal_repair_min_confidence: float = 0.70
 
     def __post_init__(self) -> None:
@@ -142,6 +144,14 @@ class RuntimeOptions:
             or self.max_retrieval_refinements < 0
         ):
             raise ValueError("max_retrieval_refinements must be a non-negative integer")
+        if (
+            isinstance(self.max_evidence_completion_actions, bool)
+            or not isinstance(self.max_evidence_completion_actions, int)
+            or self.max_evidence_completion_actions < 0
+        ):
+            raise ValueError(
+                "max_evidence_completion_actions must be a non-negative integer"
+            )
         if not 0.0 <= self.asr_goal_repair_min_confidence <= 1.0:
             raise ValueError("asr goal repair confidence must be between zero and one")
 
@@ -291,6 +301,9 @@ class _TraceDraft:
     answer_policy: GroundingTurnPolicy | None = None
     prompt_manifest: dict[str, Any] | None = None
     retrieval_refinements: int = 0
+    evidence_completion_status: str = "not_run"
+    evidence_completion_reason: str = ""
+    evidence_completion_actions: int = 0
 
 
 @dataclass(frozen=True)
@@ -570,10 +583,11 @@ class AssistantRuntime:
         draft.tool_router_reason = str(getattr(decision, "reason", "no_match"))
         self._record_router_decision(draft, decision)
         if tool_call is not None:
-            prepared = self._prepare_tool_turn(frame, tool_call, draft)
+            prepared = self._prepare_stream_tool_turn(frame, tool_call, draft)
             if isinstance(prepared, RuntimeResult):
                 yield from self._emit_fixed_result(prepared, min_sentence_chars=min_sentence_chars)
                 return
+            prepared = self._finalize_prepared_context(frame, draft, prepared)
             if (
                 prepared.knowledge_context is not None or prepared.memory_context is not None
             ) and self.llm is not None:
@@ -600,10 +614,11 @@ class AssistantRuntime:
 
         retrieval_call = self._single_source_retrieval_call(frame, decision)
         if retrieval_call is not None:
-            prepared = self._prepare_tool_turn(frame, retrieval_call, draft)
+            prepared = self._prepare_stream_tool_turn(frame, retrieval_call, draft)
             if isinstance(prepared, RuntimeResult):
                 yield from self._emit_fixed_result(prepared, min_sentence_chars=min_sentence_chars)
                 return
+            prepared = self._finalize_prepared_context(frame, draft, prepared)
             if (
                 prepared.knowledge_context is not None or prepared.memory_context is not None
             ) and self.llm is not None:
@@ -1062,7 +1077,49 @@ class AssistantRuntime:
         if isinstance(prepared, RuntimeResult):
             return prepared
 
-        if self._can_refine_retrieval(prepared, draft):
+        completion_checked = False
+        if prepared.result.name in {"knowledge.search", "knowledge.read"}:
+            assessor = getattr(self.tool_router, "assess_evidence", None)
+            if callable(assessor):
+                observation = self._evidence_completion_observation(prepared, draft)
+                with self._stage(
+                    draft,
+                    f"evidence_completion:{draft.evidence_completion_actions}",
+                ):
+                    decision = assessor(
+                        frame.text,
+                        observation=observation,
+                        knowledge_limit=self.options.knowledge_limit,
+                    )
+                if isinstance(decision, EvidenceCompletionDecision):
+                    completion_checked = True
+                    draft.evidence_completion_status = decision.status
+                    draft.evidence_completion_reason = decision.reason_code
+                    if decision.status == "continue" and decision.call is not None:
+                        if decision.call in draft.tool_calls:
+                            draft.evidence_completion_status = "insufficient"
+                            draft.evidence_completion_reason = "duplicate_completion_action"
+                        elif (
+                            draft.evidence_completion_actions
+                            >= self.options.max_evidence_completion_actions
+                        ):
+                            draft.evidence_completion_status = "budget_exhausted"
+                            draft.evidence_completion_reason = (
+                                "evidence_completion_action_budget_exhausted"
+                            )
+                        else:
+                            draft.evidence_completion_actions += 1
+                            if prepared.result.name == "knowledge.search":
+                                self._clear_retrieval_artifacts(
+                                    draft,
+                                    knowledge_hit_count=knowledge_hit_count,
+                                    memory_hit_count=memory_hit_count,
+                                    citation_count=citation_count,
+                                    evidence_decision_count=evidence_decision_count,
+                                )
+                            return self._run_tool_turn(frame, decision.call, draft)
+
+        if not completion_checked and self._can_refine_retrieval(prepared, draft):
             refiner = getattr(self.tool_router, "refine", None)
             if callable(refiner):
                 observation = self._retrieval_refinement_observation(prepared)
@@ -1073,16 +1130,12 @@ class AssistantRuntime:
                 )
                 if refined_call is not None and refined_call != tool_call:
                     draft.retrieval_refinements += 1
-                    del draft.knowledge_hits[knowledge_hit_count:]
-                    del draft.memory_hits[memory_hit_count:]
-                    del draft.citations[citation_count:]
-                    del draft.evidence_decisions[evidence_decision_count:]
-                    draft.evidence_bundle = (
-                        EvidenceReconciler().reconcile(
-                            tuple(draft.evidence_decisions)
-                        )
-                        if draft.evidence_decisions
-                        else None
+                    self._clear_retrieval_artifacts(
+                        draft,
+                        knowledge_hit_count=knowledge_hit_count,
+                        memory_hit_count=memory_hit_count,
+                        citation_count=citation_count,
+                        evidence_decision_count=evidence_decision_count,
                     )
                     if isinstance(refined_call, ToolCall):
                         return self._run_tool_turn(frame, refined_call, draft)
@@ -1090,6 +1143,7 @@ class AssistantRuntime:
         if (
             prepared.knowledge_context is not None or prepared.memory_context is not None
         ) and self.llm is not None:
+            prepared = self._finalize_prepared_context(frame, draft, prepared)
             memory_context = prepared.memory_context
             if prepared.knowledge_context is not None:
                 memory_context = self._build_memory_context(frame, draft)
@@ -1102,6 +1156,191 @@ class AssistantRuntime:
             )
 
         return self._finish_prepared_tool_turn(frame, draft, prepared)
+
+    def _prepare_stream_tool_turn(
+        self,
+        frame: TurnFrame,
+        initial_call: ToolCall,
+        draft: _TraceDraft,
+    ) -> _PreparedToolTurn | RuntimeResult:
+        tool_call = initial_call
+        while True:
+            knowledge_hit_count = len(draft.knowledge_hits)
+            memory_hit_count = len(draft.memory_hits)
+            citation_count = len(draft.citations)
+            evidence_decision_count = len(draft.evidence_decisions)
+            prepared = self._prepare_tool_turn(frame, tool_call, draft)
+            if isinstance(prepared, RuntimeResult):
+                return prepared
+            if prepared.result.name not in {"knowledge.search", "knowledge.read"}:
+                return prepared
+            assessor = getattr(self.tool_router, "assess_evidence", None)
+            if not callable(assessor):
+                return prepared
+            with self._stage(
+                draft,
+                f"evidence_completion:{draft.evidence_completion_actions}",
+            ):
+                decision = assessor(
+                    frame.text,
+                    observation=self._evidence_completion_observation(prepared, draft),
+                    knowledge_limit=self.options.knowledge_limit,
+                )
+            if not isinstance(decision, EvidenceCompletionDecision):
+                return prepared
+            draft.evidence_completion_status = decision.status
+            draft.evidence_completion_reason = decision.reason_code
+            if decision.status != "continue" or decision.call is None:
+                return prepared
+            if decision.call in draft.tool_calls:
+                draft.evidence_completion_status = "insufficient"
+                draft.evidence_completion_reason = "duplicate_completion_action"
+                return prepared
+            if (
+                draft.evidence_completion_actions
+                >= self.options.max_evidence_completion_actions
+            ):
+                draft.evidence_completion_status = "budget_exhausted"
+                draft.evidence_completion_reason = (
+                    "evidence_completion_action_budget_exhausted"
+                )
+                return prepared
+            draft.evidence_completion_actions += 1
+            if prepared.result.name == "knowledge.search":
+                self._clear_retrieval_artifacts(
+                    draft,
+                    knowledge_hit_count=knowledge_hit_count,
+                    memory_hit_count=memory_hit_count,
+                    citation_count=citation_count,
+                    evidence_decision_count=evidence_decision_count,
+                )
+            tool_call = decision.call
+
+    def _finalize_prepared_context(
+        self,
+        frame: TurnFrame,
+        draft: _TraceDraft,
+        prepared: _PreparedToolTurn,
+    ) -> _PreparedToolTurn:
+        exact_hits = tuple(
+            hit
+            for hit in draft.knowledge_hits
+            if isinstance(hit, KnowledgeHit)
+            and hit.retrieval_backend == "explicit_read"
+        )
+        if len(exact_hits) < 2:
+            return prepared
+
+        citations = tuple(
+            KnowledgeCitation(
+                path=hit.document.path,
+                title=hit.document.title,
+                line_start=hit.line_start,
+                line_end=hit.line_end,
+            )
+            for hit in exact_hits
+        )
+        blocks = [
+            (
+                f"[K{index}] {hit.document.path}\n"
+                f"Title: {hit.document.title}\n"
+                f"Exact read:\n\n{hit.snippet}"
+            )
+            for index, hit in enumerate(exact_hits, start=1)
+        ]
+        completion_is_final = draft.evidence_completion_status == "complete"
+        evidence_status = "supported" if completion_is_final else "weak"
+        evidence_reason = (
+            "goal_coverage_complete"
+            if completion_is_final
+            else draft.evidence_completion_reason or "goal_coverage_incomplete"
+        )
+        knowledge_context = KnowledgeContext(
+            query=frame.text,
+            hits=exact_hits,
+            prompt_text="\n\n".join(
+                (
+                    UNTRUSTED_KNOWLEDGE_WARNING.strip(),
+                    f"Evidence status: {evidence_status} ({evidence_reason}).",
+                    *blocks,
+                )
+            ),
+            citations=citations,
+            evidence_status=evidence_status,
+            evidence_reason=evidence_reason,
+            top_relevance=1.0,
+            retrieval_state="ready",
+        )
+
+        draft.citations[:] = [
+            citation for citation in draft.citations if citation.source != "knowledge"
+        ]
+        draft.citations.extend(citations)
+        draft.evidence_decisions[:] = [
+            decision
+            for decision in draft.evidence_decisions
+            if decision.source != "knowledge"
+        ]
+        draft.evidence_decisions.append(
+            decide_evidence(
+                "knowledge",
+                exact_hits,
+                status=cast(EvidenceStatus, evidence_status),
+                reason=evidence_reason,
+                top_score=1.0,
+                source_state="ready",
+            )
+        )
+        draft.evidence_bundle = EvidenceReconciler().reconcile(
+            tuple(draft.evidence_decisions)
+        )
+        return _PreparedToolTurn(
+            result=prepared.result,
+            citations=citations,
+            knowledge_context=knowledge_context,
+            memory_context=prepared.memory_context,
+        )
+
+    @staticmethod
+    def _clear_retrieval_artifacts(
+        draft: _TraceDraft,
+        *,
+        knowledge_hit_count: int,
+        memory_hit_count: int,
+        citation_count: int,
+        evidence_decision_count: int,
+    ) -> None:
+        del draft.knowledge_hits[knowledge_hit_count:]
+        del draft.memory_hits[memory_hit_count:]
+        del draft.citations[citation_count:]
+        del draft.evidence_decisions[evidence_decision_count:]
+        draft.evidence_bundle = (
+            EvidenceReconciler().reconcile(tuple(draft.evidence_decisions))
+            if draft.evidence_decisions
+            else None
+        )
+
+    @staticmethod
+    def _evidence_completion_observation(
+        prepared: _PreparedToolTurn,
+        draft: _TraceDraft,
+    ) -> str:
+        prior_calls = [
+            {"name": call.name, "arguments": call.arguments}
+            for call in draft.tool_calls
+        ]
+        payload = {
+            "tool": prepared.result.name,
+            "receipt": prepared.result.data,
+            "evidence": prepared.result.content[:8_000],
+            "prior_calls": prior_calls,
+            "evidence_status": (
+                prepared.knowledge_context.evidence_status
+                if prepared.knowledge_context is not None
+                else "not_available"
+            ),
+        }
+        return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
     def _can_refine_retrieval(
         self,
@@ -1390,6 +1629,47 @@ class AssistantRuntime:
                     query,
                     (),
                     diagnostics=_tool_diagnostics(tool_result.data),
+                )
+
+            if tool_call.name == "knowledge.read":
+                path = citations[0].path
+                title = citations[0].title
+                line_start = _int_metadata(tool_result.data.get("line_start")) or None
+                line_end = _int_metadata(tool_result.data.get("line_end")) or None
+                complete = tool_result.data.get("complete") is True
+                hit = KnowledgeHit(
+                    document=KnowledgeDocument(
+                        id=f"{path}#{line_start or 1}-{line_end or 1}",
+                        path=path,
+                        title=title,
+                        text=tool_result.content,
+                    ),
+                    score=1.0,
+                    snippet=tool_result.content,
+                    line_start=line_start,
+                    line_end=line_end,
+                    retrieval_backend="explicit_read",
+                )
+                evidence_status = "supported" if complete else "weak"
+                evidence_reason = (
+                    "exact_read_complete" if complete else "exact_read_requires_continuation"
+                )
+                prompt_text = "\n\n".join(
+                    (
+                        UNTRUSTED_KNOWLEDGE_WARNING.strip(),
+                        f"Evidence status: {evidence_status} ({evidence_reason}).",
+                        f"[K1] {path}\nTitle: {title}\nExact read:\n\n{tool_result.content}",
+                    )
+                )
+                return KnowledgeContext(
+                    query=query,
+                    hits=(hit,),
+                    prompt_text=prompt_text,
+                    citations=citations,
+                    evidence_status=evidence_status,
+                    evidence_reason=evidence_reason,
+                    top_relevance=1.0,
+                    retrieval_state="ready",
                 )
 
             path = citations[0].path
@@ -2394,6 +2674,9 @@ class AssistantRuntime:
             answer_repair_attempted=draft.answer_repair_attempted,
             answer_repair_succeeded=draft.answer_repair_succeeded,
             retrieval_refinements=draft.retrieval_refinements,
+            evidence_completion_status=draft.evidence_completion_status,
+            evidence_completion_reason=draft.evidence_completion_reason,
+            evidence_completion_actions=draft.evidence_completion_actions,
             prompt_manifest=draft.prompt_manifest,
         )
         return RuntimeResult(
@@ -2472,7 +2755,25 @@ class AssistantRuntime:
         title = str(result.data.get("title", path))
         if not path:
             return ()
-        return (KnowledgeCitation(path=path, title=title, source=source),)
+        line_start = result.data.get("line_start")
+        line_end = result.data.get("line_end")
+        return (
+            KnowledgeCitation(
+                path=path,
+                title=title,
+                line_start=(
+                    line_start
+                    if isinstance(line_start, int) and not isinstance(line_start, bool)
+                    else None
+                ),
+                line_end=(
+                    line_end
+                    if isinstance(line_end, int) and not isinstance(line_end, bool)
+                    else None
+                ),
+                source=source,
+            ),
+        )
 
     @contextmanager
     def _stage(self, draft: _TraceDraft, name: str):

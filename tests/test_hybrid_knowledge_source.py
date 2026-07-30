@@ -149,6 +149,42 @@ def test_custom_lexical_fusion_aggregates_chunks_at_document_boundary(
     assert all(hit.fusion_score is not None for hit in hits)
 
 
+def test_custom_lexical_fusion_preserves_the_query_local_passage(
+    tmp_path: Path,
+) -> None:
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    (wiki / "weekly.md").write_text(
+        "\n".join(
+            [
+                "# Weekly review",
+                "",
+                "## Unfinished",
+                "unfinished needle receipt remains open",
+                "",
+                "## Later section",
+                "future scheduling details without the requested item",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    source = _source(
+        tmp_path,
+        tmp_path / "index",
+        model=FakeEmbeddingModel(),
+        config=HybridConfig(
+            sparse_backend="lexical_custom",
+            dense_weight=0.25,
+            per_retriever_limit=10,
+        ),
+    )
+
+    hits = source.search("unfinished needle", limit=5)
+
+    assert hits[0].document.path == "wiki/weekly.md"
+    assert "unfinished needle" in hits[0].snippet
+
+
 def test_dense_retrieval_is_not_blocked_by_a_lexical_miss(tmp_path: Path) -> None:
     _make_vault(tmp_path)
     model = FakeEmbeddingModel()
