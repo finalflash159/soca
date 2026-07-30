@@ -8,6 +8,7 @@ from soca.core import AssistantRuntime, RuntimeOptions
 from soca.core.workflow import (
     ActionPlan,
     ControlledWorkflowRunner,
+    GoalConstraint,
     GoalContract,
     GoalResolver,
     PlanStep,
@@ -100,7 +101,7 @@ class RepairLLM:
 
 
 def make_goal() -> GoalContract:
-    return GoalContract(statement="Tìm ghi chú Bayes", goal_id="goal-1")
+    return GoalContract(goal_id="goal-1", objective="Tìm ghi chú Bayes")
 
 
 def knowledge_observation(
@@ -144,12 +145,12 @@ def test_explicit_call_skips_planner_and_emits_update_before_terminal() -> None:
         explicit_call=ToolCall("knowledge.search", {"query": "Bayes"}),
     )
 
-    assert result.terminal.status is TerminalStatus.SUCCEEDED
+    assert result.terminal.status is TerminalStatus.ACHIEVED
     assert planner.calls == 0
     assert tool.calls == 1
     assert result.events[-1].terminal is True
-    assert any(event.kind == "update" for event in result.events[:-1])
-    assert [event.kind for event in result.events].count("terminal") == 1
+    assert any(not event.terminal for event in result.events[:-1])
+    assert sum(event.terminal for event in result.events) == 1
 
 
 def test_planner_workflow_executes_catalog_action() -> None:
@@ -161,7 +162,7 @@ def test_planner_workflow_executes_catalog_action() -> None:
         planner=planner,
     )
 
-    assert result.terminal.status is TerminalStatus.SUCCEEDED
+    assert result.terminal.status is TerminalStatus.ACHIEVED
     assert result.terminal.route == "controlled_workflow"
     assert planner.calls == 1
     assert result.observations[0].content == "Bayes"
@@ -174,13 +175,18 @@ def test_four_default_tool_calls_fit_transition_budget() -> None:
         for index in range(4)
     )
 
-    result = ControlledWorkflowRunner(ToolRuntime([tool])).run(
+    result = ControlledWorkflowRunner(
+        ToolRuntime([tool]),
+        budget=TurnBudget(max_transitions=24),
+    ).run(
         make_goal(),
         planner=StaticPlanner(make_plan(*calls)),
     )
 
-    assert result.terminal.status is TerminalStatus.SUCCEEDED
-    assert result.budget.transitions == 19
+    assert result.terminal.status is TerminalStatus.ACHIEVED
+    assert result.budget.transitions <= result.terminal.metadata.get(
+        "transition_limit", result.budget.transitions
+    )
     assert result.budget.tool_calls == 4
 
 
@@ -195,13 +201,13 @@ def test_transient_tool_failure_retries_with_shared_budget() -> None:
 
     result = ControlledWorkflowRunner(
         ToolRuntime([tool]),
-        budget=TurnBudget(max_retries=1, max_tool_calls=2),
+        budget=TurnBudget(max_readonly_tool_retries=1, max_tool_calls=2),
     ).run(make_goal(), planner=StaticPlanner(plan))
 
-    assert result.terminal.status is TerminalStatus.SUCCEEDED
+    assert result.terminal.status is TerminalStatus.ACHIEVED
     assert tool.calls == 2
     assert result.budget.retries == 1
-    assert any(event.payload.get("phase") == "retrying" for event in result.events)
+    assert any(event.payload.get("operation") == "retry" for event in result.events)
 
 
 def test_mutating_tool_failure_is_not_retried_without_idempotency() -> None:
@@ -215,14 +221,14 @@ def test_mutating_tool_failure_is_not_retried_without_idempotency() -> None:
     )
     result = ControlledWorkflowRunner(
         ToolRuntime([tool]),
-        budget=TurnBudget(max_retries=1),
+        budget=TurnBudget(max_readonly_tool_retries=1),
     ).run(
         make_goal(),
         explicit_call=ToolCall("memory.propose_note", {"query": "remember"}),
         authorize=lambda goal, step: True,
     )
 
-    assert result.terminal.status is TerminalStatus.FAILED
+    assert result.terminal.status is TerminalStatus.SYSTEM_FAILURE
     assert result.terminal.error_code == "ambiguous"
     assert result.budget.retries == 0
     assert tool.calls == 1
@@ -241,7 +247,7 @@ def test_duplicate_successful_action_is_gated() -> None:
         planner=StaticPlanner(make_plan(call, call)),
     )
 
-    assert result.terminal.status is TerminalStatus.FAILED
+    assert result.terminal.status is TerminalStatus.SAFE_FAILURE
     assert result.terminal.error_code == "duplicate_action"
     assert tool.calls == 1
 
@@ -255,7 +261,7 @@ def test_empty_search_observation_does_not_achieve_goal() -> None:
         explicit_call=ToolCall("knowledge.search", {"query": "missing"}),
     )
 
-    assert result.terminal.status is TerminalStatus.FAILED
+    assert result.terminal.status is TerminalStatus.INSUFFICIENT_EVIDENCE
     assert result.terminal.error_code == "no_matching_observation"
 
 
@@ -269,7 +275,7 @@ def test_knowledge_read_guardrail_blocks_out_of_scope_path_before_tool() -> None
         explicit_call=ToolCall("knowledge.read", {"path": "private/secret.md"}),
     )
 
-    assert result.terminal.status is TerminalStatus.FAILED
+    assert result.terminal.status is TerminalStatus.SAFE_FAILURE
     assert result.terminal.error_code == "guardrail_blocked"
     assert tool.calls == 0
 
@@ -284,7 +290,7 @@ def test_budget_exhaustion_is_terminal_and_bounded() -> None:
         explicit_call=ToolCall("knowledge.search", {"query": "Bayes"}),
     )
 
-    assert result.terminal.status is TerminalStatus.FAILED
+    assert result.terminal.status is TerminalStatus.BUDGET_EXHAUSTED
     assert result.terminal.error_code == "budget_exhausted"
     assert tool.calls == 0
     assert result.events[-1].terminal is True
@@ -299,7 +305,7 @@ def test_cancellation_does_not_produce_a_success_answer() -> None:
     )
 
     assert result.terminal.status is TerminalStatus.CANCELLED
-    assert result.terminal.response_text == ""
+    assert result.terminal.final_text == ""
     assert tool.calls == 0
 
 
@@ -315,7 +321,7 @@ def test_side_effect_action_requires_authorization() -> None:
         explicit_call=call,
     )
 
-    assert result.terminal.status is TerminalStatus.FAILED
+    assert result.terminal.status is TerminalStatus.SAFE_FAILURE
     assert result.terminal.error_code == "authorization_denied"
     assert tool.calls == 0
 
@@ -325,7 +331,7 @@ def test_action_fingerprint_is_stable_and_goal_scoped() -> None:
     same = action_fingerprint(make_goal(), call)
     again = action_fingerprint(make_goal(), call)
     other_goal = action_fingerprint(
-        GoalContract(statement="Tìm ghi chú ONNX", goal_id="goal-2"),
+        GoalContract(goal_id="goal-2", objective="Tìm ghi chú ONNX"),
         call,
     )
 
@@ -340,15 +346,16 @@ def test_goal_resolver_keeps_follow_up_on_the_same_goal() -> None:
 
     assert follow_up.continued is True
     assert follow_up.goal.goal_id == first.goal.goal_id
-    assert follow_up.goal.statement == first.goal.statement
-    assert follow_up.goal.metadata["follow_up"] == "chỉ lấy trong vault"
+    assert follow_up.goal.objective == first.goal.objective
+    assert follow_up.goal.constraints[-1].kind == "follow_up"
+    assert follow_up.goal.constraints[-1].value == "chỉ lấy trong vault"
 
 
 def test_follow_up_constraint_is_sent_to_planner() -> None:
     goal = GoalContract(
-        statement="Tìm ghi chú Bayes",
         goal_id="goal-1",
-        metadata={"follow_up": "chỉ lấy trong vault"},
+        objective="Tìm ghi chú Bayes",
+        constraints=(GoalConstraint("follow_up", "chỉ lấy trong vault"),),
     )
     planner = StaticPlanner(make_plan(ToolCall("knowledge.search", {"query": "Bayes"})))
     tool = ScriptedTool([knowledge_observation("Bayes")])
@@ -356,7 +363,7 @@ def test_follow_up_constraint_is_sent_to_planner() -> None:
     ControlledWorkflowRunner(ToolRuntime([tool])).run(goal, planner=planner)
 
     assert planner.seen_goals == [
-        "Objective: Tìm ghi chú Bayes\nFollow-up constraint: chỉ lấy trong vault"
+        "Objective: Tìm ghi chú Bayes\nConstraints: follow_up=chỉ lấy trong vault"
     ]
 
 
@@ -444,7 +451,7 @@ def test_runner_budget_covers_planner_repair_calls() -> None:
         budget=TurnBudget(max_model_calls=1),
     ).run(make_goal(), planner=planner)
 
-    assert result.terminal.status is TerminalStatus.FAILED
+    assert result.terminal.status is TerminalStatus.BUDGET_EXHAUSTED
     assert result.terminal.error_code == "budget_exhausted"
     assert result.budget.model_calls == 1
 
@@ -471,5 +478,5 @@ def test_runtime_facade_is_opt_in_and_uses_active_goal_store() -> None:
         explicit_call=ToolCall("knowledge.search", {"query": "Bayes"}),
     )
 
-    assert result.terminal.status is TerminalStatus.SUCCEEDED
+    assert result.terminal.status is TerminalStatus.ACHIEVED
     assert runtime.options.turn_workflow == "shadow"

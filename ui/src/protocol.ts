@@ -143,6 +143,85 @@ export interface TurnProgressEvent {
   status: "active" | "done";
 }
 
+export type WorkflowEventName =
+  | "turn_started"
+  | "goal_resolved"
+  | "step_started"
+  | "step_progress"
+  | "step_completed"
+  | "public_update"
+  | "answer_delta"
+  | "verification_started"
+  | "verification_completed"
+  | "turn_terminal";
+
+const WORKFLOW_EVENT_NAMES = new Set<WorkflowEventName>([
+  "turn_started",
+  "goal_resolved",
+  "step_started",
+  "step_progress",
+  "step_completed",
+  "public_update",
+  "answer_delta",
+  "verification_started",
+  "verification_completed",
+  "turn_terminal",
+]);
+
+export type WorkflowNode =
+  | "admit"
+  | "resolve_goal"
+  | "choose_capability"
+  | "make_plan"
+  | "authorize_action"
+  | "execute_action"
+  | "assess_observation"
+  | "revise_query"
+  | "synthesize"
+  | "verify_answer"
+  | "repair_answer"
+  | "ask_clarification"
+  | "finalize";
+
+export interface WorkflowEvent {
+  event: WorkflowEventName;
+  protocol_version: 2;
+  session_id: string;
+  run_id: string;
+  goal_id: string;
+  sequence: number;
+  surface: "ask" | "cli" | "chat" | "voice";
+  timestamp: string;
+  node: WorkflowNode;
+  status: "started" | "active" | "completed" | "failed" | "cancelled";
+  payload: Record<string, unknown>;
+}
+
+function isWorkflowEvent(value: Record<string, unknown>): boolean {
+  return (
+    typeof value.event === "string" &&
+    WORKFLOW_EVENT_NAMES.has(value.event as WorkflowEventName) &&
+    value.protocol_version === PROTOCOL_VERSION &&
+    typeof value.session_id === "string" &&
+    value.session_id.length > 0 &&
+    typeof value.run_id === "string" &&
+    value.run_id.length > 0 &&
+    typeof value.goal_id === "string" &&
+    value.goal_id.length > 0 &&
+    typeof value.sequence === "number" &&
+    Number.isInteger(value.sequence) &&
+    value.sequence >= 0 &&
+    ["ask", "cli", "chat", "voice"].includes(String(value.surface)) &&
+    typeof value.timestamp === "string" &&
+    !Number.isNaN(Date.parse(value.timestamp)) &&
+    typeof value.node === "string" &&
+    typeof value.status === "string" &&
+    typeof value.payload === "object" &&
+    value.payload !== null &&
+    !Array.isArray(value.payload)
+  );
+}
+
 export interface ChatEvent {
   event: "chat";
   type: "start" | "loading" | "ready" | "done" | "error";
@@ -347,6 +426,7 @@ export type EngineEvent =
   | MemoryActionEvent
   | RetrievalTraceEvent
   | TurnProgressEvent
+  | WorkflowEvent
   | ChatEvent
   | StatusEvent
   | MemoryEvent
@@ -378,6 +458,16 @@ export function parseEngineEvent(line: string): EngineEvent | null {
       "memory_action",
       "retrieval_trace",
       "turn_progress",
+      "turn_started",
+      "goal_resolved",
+      "step_started",
+      "step_progress",
+      "step_completed",
+      "public_update",
+      "answer_delta",
+      "verification_started",
+      "verification_completed",
+      "turn_terminal",
       "chat",
       "status",
       "memory",
@@ -396,6 +486,11 @@ export function parseEngineEvent(line: string): EngineEvent | null {
       parsed === null ||
       typeof eventName !== "string" ||
       !known.has(eventName)
+    )
+      return null;
+    if (
+      WORKFLOW_EVENT_NAMES.has(eventName as WorkflowEventName) &&
+      !isWorkflowEvent(parsed as Record<string, unknown>)
     )
       return null;
     return adaptLegacyEvent(parsed as Record<string, unknown>) as unknown as EngineEvent;

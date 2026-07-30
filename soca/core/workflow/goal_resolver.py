@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Literal
 from uuid import uuid4
 
-from .contracts import GoalContract
+from .contracts import GoalConstraint, GoalContract
 
 
 @dataclass(frozen=True)
@@ -51,15 +52,26 @@ class GoalResolver:
             raise ValueError("cannot continue without an active goal")
         if continues_active_goal and active is not None:
             goal = GoalContract(
-                statement=active.statement,
                 goal_id=active.goal_id,
-                source="follow_up",
+                objective=active.objective,
                 success_criteria=active.success_criteria,
-                metadata={"follow_up": statement, "source": source},
+                constraints=active.constraints
+                + (GoalConstraint("follow_up", statement),),
+                required_sources=active.required_sources,
+                resolved_entities=active.resolved_entities,
+                unresolved_entities=active.unresolved_entities,
+                status=active.status,
+                created_at=active.created_at,
+                updated_at=datetime.now(UTC).isoformat(),
+                parent_goal_id=active.parent_goal_id,
             )
             self.store.set(goal)
             return GoalResolution(goal=goal, continued=True)
 
-        goal = GoalContract(statement=statement, goal_id=uuid4().hex, source=source)
+        goal = GoalContract(
+            goal_id=uuid4().hex,
+            objective=statement,
+            constraints=(GoalConstraint("turn_source", source),),
+        )
         self.store.set(goal)
         return GoalResolution(goal=goal, continued=False)

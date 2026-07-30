@@ -17,13 +17,14 @@ from soca.tools import SideEffectLevel, ToolCall, ToolResult, ToolRuntime
 from .budget import BudgetLedger, BudgetSnapshot
 from .contracts import (
     GoalContract,
+    GoalStatus,
     TerminalOutcome,
     TerminalStatus,
     TurnBudget,
-    TurnState,
+    TurnNode,
 )
 from .errors import BudgetExceededError, WorkflowError, WorkflowErrorCode
-from .events import WorkflowEvent, WorkflowEventStream
+from .events import EventStatus, EventType, WorkflowEvent, WorkflowEventStream
 from .nodes import ToolExecutionNode
 from .planner import ActionPlan, PlanStep, WorkflowPlanner
 from .verifier import DeterministicVerifier, Verification
@@ -71,11 +72,25 @@ class RetryLedger:
 
 def action_fingerprint(goal: GoalContract, call: ToolCall) -> str:
     """Create a stable idempotency key without storing user content in the key."""
-    revision = goal.metadata.get("revision", 0)
     canonical = json.dumps(
         {
             "goal_id": goal.goal_id,
-            "revision": revision,
+            "goal_revision": {
+                "objective": goal.objective,
+                "constraints": [
+                    {"kind": item.kind, "value": _jsonable(item.value)}
+                    for item in goal.constraints
+                ],
+                "required_sources": [item.value for item in goal.required_sources],
+                "resolved_entities": [
+                    {
+                        "surface": item.surface,
+                        "canonical": item.canonical,
+                        "confidence": item.confidence,
+                    }
+                    for item in goal.resolved_entities
+                ],
+            },
             "tool": call.name,
             "arguments": call.arguments,
         },
@@ -86,8 +101,16 @@ def action_fingerprint(goal: GoalContract, call: ToolCall) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    return value
+
+
 class InvalidTransitionError(WorkflowError):
-    def __init__(self, source: TurnState, target: TurnState) -> None:
+    def __init__(self, source: TurnNode, target: TurnNode) -> None:
         super().__init__(
             code=WorkflowErrorCode.PROTOCOL_ERROR,
             message=f"invalid workflow transition: {source.value} -> {target.value}",
@@ -96,15 +119,19 @@ class InvalidTransitionError(WorkflowError):
         self.target = target
 
 
-_TRANSITIONS: Mapping[TurnState, frozenset[TurnState]] = {
-    TurnState.RECEIVED: frozenset({TurnState.ANALYZING, TurnState.CANCELLED}),
-    TurnState.ANALYZING: frozenset({TurnState.PLANNING, TurnState.AUTHORIZING, TurnState.CANCELLED}),
-    TurnState.PLANNING: frozenset({TurnState.AUTHORIZING, TurnState.SYNTHESIZING, TurnState.CANCELLED}),
-    TurnState.AUTHORIZING: frozenset({TurnState.EXECUTING, TurnState.FAILED, TurnState.CANCELLED}),
-    TurnState.EXECUTING: frozenset({TurnState.OBSERVING, TurnState.FAILED, TurnState.CANCELLED}),
-    TurnState.OBSERVING: frozenset({TurnState.VERIFYING, TurnState.EXECUTING, TurnState.FAILED, TurnState.CANCELLED}),
-    TurnState.VERIFYING: frozenset({TurnState.AUTHORIZING, TurnState.SYNTHESIZING, TurnState.FAILED, TurnState.CANCELLED}),
-    TurnState.SYNTHESIZING: frozenset({TurnState.COMPLETED, TurnState.FAILED, TurnState.CANCELLED}),
+_TRANSITIONS: Mapping[TurnNode, frozenset[TurnNode]] = {
+    TurnNode.ADMIT: frozenset({TurnNode.RESOLVE_GOAL}),
+    TurnNode.RESOLVE_GOAL: frozenset({TurnNode.MAKE_PLAN, TurnNode.AUTHORIZE_ACTION}),
+    TurnNode.MAKE_PLAN: frozenset({TurnNode.AUTHORIZE_ACTION, TurnNode.SYNTHESIZE}),
+    TurnNode.AUTHORIZE_ACTION: frozenset({TurnNode.EXECUTE_ACTION}),
+    TurnNode.EXECUTE_ACTION: frozenset({TurnNode.ASSESS_OBSERVATION}),
+    TurnNode.ASSESS_OBSERVATION: frozenset(
+        {TurnNode.VERIFY_ANSWER, TurnNode.EXECUTE_ACTION}
+    ),
+    TurnNode.VERIFY_ANSWER: frozenset(
+        {TurnNode.AUTHORIZE_ACTION, TurnNode.SYNTHESIZE}
+    ),
+    TurnNode.SYNTHESIZE: frozenset({TurnNode.FINALIZE}),
 }
 
 
@@ -126,18 +153,27 @@ class ControlledWorkflowRunner:
         authorize: AuthorizationPolicy | None = None,
         cancelled: CancellationCheck | None = None,
         turn_id: str = "",
+        session_id: str = "in-memory-session",
+        surface: str = "chat",
     ) -> WorkflowRun:
+        run_id = turn_id.strip() or f"run-{goal.goal_id}"
         ledger = BudgetLedger(self.budget)
         retries = RetryLedger()
-        stream = WorkflowEventStream(turn_id=turn_id)
+        normalized_surface = surface if surface in {"ask", "cli", "chat", "voice"} else "chat"
+        stream = WorkflowEventStream(
+            session_id=session_id,
+            run_id=run_id,
+            goal_id=goal.goal_id,
+            surface=normalized_surface,  # type: ignore[arg-type]
+        )
         observations: list[ToolResult] = []
-        current = TurnState.RECEIVED
+        current = TurnNode.ADMIT
         plan: ActionPlan | None = None
 
         def is_cancelled() -> bool:
             return bool(cancelled and cancelled())
 
-        def transition(target: TurnState) -> None:
+        def transition(target: TurnNode) -> None:
             nonlocal current
             current = self._move(current, target, ledger, stream)
 
@@ -151,15 +187,20 @@ class ControlledWorkflowRunner:
                 observations=tuple(observations),
             )
 
-        stream.emit("started", TurnState.RECEIVED, {"turn_id": turn_id, "goal_id": goal.goal_id})
+        stream.emit(
+            EventType.TURN_STARTED,
+            TurnNode.ADMIT,
+            status=EventStatus.STARTED,
+        )
         try:
             if is_cancelled():
                 return terminal(self._cancelled_outcome("cancelled_before_start"))
-            transition(TurnState.ANALYZING)
+            transition(TurnNode.RESOLVE_GOAL)
             stream.emit(
-                "update",
+                EventType.GOAL_RESOLVED,
                 current,
-                {"phase": "analyzing", "text": "Đang phân tích mục tiêu"},
+                status=EventStatus.COMPLETED,
+                payload={"objective": goal.objective},
             )
 
             if explicit_call is not None:
@@ -177,11 +218,11 @@ class ControlledWorkflowRunner:
             else:
                 if planner is None:
                     return terminal(self._failed_outcome("planner_required"))
-                transition(TurnState.PLANNING)
+                transition(TurnNode.MAKE_PLAN)
                 stream.emit(
-                    "update",
+                    EventType.STEP_PROGRESS,
                     current,
-                    {"phase": "planning", "text": "Đang lập kế hoạch"},
+                    payload={"operation": "plan"},
                 )
                 self._bind_model_budget(planner, ledger)
                 if not self._has_model_budget_hook(planner):
@@ -214,12 +255,13 @@ class ControlledWorkflowRunner:
 
             if is_cancelled():
                 return terminal(self._cancelled_outcome("cancelled_before_answer"))
-            if current != TurnState.SYNTHESIZING:
-                transition(TurnState.SYNTHESIZING)
+            if current != TurnNode.SYNTHESIZE:
+                transition(TurnNode.SYNTHESIZE)
             stream.emit(
-                "update",
+                EventType.STEP_STARTED,
                 current,
-                {"phase": "synthesizing", "text": "Đang tổng hợp kết quả"},
+                status=EventStatus.STARTED,
+                payload={"operation": "synthesize"},
             )
             response_text = self._observation_text(observations)
             output_event = check_final_output(
@@ -234,10 +276,12 @@ class ControlledWorkflowRunner:
             )
             if output_event.blocked:
                 return terminal(self._failed_outcome("output_guardrail", detail=output_event.reason))
+            transition(TurnNode.FINALIZE)
             return terminal(
                 TerminalOutcome(
-                    status=TerminalStatus.SUCCEEDED,
-                    response_text=response_text,
+                    status=TerminalStatus.ACHIEVED,
+                    final_text=response_text,
+                    goal_status=GoalStatus.ACHIEVED,
                     route="controlled_workflow",
                     metadata={
                         "goal_id": goal.goal_id,
@@ -267,10 +311,10 @@ class ControlledWorkflowRunner:
         ledger: BudgetLedger,
         retries: RetryLedger,
         stream: WorkflowEventStream,
-        current: TurnState,
+        current: TurnNode,
         authorize: AuthorizationPolicy | None,
         is_cancelled: Callable[[], bool],
-    ) -> tuple[TurnState, ToolResult, Verification, TerminalOutcome | None]:
+    ) -> tuple[TurnNode, ToolResult, Verification, TerminalOutcome | None]:
         fingerprint = action_fingerprint(goal, step.call)
         tool = self.tool_runtime.get(step.call.name)
         if tool is None or not tool.spec.enabled:
@@ -321,51 +365,56 @@ class ControlledWorkflowRunner:
             if is_cancelled():
                 result = ToolResult(step.call.name, False, "", error="cancelled")
                 return current, result, Verification(False, "cancelled"), self._cancelled_outcome("cancelled_during_action")
-            if current != TurnState.AUTHORIZING:
-                current = self._move(current, TurnState.AUTHORIZING, ledger, stream)
+            if current != TurnNode.AUTHORIZE_ACTION:
+                current = self._move(current, TurnNode.AUTHORIZE_ACTION, ledger, stream)
             stream.emit(
-                "update",
+                EventType.STEP_STARTED,
                 current,
-                {"phase": "authorizing", "action_id": step.action_id, "text": "Đang chuẩn bị công cụ"},
+                status=EventStatus.STARTED,
+                payload={"action_id": step.action_id, "operation": "authorize"},
             )
-            current = self._move(current, TurnState.EXECUTING, ledger, stream)
+            current = self._move(current, TurnNode.EXECUTE_ACTION, ledger, stream)
             ledger.consume("tool")
             retries.record_attempt(fingerprint)
             stream.emit(
-                "update",
+                EventType.STEP_PROGRESS,
                 current,
-                {"phase": "executing", "action_id": step.action_id, "text": "Đang thực thi"},
+                payload={"action_id": step.action_id, "operation": "execute"},
             )
-            result = ToolExecutionNode(self.tool_runtime).execute(step.call).output
+            result = ToolExecutionNode(self.tool_runtime).execute(step.call)
             if not isinstance(result, ToolResult):
                 result = ToolResult(step.call.name, False, "", error="invalid_tool_result")
             if result.ok:
                 retries.mark_completed(fingerprint)
-            current = self._move(current, TurnState.OBSERVING, ledger, stream)
+            current = self._move(current, TurnNode.ASSESS_OBSERVATION, ledger, stream)
             stream.emit(
-                "update",
+                EventType.STEP_COMPLETED,
                 current,
-                {"phase": "observing", "action_id": step.action_id, "text": "Đã nhận kết quả"},
+                status=EventStatus.COMPLETED if result.ok else EventStatus.FAILED,
+                payload={"action_id": step.action_id, "result_ok": result.ok},
             )
             verification = self.verifier.verify(goal, result)
-            current = self._move(current, TurnState.VERIFYING, ledger, stream)
+            current = self._move(current, TurnNode.VERIFY_ANSWER, ledger, stream)
             stream.emit(
-                "update",
+                EventType.VERIFICATION_COMPLETED,
                 current,
-                {"phase": "verifying", "action_id": step.action_id, "achieved": verification.achieved},
+                status=(
+                    EventStatus.COMPLETED if verification.achieved else EventStatus.FAILED
+                ),
+                payload={"action_id": step.action_id, "passed": verification.achieved},
             )
             if verification.achieved:
                 return current, result, verification, None
             if (
                 not result.ok
-                and ledger.snapshot().retries < self.budget.max_retries
+                and ledger.snapshot().retries < self.budget.max_readonly_tool_retries
                 and (tool.spec.side_effect == SideEffectLevel.READ_ONLY or tool.spec.idempotent)
             ):
                 ledger.consume("retry")
                 stream.emit(
-                    "update",
+                    EventType.STEP_PROGRESS,
                     current,
-                    {"phase": "retrying", "action_id": step.action_id, "text": "Đang thử lại"},
+                    payload={"action_id": step.action_id, "operation": "retry"},
                 )
                 continue
             return current, result, verification, None
@@ -394,15 +443,20 @@ class ControlledWorkflowRunner:
 
     @staticmethod
     def _move(
-        current: TurnState,
-        target: TurnState,
+        current: TurnNode,
+        target: TurnNode,
         ledger: BudgetLedger,
         stream: WorkflowEventStream,
-    ) -> TurnState:
+    ) -> TurnNode:
         if target not in _TRANSITIONS.get(current, frozenset()):
             raise InvalidTransitionError(current, target)
         ledger.consume("transition")
-        stream.emit("node", target, {"node": target.value})
+        stream.emit(
+            EventType.STEP_STARTED,
+            target,
+            status=EventStatus.STARTED,
+            payload={"operation": target.value},
+        )
         return target
 
     @staticmethod
@@ -420,8 +474,23 @@ class ControlledWorkflowRunner:
         metadata: dict[str, Any] = {}
         if detail:
             metadata["detail"] = detail
+        if code == "budget_exhausted":
+            terminal_status = TerminalStatus.BUDGET_EXHAUSTED
+        elif code == "no_matching_observation":
+            terminal_status = TerminalStatus.INSUFFICIENT_EVIDENCE
+        elif code in {
+            "authorization_denied",
+            "duplicate_action",
+            "guardrail_blocked",
+            "unknown_tool",
+        }:
+            terminal_status = TerminalStatus.SAFE_FAILURE
+        else:
+            terminal_status = TerminalStatus.SYSTEM_FAILURE
         return TerminalOutcome(
-            status=TerminalStatus.FAILED,
+            status=terminal_status,
+            final_text="",
+            goal_status=GoalStatus.FAILED,
             route="controlled_workflow",
             error_code=code,
             metadata=metadata,
@@ -431,6 +500,8 @@ class ControlledWorkflowRunner:
     def _cancelled_outcome(code: str) -> TerminalOutcome:
         return TerminalOutcome(
             status=TerminalStatus.CANCELLED,
+            final_text="",
+            goal_status=GoalStatus.ACTIVE,
             route="controlled_workflow",
             error_code=code,
         )
