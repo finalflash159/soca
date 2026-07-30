@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from soca.core import NullAudioPlayer, VoicePipeline
+from soca.knowledge import KnowledgeCitation
 from soca.tts import TTSResult
 
 
@@ -107,8 +108,14 @@ class FakeStreamingRuntime:
     matching what VoicePipeline._turn_streaming_runtime_stream consumes.
     """
 
-    def __init__(self, sentences: list[str]) -> None:
+    def __init__(
+        self,
+        sentences: list[str],
+        *,
+        citations: tuple[KnowledgeCitation, ...] = (),
+    ) -> None:
         self.sentences = list(sentences)
+        self.citations = citations
         self.calls: list[str] = []
         self.metadata_calls: list[dict | None] = []
 
@@ -132,7 +139,10 @@ class FakeStreamingRuntime:
             yield FakeRuntimeStreamEvent(type="sentence", text=sentence)
         yield FakeRuntimeStreamEvent(
             type="result",
-            result=FakeRuntimeResult(response_text=" ".join(self.sentences)),
+            result=FakeRuntimeResult(
+                response_text=" ".join(self.sentences),
+                citations=self.citations,
+            ),
         )
 
 
@@ -287,6 +297,49 @@ def test_voice_pipeline_streaming_strips_markdown_before_tts():
         event.type == "tts" and event.text == "Tình hình: nên ăn đủ đạm." for event in events
     )
     assert tts.calls == ["Tình hình: nên ăn đủ đạm."]
+
+
+def test_voice_pipeline_keeps_citations_as_metadata_not_spoken_text() -> None:
+    citation = KnowledgeCitation(
+        path="wiki/learning/attention.md",
+        title="Attention",
+        line_start=12,
+        line_end=18,
+    )
+    runtime = FakeStreamingRuntime(
+        ["Attention dùng query, key và value [K1]."],
+        citations=(citation,),
+    )
+    tts = SpyTTS()
+    pipeline = VoicePipeline(
+        asr=FakeASR("attention"),
+        llm=SpyLLM(),
+        tts=tts,
+        assistant_runtime=runtime,
+    )
+
+    events = list(
+        pipeline.turn_streaming(
+            np.zeros(16000, dtype=np.float32),
+            audio_sink=NullAudioPlayer(),
+            min_sentence_chars=8,
+        )
+    )
+
+    done = events[-1]
+    assert done.type == "done"
+    assert done.text == "Attention dùng query, key và value."
+    assert done.metadata["citations"] == [
+        {
+            "label": "K1",
+            "path": "wiki/learning/attention.md",
+            "title": "Attention",
+            "line_start": 12,
+            "line_end": 18,
+            "source": "knowledge",
+        }
+    ]
+    assert tts.calls == ["Attention dùng query, key và value."]
 
 
 def test_voice_pipeline_streaming_reject_path_speaks_fallback_by_default():

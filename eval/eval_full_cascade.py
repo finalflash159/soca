@@ -23,7 +23,7 @@ from soca.core.router_setup import build_runtime_tool_router
 from soca.core.runtime import DefaultRuntimeToolRouter
 from soca.core.tool_routing import SemanticRouterConfig, ToolRouterConfig
 from soca.knowledge.retrievers.dense import FastEmbedModel
-from soca.tools import LocalTimeTool, ToolRuntime
+from soca.tools import ToolResult, ToolRuntime, ToolSpec, object_schema
 
 _DISPOSITIONS = {"direct_tool", "retrieval_request", "smalltalk", "out_of_scope", "unresolved"}
 _SOURCES = {"knowledge", "memory"}
@@ -89,7 +89,27 @@ def load_dataset(path: Path) -> tuple[dict[str, Any], ...]:
 
 
 def _catalog() -> ToolRuntime:
-    return ToolRuntime([LocalTimeTool()])
+    class CatalogTool:
+        @property
+        def spec(self) -> ToolSpec:
+            return ToolSpec(
+                "knowledge.inspect",
+                "Inspect bounded local vault navigation metadata and explicit links.",
+                object_schema(
+                    properties={
+                        "scope": {"type": "string"},
+                        "path": {"type": "string"},
+                        "depth": {"type": "integer"},
+                        "limit": {"type": "integer"},
+                    }
+                ),
+            )
+
+        def run(self, arguments: dict[str, Any]) -> ToolResult:
+            del arguments
+            return ToolResult("knowledge.inspect", True, "{}")
+
+    return ToolRuntime([CatalogTool()])
 
 
 def _build_router(examples: Path, *, threshold: float, margin: float):

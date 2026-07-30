@@ -22,7 +22,7 @@ from soca.core.workflow import (
 from soca.knowledge import MarkdownVaultKnowledgeSource
 from soca.llm import LocalLlamaCppLLM
 from soca.llm.providers import RemoteOpenAILLM, get_provider
-from soca.tools import KnowledgeReadTool, KnowledgeSearchTool, LocalTimeTool, ToolRuntime
+from soca.tools import KnowledgeReadTool, KnowledgeSearchTool, ToolRuntime
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CORPUS = REPO_ROOT / "eval" / "fixtures" / "real_rag_vault"
@@ -76,7 +76,6 @@ def run_gate(
         [
             KnowledgeSearchTool(source),
             KnowledgeReadTool(source),
-            LocalTimeTool(),
         ]
     )
     goal_resolver = StructuredGoalResolver(engine, max_tokens=512)

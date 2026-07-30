@@ -75,7 +75,6 @@ class GoalStatus(StrEnum):
 class SourceKind(StrEnum):
     KNOWLEDGE = "knowledge"
     MEMORY = "memory"
-    LOCAL_TIME = "local_time"
 
 
 class Capability(StrEnum):
@@ -84,7 +83,7 @@ class Capability(StrEnum):
     KNOWLEDGE_READ = "knowledge_read"
     MEMORY_SEARCH = "memory_search"
     MEMORY_PROPOSE_NOTE = "memory_propose_note"
-    LOCAL_TIME = "local_time"
+    KNOWLEDGE_CATALOG = "knowledge_catalog"
     CLARIFICATION = "clarification"
     OUT_OF_SCOPE = "out_of_scope"
 

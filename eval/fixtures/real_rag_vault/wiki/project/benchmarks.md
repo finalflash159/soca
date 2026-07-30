@@ -691,8 +691,10 @@ uv run --extra tts --extra tts-omnivoice python eval/eval_voice_loop.py \
 This run uses OmniVoice-generated fixtures because the earlier Valtec-generated
 fixtures caused severe ASR keyword drift. OmniVoice substantially improved the
 audio fixture quality: common natural utterances were transcribed correctly, and
-the realtime question now routes through `local_time.now`. The remaining route
-failures are useful product findings rather than benchmark noise:
+the historical realtime question reached the then-current local-time capability.
+That capability has since been removed from production scope; this paragraph is
+retained only as provenance for the old run. The remaining route failures are
+useful product findings rather than benchmark noise:
 
 | Fixture intent         | Expected text                            | Observed transcript (`baseline`)          |
 | ---------------------- | ---------------------------------------- | ----------------------------------------- |

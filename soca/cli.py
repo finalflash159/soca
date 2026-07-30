@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -41,6 +42,18 @@ from soca.memory import SessionPersistence
 
 console = Console()
 REPO_ROOT = Path(__file__).resolve().parents[1]
+UI_VAULT_ENV = "SOCA_VAULT"
+
+
+def resolve_ui_vault(vault: Path | None) -> Path:
+    """Resolve the UI vault without baking a repository fixture into production."""
+
+    if vault is not None:
+        return vault.expanduser().resolve()
+    configured = os.environ.get(UI_VAULT_ENV, "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return (Path.home() / "KnowledgeVault").resolve()
 
 
 def run_module(module: str, *args: str) -> None:
@@ -99,12 +112,27 @@ def knowledge_index_group() -> None:
 
 
 @knowledge_index_group.command("status")
-@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
-@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option(
+    "--vault",
+    type=click.Path(path_type=Path),
+    default=Path.home() / "KnowledgeVault",
+    show_default=True,
+)
+@click.option(
+    "--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True
+)
 @click.option("--index-home", type=click.Path(path_type=Path), default=None)
-@click.option("--model", "model_key", type=click.Choice([item.key for item in MODEL_REGISTRY]), default="aiteamvn-v2", show_default=True)
+@click.option(
+    "--model",
+    "model_key",
+    type=click.Choice([item.key for item in MODEL_REGISTRY]),
+    default="aiteamvn-v2",
+    show_default=True,
+)
 @click.option("--json", "as_json", is_flag=True, help="Print machine-readable status.")
-def knowledge_index_status(vault: Path, corpus: str, index_home: Path | None, model_key: str, as_json: bool) -> None:
+def knowledge_index_status(
+    vault: Path, corpus: str, index_home: Path | None, model_key: str, as_json: bool
+) -> None:
     """Show sparse/dense/model state without downloading or embedding."""
     try:
         coordinator = _index_context(vault, corpus, index_home=index_home, model_key=model_key)
@@ -124,12 +152,23 @@ def knowledge_index_status(vault: Path, corpus: str, index_home: Path | None, mo
 
 
 @knowledge_index_group.command("build")
-@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
-@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option(
+    "--vault",
+    type=click.Path(path_type=Path),
+    default=Path.home() / "KnowledgeVault",
+    show_default=True,
+)
+@click.option(
+    "--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True
+)
 @click.option("--index-home", type=click.Path(path_type=Path), default=None)
 @click.option("--dense/--sparse-only", default=True, show_default=True)
-@click.option("--verify-content", is_flag=True, help="Read all files even when stat metadata is unchanged.")
-def knowledge_index_build(vault: Path, corpus: str, index_home: Path | None, dense: bool, verify_content: bool) -> None:
+@click.option(
+    "--verify-content", is_flag=True, help="Read all files even when stat metadata is unchanged."
+)
+def knowledge_index_build(
+    vault: Path, corpus: str, index_home: Path | None, dense: bool, verify_content: bool
+) -> None:
     """Synchronize sparse and optionally build a dense generation."""
     _run_index_build(
         vault,
@@ -178,8 +217,15 @@ def _run_index_build(
 
 
 @knowledge_index_group.command("rebuild")
-@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
-@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option(
+    "--vault",
+    type=click.Path(path_type=Path),
+    default=Path.home() / "KnowledgeVault",
+    show_default=True,
+)
+@click.option(
+    "--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True
+)
 @click.option("--index-home", type=click.Path(path_type=Path), default=None)
 def knowledge_index_rebuild(vault: Path, corpus: str, index_home: Path | None) -> None:
     """Reconcile the vault and build the current dense generation."""
@@ -194,11 +240,20 @@ def knowledge_index_rebuild(vault: Path, corpus: str, index_home: Path | None) -
 
 
 @knowledge_index_group.command("verify")
-@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
-@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option(
+    "--vault",
+    type=click.Path(path_type=Path),
+    default=Path.home() / "KnowledgeVault",
+    show_default=True,
+)
+@click.option(
+    "--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True
+)
 @click.option("--index-home", type=click.Path(path_type=Path), default=None)
 @click.option("--json", "as_json", is_flag=True)
-def knowledge_index_verify(vault: Path, corpus: str, index_home: Path | None, as_json: bool) -> None:
+def knowledge_index_verify(
+    vault: Path, corpus: str, index_home: Path | None, as_json: bool
+) -> None:
     """Verify SQLite integrity and generation file ownership."""
     coordinator = _index_context(vault, corpus, index_home=index_home)
     errors = coordinator.verify()
@@ -213,8 +268,15 @@ def knowledge_index_verify(vault: Path, corpus: str, index_home: Path | None, as
 
 
 @knowledge_index_group.command("gc")
-@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
-@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option(
+    "--vault",
+    type=click.Path(path_type=Path),
+    default=Path.home() / "KnowledgeVault",
+    show_default=True,
+)
+@click.option(
+    "--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True
+)
 @click.option("--index-home", type=click.Path(path_type=Path), default=None)
 @click.option("--apply", is_flag=True, help="Actually delete candidates; default is dry-run.")
 def knowledge_index_gc(vault: Path, corpus: str, index_home: Path | None, apply: bool) -> None:
@@ -226,8 +288,15 @@ def knowledge_index_gc(vault: Path, corpus: str, index_home: Path | None, apply:
 
 
 @knowledge_index_group.command("inspect")
-@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
-@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option(
+    "--vault",
+    type=click.Path(path_type=Path),
+    default=Path.home() / "KnowledgeVault",
+    show_default=True,
+)
+@click.option(
+    "--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True
+)
 @click.option("--index-home", type=click.Path(path_type=Path), default=None)
 def knowledge_index_inspect(vault: Path, corpus: str, index_home: Path | None) -> None:
     """Print generations, pointers and jobs for operator inspection."""
@@ -236,8 +305,15 @@ def knowledge_index_inspect(vault: Path, corpus: str, index_home: Path | None) -
 
 
 @knowledge_index_group.command("migrate")
-@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
-@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option(
+    "--vault",
+    type=click.Path(path_type=Path),
+    default=Path.home() / "KnowledgeVault",
+    show_default=True,
+)
+@click.option(
+    "--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True
+)
 @click.option("--index-home", type=click.Path(path_type=Path), default=None)
 def knowledge_index_migrate(vault: Path, corpus: str, index_home: Path | None) -> None:
     """Import a valid v1 sparse snapshot and reconcile it with the vault."""
@@ -257,8 +333,15 @@ def knowledge_index_migrate(vault: Path, corpus: str, index_home: Path | None) -
 
 
 @knowledge_index_group.command("rollback")
-@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
-@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option(
+    "--vault",
+    type=click.Path(path_type=Path),
+    default=Path.home() / "KnowledgeVault",
+    show_default=True,
+)
+@click.option(
+    "--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True
+)
 @click.option("--index-home", type=click.Path(path_type=Path), default=None)
 def knowledge_index_rollback(vault: Path, corpus: str, index_home: Path | None) -> None:
     """Swap the active generation with the compatible previous generation."""
@@ -276,8 +359,15 @@ def knowledge_index_rollback(vault: Path, corpus: str, index_home: Path | None) 
 
 
 @knowledge_index_group.command("watch")
-@click.option("--vault", type=click.Path(path_type=Path), default=Path.home() / "KnowledgeVault", show_default=True)
-@click.option("--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True)
+@click.option(
+    "--vault",
+    type=click.Path(path_type=Path),
+    default=Path.home() / "KnowledgeVault",
+    show_default=True,
+)
+@click.option(
+    "--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True
+)
 @click.option("--index-home", type=click.Path(path_type=Path), default=None)
 @click.option("--interval", type=click.FloatRange(min=0.25), default=2.0, show_default=True)
 def knowledge_index_watch(
@@ -324,7 +414,13 @@ def knowledge_model_group() -> None:
 @click.option("--json", "as_json", is_flag=True)
 def knowledge_model_list(as_json: bool) -> None:
     values = [
-        {"key": item.key, "adapter": item.adapter, "model_id": item.model_id, "dimension": item.dimension, "source": item.source}
+        {
+            "key": item.key,
+            "adapter": item.adapter,
+            "model_id": item.model_id,
+            "dimension": item.dimension,
+            "source": item.source,
+        }
         for item in MODEL_REGISTRY
     ]
     if as_json:
@@ -365,13 +461,17 @@ def knowledge_model_install(key: str) -> None:
 def knowledge_model_verify(key: str) -> None:
     payload = model_status(key)
     if payload.get("state") != "installed":
-        raise click.ClickException(f"model is not ready: {payload.get('error', payload.get('state'))}")
+        raise click.ClickException(
+            f"model is not ready: {payload.get('error', payload.get('state'))}"
+        )
     click.echo(json.dumps(payload, ensure_ascii=False, sort_keys=True))
 
 
 @knowledge_model_group.command("remove")
 @click.argument("key", required=False, default="aiteamvn-v2")
-@click.option("--apply", is_flag=True, help="Actually remove only the exact model cache candidates.")
+@click.option(
+    "--apply", is_flag=True, help="Actually remove only the exact model cache candidates."
+)
 def knowledge_model_remove(key: str, apply: bool) -> None:
     try:
         spec = model_spec(key)
@@ -452,17 +552,44 @@ def profiles_command(show_paths: bool) -> None:
     help="Working-memory persistence; local_resumable is opt-in.",
 )
 @click.option("--session-id", default="default", show_default=True)
-@click.option("--resume-session", is_flag=True, help="Resume the selected local session checkpoint.")
-@click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="cascade", show_default=True)
-@click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", show_default=True)
-@click.option("--semantic-router/--no-semantic-router", default=True, show_default=True)
+@click.option(
+    "--resume-session", is_flag=True, help="Resume the selected local session checkpoint."
+)
+@click.option(
+    "--tool-router",
+    type=click.Choice(["deterministic", "llm", "cascade"]),
+    default="cascade",
+    show_default=True,
+)
+@click.option(
+    "--router-response",
+    type=click.Choice(["prompt_json", "json_schema"]),
+    default="json_schema",
+    show_default=True,
+)
+@click.option("--semantic-router/--no-semantic-router", default=False, show_default=True)
 @click.option("--semantic-router-threshold", type=float, default=0.58, show_default=True)
 @click.option("--semantic-router-margin", type=float, default=0.0, show_default=True)
 @click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None)
-@click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", show_default=True)
+@click.option(
+    "--memory-mode",
+    type=click.Choice(["blob", "retrieved"]),
+    default="retrieved",
+    show_default=True,
+)
 @click.option("--memory-limit", type=int, default=3, show_default=True)
-@click.option("--memory-retrieval", type=click.Choice(["chunk_sparse", "hybrid"]), default="chunk_sparse", show_default=True)
-@click.option("--memory-dense-backend", type=click.Choice(["aiteamvn_v2"]), default="aiteamvn_v2", show_default=True)
+@click.option(
+    "--memory-retrieval",
+    type=click.Choice(["chunk_sparse", "hybrid"]),
+    default="chunk_sparse",
+    show_default=True,
+)
+@click.option(
+    "--memory-dense-backend",
+    type=click.Choice(["aiteamvn_v2"]),
+    default="aiteamvn_v2",
+    show_default=True,
+)
 @click.option("--trace/--no-trace", default=False, show_default=True)
 @click.option("--usage", is_flag=True, help="Show LLM token/latency usage after the turn.")
 def ask(
@@ -571,17 +698,44 @@ def ask(
     help="Working-memory persistence; local_resumable is opt-in.",
 )
 @click.option("--session-id", default="default", show_default=True)
-@click.option("--resume-session", is_flag=True, help="Resume the selected local session checkpoint.")
-@click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="cascade", show_default=True)
-@click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", show_default=True)
-@click.option("--semantic-router/--no-semantic-router", default=True, show_default=True)
+@click.option(
+    "--resume-session", is_flag=True, help="Resume the selected local session checkpoint."
+)
+@click.option(
+    "--tool-router",
+    type=click.Choice(["deterministic", "llm", "cascade"]),
+    default="cascade",
+    show_default=True,
+)
+@click.option(
+    "--router-response",
+    type=click.Choice(["prompt_json", "json_schema"]),
+    default="json_schema",
+    show_default=True,
+)
+@click.option("--semantic-router/--no-semantic-router", default=False, show_default=True)
 @click.option("--semantic-router-threshold", type=float, default=0.58, show_default=True)
 @click.option("--semantic-router-margin", type=float, default=0.0, show_default=True)
 @click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None)
-@click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", show_default=True)
+@click.option(
+    "--memory-mode",
+    type=click.Choice(["blob", "retrieved"]),
+    default="retrieved",
+    show_default=True,
+)
 @click.option("--memory-limit", type=int, default=3, show_default=True)
-@click.option("--memory-retrieval", type=click.Choice(["chunk_sparse", "hybrid"]), default="chunk_sparse", show_default=True)
-@click.option("--memory-dense-backend", type=click.Choice(["aiteamvn_v2"]), default="aiteamvn_v2", show_default=True)
+@click.option(
+    "--memory-retrieval",
+    type=click.Choice(["chunk_sparse", "hybrid"]),
+    default="chunk_sparse",
+    show_default=True,
+)
+@click.option(
+    "--memory-dense-backend",
+    type=click.Choice(["aiteamvn_v2"]),
+    default="aiteamvn_v2",
+    show_default=True,
+)
 @click.option("--trace/--no-trace", default=False, show_default=True)
 @click.option(
     "--usage", is_flag=True, help="Show per-turn usage line; /usage shows session totals."
@@ -680,9 +834,11 @@ def chat(
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
-    show_default=True,
-    help="Knowledge vault root for the UI session.",
+    default=None,
+    help=(
+        "Knowledge vault root for the UI session. Overrides SOCA_VAULT; "
+        "unset uses ~/KnowledgeVault."
+    ),
 )
 @click.option(
     "--session-persistence",
@@ -692,14 +848,16 @@ def chat(
     help="Working-memory persistence; local_resumable is opt-in.",
 )
 @click.option("--session-id", default="default", show_default=True)
-@click.option("--resume-session", is_flag=True, help="Resume the selected local session checkpoint.")
+@click.option(
+    "--resume-session", is_flag=True, help="Resume the selected local session checkpoint."
+)
 @click.pass_context
 def ui(
     ctx: click.Context,
     quick_mode: str | None,
     quick_profile: str | None,
     no_model: bool,
-    vault: Path,
+    vault: Path | None,
     session_persistence: str,
     session_id: str,
     resume_session: bool,
@@ -709,13 +867,14 @@ def ui(
     Quick form: soca ui [status|chat|voice] [profile]. Without a mode the UI
     opens on the splash screen.
     """
+    selected_vault = resolve_ui_vault(vault)
     if session_persistence != "ram_only" or session_id != "default" or resume_session:
         ctx.exit(
             _launch_ink_ui(
                 mode=quick_mode,
                 profile=quick_profile,
                 no_model=no_model,
-                vault=vault,
+                vault=selected_vault,
                 session_persistence=session_persistence,
                 session_id=session_id,
                 resume_session=resume_session,
@@ -726,7 +885,7 @@ def ui(
             mode=quick_mode,
             profile=quick_profile,
             no_model=no_model,
-            vault=vault,
+            vault=selected_vault,
         )
     )
 
@@ -751,8 +910,8 @@ def build_text_runtime_config(
     session_id: str = "default",
     session_resume: bool = False,
     tool_router_mode: str = "cascade",
-    tool_router_response_mode: str = "prompt_json",
-    semantic_router_enabled: bool = True,
+    tool_router_response_mode: str = "json_schema",
+    semantic_router_enabled: bool = False,
     semantic_router_threshold: float = 0.58,
     semantic_router_margin: float = 0.0,
     semantic_router_examples: Path | None = None,
@@ -872,7 +1031,9 @@ def _launch_ink_ui(
     help="Working-memory persistence; local_resumable is opt-in.",
 )
 @click.option("--session-id", default="default", show_default=True)
-@click.option("--resume-session", is_flag=True, help="Resume the selected local session checkpoint.")
+@click.option(
+    "--resume-session", is_flag=True, help="Resume the selected local session checkpoint."
+)
 @click.pass_context
 def engine(
     ctx: click.Context,
@@ -992,16 +1153,37 @@ def engine(
 )
 @click.option("--session-id", default="default", hidden=True)
 @click.option("--resume-session", is_flag=True, hidden=True)
-@click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="cascade", hidden=True)
-@click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", hidden=True)
-@click.option("--semantic-router/--no-semantic-router", default=True, hidden=True)
+@click.option(
+    "--tool-router",
+    type=click.Choice(["deterministic", "llm", "cascade"]),
+    default="cascade",
+    hidden=True,
+)
+@click.option(
+    "--router-response",
+    type=click.Choice(["prompt_json", "json_schema"]),
+    default="json_schema",
+    hidden=True,
+)
+@click.option("--semantic-router/--no-semantic-router", default=False, hidden=True)
 @click.option("--semantic-router-threshold", type=float, default=0.58, hidden=True)
 @click.option("--semantic-router-margin", type=float, default=0.0, hidden=True)
-@click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None, hidden=True)
-@click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", hidden=True)
+@click.option(
+    "--semantic-router-examples", type=click.Path(path_type=Path), default=None, hidden=True
+)
+@click.option(
+    "--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", hidden=True
+)
 @click.option("--memory-limit", type=int, default=3, hidden=True)
-@click.option("--memory-retrieval", type=click.Choice(["chunk_sparse", "hybrid"]), default="chunk_sparse", hidden=True)
-@click.option("--memory-dense-backend", type=click.Choice(["aiteamvn_v2"]), default="aiteamvn_v2", hidden=True)
+@click.option(
+    "--memory-retrieval",
+    type=click.Choice(["chunk_sparse", "hybrid"]),
+    default="chunk_sparse",
+    hidden=True,
+)
+@click.option(
+    "--memory-dense-backend", type=click.Choice(["aiteamvn_v2"]), default="aiteamvn_v2", hidden=True
+)
 @click.option("--max-tokens", type=int, default=None, hidden=True)
 @click.option("--temperature", type=float, default=None, hidden=True)
 @click.option("--top-p", type=float, default=None, hidden=True)

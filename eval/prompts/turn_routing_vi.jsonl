@@ -1,5 +1,5 @@
-{"id":"time-001","family":"local-time","query":"Bây giờ là mấy giờ?","route":"direct_tool","handler":"local_time.now","sources":[]}
-{"id":"time-002","family":"local-time","query":"Cho tôi biết giờ địa phương hiện tại.","route":"direct_tool","handler":"local_time.now","sources":[]}
+{"id":"time-001","family":"realtime-unavailable","query":"Bây giờ là mấy giờ?","route":"out_of_scope","handler":null,"sources":[]}
+{"id":"time-002","family":"realtime-unavailable","query":"Cho tôi biết giờ địa phương hiện tại.","route":"out_of_scope","handler":null,"sources":[]}
 {"id":"knowledge-001","family":"study-note","query":"Ghi chú của tôi nói định lý Bayes thế nào?","route":"retrieval_request","handler":null,"sources":["knowledge"]}
 {"id":"knowledge-002","family":"project-doc","query":"Tài liệu dự án giải thích kiến trúc RAG ra sao?","route":"retrieval_request","handler":null,"sources":["knowledge"]}
 {"id":"memory-001","family":"personal-decision","query":"Tôi đã chọn TTS nào và vì sao?","route":"retrieval_request","handler":null,"sources":["memory"]}

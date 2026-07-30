@@ -1,8 +1,12 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 from soca.knowledge.base import KnowledgeDocument, KnowledgeHit
+from soca.knowledge.catalog import CatalogIndexSnapshot, KnowledgeCatalog
 from soca.knowledge.context import KnowledgeContextBuilder
 from soca.knowledge.hybrid_source import DenseUnavailableError, RetrievalDiagnostics
+from soca.knowledge.indexing.scanner import scan_vault
+from soca.knowledge.markdown_vault import MarkdownVaultKnowledgeSource
 
 
 class FakeKnowledgeSource:
@@ -200,3 +204,49 @@ def test_build_distinguishes_dense_failure_diagnostics_from_healthy_empty_index(
 
     assert context.evidence_status == "unavailable"
     assert context.retrieval_state == "unavailable"
+
+
+def test_content_context_does_not_promote_structural_neighbors_to_evidence(
+    tmp_path: Path,
+) -> None:
+    wiki = tmp_path / "wiki" / "learning"
+    wiki.mkdir(parents=True)
+    (wiki / "attention.md").write_text(
+        "# Attention\n\nAttention kết hợp query, key và value.\n\n"
+        "Xem [Transformer](transformer.md).\n",
+        encoding="utf-8",
+    )
+    (wiki / "transformer.md").write_text(
+        "# Transformer\n\nNội dung chi tiết không được tự lấy làm evidence.\n",
+        encoding="utf-8",
+    )
+    (wiki / "unlinked.md").write_text(
+        "# Unlinked\n\nCùng folder nhưng không có cạnh.\n",
+        encoding="utf-8",
+    )
+    indexed_source = MarkdownVaultKnowledgeSource(
+        tmp_path,
+        include_globs=("wiki/**/*.md",),
+        exclude_files=(),
+    )
+    index = scan_vault(indexed_source).index
+
+    class Provider:
+        def catalog_index_snapshot(self) -> CatalogIndexSnapshot:
+            return CatalogIndexSnapshot(1, index)
+
+    hit = make_hit(
+        "wiki/learning/attention.md",
+        "Attention",
+        "Attention kết hợp query, key và value.",
+    )
+    context = KnowledgeContextBuilder(
+        FakeKnowledgeSource([hit]),
+        max_chars=1_800,
+        catalog=KnowledgeCatalog(Provider()),
+    ).build("attention query key value")
+
+    assert [citation.path for citation in context.citations] == ["wiki/learning/attention.md"]
+    assert all(hit.retrieval_backend != "catalog_graph" for hit in context.hits)
+    assert "transformer.md" not in context.prompt_text
+    assert "unlinked.md" not in context.prompt_text

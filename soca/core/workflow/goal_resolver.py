@@ -31,7 +31,6 @@ _SUCCESS_CRITERIA = frozenset(
     {
         "knowledge_queried",
         "memory_queried",
-        "local_time_observed",
         "tool_observation_available",
     }
 )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -79,8 +80,6 @@ from soca.memory import (
 from soca.prompts import (
     ABSTENTION_GROUNDING_INSTRUCTIONS,
     JOINT_GROUNDING_INSTRUCTIONS,
-    KNOWLEDGE_GROUNDING_INSTRUCTIONS,
-    MEMORY_GROUNDING_INSTRUCTIONS,
     SOCA_RUNTIME_SYSTEM_PROMPT,
     UNAVAILABLE_GROUNDING_INSTRUCTIONS,
 )
@@ -100,6 +99,10 @@ from .workflow import (
     WorkflowRun,
 )
 
+LOGGER = logging.getLogger(__name__)
+
+DEFAULT_VAULT_MANIFEST_CHARS = 8_192
+
 
 @dataclass(frozen=True)
 class RuntimeOptions:
@@ -114,6 +117,8 @@ class RuntimeOptions:
     # from the client adapter. Keep a conservative admission margin by default;
     # observed positive deltas can increase it for subsequent turns.
     context_safety_margin_tokens: int = DEFAULT_CONTEXT_SAFETY_MARGIN_TOKENS
+    vault_manifest_chars: int = DEFAULT_VAULT_MANIFEST_CHARS
+    max_retrieval_refinements: int = 1
     asr_goal_repair_min_confidence: float = 0.70
 
     def __post_init__(self) -> None:
@@ -129,6 +134,14 @@ class RuntimeOptions:
                 raise ValueError(f"{name} must be a positive integer or null")
         if self.context_safety_margin_tokens < 0:
             raise ValueError("context_safety_margin_tokens must be non-negative")
+        if self.vault_manifest_chars < 512:
+            raise ValueError("vault_manifest_chars must be at least 512")
+        if (
+            isinstance(self.max_retrieval_refinements, bool)
+            or not isinstance(self.max_retrieval_refinements, int)
+            or self.max_retrieval_refinements < 0
+        ):
+            raise ValueError("max_retrieval_refinements must be a non-negative integer")
         if not 0.0 <= self.asr_goal_repair_min_confidence <= 1.0:
             raise ValueError("asr goal repair confidence must be between zero and one")
 
@@ -153,7 +166,6 @@ class DefaultRuntimeToolRouter:
         *,
         knowledge_search_prefixes: tuple[str, ...] = EXPLICIT_KNOWLEDGE_SEARCH_PREFIXES,
         memory_search_prefixes: tuple[str, ...] = ("memory:", "mem:"),
-        time_prefixes: tuple[str, ...] = ("time:", "gio:", "giờ:"),
         read_prefixes: tuple[str, ...] = (
             "read:",
             "read ",
@@ -163,15 +175,12 @@ class DefaultRuntimeToolRouter:
             "đọc ",
         ),
         enable_markdown_read: bool = True,
-        enable_time: bool = True,
         enable_memory_search: bool = True,
     ) -> None:
         self.knowledge_search_prefixes = knowledge_search_prefixes
         self.memory_search_prefixes = memory_search_prefixes
-        self.time_prefixes = time_prefixes
         self.read_prefixes = read_prefixes
         self.enable_markdown_read = enable_markdown_read
-        self.enable_time = enable_time
         self.enable_memory_search = enable_memory_search
         self.last_tier = "none"
         self.last_decision = ToolRouterDecision()
@@ -187,12 +196,6 @@ class DefaultRuntimeToolRouter:
                 if not isinstance(normalized_path, str) or not normalized_path:
                     return self._none("unsafe_read_path")
                 return self._call("knowledge.read", {"path": normalized_path})
-
-        if self.enable_time:
-            timezone = self._parse_explicit_prefix(text, self.time_prefixes)
-            if timezone is not None:
-                arguments = {"timezone": timezone} if timezone else {}
-                return self._call("local_time.now", arguments)
 
         query = self._parse_knowledge_search_query(text)
         if query is not None:
@@ -287,6 +290,7 @@ class _TraceDraft:
     memory_access_plan: MemoryAccessPlan | None = None
     answer_policy: GroundingTurnPolicy | None = None
     prompt_manifest: dict[str, Any] | None = None
+    retrieval_refinements: int = 0
 
 
 @dataclass(frozen=True)
@@ -487,6 +491,7 @@ class AssistantRuntime:
                 reason=input_event.message or self._safe_block_message(input_event.reason),
             )
 
+        self._set_router_context(frame)
         with self._stage(draft, "tool_router"):
             tool_call = self.tool_router.select(
                 frame.text,
@@ -554,6 +559,7 @@ class AssistantRuntime:
             yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
             return
 
+        self._set_router_context(frame)
         with self._stage(draft, "tool_router"):
             tool_call = self.tool_router.select(
                 frame.text,
@@ -565,6 +571,36 @@ class AssistantRuntime:
         self._record_router_decision(draft, decision)
         if tool_call is not None:
             prepared = self._prepare_tool_turn(frame, tool_call, draft)
+            if isinstance(prepared, RuntimeResult):
+                yield from self._emit_fixed_result(prepared, min_sentence_chars=min_sentence_chars)
+                return
+            if (
+                prepared.knowledge_context is not None or prepared.memory_context is not None
+            ) and self.llm is not None:
+                memory_context = prepared.memory_context
+                if prepared.knowledge_context is not None:
+                    memory_context = self._build_memory_context(frame, draft)
+                yield from self._stream_llm_turn(
+                    frame,
+                    draft,
+                    memory_context,
+                    prepared.knowledge_context,
+                    used_tool=True,
+                    min_sentence_chars=min_sentence_chars,
+                    first_sentence_min_chars=first_sentence_min_chars,
+                    first_clause_enabled=first_clause_enabled,
+                    first_clause_min_chars=first_clause_min_chars,
+                    first_clause_min_words=first_clause_min_words,
+                    first_clause_max_scan_chars=first_clause_max_scan_chars,
+                )
+                return
+            result = self._finish_prepared_tool_turn(frame, draft, prepared)
+            yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
+            return
+
+        retrieval_call = self._single_source_retrieval_call(frame, decision)
+        if retrieval_call is not None:
+            prepared = self._prepare_tool_turn(frame, retrieval_call, draft)
             if isinstance(prepared, RuntimeResult):
                 yield from self._emit_fixed_result(prepared, min_sentence_chars=min_sentence_chars)
                 return
@@ -1018,9 +1054,38 @@ class AssistantRuntime:
         tool_call: ToolCall,
         draft: _TraceDraft,
     ) -> RuntimeResult:
+        knowledge_hit_count = len(draft.knowledge_hits)
+        memory_hit_count = len(draft.memory_hits)
+        citation_count = len(draft.citations)
+        evidence_decision_count = len(draft.evidence_decisions)
         prepared = self._prepare_tool_turn(frame, tool_call, draft)
         if isinstance(prepared, RuntimeResult):
             return prepared
+
+        if self._can_refine_retrieval(prepared, draft):
+            refiner = getattr(self.tool_router, "refine", None)
+            if callable(refiner):
+                observation = self._retrieval_refinement_observation(prepared)
+                refined_call = refiner(
+                    frame.text,
+                    observation=observation,
+                    knowledge_limit=self.options.knowledge_limit,
+                )
+                if refined_call is not None and refined_call != tool_call:
+                    draft.retrieval_refinements += 1
+                    del draft.knowledge_hits[knowledge_hit_count:]
+                    del draft.memory_hits[memory_hit_count:]
+                    del draft.citations[citation_count:]
+                    del draft.evidence_decisions[evidence_decision_count:]
+                    draft.evidence_bundle = (
+                        EvidenceReconciler().reconcile(
+                            tuple(draft.evidence_decisions)
+                        )
+                        if draft.evidence_decisions
+                        else None
+                    )
+                    if isinstance(refined_call, ToolCall):
+                        return self._run_tool_turn(frame, refined_call, draft)
 
         if (
             prepared.knowledge_context is not None or prepared.memory_context is not None
@@ -1037,6 +1102,49 @@ class AssistantRuntime:
             )
 
         return self._finish_prepared_tool_turn(frame, draft, prepared)
+
+    def _can_refine_retrieval(
+        self,
+        prepared: _PreparedToolTurn,
+        draft: _TraceDraft,
+    ) -> bool:
+        if draft.retrieval_refinements >= self.options.max_retrieval_refinements:
+            return False
+        context = prepared.knowledge_context or prepared.memory_context
+        if context is None:
+            return False
+        if context.evidence_status not in {"insufficient", "weak"}:
+            return False
+        return prepared.result.name in {"knowledge.search", "memory.search"}
+
+    @staticmethod
+    def _retrieval_refinement_observation(prepared: _PreparedToolTurn) -> str:
+        context = prepared.knowledge_context or prepared.memory_context
+        if context is None:
+            return "{}"
+
+        candidates: list[dict[str, str]] = []
+        raw_hits = prepared.result.data.get("hits", [])
+        if isinstance(raw_hits, list):
+            for raw_hit in raw_hits[:8]:
+                if not isinstance(raw_hit, dict):
+                    continue
+                path = str(raw_hit.get("path", "")).strip()
+                title = str(raw_hit.get("title", "")).strip()
+                if path or title:
+                    candidates.append({"path": path, "title": title})
+
+        return json.dumps(
+            {
+                "evidence_status": context.evidence_status,
+                "reason": context.evidence_reason,
+                "top_score": context.top_relevance,
+                "top_margin": context.relevance_margin,
+                "candidate_documents": candidates,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
 
     def _prepare_tool_turn(
         self,
@@ -1094,22 +1202,23 @@ class AssistantRuntime:
                 draft.guardrail_events.append(
                     check_untrusted_text(hit.snippet, stage=GuardrailStage.RETRIEVAL)
                 )
-            draft.evidence_decisions.append(
-                decide_evidence(
-                    "knowledge",
-                    knowledge_context.hits,
-                    status=cast(EvidenceStatus, knowledge_context.evidence_status),
-                    reason=knowledge_context.evidence_reason,
-                    top_score=knowledge_context.top_relevance,
-                    margin=knowledge_context.relevance_margin,
-                    rejected_count=knowledge_context.rejected_hit_count,
-                    source_state=cast(EvidenceSourceState, knowledge_context.retrieval_state),
-                    query_coverage=knowledge_context.query_coverage,
-                    score_separation=knowledge_context.score_separation,
-                    sparse_top_score=knowledge_context.sparse_top_score,
-                    dense_top_score=knowledge_context.dense_top_score,
+            if tool_call.name != "knowledge.inspect":
+                draft.evidence_decisions.append(
+                    decide_evidence(
+                        "knowledge",
+                        knowledge_context.hits,
+                        status=cast(EvidenceStatus, knowledge_context.evidence_status),
+                        reason=knowledge_context.evidence_reason,
+                        top_score=knowledge_context.top_relevance,
+                        margin=knowledge_context.relevance_margin,
+                        rejected_count=knowledge_context.rejected_hit_count,
+                        source_state=cast(EvidenceSourceState, knowledge_context.retrieval_state),
+                        query_coverage=knowledge_context.query_coverage,
+                        score_separation=knowledge_context.score_separation,
+                        sparse_top_score=knowledge_context.sparse_top_score,
+                        dense_top_score=knowledge_context.dense_top_score,
+                    )
                 )
-            )
         elif tool_call.name == "memory.search":
             draft.memory_access_plan = MemoryAccessPlan(
                 include_core=False,
@@ -1182,7 +1291,7 @@ class AssistantRuntime:
                 knowledge_used=knowledge_used,
                 citations=tuple(citations),
                 tool_results=(tool_result,),
-                realtime_tool_used=tool_result.name == "local_time.now",
+                realtime_tool_used=False,
                 policy=self.guardrail_policy,
             )
         draft.guardrail_events.append(output_event)
@@ -1213,6 +1322,16 @@ class AssistantRuntime:
         citations: tuple[KnowledgeCitation, ...],
     ) -> KnowledgeContext:
         query = str(tool_call.arguments.get("query") or frame.text).strip()
+        if tool_call.name == "knowledge.inspect":
+            return KnowledgeContext(
+                query=query,
+                hits=(),
+                prompt_text=tool_result.content.strip(),
+                citations=(),
+                evidence_status="insufficient",
+                evidence_reason="navigation_metadata_only",
+                retrieval_state="ready",
+            )
         if self.knowledge_builder is not None:
             if tool_call.name == "knowledge.search":
                 raw_hits = tool_result.data.get("hits", [])
@@ -1795,6 +1914,60 @@ class AssistantRuntime:
         draft.router_runner_up = decision.runner_up
         draft.router_margin = decision.margin
 
+    def _vault_manifest_text(self) -> str:
+        catalog = getattr(self.knowledge_builder, "catalog", None)
+        if catalog is None:
+            return ""
+        try:
+            return catalog.snapshot().manifest_text(
+                max_chars=self.options.vault_manifest_chars
+            )
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            LOGGER.warning(
+                "Vault manifest unavailable for answer planning (%s)",
+                type(exc).__name__,
+            )
+            return (
+                "Vault manifest unavailable; use the knowledge tools and expose the "
+                f"typed retrieval failure if they cannot run ({type(exc).__name__})."
+            )
+
+    def _set_router_context(self, frame: TurnFrame) -> None:
+        setter = getattr(self.tool_router, "set_context", None)
+        if not callable(setter):
+            return
+        active_goal = self._active_goal_store.current
+        context_parts: list[str] = []
+        if active_goal is not None:
+            context_parts.append(
+                "Active goal: "
+                + json.dumps(
+                    {
+                        "objective": active_goal.objective,
+                        "required_sources": [
+                            source.value for source in active_goal.required_sources
+                        ],
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+        session = getattr(self.memory_builder, "session", None)
+        turns = getattr(session, "turns", ())
+        if turns:
+            recent = [
+                {"role": turn.role, "text": turn.text}
+                for turn in turns[-4:]
+                if getattr(turn, "text", "").strip()
+            ]
+            if recent:
+                context_parts.append(
+                    "Recent conversation: "
+                    + json.dumps(recent, ensure_ascii=False, sort_keys=True)
+                )
+        context_parts.append("Current surface: " + frame.source)
+        setter(turn_context="\n".join(context_parts))
+
     def _run_semantic_disposition(
         self,
         frame: TurnFrame,
@@ -1819,23 +1992,6 @@ class AssistantRuntime:
         draft: _TraceDraft,
         decision: ToolRouterDecision,
     ) -> RuntimeResult | _SemanticContextPlan | None:
-        if decision.disposition == "out_of_scope":
-            return self._blocked_result(
-                frame,
-                draft,
-                reason="Mình chưa hỗ trợ khả năng này trên máy bạn.",
-                route=RuntimeRoute.OUT_OF_SCOPE,
-            )
-        if decision.disposition == "unresolved" and (
-            decision.selected_routes == ("unresolved",)
-            or decision.reason.startswith(("semantic_", "llm_"))
-        ):
-            return self._blocked_result(
-                frame,
-                draft,
-                reason="Mình chưa rõ bạn muốn tra phần nào. Bạn nói rõ hơn giúp mình nhé.",
-                route=RuntimeRoute.CLARIFICATION,
-            )
         if decision.disposition != "retrieval_request":
             return None
         if not decision.sources:
@@ -1845,6 +2001,9 @@ class AssistantRuntime:
                 reason="Mình chưa xác định được nên tra knowledge hay memory. Bạn nói rõ nguồn cần tra nhé.",
                 route=RuntimeRoute.CLARIFICATION,
             )
+        single_source_call = self._single_source_retrieval_call(frame, decision)
+        if single_source_call is not None:
+            return self._run_tool_turn(frame, single_source_call, draft)
         memory_context = self._build_memory_context(frame, draft)
         knowledge_context = None
         if "memory" in decision.sources:
@@ -1870,6 +2029,25 @@ class AssistantRuntime:
                 relation=cast(EvidenceRelation, relation),
             )
         return _SemanticContextPlan(memory_context, knowledge_context)
+
+    def _single_source_retrieval_call(
+        self,
+        frame: TurnFrame,
+        decision: ToolRouterDecision,
+    ) -> ToolCall | None:
+        if decision.disposition != "retrieval_request":
+            return None
+        if decision.sources == ("knowledge",):
+            return ToolCall(
+                "knowledge.search",
+                {"query": frame.text, "limit": self.options.knowledge_limit},
+            )
+        if decision.sources == ("memory",):
+            return ToolCall(
+                "memory.search",
+                {"query": frame.text, "limit": self.options.knowledge_limit},
+            )
+        return None
 
     def _finish_semantic_context_turn(
         self,
@@ -1988,6 +2166,20 @@ class AssistantRuntime:
                 required=True,
             )
         ]
+        navigation_only = (
+            knowledge_context is not None
+            and knowledge_context.evidence_reason == "navigation_metadata_only"
+        )
+        manifest_text = self._vault_manifest_text() if navigation_only else ""
+        if navigation_only and manifest_text:
+            components.append(
+                PromptComponent(
+                    "vault_manifest",
+                    manifest_text,
+                    priority=40,
+                    required=False,
+                )
+            )
         if len(source_set) > 1:
             components.append(
                 PromptComponent(
@@ -2018,8 +2210,6 @@ class AssistantRuntime:
         if memory_context is not None and memory_context.prompt_text.strip():
             memory_text = "Memory:\n" + memory_context.prompt_text.strip()
             memory_retrieval_requested = "memory" in source_set
-            if memory_context.citations or memory_retrieval_requested:
-                memory_text = MEMORY_GROUNDING_INSTRUCTIONS.strip() + "\n\n" + memory_text
             memory_text = (
                 f"Evidence status: {memory_context.evidence_status} "
                 f"({memory_context.evidence_reason}).\n" + memory_text
@@ -2033,21 +2223,26 @@ class AssistantRuntime:
                 )
             )
         if knowledge_context is not None and knowledge_context.prompt_text.strip():
-            knowledge_text = (
-                KNOWLEDGE_GROUNDING_INSTRUCTIONS.strip()
-                + "\n\nKnowledge:\n"
-                + (
-                    f"Evidence status: {knowledge_context.evidence_status} "
-                    f"({knowledge_context.evidence_reason}).\n"
+            if navigation_only:
+                knowledge_text = (
+                    "Vault navigation metadata (not evidence; do not cite):\n"
+                    + knowledge_context.prompt_text.strip()
                 )
-                + knowledge_context.prompt_text.strip()
-            )
+            else:
+                knowledge_text = (
+                    "Knowledge:\n"
+                    + (
+                        f"Evidence status: {knowledge_context.evidence_status} "
+                        f"({knowledge_context.evidence_reason}).\n"
+                    )
+                    + knowledge_context.prompt_text.strip()
+                )
             components.append(
                 PromptComponent(
-                    "knowledge",
+                    "vault_navigation" if navigation_only else "knowledge",
                     knowledge_text,
                     priority=10,
-                    required=bool(knowledge_context.citations),
+                    required=bool(knowledge_context.citations) and not navigation_only,
                 )
             )
         components.extend(
@@ -2198,6 +2393,7 @@ class AssistantRuntime:
             answer_validation=draft.answer_validation,
             answer_repair_attempted=draft.answer_repair_attempted,
             answer_repair_succeeded=draft.answer_repair_succeeded,
+            retrieval_refinements=draft.retrieval_refinements,
             prompt_manifest=draft.prompt_manifest,
         )
         return RuntimeResult(
@@ -2246,7 +2442,11 @@ class AssistantRuntime:
         return bool(frame.metadata.get("use_knowledge") or frame.metadata.get("knowledge_query"))
 
     def _citations_from_tool_result(self, result: ToolResult) -> tuple[KnowledgeCitation, ...]:
-        if result.name not in {"knowledge.search", "knowledge.read", "memory.search"}:
+        if result.name not in {
+            "knowledge.search",
+            "knowledge.read",
+            "memory.search",
+        }:
             return ()
 
         source = "memory" if result.name == "memory.search" else "knowledge"

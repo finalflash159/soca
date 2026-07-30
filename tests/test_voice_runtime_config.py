@@ -36,7 +36,8 @@ def test_baseline_resolves_former_quality_stack_with_valtec(tmp_path: Path) -> N
 def test_voice_defaults_to_the_shared_semantic_policy(tmp_path: Path) -> None:
     config = resolve_voice_runtime_config(profile_key="baseline", vault=tmp_path)
     assert config.tool_router_mode == "cascade"
-    assert config.semantic_router_enabled is True
+    assert config.tool_router_response_mode == "json_schema"
+    assert config.semantic_router_enabled is False
     assert config.semantic_router_threshold == 0.58
     assert config.semantic_router_margin == 0.0
     assert config.semantic_router_examples is not None

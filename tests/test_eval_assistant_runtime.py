@@ -13,8 +13,8 @@ from eval.eval_assistant_runtime import (
 def test_load_assistant_runtime_cases_reads_expected_route() -> None:
     cases = load_cases(DEFAULT_PROMPT_PATH, limit=1)
 
-    assert cases[0].case_id == "time_001"
-    assert cases[0].expected_route.value == "tool_direct"
+    assert cases[0].case_id == "knowledge_search_001"
+    assert cases[0].expected_route.value == "knowledge_llm"
 
 
 def test_assistant_runtime_eval_default_suite_passes() -> None:

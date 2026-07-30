@@ -1,9 +1,4 @@
-"""Opt-in live LLM router evaluation.
-
-This command is deliberately separate from the offline eval. It sends only the
-router prompt and user utterance to the selected provider, writes redacted
-predictions locally, and never runs the selected tool.
-"""
+"""Opt-in live LLM router evaluation without executing selected tools."""
 
 from __future__ import annotations
 
@@ -38,9 +33,16 @@ def _catalog() -> ToolRuntime:
         [
             _CatalogTool(
                 ToolSpec(
-                    "local_time.now",
-                    "Return current local date and time.",
-                    object_schema(properties={"timezone": {"type": "string"}}),
+                    "knowledge.inspect",
+                    "Inspect bounded local vault navigation metadata and explicit links; this is not content evidence.",
+                    object_schema(
+                        properties={
+                            "scope": {"type": "string"},
+                            "path": {"type": "string"},
+                            "depth": {"type": "integer"},
+                            "limit": {"type": "integer"},
+                        }
+                    ),
                 )
             ),
             _CatalogTool(

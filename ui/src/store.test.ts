@@ -185,4 +185,43 @@ describe("progress reducer", () => {
 
     expect(state.pendingAnswer).toBe("xin chào");
   });
+
+  it("keeps citations as protocol data and closes temporary info on a new turn", () => {
+    let state = reduce(
+      { ...initialState, activeInfo: "status" },
+      { type: "user_message", text: "attention" },
+    );
+    expect(state.activeInfo).toBeNull();
+
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "chat",
+        type: "done",
+        text: "Attention dùng query, key và value.",
+        citations: [
+          {
+            label: "K1",
+            path: "wiki/learning/attention.md",
+            title: "Attention",
+            line_start: 12,
+            line_end: 18,
+            source: "knowledge",
+          },
+        ],
+      },
+    });
+
+    expect(state.timeline.at(-1)).toMatchObject({
+      kind: "soca",
+      text: "Attention dùng query, key và value.",
+      citations: [
+        {
+          label: "K1",
+          path: "wiki/learning/attention.md",
+          source: "knowledge",
+        },
+      ],
+    });
+  });
 });

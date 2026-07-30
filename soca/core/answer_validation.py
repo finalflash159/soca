@@ -49,6 +49,45 @@ def expected_citation_labels(
     return tuple(labels)
 
 
+def answer_text_without_citation_labels(
+    text: str,
+    citations: tuple[KnowledgeCitation, ...],
+) -> str:
+    allowed = frozenset(expected_citation_labels(citations))
+    if not allowed:
+        return text.strip()
+
+    def replace(match: re.Match[str]) -> str:
+        label = f"[{match.group('token')}]"
+        return "" if label in allowed else match.group(0)
+
+    cleaned = _CITATION_LIKE_RE.sub(replace, text)
+    cleaned = re.sub(r"[ \t]+([,.;:!?])", r"\1", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\n[ \t]+\n", "\n\n", cleaned)
+    return cleaned.strip()
+
+
+def citation_records(
+    citations: tuple[KnowledgeCitation, ...],
+) -> tuple[dict[str, str | int | None], ...]:
+    return tuple(
+        {
+            "label": label.strip("[]"),
+            "path": citation.path,
+            "title": citation.title,
+            "line_start": citation.line_start,
+            "line_end": citation.line_end,
+            "source": citation.source,
+        }
+        for label, citation in zip(
+            expected_citation_labels(citations),
+            citations,
+            strict=True,
+        )
+    )
+
+
 def validate_grounded_answer(
     text: str,
     citations: tuple[KnowledgeCitation, ...],
@@ -200,6 +239,8 @@ def _sentences(text: str) -> tuple[str, ...]:
 
 __all__ = [
     "AnswerValidationDecision",
+    "answer_text_without_citation_labels",
+    "citation_records",
     "expected_citation_labels",
     "validate_grounded_answer",
 ]

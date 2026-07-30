@@ -153,7 +153,7 @@ def test_chat_memory_commands_show_and_clear_session(monkeypatch, tmp_path: Path
     assert "<empty>" in result.output
 
 
-def test_chat_can_run_tool_only_without_llm(tmp_path: Path) -> None:
+def test_chat_has_no_removed_local_time_tool(tmp_path: Path) -> None:
     write_vault(tmp_path)
 
     result = CliRunner().invoke(
@@ -164,15 +164,17 @@ def test_chat_can_run_tool_only_without_llm(tmp_path: Path) -> None:
             str(tmp_path),
             "--no-memory",
             "--no-llm",
+            "--tool-router",
+            "deterministic",
             "--trace",
         ],
             input="time:\n/exit\n",
     )
 
     assert result.exit_code == 0, result.output
-    assert "Route: tool_direct" in result.output
-    assert "local_time.now" in result.output
-    assert "used_tool" in result.output
+    assert "Route: blocked" in result.output
+    assert "local_time.now" not in result.output
+    assert "Tool calls" not in result.output
 
 
 def test_chat_help_and_trace_toggle(tmp_path: Path) -> None:

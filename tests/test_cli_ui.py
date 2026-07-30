@@ -84,3 +84,27 @@ def test_ui_passes_explicit_vault_to_ink_app(monkeypatch, tmp_path) -> None:
             "vault": tmp_path,
         }
     ]
+
+
+def test_ui_uses_soca_vault_when_no_flag_is_given(monkeypatch, tmp_path) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_launch(*, mode, profile, no_model, vault):
+        calls.append({"mode": mode, "profile": profile, "no_model": no_model, "vault": vault})
+        return 0
+
+    import soca.cli as cli
+
+    monkeypatch.setattr(cli, "_launch_ink_ui", fake_launch)
+    monkeypatch.setenv("SOCA_VAULT", str(tmp_path))
+    result = CliRunner().invoke(main, ["ui", "chat"])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [
+        {
+            "mode": "chat",
+            "profile": None,
+            "no_model": False,
+            "vault": tmp_path.resolve(),
+        }
+    ]

@@ -58,6 +58,12 @@ export const SLASH_COMMANDS: readonly SlashCommandDefinition[] = [
     group: "information",
   },
   {
+    value: "/retrieval",
+    usage: "/retrieval",
+    description: "mở/đóng retrieval trace của lượt hiện tại",
+    group: "information",
+  },
+  {
     value: "/memory",
     usage: "/memory",
     description: "xem working session memory",

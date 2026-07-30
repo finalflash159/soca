@@ -288,6 +288,16 @@ export interface ChatEvent {
   memory_status?: string;
   run_id?: string;
   goal_id?: string;
+  citations?: CitationRecord[];
+}
+
+export interface CitationRecord {
+  label: string;
+  path: string;
+  title: string;
+  line_start?: number | null;
+  line_end?: number | null;
+  source: "knowledge" | "memory";
 }
 
 export interface StatusEvent {
@@ -301,6 +311,7 @@ export interface StatusEvent {
     voice: string | null;
   }>;
   knowledge_index?: {
+    vault_path?: string;
     sparse_state: string;
     dense_state: string;
     revision: number;

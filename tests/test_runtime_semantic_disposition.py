@@ -4,7 +4,7 @@ from soca.core import AssistantRuntime, RuntimeRoute
 from soca.core.tool_routing import ToolRouterDecision
 from soca.knowledge import KnowledgeContextBuilder
 from soca.memory import MemoryContextBuilder
-from soca.tools import ToolCall
+from soca.tools import KnowledgeSearchTool, ToolCall, ToolRuntime
 from tests.test_assistant_runtime import FakeKnowledgeSource, FakeRetrievedMemory, SpyLLM
 
 
@@ -18,7 +18,7 @@ class _Router:
         return self.last_decision.call
 
 
-def test_out_of_scope_does_not_call_llm_or_direct_tool() -> None:
+def test_out_of_scope_label_does_not_terminally_block_llm() -> None:
     llm = SpyLLM()
     runtime = AssistantRuntime(
         llm=llm,
@@ -27,10 +27,10 @@ def test_out_of_scope_does_not_call_llm_or_direct_tool() -> None:
         ),
     )
     result = runtime.run_text_turn("Thời tiết hiện tại ở Hà Nội thế nào?")
-    assert result.route == RuntimeRoute.OUT_OF_SCOPE
+    assert result.route == RuntimeRoute.FREE_CHAT
     assert result.trace is not None
     assert result.trace.tool_calls == ()
-    assert llm.calls == []
+    assert llm.calls
 
 
 def test_semantic_knowledge_request_builds_context_then_calls_llm() -> None:
@@ -38,6 +38,7 @@ def test_semantic_knowledge_request_builds_context_then_calls_llm() -> None:
     llm = SpyLLM(text="Theo [K1], ghi chú nói về Bayes.")
     runtime = AssistantRuntime(
         llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
         knowledge_builder=KnowledgeContextBuilder(source),
         tool_router=_Router(
             ToolRouterDecision(
@@ -51,7 +52,7 @@ def test_semantic_knowledge_request_builds_context_then_calls_llm() -> None:
     assert result.route == RuntimeRoute.KNOWLEDGE_LLM
     assert result.trace is not None
     assert result.trace.selected_sources == ("knowledge",)
-    assert result.trace.tool_calls == ()
+    assert result.trace.tool_calls[0].name == "knowledge.search"
     assert result.trace.evidence_decisions[0].status == "weak"
     assert result.trace.answer_validation.status == "valid"
     assert result.trace.answer_policy == "grounded"

@@ -18,7 +18,7 @@ working tree; they are not release gates.
 Chat and voice use the same cascade:
 
 1. deterministic handling consumes explicit commands, safe read paths, and
-   executable local-time requests;
+   allow-listed local knowledge/memory commands;
 2. the shared semantic turn router classifies a normalized utterance into a
    disposition and, for retrieval, a source set;
 3. the bounded LLM router runs only when the semantic tier is unresolved or
@@ -44,10 +44,10 @@ removed from production. The remaining evaluator uses
 The held-out routing corpus is:
 
 - `eval/prompts/p0/turn_routing_vi.jsonl`
-- 66 rows, 22 semantic families;
-- 21 train rows, 21 validation rows, 24 test rows;
+- 94 rows, with family-level train/validation/test splits;
+- 38 train rows, 24 validation rows, 32 test rows;
 - family-level split invariant: no family crosses splits;
-- SHA-256: `4249290a397a303ec2ec2c9b76ddc2d9a408bfb0607477a14602b71df7f61f58`.
+- SHA-256 for the current working corpus: `3b1f1e4611b789de07136da75da182aab7b639b7ca62f22635618e64972c2579`.
 
 Production semantic examples load only rows with `split=train` or
 `split=validation`. The sealed test rows are never loaded as runtime examples.
@@ -63,6 +63,8 @@ The selected router defaults are:
 | --- | ---: | --- |
 | semantic threshold | `0.58` | stable across the tested threshold sweep; keeps the existing calibrated operating point |
 | semantic margin | `0.00` | held-out test was materially better than `0.02` and `0.04`; unresolved cases are delegated to the bounded LLM tier |
+| direct-tool score floor | `0.85` | calibrated from train/validation direct-tool examples; low-confidence actions are delegated instead of executed |
+| direct-vs-retrieval margin | `0.01` | prevents an action from winning when content retrieval is nearly as plausible |
 | LLM repair attempts | `1` | one bounded schema repair, then fail closed |
 | voice semantic routing | enabled | chat and ASR transcript share the same capability policy |
 
@@ -83,36 +85,42 @@ Evidence record: run ID `capability-local-heldout-20260730` in the structured
 provenance index. Its report and predictions are external artifacts under
 `/tmp/soca-router-local/`, not committed logs.
 
-The loader uses train/validation as examples and scores all three splits.
+The loader uses train/validation as examples and scores all three splits. The
+semantic-only run below is a calibration characterization, not a complete
+remote cascade gate: uncertain direct actions are intentionally delegated to
+the bounded LLM router.
 
 | Metric | Train | Validation | Held-out test | Overall |
 | --- | ---: | ---: | ---: | ---: |
-| disposition accuracy | 100.00% | 100.00% | 79.17% | 92.42% |
-| exact source-set accuracy | 100.00% | 100.00% | 83.33% | 93.94% |
-| direct-tool exact | — | — | — | 9/9 (100.00%) |
-| unsupported → executable tool | 0/3 | 0/6 | 0/6 | 0/15 (0.00%) |
-| semantic latency p95 | — | — | — | 2.35 ms |
+| disposition accuracy | 100.00% | 100.00% | 71.88% | 89.36% |
+| exact source-set accuracy | 100.00% | 100.00% | 84.38% | 94.68% |
+| direct-tool exact | — | — | 11/13 (84.62%) | 11/13 (84.62%) |
+| unsupported → executable tool | 0/8 | 0/9 | 0/10 | 0/27 (0.00%) |
+| semantic latency p95 | — | — | — | 2.51 ms |
 
 The held-out confusion is:
 
 ```text
-direct_tool→direct_tool 9
-retrieval_request→retrieval_request 26
+direct_tool→direct_tool 11
+direct_tool→unresolved 2 (delegated to LLM)
+retrieval_request→retrieval_request 37
 retrieval_request→out_of_scope 1
+retrieval_request→unresolved 1
 smalltalk→smalltalk 9
-out_of_scope→out_of_scope 13
+out_of_scope→out_of_scope 24
 out_of_scope→smalltalk 2
+out_of_scope→unresolved 1
 unresolved→unresolved 4
 unresolved→retrieval_request 1
 unresolved→smalltalk 1
 ```
 
-The threshold sweep over `0.45, 0.50, 0.55, 0.58, 0.62, 0.66` produced the same
-held-out metrics at margin `0.00`. Increasing the margin to `0.02` reduced
-test disposition accuracy to `45.83%`; `0.04` reduced it to `41.67%`. The
-margin is therefore not retained as a conservative ambiguity gate in the
-production default; unresolved semantics are handled by the next explicit
-tier or clarification policy.
+The semantic disposition threshold remains `0.58` with a global margin of
+`0.00`. Direct actions have an additional calibrated score floor of `0.85`
+and a `0.01` direct-vs-retrieval margin. This removed all unsupported direct
+tool calls in the current test (`0/10`) while delegating two ambiguous catalog
+paraphrases to the LLM tier. The two delegated cases must be evaluated in the
+remote cascade; they are not counted as semantic-only successes.
 
 ## Real provider evidence
 
@@ -150,11 +158,12 @@ captures:
 | first 25 mixed rows | 25 | 95.00% | 86.36% | 90.48% | 1/3 no-tool rows |
 | 51 NL rows (time/knowledge/memory/smalltalk) | 51 | 88.24% | 38.46% | 53.57% | 0/12 no-tool rows |
 
-For the NL capture, time routing was 100% accurate, while knowledge recall was
-6.67% and memory recall 16.67%. This is why the LLM tier is not treated as an
-oracle and why the semantic corpus remains the primary production classifier;
-the remote LLM tier is a bounded rescue/clarification path, not a reason to
-remove the held-out gate.
+The current focused live route checks with the configured OpenRouter model
+confirmed `knowledge.inspect` for inventory and relationship requests,
+`knowledge,memory` retrieval for a mixed note/memory request, and
+`out_of_scope` for a general vault-definition question. These are
+characterization runs from the current dirty working tree; they are not yet a
+release gate.
 
 ## Remaining gaps
 

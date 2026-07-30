@@ -190,6 +190,23 @@ class SemanticTurnRouter:
         disposition = top_name  # validated by _load_examples
         self.last_tier = "semantic"
         if disposition == "direct_tool":
+            retrieval_score = by_disposition.get("retrieval_request", float("-inf"))
+            direct_retrieval_margin = top_score - retrieval_score
+            if (
+                top_score < self._config.direct_tool_threshold
+                or direct_retrieval_margin < self._config.direct_tool_retrieval_margin
+            ):
+                self.last_tier = "none"
+                self.last_decision = ToolRouterDecision(
+                    reason="semantic_direct_tool_uncertain",
+                    disposition="unresolved",
+                    selected_routes=("unresolved",),
+                    scores=score_map,
+                    source_scores=source_score_map,
+                    runner_up=runner_up,
+                    margin=margin,
+                )
+                return None
             matching = [
                 (example, float(score))
                 for example, score in zip(self._examples, scores, strict=True)

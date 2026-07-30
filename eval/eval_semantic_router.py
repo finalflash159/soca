@@ -35,7 +35,13 @@ def _catalog() -> ToolRuntime:
     )
     return ToolRuntime(
         [
-            _CatalogTool(ToolSpec("local_time.now", "Return local time.", object_schema())),
+            _CatalogTool(
+                ToolSpec(
+                    "knowledge.inspect",
+                    "Inspect the current knowledge vault structure and links.",
+                    object_schema(),
+                )
+            ),
             _CatalogTool(ToolSpec("knowledge.search", "Search wiki.", search_schema)),
             _CatalogTool(ToolSpec("memory.search", "Search private memory.", search_schema)),
         ]

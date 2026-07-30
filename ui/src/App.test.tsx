@@ -143,11 +143,59 @@ vi.mock("./engine.js", () => {
         });
       } else if (command["cmd"] === "chat") {
         this.emit("event", {
+          event: "turn_started",
+          protocol_version: 2,
+          session_id: "session",
+          run_id: "run-catalog",
+          goal_id: "goal-catalog",
+          sequence: 0,
+          surface: "chat",
+          timestamp: "2026-07-30T00:00:00Z",
+          node: "admit",
+          status: "started",
+          payload: {},
+        });
+        this.emit("event", {
+          event: "retrieval_trace",
+          query: String(command["text"] ?? ""),
+          tier: "semantic",
+          latency_ms: 4.2,
+          columns: [
+            {
+              source: "hybrid",
+              hits: [{ path: "wiki/learning/attention.md", score: 0.91 }],
+            },
+          ],
+          fused: [
+            {
+              path: "wiki/learning/attention.md",
+              picked: true,
+              backend: "hybrid",
+              score: 0.91,
+            },
+          ],
+          rejected_count: 0,
+          evidence: { status: "supported", reason: "accepted" },
+        });
+        this.emit("event", {
           event: "turn_progress",
           surface: "chat",
           phase: "retrieval",
           operation: "tool:knowledge.search",
           status: "active",
+        });
+        this.emit("event", {
+          event: "turn_terminal",
+          protocol_version: 2,
+          session_id: "session",
+          run_id: "run-catalog",
+          goal_id: "goal-catalog",
+          sequence: 1,
+          surface: "chat",
+          timestamp: "2026-07-30T00:00:01Z",
+          node: "finalize",
+          status: "completed",
+          payload: { terminal_status: "achieved", final_text: "xong" },
         });
       }
     }
@@ -244,6 +292,37 @@ describe("App slash command interaction", () => {
     expect(view.lastFrame()).not.toContain("SoCa đang xử lý");
     expect(view.lastFrame()).not.toContain("✓");
     expect(view.lastFrame()).not.toContain("SoCa đang soạn");
+    view.unmount();
+  });
+
+  it("keeps workflow and retrieval diagnostics hidden until their commands", async () => {
+    const view = render(<App target="status" noModel />);
+    await tick();
+
+    view.stdin.write("attention");
+    await tick();
+    view.stdin.write("\r");
+    await tick();
+    expect(view.lastFrame()).not.toContain("terminal trace is retained");
+    expect(view.lastFrame()).not.toContain("backend hybrid");
+
+    view.stdin.write("/workflow");
+    await tick();
+    view.stdin.write("\r");
+    await tick();
+    expect(view.lastFrame()).toContain("turn started");
+
+    view.stdin.write("transformer");
+    await tick();
+    view.stdin.write("\r");
+    await tick();
+    expect(view.lastFrame()).not.toContain("turn started");
+
+    view.stdin.write("/retrieval");
+    await tick();
+    view.stdin.write("\r");
+    await tick();
+    expect(view.lastFrame()).toContain("backend hybrid");
     view.unmount();
   });
 

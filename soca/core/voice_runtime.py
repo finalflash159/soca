@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -22,7 +23,12 @@ from soca.core.pipeline import VoicePipeline
 from soca.core.profiles import get_voice_runtime_profile
 from soca.core.repair import default_repair_catalog
 from soca.core.router_setup import build_runtime_tool_router
-from soca.core.runtime import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
+from soca.core.runtime import (
+    DEFAULT_VAULT_MANIFEST_CHARS,
+    AssistantRuntime,
+    DefaultRuntimeToolRouter,
+    RuntimeOptions,
+)
 from soca.core.smart_turn import SmartTurnDetector
 from soca.core.tool_routing import (
     RouterResponseMode,
@@ -44,7 +50,7 @@ from soca.memory import (
     WorkingMemoryPolicy,
     default_session_checkpoint_home,
 )
-from soca.tools import LocalTimeTool, MemorySearchTool, Tool, ToolRuntime
+from soca.tools import MemorySearchTool, Tool, ToolRuntime
 from soca.tts import VALTEC_TTS_CONFIG, TTSEngine, create_tts_engine
 
 
@@ -82,8 +88,8 @@ class ResolvedVoiceRuntimeConfig:
     knowledge_retrieval_mode: str = "hybrid"
     knowledge_dense_backend: str = "aiteamvn_v2"
     tool_router_mode: str = "cascade"
-    tool_router_response_mode: str = "prompt_json"
-    semantic_router_enabled: bool = True
+    tool_router_response_mode: str = "json_schema"
+    semantic_router_enabled: bool = False
     semantic_router_threshold: float = 0.58
     semantic_router_margin: float = 0.0
     semantic_router_examples: Path | None = None
@@ -133,13 +139,7 @@ class VoiceRuntimeWarmupResult:
 
 
 def default_semantic_turn_examples() -> Path:
-    return (
-        Path(__file__).resolve().parents[2]
-        / "eval"
-        / "prompts"
-        / "p0"
-        / "turn_routing_vi.jsonl"
-    )
+    return Path(__file__).resolve().parents[2] / "eval" / "prompts" / "p0" / "turn_routing_vi.jsonl"
 
 
 def resolve_voice_runtime_config(
@@ -171,8 +171,8 @@ def resolve_voice_runtime_config(
     knowledge_retrieval_mode: str | None = None,
     knowledge_dense_backend: str | None = None,
     tool_router_mode: str = "cascade",
-    tool_router_response_mode: str = "prompt_json",
-    semantic_router_enabled: bool = True,
+    tool_router_response_mode: str = "json_schema",
+    semantic_router_enabled: bool = False,
     semantic_router_threshold: float = 0.58,
     semantic_router_margin: float = 0.0,
     semantic_router_examples: str | Path | None = None,
@@ -291,11 +291,7 @@ def build_voice_runtime(
     selected_settings = llm_settings or load_settings()
     if config.llm_model_is_override:
         selected_settings = selected_settings.with_backend("local").with_model(config.llm_model)
-    if (
-        config.max_tokens_is_override
-        or config.temperature_is_override
-        or config.top_p_is_override
-    ):
+    if config.max_tokens_is_override or config.temperature_is_override or config.top_p_is_override:
         selected_settings = selected_settings.with_generation(
             max_tokens=(
                 config.max_tokens if config.max_tokens_is_override else selected_settings.max_tokens
@@ -340,8 +336,7 @@ def build_voice_runtime(
 
     model_context_window = (
         LLM_MODEL_REGISTRY[selected_settings.model_id].context_window
-        if selected_settings.backend == "local"
-        and selected_settings.model_id in LLM_MODEL_REGISTRY
+        if selected_settings.backend == "local" and selected_settings.model_id in LLM_MODEL_REGISTRY
         else selected_settings.model_context_window
     )
     effective_max_tokens = selected_settings.effective_max_tokens
@@ -351,7 +346,8 @@ def build_voice_runtime(
     knowledge_status = "disabled:not_found"
     memory_builder = None
     knowledge_builder = None
-    tools: list[Tool] = [LocalTimeTool()]
+    tools: list[Tool] = []
+    manifest_provider: Callable[[], str] | None = None
 
     if config.vault.is_dir():
         knowledge = build_knowledge_runtime_setup(
@@ -363,7 +359,14 @@ def build_voice_runtime(
             ),
         )
         knowledge_builder = knowledge.builder
-        tools.extend([knowledge.search_tool, knowledge.read_tool])
+        tools.extend([knowledge.inspect_tool, knowledge.search_tool, knowledge.read_tool])
+
+        def provide_manifest() -> str:
+            return knowledge.catalog.snapshot().manifest_text(
+                max_chars=DEFAULT_VAULT_MANIFEST_CHARS
+            )
+
+        manifest_provider = provide_manifest
         knowledge_status = knowledge.status
     else:
         if not config.no_memory:
@@ -407,7 +410,9 @@ def build_voice_runtime(
                 dense_backend=cast(DenseBackend, config.memory_dense_backend),
                 recency_weight=config.memory_recency_weight,
                 importance_weight=config.memory_importance_weight,
-                relevance_weight=1.0 - config.memory_recency_weight - config.memory_importance_weight,
+                relevance_weight=1.0
+                - config.memory_recency_weight
+                - config.memory_importance_weight,
                 recency_half_life_days=config.memory_recency_half_life_days,
             ),
         )
@@ -443,6 +448,7 @@ def build_voice_runtime(
         ),
         embedding_model=router_embedding_model,
         voice=True,
+        vault_manifest_provider=manifest_provider,
     )
     assistant_runtime = AssistantRuntime(
         llm=llm,

@@ -36,7 +36,7 @@ flowchart TD
 | Route              | When It Happens                                                 | Calls LLM? |
 | ------------------ | --------------------------------------------------------------- | ---------- |
 | `BLOCKED`          | A guardrail blocks at any stage                                 | No         |
-| `TOOL_DIRECT`      | A deterministic tool can answer directly, e.g. `local_time.now` | No         |
+| `TOOL_DIRECT`      | A non-knowledge tool can answer directly                        | No         |
 | `KNOWLEDGE_DIRECT` | Knowledge tool result is returned because LLM is disabled             | No         |
 | `KNOWLEDGE_LLM`    | LLM answers with knowledge context and citations                | Yes        |
 | `MEMORY_LLM`       | LLM answers with selected archive-memory `[M#]` context          | Yes        |
@@ -50,11 +50,11 @@ flowchart TD
 ## Tool Routing: Deterministic First
 
 `RuntimeToolRouter` (Protocol) and `DefaultRuntimeToolRouter` decide **before the
-LLM call** whether the user text matches a local tool, such as asking for time or
-searching/reading knowledge notes. Knowledge tools are retrieval steps, not answer
-generators: their result is converted to `KnowledgeContext` and passed to the LLM
-when one is enabled. If no LLM is available, the raw tool result is returned. Other
-read-only tools such as `local_time.now` can still answer directly. Tools also have
+LLM call** whether the user text matches an explicit knowledge read/search command.
+Natural-language capability selection belongs to the semantic/LLM router rather
+than keyword rules. Knowledge tools are retrieval steps, not answer generators:
+their result is converted to `KnowledgeContext` and passed to the LLM when one is
+enabled. If no LLM is available, the raw tool result is returned. Tools also have
 side-effect levels and parameter validation.
 
 ## Guardrails: Multiple Stages
@@ -130,11 +130,17 @@ flowchart LR
   default; the versioned private checkpoint store is opt-in wiring.
 - **Archive memory**: never retrieved implicitly. It enters a prompt only after
   the semantic source decision selects `memory`; its citations use `[M#]`.
-- **Knowledge**: Markdown vault. The retrieved passages are inserted into the
-  dynamic prompt together with grounding instructions: the LLM may only claim
-  facts supported by the passages, must preserve citations such as `[K1] path`,
-  and must state that the vault lacks enough information when the context is
-  empty or insufficient. No answer text is assembled from snippets in code.
+- **Knowledge**: Markdown vault. The capability router receives a bounded
+  manifest as navigation metadata. Content-answer prompts receive only selected
+  retrieved passages; the whole-vault manifest is deliberately excluded so a
+  title, heading, or path cannot masquerade as note-body evidence.
+  `knowledge.inspect` supplies bounded inventory/relationship metadata for
+  explicit navigation questions, while `knowledge.search` and `knowledge.read`
+  supply answer evidence. The LLM must preserve internal citation labels and
+  state that the vault lacks enough information when evidence is empty or
+  insufficient. The presentation layer removes internal labels after validation
+  and renders structured sources at the end; no answer text is assembled from
+  snippets in code.
 
 ## <a id="usage-telemetry"></a>Usage Telemetry
 

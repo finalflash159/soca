@@ -31,7 +31,7 @@ flowchart TD
 | Route              | When It Happens                                                 | Calls LLM? |
 | ------------------ | --------------------------------------------------------------- | ---------- |
 | `BLOCKED`          | A guardrail blocks at any stage                                 | No         |
-| `TOOL_DIRECT`      | A deterministic tool can answer directly, e.g. `local_time.now` | No         |
+| `TOOL_DIRECT`      | A non-knowledge tool can answer directly                        | No         |
 | `KNOWLEDGE_DIRECT` | A knowledge file is read directly                               | No         |
 | `KNOWLEDGE_LLM`    | LLM answers with knowledge context and citations                | Yes        |
 | `FREE_CHAT`        | Normal chat answer without knowledge                            | Yes        |
@@ -42,10 +42,11 @@ flowchart TD
 ## Tool Routing: Deterministic First
 
 `RuntimeToolRouter` (Protocol) and `DefaultRuntimeToolRouter` decide **before the
-LLM call** whether the user text matches a local tool, such as asking for time or
-searching/reading knowledge notes. If a tool matches, the runtime can call it and
-return directly without the LLM. This is cheaper and more reliable. Tools also
-have side-effect levels and parameter validation.
+LLM call** whether the user text matches an explicit read/search command.
+Natural-language capability selection belongs to the semantic router.
+Knowledge-tool output is grounded context for the answer model rather than
+prewritten answer text. Tools also have side-effect levels and parameter
+validation.
 
 ## Guardrails: Multiple Stages
 

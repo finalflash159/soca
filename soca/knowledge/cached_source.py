@@ -5,6 +5,7 @@ from threading import RLock
 from typing import Literal
 
 from soca.knowledge.base import KnowledgeHit
+from soca.knowledge.catalog import CatalogIndexSnapshot
 from soca.knowledge.index.models import VaultIndex
 from soca.knowledge.index.vault_index import VaultIndexer, VaultIndexStore
 from soca.knowledge.indexing.coordinator import IndexCoordinator
@@ -96,6 +97,17 @@ class CachedMarkdownVaultKnowledgeSource(MarkdownVaultKnowledgeSource):
             return sparse.search(query, limit=limit)
         _, sparse = self._refresh_index()
         return sparse.search(query, limit=limit)
+
+    def catalog_index_snapshot(self) -> CatalogIndexSnapshot:
+        if self._lifecycle == "v2":
+            assert self._coordinator is not None
+            snapshot = self._coordinator.snapshot()
+            return CatalogIndexSnapshot(
+                revision=snapshot.revision,
+                index=snapshot.sparse_index,
+            )
+        index, _ = self._refresh_index()
+        return CatalogIndexSnapshot(revision=0, index=index)
 
     @property
     def index_status(self) -> IndexStatus | None:

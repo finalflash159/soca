@@ -68,6 +68,7 @@ class RuntimeTrace:
     answer_validation: Any | None = None
     answer_repair_attempted: bool = False
     answer_repair_succeeded: bool = False
+    retrieval_refinements: int = 0
     prompt_manifest: dict[str, Any] | None = None
 
 

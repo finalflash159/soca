@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import cast
+
 from soca.core.runtime import RuntimeToolRouter
 from soca.core.tool_routing import ToolRouterDecision
 from soca.tools import ToolCall
@@ -18,6 +21,28 @@ class CascadeToolRouter:
         self.last_tier = "none"
         self.last_decision = ToolRouterDecision()
 
+    def set_context(self, *, turn_context: str = "") -> None:
+        setter = getattr(self._llm_router, "set_context", None)
+        if callable(setter):
+            setter(turn_context=turn_context)
+
+    def refine(
+        self,
+        text: str,
+        *,
+        observation: str,
+        knowledge_limit: int,
+    ) -> ToolCall | None:
+        refiner = getattr(self._llm_router, "refine", None)
+        if not callable(refiner):
+            return None
+        typed_refiner = cast(Callable[..., ToolCall | None], refiner)
+        return typed_refiner(
+            text,
+            observation=observation,
+            knowledge_limit=knowledge_limit,
+        )
+
     def select(self, text: str, *, knowledge_limit: int) -> ToolCall | None:
         call = self._deterministic.select(text, knowledge_limit=knowledge_limit)
         deterministic_decision = getattr(
@@ -34,14 +59,9 @@ class CascadeToolRouter:
                 self.last_tier = "semantic"
                 self.last_decision = semantic_decision
                 return call
-            if semantic_decision.disposition in {
-                "retrieval_request",
-                "smalltalk",
-                "out_of_scope",
-            }:
-                self.last_tier = "semantic"
-                self.last_decision = semantic_decision
-                return None
+            # Semantic examples are shadow telemetry only.  They may not
+            # terminate a turn: the model router must see the vault manifest,
+            # goal and conversation context before selecting an action.
         if self._llm_router is None:
             self.last_tier = "none"
             self.last_decision = getattr(

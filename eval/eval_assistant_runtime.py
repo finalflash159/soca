@@ -13,11 +13,9 @@ import json
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from statistics import mean, median
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from rich.console import Console
 from rich.progress import track
@@ -30,7 +28,6 @@ from soca.memory import MemoryContextBuilder, SessionMemory
 from soca.tools import (
     KnowledgeReadTool,
     KnowledgeSearchTool,
-    LocalTimeTool,
     ToolResult,
     ToolRuntime,
 )
@@ -40,7 +37,6 @@ console = Console()
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROMPT_PATH = REPO_ROOT / "eval" / "prompts" / "assistant_runtime_vi.jsonl"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "eval" / "results"
-FIXED_NOW = datetime(2026, 5, 29, 9, 30, tzinfo=ZoneInfo("Asia/Ho_Chi_Minh"))
 
 
 @dataclass(frozen=True)
@@ -249,7 +245,6 @@ def load_cases(path: Path, limit: int | None = None) -> list[RuntimeEvalCase]:
 def build_runtime(case: RuntimeEvalCase) -> AssistantRuntime:
     knowledge_source = EvalKnowledgeSource(empty=case.scenario == "knowledge_empty")
     tools = [
-        LocalTimeTool(now_fn=lambda: FIXED_NOW),
         KnowledgeReadTool(knowledge_source),
     ]
     if case.scenario == "knowledge_disabled":

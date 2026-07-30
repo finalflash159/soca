@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, cast
@@ -13,6 +14,10 @@ from soca.app.style.palette import ACCENT, ALT, BAD, BORDER, ICON, MUTED, TEXT, 
 from soca.app.usage_view import print_turn_usage
 from soca.config import DEFAULT_MAX_TOKENS, LlmSettings, SecretStore, load_settings
 from soca.core import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
+from soca.core.answer_validation import (
+    answer_text_without_citation_labels,
+    expected_citation_labels,
+)
 from soca.core.knowledge_setup import build_knowledge_runtime_setup
 from soca.core.memory_setup import (
     MemoryMode,
@@ -21,6 +26,7 @@ from soca.core.memory_setup import (
 )
 from soca.core.profiles import DEFAULT_VOICE_RUNTIME_PROFILE_KEY, get_voice_runtime_profile
 from soca.core.router_setup import build_runtime_tool_router
+from soca.core.runtime import DEFAULT_VAULT_MANIFEST_CHARS
 from soca.core.tool_routing import (
     RouterResponseMode,
     SemanticRouterConfig,
@@ -42,7 +48,7 @@ from soca.memory import (
     WorkingMemoryPolicy,
     default_session_checkpoint_home,
 )
-from soca.tools import LocalTimeTool, MemorySearchTool, Tool, ToolRuntime
+from soca.tools import MemorySearchTool, Tool, ToolRuntime
 
 
 def default_text_llm_model_key() -> str:
@@ -51,13 +57,7 @@ def default_text_llm_model_key() -> str:
 
 
 def default_semantic_router_examples() -> Path:
-    return (
-        Path(__file__).resolve().parents[2]
-        / "eval"
-        / "prompts"
-        / "p0"
-        / "turn_routing_vi.jsonl"
-    )
+    return Path(__file__).resolve().parents[2] / "eval" / "prompts" / "p0" / "turn_routing_vi.jsonl"
 
 
 @dataclass(frozen=True)
@@ -85,8 +85,8 @@ class TextRuntimeConfig:
     llm_threads: int = 8
     llm_gpu_layers: int = -1
     tool_router_mode: str = "cascade"
-    tool_router_response_mode: str = "prompt_json"
-    semantic_router_enabled: bool = True
+    tool_router_response_mode: str = "json_schema"
+    semantic_router_enabled: bool = False
     semantic_router_threshold: float = 0.58
     semantic_router_margin: float = 0.0
     semantic_router_examples: Path | None = field(default_factory=default_semantic_router_examples)
@@ -121,8 +121,8 @@ def resolve_text_runtime_config(
     llm_threads: int = 8,
     llm_gpu_layers: int = -1,
     tool_router_mode: str = "cascade",
-    tool_router_response_mode: str = "prompt_json",
-    semantic_router_enabled: bool = True,
+    tool_router_response_mode: str = "json_schema",
+    semantic_router_enabled: bool = False,
     semantic_router_threshold: float = 0.58,
     semantic_router_margin: float = 0.0,
     semantic_router_examples: str | Path | None = None,
@@ -236,7 +236,8 @@ def build_text_runtime(
     vault = config.vault.expanduser()
     knowledge_builder = None
     knowledge_status = "disabled:not_found"
-    tools: list[Tool] = [LocalTimeTool()]
+    tools: list[Tool] = []
+    manifest_provider: Callable[[], str] | None = None
 
     if vault.is_dir():
         knowledge = build_knowledge_runtime_setup(
@@ -248,7 +249,14 @@ def build_text_runtime(
             ),
         )
         knowledge_builder = knowledge.builder
-        tools.extend([knowledge.search_tool, knowledge.read_tool])
+        tools.extend([knowledge.inspect_tool, knowledge.search_tool, knowledge.read_tool])
+
+        def provide_manifest() -> str:
+            return knowledge.catalog.snapshot().manifest_text(
+                max_chars=DEFAULT_VAULT_MANIFEST_CHARS
+            )
+
+        manifest_provider = provide_manifest
         knowledge_status = knowledge.status
 
     selected_settings = llm_settings or load_settings()
@@ -259,8 +267,7 @@ def build_text_runtime(
         selected_settings = selected_settings.with_backend("local").with_model(config.llm_model)
     model_context_window = (
         LLM_MODEL_REGISTRY[selected_settings.model_id].context_window
-        if selected_settings.backend == "local"
-        and selected_settings.model_id in LLM_MODEL_REGISTRY
+        if selected_settings.backend == "local" and selected_settings.model_id in LLM_MODEL_REGISTRY
         else selected_settings.model_context_window
     )
     working_policy = WorkingMemoryPolicy.for_context_budget(
@@ -310,7 +317,9 @@ def build_text_runtime(
                 dense_backend=cast(DenseBackend, config.memory_dense_backend),
                 recency_weight=config.memory_recency_weight,
                 importance_weight=config.memory_importance_weight,
-                relevance_weight=1.0 - config.memory_recency_weight - config.memory_importance_weight,
+                relevance_weight=1.0
+                - config.memory_recency_weight
+                - config.memory_importance_weight,
                 recency_half_life_days=config.memory_recency_half_life_days,
             ),
         )
@@ -361,6 +370,7 @@ def build_text_runtime(
         config=router_config,
         embedding_model=router_embedding_model,
         voice=False,
+        vault_manifest_provider=manifest_provider,
     )
     runtime = AssistantRuntime(
         llm=llm,
@@ -435,7 +445,10 @@ def render_text_result(
 ) -> None:
     reply = RichText()
     reply.append(f"{ICON.BIRD} ", style=st(f"bold {ACCENT}"))
-    reply.append(result.response_text or "<empty>", style=st(TEXT))
+    reply.append(
+        answer_text_without_citation_labels(result.response_text, result.citations) or "<empty>",
+        style=st(TEXT),
+    )
     console.print(reply)
     note_style = BAD if result.blocked else MUTED
     console.print(RichText(f"  {ICON.DOT} Route: {result.route.value}", style=st(note_style)))
@@ -445,8 +458,12 @@ def render_text_result(
         citations.add_column("Ref", style=st(ALT) or "none")
         citations.add_column("Path")
         citations.add_column("Title")
-        for index, citation in enumerate(result.citations, start=1):
-            citations.add_row(f"K{index}", citation.path, citation.title)
+        for label, citation in zip(
+            expected_citation_labels(result.citations),
+            result.citations,
+            strict=True,
+        ):
+            citations.add_row(label.strip("[]"), citation.path, citation.title)
         console.print(citations)
 
     if show_trace:

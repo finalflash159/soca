@@ -10,7 +10,8 @@ from soca.core.semantic_turn_router import (
     build_semantic_turn_router,
 )
 from soca.core.tool_routing import SemanticRouterConfig
-from soca.tools import LocalTimeTool, ToolRuntime
+from soca.tools import ToolRuntime
+from tests.fake_tools import ReadOnlyInspectTool
 
 
 class _Embedding:
@@ -21,7 +22,7 @@ class _Embedding:
         text = text.lower()
         if "thời tiết" in text or "nhiệt độ" in text:
             return np.array([0.0, 0.0, 1.0], dtype=np.float32)
-        if "mấy giờ" in text or "giờ địa" in text:
+        if "kho ghi chú" in text or "liên kết" in text:
             return np.array([1.0, 0.0, 0.0], dtype=np.float32)
         if "onnx" in text:
             return np.array([0.0, 1.0, 0.0], dtype=np.float32)
@@ -34,21 +35,26 @@ class _Embedding:
         return self._vector(text)
 
 
-def test_semantic_policy_keeps_weather_out_of_scope_and_selects_both_sources(tmp_path: Path) -> None:
+def test_semantic_policy_keeps_weather_out_of_scope_and_selects_both_sources(
+    tmp_path: Path,
+) -> None:
     examples = tmp_path / "turns.jsonl"
     examples.write_text(
         "\n".join(
             [
-                '{"id":"time","text":"bây giờ là mấy giờ","disposition":"direct_tool","sources":[],"tool":"local_time.now"}',
+                '{"id":"catalog","text":"kho ghi chú có gì","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}',
                 '{"id":"both","text":"tôi đã ghi gì về ONNX","disposition":"retrieval_request","sources":["knowledge","memory"]}',
                 '{"id":"weather","text":"thời tiết hiện tại","disposition":"out_of_scope","sources":[]}',
             ]
-        ) + "\n",
+        )
+        + "\n",
         encoding="utf-8",
     )
     router = build_semantic_turn_router(
-        tool_runtime=ToolRuntime([LocalTimeTool()]),
-        config=SemanticRouterConfig(enabled=True, threshold=0.7, margin=0.05, examples_path=examples),
+        tool_runtime=ToolRuntime([ReadOnlyInspectTool()]),
+        config=SemanticRouterConfig(
+            enabled=True, threshold=0.7, margin=0.05, examples_path=examples
+        ),
         embedding_model=_Embedding(),
     )
     assert router is not None
@@ -66,18 +72,20 @@ def test_semantic_policy_keeps_weather_out_of_scope_and_selects_both_sources(tmp
 def test_semantic_policy_uses_only_allowlisted_direct_tool(tmp_path: Path) -> None:
     examples = tmp_path / "turns.jsonl"
     examples.write_text(
-        '{"id":"time","text":"bây giờ là mấy giờ","disposition":"direct_tool","sources":[],"tool":"local_time.now"}\n',
+        '{"id":"catalog","text":"kho ghi chú có gì","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}\n',
         encoding="utf-8",
     )
     router = build_semantic_turn_router(
-        tool_runtime=ToolRuntime([LocalTimeTool()]),
-        config=SemanticRouterConfig(enabled=True, threshold=0.7, margin=0.0, examples_path=examples),
+        tool_runtime=ToolRuntime([ReadOnlyInspectTool()]),
+        config=SemanticRouterConfig(
+            enabled=True, threshold=0.7, margin=0.0, examples_path=examples
+        ),
         embedding_model=_Embedding(),
     )
     assert router is not None
-    call = router.select("Bây giờ là mấy giờ?", knowledge_limit=3)
+    call = router.select("Kho ghi chú hiện có gì?", knowledge_limit=3)
     assert call is not None
-    assert call.name == "local_time.now"
+    assert call.name == "knowledge.inspect"
 
 
 def test_source_threshold_uses_raw_score_not_rounded_telemetry() -> None:
@@ -138,3 +146,49 @@ def test_production_loader_excludes_sealed_test_split(tmp_path: Path) -> None:
 
     assert router is not None
     assert len(router._examples) == 1
+
+
+def test_semantic_router_delegates_uncertain_direct_tool_to_next_tier(tmp_path: Path) -> None:
+    examples = tmp_path / "turns.jsonl"
+    examples.write_text(
+        "\n".join(
+            [
+                '{"id":"catalog","text":"kho ghi chú có gì",'
+                '"disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}',
+                '{"id":"search","text":"tìm nội dung trong ghi chú",'
+                '"disposition":"retrieval_request","sources":["knowledge"]}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    class _AmbiguousEmbedding:
+        model_id = "fake:ambiguous"
+
+        def embed_documents(self, texts: tuple[str, ...]) -> np.ndarray:
+            del texts
+            return np.asarray([[0.8, 0.6], [0.79, 0.613]], dtype=np.float32)
+
+        def embed_query(self, text: str) -> np.ndarray:
+            del text
+            return np.asarray([1.0, 0.0], dtype=np.float32)
+
+    router = build_semantic_turn_router(
+        tool_runtime=ToolRuntime([ReadOnlyInspectTool()]),
+        config=SemanticRouterConfig(
+            enabled=True,
+            threshold=0.0,
+            margin=0.0,
+            direct_tool_threshold=0.85,
+            direct_tool_retrieval_margin=0.0,
+            examples_path=examples,
+        ),
+        embedding_model=_AmbiguousEmbedding(),
+    )
+    assert router is not None
+
+    assert router.select("Kho ghi chú có gì?", knowledge_limit=3) is None
+    assert router.last_tier == "none"
+    assert router.last_decision.reason == "semantic_direct_tool_uncertain"
+    assert router.last_decision.disposition == "unresolved"

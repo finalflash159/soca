@@ -10,6 +10,10 @@ from typing import Any
 
 import numpy as np
 
+from soca.core.answer_validation import (
+    answer_text_without_citation_labels,
+    citation_records,
+)
 from soca.core.audio_join import TailHoldingCrossfader
 from soca.core.audio_out import (
     AudioPlaybackSession,
@@ -463,15 +467,20 @@ class VoicePipeline:
         elif runtime_result is not None:
             if getattr(runtime_result, "blocked", False):
                 pending_sentences = [getattr(runtime_result, "response_text", "").strip()]
+            citations = tuple(getattr(runtime_result, "citations", ()))
             for sentence in pending_sentences:
-                if sentence:
-                    pump.submit(sentence)
+                spoken = answer_text_without_citation_labels(sentence, citations)
+                if spoken:
+                    pump.submit(spoken)
             yield self._runtime_summary_event(runtime_result)
         pump.close()
         yield from pump.drain_until_done()
         yield StreamingEvent(
             type="done",
-            text=getattr(runtime_result, "response_text", "").strip(),
+            text=answer_text_without_citation_labels(
+                getattr(runtime_result, "response_text", "").strip(),
+                tuple(getattr(runtime_result, "citations", ())),
+            ),
             latency_ms=(time.perf_counter() - turn_start_time) * 1000,
             metadata={
                 "rejected": False,
@@ -482,6 +491,9 @@ class VoicePipeline:
                 ),
                 "runtime_blocked": bool(getattr(runtime_result, "blocked", False)),
                 "runtime_route": getattr(getattr(runtime_result, "route", None), "value", ""),
+                "citations": list(
+                    citation_records(tuple(getattr(runtime_result, "citations", ())))
+                ),
                 "stage_latencies_ms": self.metrics.snapshot(),
                 "playback": pump.playback_summary,
             },

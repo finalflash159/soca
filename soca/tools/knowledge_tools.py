@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from soca.knowledge import KnowledgeSource
+from soca.knowledge.catalog import KnowledgeCatalog
 from soca.tools.base import (
     InvalidToolInput,
+    PermanentToolError,
     SideEffectLevel,
     ToolExecutionStatus,
     ToolResult,
@@ -35,6 +38,203 @@ def _retrieval_metadata(diagnostics: Any | None) -> dict[str, Any]:
     return metadata
 
 
+class KnowledgeInspectTool:
+    """Inspect vault navigation metadata without manufacturing evidence."""
+
+    def __init__(
+        self,
+        catalog: KnowledgeCatalog,
+        *,
+        max_documents: int = 32,
+        max_chars: int = 8_000,
+    ) -> None:
+        if max_documents < 1 or max_chars < 1_024:
+            raise ValueError("knowledge inspect limits are invalid")
+        self.catalog = catalog
+        self.max_documents = max_documents
+        self.max_chars = max_chars
+
+    @property
+    def spec(self) -> ToolSpec:
+        return ToolSpec(
+            name="knowledge.inspect",
+            description=(
+                "Inspect bounded local vault navigation metadata when the requested "
+                "answer is a list or map of documents, folders, headings, links, or "
+                "relationships. This returns structure, not what the user wrote inside "
+                "a subject; use knowledge.search or knowledge.read for note contents."
+            ),
+            input_schema=object_schema(
+                properties={
+                    "scope": {"type": "string", "description": "Optional folder prefix."},
+                    "path": {"type": "string", "description": "Optional exact document path."},
+                    "depth": {"type": "integer", "description": "Optional relation depth."},
+                    "limit": {"type": "integer", "description": "Maximum documents."},
+                }
+            ),
+            side_effect=SideEffectLevel.READ_ONLY,
+            workflow_capability="knowledge_catalog",
+        )
+
+    def run(self, arguments: dict[str, Any]) -> ToolResult:
+        scope = str(arguments.get("scope") or "").strip().replace("\\", "/")
+        path = str(arguments.get("path") or "").strip().replace("\\", "/")
+        if (
+            scope.startswith("/")
+            or path.startswith("/")
+            or ".." in scope.split("/")
+            or ".." in path.split("/")
+        ):
+            raise InvalidToolInput("unsafe_scope")
+        raw_depth = arguments.get("depth", 0)
+        if isinstance(raw_depth, bool):
+            raise InvalidToolInput("invalid_depth")
+        try:
+            depth = int(raw_depth or 0)
+        except (TypeError, ValueError) as exc:
+            raise InvalidToolInput("invalid_depth") from exc
+        if depth < 0 or depth > 3:
+            raise InvalidToolInput("invalid_depth")
+        raw_limit = arguments.get("limit", self.max_documents)
+        if isinstance(raw_limit, bool):
+            raise InvalidToolInput("invalid_limit")
+        try:
+            limit = int(raw_limit or self.max_documents)
+        except (TypeError, ValueError) as exc:
+            raise InvalidToolInput("invalid_limit") from exc
+        if limit < 1:
+            raise InvalidToolInput("invalid_limit")
+        limit = min(limit, self.max_documents)
+        try:
+            snapshot = self.catalog.snapshot()
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise PermanentToolError(
+                "knowledge_inspect_unavailable",
+                type(exc).__name__,
+            ) from exc
+
+        matched = tuple(
+            document
+            for document in snapshot.documents
+            if (not scope or document.folder == scope or document.folder.startswith(scope + "/"))
+            and (not path or document.path == path)
+        )
+        selected_paths = {document.path for document in matched}
+        frontier = set(selected_paths)
+        for _ in range(depth):
+            connected = {
+                relation.target
+                for relation in snapshot.relations
+                if relation.source in frontier
+            }
+            connected.update(
+                relation.source
+                for relation in snapshot.relations
+                if relation.target in frontier
+            )
+            frontier = connected - selected_paths
+            selected_paths.update(connected)
+            if not frontier:
+                break
+        expanded = tuple(
+            document for document in snapshot.documents if document.path in selected_paths
+        )
+        documents = expanded[:limit]
+        def build_payload(
+            selected_documents: tuple[Any, ...],
+            *,
+            include_headings: bool,
+            truncated: bool,
+        ) -> dict[str, Any]:
+            selected_paths = {document.path for document in selected_documents}
+            relations = tuple(
+                relation
+                for relation in snapshot.relations
+                if relation.source in selected_paths and relation.target in selected_paths
+            )
+            document_payload: list[dict[str, Any]] = []
+            for document in selected_documents:
+                item: dict[str, Any] = {
+                    "path": document.path,
+                    "title": document.title,
+                    "folder": document.folder,
+                    "tags": list(document.tags),
+                }
+                if include_headings:
+                    item["headings"] = [
+                        {"level": heading.level, "text": heading.text, "line": heading.line}
+                        for heading in document.headings
+                    ]
+                else:
+                    item["headings"] = []
+                    item["headings_omitted"] = True
+                document_payload.append(item)
+            return {
+                "schema_version": 1,
+                "revision": snapshot.revision,
+                "content_digest": snapshot.content_digest,
+                "scope": scope or None,
+                "path": path or None,
+                "depth": depth,
+                "truncated": truncated,
+                "documents": document_payload,
+                "relations": [
+                    {
+                        "source": relation.source,
+                        "target": relation.target,
+                        "kind": relation.kind,
+                    }
+                    for relation in relations
+                ],
+                "metadata_only": True,
+            }
+
+        prefix = "Vault navigation metadata only; it is not evidence for note contents.\n"
+        payload = build_payload(
+            documents,
+            include_headings=True,
+            truncated=len(documents) < len(expanded),
+        )
+        content = prefix + json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        if len(content) > self.max_chars:
+            payload = build_payload(documents, include_headings=False, truncated=True)
+            content = prefix + json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        if len(content) > self.max_chars:
+            for count in range(len(documents) - 1, -1, -1):
+                candidate = build_payload(
+                    documents[:count],
+                    include_headings=False,
+                    truncated=True,
+                )
+                candidate_content = prefix + json.dumps(
+                    candidate,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+                if len(candidate_content) <= self.max_chars:
+                    payload = candidate
+                    content = candidate_content
+                    break
+        if len(content) > self.max_chars:
+            raise PermanentToolError("knowledge_inspect_context_limit")
+        return ToolResult(
+            name=self.spec.name,
+            ok=True,
+            content=content,
+            data={
+                "revision": snapshot.revision,
+                "content_digest": snapshot.content_digest,
+                "depth": depth,
+                "documents": payload["documents"],
+                "relations": payload["relations"],
+                "metadata_only": True,
+                "truncated": payload["truncated"],
+                "evidence_status": "not_requested",
+                "retrieval_state": "ready",
+            },
+        )
+
+
 class KnowledgeSearchTool:
     def __init__(
         self,
@@ -48,7 +248,10 @@ class KnowledgeSearchTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="knowledge.search",
-            description="Search local wiki markdown notes and return matching snippets.",
+            description=(
+                "Search local wiki markdown note content and return evidence snippets. "
+                "Do not use for file inventory or vault structure."
+            ),
             input_schema=object_schema(
                 properties={
                     "query": {
@@ -135,7 +338,12 @@ class KnowledgeReadTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="knowledge.read",
-            description="Read one local wiki markdown note by relative path.",
+            description=(
+                "Read one known local wiki Markdown path as note-body evidence. Prefer "
+                "this for a broad summary when navigation metadata identifies one clear "
+                "document; use search when the path is unknown or a specific passage "
+                "must be located."
+            ),
             input_schema=object_schema(
                 properties={
                     "path": {

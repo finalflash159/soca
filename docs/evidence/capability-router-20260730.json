@@ -20,6 +20,12 @@
       "revision": "content-sha256:8098326e232aaa9c26defa46522010ff2a26e63a490b33b65ba355651f934038"
     },
     {
+      "id": "knowledge-navigation-routing-corpus",
+      "path": "eval/prompts/p0/turn_routing_vi.jsonl",
+      "sha256": "3b1f1e4611b789de07136da75da182aab7b639b7ca62f22635618e64972c2579",
+      "revision": "content-sha256:3b1f1e4611b789de07136da75da182aab7b639b7ca62f22635618e64972c2579"
+    },
+    {
       "id": "runtime-workflow-corpus",
       "path": "eval/prompts/remediation_workflow_vi.jsonl",
       "sha256": "6813b22628a90f11058767b89d19cab343bfaa5561356bcf78ccab415f32448a",
@@ -70,6 +76,53 @@
     }
   },
   "runs": [
+    {
+      "run_id": "capability-local-navigation-v4-20260730",
+      "run_type": "benchmark",
+      "source": {
+        "git_sha": "0abd5604205f854eba125348e624c1f1281dd2150",
+        "dirty": true,
+        "ignored_untracked_paths": ["session.txt"]
+      },
+      "config": {
+        "dataset": "eval/prompts/p0/turn_routing_vi.jsonl",
+        "examples": "eval/prompts/p0/turn_routing_vi.jsonl",
+        "embedding_model": "intfloat/multilingual-e5-small@614241f622f53c4eeff9890bdc4f31cfecc418b3",
+        "threshold": 0.58,
+        "margin": 0.0,
+        "direct_tool_threshold": 0.85,
+        "direct_tool_retrieval_margin": 0.01,
+        "execution": "local-semantic-characterization",
+        "predictions": "/tmp/soca-catalog-router-v4/predictions.jsonl",
+        "report": "/tmp/soca-catalog-router-v4/report.json"
+      },
+      "metrics": {
+        "train_disposition_accuracy": 1.0,
+        "validation_disposition_accuracy": 1.0,
+        "test_disposition_accuracy": 0.71875,
+        "test_source_exact": 0.84375,
+        "test_unsupported_to_tool": 0.0,
+        "test_direct_tool_exact": "11/13",
+        "semantic_latency_p95_ms": 2.505957963876426
+      },
+      "artifacts": [
+        {"kind": "report", "path": "/tmp/soca-catalog-router-v4/report.json", "tracked": false},
+        {"kind": "predictions", "path": "/tmp/soca-catalog-router-v4/predictions.jsonl", "tracked": false}
+      ],
+      "outcome": {
+        "status": "characterization_complete",
+        "failures": [
+          "test disposition accuracy remained below the release gate",
+          "2 of 13 direct-tool cases were delegated as uncertain",
+          "source worktree was dirty"
+        ]
+      },
+      "decision": {
+        "status": "reject_as_release_evidence",
+        "reason": "Retain as local characterization only; do not select or release a production router from this run."
+      },
+      "reproducibility": "characterization only: source was dirty; two uncertain direct actions are delegated to the bounded remote router"
+    },
     {
       "run_id": "capability-local-heldout-20260730",
       "run_type": "benchmark",

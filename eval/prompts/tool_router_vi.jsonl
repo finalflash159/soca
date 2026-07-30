@@ -2,9 +2,9 @@
 {"id":"det-command-002","slice":"det_command","query":"knowledge: ONNX Runtime","expected_tool":"knowledge.search","expected_tier":"deterministic"}
 {"id":"det-command-003","slice":"det_command","query":"wiki: quyết định TTS","expected_tool":"knowledge.search","expected_tier":"deterministic"}
 {"id":"det-command-004","slice":"det_command","query":"knowledge: ngân sách ăn uống","expected_tool":"knowledge.search","expected_tier":"deterministic"}
-{"id":"det-command-005","slice":"det_command","query":"time:","expected_tool":"local_time.now","expected_tier":"deterministic"}
-{"id":"det-command-006","slice":"det_command","query":"gio:","expected_tool":"local_time.now","expected_tier":"deterministic"}
-{"id":"det-command-007","slice":"det_command","query":"giờ: Asia/Ho_Chi_Minh","expected_tool":"local_time.now","expected_tier":"deterministic"}
+{"id":"det-command-005","slice":"removed_time","query":"time:","expected_tool":"none","expected_tier":"semantic"}
+{"id":"det-command-006","slice":"removed_time","query":"gio:","expected_tool":"none","expected_tier":"semantic"}
+{"id":"det-command-007","slice":"removed_time","query":"giờ: Asia/Ho_Chi_Minh","expected_tool":"none","expected_tier":"semantic"}
 {"id":"det-command-008","slice":"det_command","query":"memory: lựa chọn TTS của tôi","expected_tool":"memory.search","expected_tier":"deterministic"}
 {"id":"det-command-009","slice":"det_command","query":"mem: mục tiêu dự án","expected_tool":"memory.search","expected_tier":"deterministic"}
 {"id":"det-command-010","slice":"det_command","query":"wiki: RAG hybrid","expected_tool":"knowledge.search","expected_tier":"deterministic"}
@@ -20,18 +20,24 @@
 {"id":"det-read-008","slice":"det_read_path","query":"read: private/secrets.md","expected_tool":"none","expected_tier":"deterministic","expected_reason":"unsafe_read_path"}
 {"id":"det-read-009","slice":"det_read_path","query":"đọc: ../private/secrets.md","expected_tool":"none","expected_tier":"deterministic","expected_reason":"unsafe_read_path"}
 {"id":"det-read-010","slice":"det_read_path","query":"file wiki/project/notes.md trong câu chuyện","expected_tool":"none","expected_tier":"semantic"}
-{"id":"nl-time-001","slice":"nl_time","query":"Bây giờ ở Hà Nội là mấy giờ?","expected_tool":"local_time.now","expected_tier":"semantic"}
-{"id":"nl-time-002","slice":"nl_time","query":"Cho tôi biết giờ hiện tại với","expected_tool":"local_time.now","expected_tier":"semantic"}
-{"id":"nl-time-003","slice":"nl_time","query":"Hiện tại là mấy giờ rồi nhỉ","expected_tool":"local_time.now","expected_tier":"semantic"}
-{"id":"nl-time-004","slice":"nl_time","query":"Múi giờ Việt Nam đang là mấy giờ","expected_tool":"local_time.now","expected_tier":"semantic"}
-{"id":"nl-time-005","slice":"nl_time","query":"Bạn xem giúp thời gian hiện tại","expected_tool":"local_time.now","expected_tier":"semantic"}
-{"id":"nl-time-006","slice":"nl_time","query":"Giờ địa phương lúc này là bao nhiêu","expected_tool":"local_time.now","expected_tier":"semantic"}
-{"id":"nl-time-007","slice":"nl_time","query":"Tôi cần biết đồng hồ hiện đang chỉ mấy giờ","expected_tool":"local_time.now","expected_tier":"semantic"}
-{"id":"nl-time-008","slice":"nl_time","query":"Hôm nay là ngày bao nhiêu và mấy giờ","expected_tool":"local_time.now","expected_tier":"semantic"}
-{"id":"nl-time-009","slice":"nl_time","query":"Bây giờ theo giờ Việt Nam là bao nhiêu","expected_tool":"local_time.now","expected_tier":"semantic"}
-{"id":"nl-time-010","slice":"nl_time","query":"Có thể đọc giờ hiện tại cho tôi không","expected_tool":"local_time.now","expected_tier":"semantic"}
-{"id":"nl-time-011","slice":"nl_time","query":"Thời điểm này ở đây là mấy giờ","expected_tool":"local_time.now","expected_tier":"semantic"}
-{"id":"nl-time-012","slice":"nl_time","query":"Mình muốn xem ngày giờ hiện tại","expected_tool":"local_time.now","expected_tier":"semantic"}
+{"id":"nl-time-001","slice":"removed_time","query":"Bây giờ ở Hà Nội là mấy giờ?","expected_tool":"none","expected_tier":"semantic"}
+{"id":"nl-time-002","slice":"removed_time","query":"Cho tôi biết giờ hiện tại với","expected_tool":"none","expected_tier":"semantic"}
+{"id":"nl-time-003","slice":"removed_time","query":"Hiện tại là mấy giờ rồi nhỉ","expected_tool":"none","expected_tier":"semantic"}
+{"id":"nl-time-004","slice":"removed_time","query":"Múi giờ Việt Nam đang là mấy giờ","expected_tool":"none","expected_tier":"semantic"}
+{"id":"nl-time-005","slice":"removed_time","query":"Bạn xem giúp thời gian hiện tại","expected_tool":"none","expected_tier":"semantic"}
+{"id":"nl-time-006","slice":"removed_time","query":"Giờ địa phương lúc này là bao nhiêu","expected_tool":"none","expected_tier":"semantic"}
+{"id":"nl-time-007","slice":"removed_time","query":"Tôi cần biết đồng hồ hiện đang chỉ mấy giờ","expected_tool":"none","expected_tier":"semantic"}
+{"id":"nl-time-008","slice":"removed_time","query":"Hôm nay là ngày bao nhiêu và mấy giờ","expected_tool":"none","expected_tier":"semantic"}
+{"id":"nl-time-009","slice":"removed_time","query":"Bây giờ theo giờ Việt Nam là bao nhiêu","expected_tool":"none","expected_tier":"semantic"}
+{"id":"nl-time-010","slice":"removed_time","query":"Có thể đọc giờ hiện tại cho tôi không","expected_tool":"none","expected_tier":"semantic"}
+{"id":"nl-time-011","slice":"removed_time","query":"Thời điểm này ở đây là mấy giờ","expected_tool":"none","expected_tier":"semantic"}
+{"id":"nl-time-012","slice":"removed_time","query":"Mình muốn xem ngày giờ hiện tại","expected_tool":"none","expected_tier":"semantic"}
+{"id":"nl-catalog-001","slice":"nl_catalog","query":"Kho ghi chú hiện có những mảng kiến thức nào?","expected_tool":"knowledge.inspect","expected_tier":"semantic"}
+{"id":"nl-catalog-002","slice":"nl_catalog","query":"Ngoài ghi chú Bayes thì tài liệu của tôi còn những gì?","expected_tool":"knowledge.inspect","expected_tier":"semantic"}
+{"id":"nl-catalog-003","slice":"nl_catalog","query":"Các note trong vault liên kết với nhau như thế nào?","expected_tool":"knowledge.inspect","expected_tier":"semantic"}
+{"id":"nl-catalog-004","slice":"nl_catalog","query":"Note nào đang trỏ tới ghi chú ONNX Runtime?","expected_tool":"knowledge.inspect","expected_tier":"semantic"}
+{"id":"nl-catalog-005","slice":"nl_catalog","query":"Cho tôi xem tổng quan cấu trúc kho kiến thức","expected_tool":"knowledge.inspect","expected_tier":"semantic"}
+{"id":"nl-catalog-006","slice":"nl_catalog","query":"Tôi đã lưu tài liệu ở những nhóm nào rồi?","expected_tool":"knowledge.inspect","expected_tier":"semantic"}
 {"id":"nl-knowledge-001","slice":"nl_knowledge","query":"Ghi chú của tôi nói định lý Bayes thế nào?","expected_tool":"knowledge.search","expected_tier":"semantic"}
 {"id":"nl-knowledge-002","slice":"nl_knowledge","query":"Tuần trước tôi note gì về ONNX Runtime?","expected_tool":"knowledge.search","expected_tier":"semantic"}
 {"id":"nl-knowledge-003","slice":"nl_knowledge","query":"Trong tài liệu dự án, quyết định chọn TTS nào được ghi lại?","expected_tool":"knowledge.search","expected_tier":"semantic"}
@@ -73,7 +79,9 @@
 {"id":"smalltalk-012","slice":"none_smalltalk","query":"Không cần gọi công cụ, chỉ trả lời tôi thôi","expected_tool":"none","expected_tier":"semantic"}
 {"id":"hard-001","slice":"hard_negative","query":"Mấy giờ họp ngày mai?","expected_tool":"none","expected_tier":"semantic"}
 {"id":"hard-002","slice":"hard_negative","query":"Tôi đang viết truyện có nhân vật mở file notes.md","expected_tool":"none","expected_tier":"semantic"}
-{"id":"hard-003","slice":"hard_negative","query":"Hãy giải thích local_time.now là gì","expected_tool":"none","expected_tier":"semantic"}
+{"id":"hard-003","slice":"hard_negative","query":"Hãy giải thích một ứng dụng lấy giờ địa phương như thế nào","expected_tool":"none","expected_tier":"semantic"}
+{"id":"hard-016","slice":"hard_negative","query":"Giải thích cấu trúc dữ liệu graph trong ghi chú của tôi","expected_tool":"knowledge.search","expected_tier":"semantic"}
+{"id":"hard-017","slice":"hard_negative","query":"Tìm đoạn note có từ backlink và wikilink","expected_tool":"knowledge.search","expected_tier":"semantic"}
 {"id":"hard-004","slice":"hard_negative","query":"Từ knowledge có nghĩa là gì?","expected_tool":"none","expected_tier":"semantic"}
 {"id":"hard-005","slice":"hard_negative","query":"Đừng tìm trong wiki, hãy nói chuyện với tôi","expected_tool":"none","expected_tier":"semantic"}
 {"id":"hard-006","slice":"hard_negative","query":"Tôi muốn học cách đặt báo thức trên điện thoại","expected_tool":"none","expected_tier":"semantic"}
