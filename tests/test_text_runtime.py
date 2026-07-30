@@ -40,6 +40,8 @@ def _config(vault: Path, **overrides) -> TextRuntimeConfig:
         "vault": vault,
         "no_llm": True,  # keep tests model-free
         "knowledge_retrieval_mode": "chunk_sparse",
+        "tool_router_mode": "deterministic",
+        "semantic_router_enabled": False,
     }
     base.update(overrides)
     return TextRuntimeConfig(**base)

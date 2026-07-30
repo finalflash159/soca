@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from soca.core.route_catalog import source_profile
-from soca.core.runtime import RuntimeToolRouter
 from soca.core.tool_routing import (
     ParsedRouteDecision,
     RouterOutputError,
@@ -81,25 +80,24 @@ class LLMToolRouter:
         tool_runtime: ToolRuntime,
         *,
         config: ToolRouterConfig | None = None,
-        fallback: RuntimeToolRouter | None = None,
     ) -> None:
         self._llm = llm
         self._tool_runtime = tool_runtime
         self._config = config or ToolRouterConfig(mode="llm")
-        self._fallback = fallback
         self.last_tier = "none"
         self.last_decision = ToolRouterDecision()
 
     def select(self, text: str, *, knowledge_limit: int) -> ToolCall | None:
+        del knowledge_limit
         catalog = _tool_catalog(self._tool_runtime)
         if not catalog:
-            return self._fallback_select(text, knowledge_limit)
+            return self._fail_closed("llm_catalog_empty")
 
         first = self._attempt(text, catalog)
         if first.provider_failed:
-            return self._fallback_select(text, knowledge_limit)
+            return self._fail_closed("llm_provider_failed")
         if not first.error_code:
-            return self._finish(first.raw, text, knowledge_limit)
+            return self._finish(first.raw)
 
         if self._config.repair_attempts == 1:
             repaired = self._attempt(
@@ -109,16 +107,16 @@ class LLMToolRouter:
                 previous_output=first.raw,
             )
             if repaired.provider_failed:
-                return self._fallback_select(text, knowledge_limit)
+                return self._fail_closed("llm_repair_provider_failed")
             if not repaired.error_code:
-                return self._finish(repaired.raw, text, knowledge_limit)
-        return self._fallback_select(text, knowledge_limit)
+                return self._finish(repaired.raw)
+        return self._fail_closed(f"llm_invalid_output:{first.error_code}")
 
-    def _finish(self, raw: str, text: str, knowledge_limit: int) -> ToolCall | None:
+    def _finish(self, raw: str) -> ToolCall | None:
         try:
             decision = self._validated_decision(raw)
-        except RouterOutputError:
-            return self._fallback_select(text, knowledge_limit)
+        except RouterOutputError as exc:
+            return self._fail_closed(f"llm_invalid_output:{exc.code}")
         self.last_tier = "llm"
         if decision.route != "direct_tool":
             profile = None
@@ -182,7 +180,7 @@ class LLMToolRouter:
                     inject_persona=False,
                 )
         except Exception as exc:  # noqa: BLE001 - provider boundary must degrade
-            LOGGER.warning("Tool router generation failed (%s); using fallback", type(exc).__name__)
+            LOGGER.warning("Tool router generation failed (%s); failing closed", type(exc).__name__)
             return RouterAttempt(raw="", error_code="generation_failed", provider_failed=True)
 
         raw = getattr(result, "text", "")
@@ -211,16 +209,11 @@ class LLMToolRouter:
             return None
         return ToolCall(decision.handler or "", dict(decision.arguments))
 
-    def _fallback_select(self, text: str, knowledge_limit: int) -> ToolCall | None:
-        if self._fallback is None:
-            self.last_tier = "none"
-            self.last_decision = ToolRouterDecision(reason="no_fallback")
-            return None
-        call = self._fallback.select(text, knowledge_limit=knowledge_limit)
-        self.last_tier = getattr(self._fallback, "last_tier", "deterministic")
-        self.last_decision = getattr(
-            self._fallback,
-            "last_decision",
-            ToolRouterDecision(call=call, reason="fallback_match" if call else "fallback_none"),
+    def _fail_closed(self, reason: str) -> ToolCall | None:
+        self.last_tier = "llm"
+        self.last_decision = ToolRouterDecision(
+            reason=reason,
+            disposition="unresolved",
+            selected_routes=("unresolved",),
         )
-        return call
+        return None

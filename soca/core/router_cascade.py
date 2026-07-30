@@ -38,7 +38,6 @@ class CascadeToolRouter:
                 "retrieval_request",
                 "smalltalk",
                 "out_of_scope",
-                "unresolved",
             }:
                 self.last_tier = "semantic"
                 self.last_decision = semantic_decision

@@ -1,23 +1,0 @@
-Loading weights:   0%|          | 0/391 [00:00<?, ?it/s]Loading weights: 100%|██████████| 391/391 [00:00<00:00, 18490.44it/s]
-{
-  "cases": 14,
-  "passed": 1,
-  "failed": 13,
-  "by_suite": {
-    "capability": {
-      "cases": 10,
-      "passed": 0,
-      "failed": 10
-    },
-    "regression": {
-      "cases": 4,
-      "passed": 1,
-      "failed": 3
-    }
-  },
-  "terminal_counts": {
-    "insufficient_evidence": 1,
-    "safe_failure": 13
-  },
-  "error_count": 0
-}

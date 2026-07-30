@@ -85,6 +85,9 @@ def test_chat_reuses_one_runtime_across_multiple_turns(monkeypatch, tmp_path: Pa
             "--vault",
             str(tmp_path),
             "--no-memory",
+            "--no-semantic-router",
+            "--tool-router",
+            "deterministic",
         ],
         input="xin chào\nbạn nhớ lượt trước không?\n/exit\n",
     )
@@ -93,8 +96,6 @@ def test_chat_reuses_one_runtime_across_multiple_turns(monkeypatch, tmp_path: Pa
     assert "SoCa · chat" in result.output
     assert "Route: free_chat" in result.output
     assert "Phản hồi số 1." in result.output
-    # Capability routing is embedding-only for both chat and voice until its
-    # separate LLM-router privacy/latency gate is benchmarked.
     assert "Phản hồi số 2." in result.output
     assert len(FakeChatLLM.instances) == 1
     assert FakeChatLLM.instances[0].model_key == "arcee_vylinh_3b_q4_k_m"
@@ -115,6 +116,9 @@ def test_chat_llm_override_controls_runtime_model(monkeypatch, tmp_path: Path) -
             "--vault",
             str(tmp_path),
             "--no-memory",
+            "--no-semantic-router",
+            "--tool-router",
+            "deterministic",
         ],
         input="xin chào\n/exit\n",
     )
@@ -135,6 +139,9 @@ def test_chat_memory_commands_show_and_clear_session(monkeypatch, tmp_path: Path
             "chat",
             "--vault",
             str(tmp_path),
+            "--no-semantic-router",
+            "--tool-router",
+            "deterministic",
         ],
         input="xin chào\n/memory\n/clear\n/memory\n/exit\n",
     )
@@ -179,6 +186,9 @@ def test_chat_help_and_trace_toggle(tmp_path: Path) -> None:
             str(tmp_path),
             "--no-memory",
             "--no-llm",
+            "--no-semantic-router",
+            "--tool-router",
+            "deterministic",
         ],
         input="/help\n/trace\nđặt hẹn giờ 5 phút\n/exit\n",
     )
@@ -197,7 +207,16 @@ def test_chat_usage_flag_and_session_command(monkeypatch, tmp_path: Path) -> Non
 
     result = CliRunner().invoke(
         main,
-        ["chat", "--vault", str(tmp_path), "--no-memory", "--usage"],
+        [
+            "chat",
+            "--vault",
+            str(tmp_path),
+            "--no-memory",
+            "--no-semantic-router",
+            "--tool-router",
+            "deterministic",
+            "--usage",
+        ],
         input="xin chào\n/usage\n/exit\n",
     )
 

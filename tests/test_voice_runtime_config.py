@@ -37,9 +37,10 @@ def test_voice_defaults_to_the_shared_semantic_policy(tmp_path: Path) -> None:
     assert config.tool_router_mode == "cascade"
     assert config.semantic_router_enabled is True
     assert config.semantic_router_threshold == 0.58
-    assert config.semantic_router_margin == 0.04
+    assert config.semantic_router_margin == 0.0
     assert config.semantic_router_examples is not None
     assert config.semantic_router_examples.name == "turn_routing_vi.jsonl"
+    assert config.semantic_router_examples.parent.name == "p0"
 
 
 @pytest.mark.parametrize("profile_key", ["quality", "edge"])

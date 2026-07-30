@@ -457,7 +457,7 @@ def profiles_command(show_paths: bool) -> None:
 @click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", show_default=True)
 @click.option("--semantic-router/--no-semantic-router", default=True, show_default=True)
 @click.option("--semantic-router-threshold", type=float, default=0.58, show_default=True)
-@click.option("--semantic-router-margin", type=float, default=0.04, show_default=True)
+@click.option("--semantic-router-margin", type=float, default=0.0, show_default=True)
 @click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None)
 @click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", show_default=True)
 @click.option("--memory-limit", type=int, default=3, show_default=True)
@@ -498,6 +498,7 @@ def ask(
     usage: bool,
 ) -> None:
     """Run one text-only SoCa turn without ASR/TTS."""
+    _validate_text_router_options(no_llm=no_llm, tool_router=tool_router)
     config = build_text_runtime_config(
         profile=profile,
         llm_model=llm_model,
@@ -575,7 +576,7 @@ def ask(
 @click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", show_default=True)
 @click.option("--semantic-router/--no-semantic-router", default=True, show_default=True)
 @click.option("--semantic-router-threshold", type=float, default=0.58, show_default=True)
-@click.option("--semantic-router-margin", type=float, default=0.04, show_default=True)
+@click.option("--semantic-router-margin", type=float, default=0.0, show_default=True)
 @click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None)
 @click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", show_default=True)
 @click.option("--memory-limit", type=int, default=3, show_default=True)
@@ -619,6 +620,7 @@ def chat(
     usage: bool,
 ) -> None:
     """Run an interactive text chat session without ASR/TTS."""
+    _validate_text_router_options(no_llm=no_llm, tool_router=tool_router)
     config = build_text_runtime_config(
         profile=profile,
         llm_model=llm_model,
@@ -752,7 +754,7 @@ def build_text_runtime_config(
     tool_router_response_mode: str = "prompt_json",
     semantic_router_enabled: bool = True,
     semantic_router_threshold: float = 0.58,
-    semantic_router_margin: float = 0.04,
+    semantic_router_margin: float = 0.0,
     semantic_router_examples: Path | None = None,
     memory_mode: str = "retrieved",
     memory_limit: int = 3,
@@ -791,6 +793,14 @@ def build_text_runtime_config(
         )
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
+
+
+def _validate_text_router_options(*, no_llm: bool, tool_router: str) -> None:
+    if no_llm and tool_router == "llm":
+        raise click.UsageError(
+            "--tool-router llm requires an LLM; remove --no-llm or choose "
+            "--tool-router deterministic/cascade."
+        )
 
 
 def _launch_ink_ui(
@@ -986,7 +996,7 @@ def engine(
 @click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", hidden=True)
 @click.option("--semantic-router/--no-semantic-router", default=True, hidden=True)
 @click.option("--semantic-router-threshold", type=float, default=0.58, hidden=True)
-@click.option("--semantic-router-margin", type=float, default=0.04, hidden=True)
+@click.option("--semantic-router-margin", type=float, default=0.0, hidden=True)
 @click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None, hidden=True)
 @click.option("--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", hidden=True)
 @click.option("--memory-limit", type=int, default=3, hidden=True)

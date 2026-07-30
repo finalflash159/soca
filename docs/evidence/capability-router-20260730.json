@@ -1,0 +1,196 @@
+{
+  "schema_version": "soca-capability-router-evidence-v1",
+  "suite": "capability_router",
+  "generated_at_utc": "2026-07-30T04:48:00Z",
+  "source_policy": {
+    "release_evidence": "Only runs with source_dirty=false and immutable model/data revisions may become a release gate.",
+    "external_artifacts": "Provider reports, predictions and raw logs are retained outside Git; paths below are structured references, not checked-in logs."
+  },
+  "data_revisions": [
+    {
+      "id": "turn-routing-corpus",
+      "path": "eval/prompts/p0/turn_routing_vi.jsonl",
+      "sha256": "4249290a397a303ec2ec2c9b76ddc2d9a408bfb0607477a14602b71df7f61f58",
+      "revision": "content-sha256:4249290a397a303ec2ec2c9b76ddc2d9a408bfb0607477a14602b71df7f61f58"
+    },
+    {
+      "id": "tool-router-corpus",
+      "path": "eval/prompts/tool_router_vi.jsonl",
+      "sha256": "8098326e232aaa9c26defa46522010ff2a26e63a490b33b65ba355651f934038",
+      "revision": "content-sha256:8098326e232aaa9c26defa46522010ff2a26e63a490b33b65ba355651f934038"
+    },
+    {
+      "id": "runtime-workflow-corpus",
+      "path": "eval/prompts/remediation_workflow_vi.jsonl",
+      "sha256": "6813b22628a90f11058767b89d19cab343bfaa5561356bcf78ccab415f32448a",
+      "revision": "content-sha256:6813b22628a90f11058767b89d19cab343bfaa5561356bcf78ccab415f32448a"
+    },
+    {
+      "id": "runtime-rag-corpus",
+      "path": "eval/prompts/remediation_rag_vi.jsonl",
+      "sha256": "4ddd6e908714167c8610c0e37b2d4df98ac4aaacf2e41448e232114651272bee",
+      "revision": "content-sha256:4ddd6e908714167c8610c0e37b2d4df98ac4aaacf2e41448e232114651272bee"
+    },
+    {
+      "id": "runtime-vault-manifest",
+      "path": "eval/fixtures/real_rag_vault/SOURCE_MANIFEST.json",
+      "sha256": "a43bc4ee832e04007051f06de5e81c003d33f1c4219d318d3123c28f5839398c",
+      "revision": "content-sha256:a43bc4ee832e04007051f06de5e81c003d33f1c4219d318d3123c28f5839398c"
+    }
+  ],
+  "models": [
+    {
+      "id": "semantic-router-embedding",
+      "adapter": "fastembed",
+      "model_id": "intfloat/multilingual-e5-small",
+      "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+      "artifact_sha256": {
+        "onnx/model.onnx": "ca456c06b3a9505ddfd9131408916dd79290368331e7d76bb621f1cba6bc8665",
+        "tokenizer.json": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39"
+      }
+    },
+    {
+      "id": "knowledge-embedding",
+      "adapter": "sentence_transformers",
+      "model_id": "AITeamVN/Vietnamese_Embedding_v2",
+      "revision": "18b44161e041bf1d3a333ab5144b5b7b93f914d2",
+      "artifact_sha256": {
+        "model.safetensors": "2fa082ead5ade68225327b913339bbd5aa1e14bcd7888ff9b09d69752a8d1cee",
+        "tokenizer.json": "5df1f55d60c9705a501ab9a75550728625740741fe4be308dac4806c16b7d51d"
+      }
+    }
+  ],
+  "environment": {
+    "python": "3.11.14",
+    "platform": "macOS-15.7.4-arm64-arm-64bit",
+    "hardware": {
+      "machine": "arm64",
+      "cpu_count": 12,
+      "memory_bytes": 51539607552
+    }
+  },
+  "runs": [
+    {
+      "run_id": "capability-local-heldout-20260730",
+      "run_type": "benchmark",
+      "source": {
+        "git_sha": "b21b3cdd6b97cfe4cd456ead3580b28b26148fd2",
+        "dirty": false,
+        "ignored_untracked_paths": ["session.txt"]
+      },
+      "config": {
+        "dataset": "eval/prompts/p0/turn_routing_vi.jsonl",
+        "examples": "eval/prompts/p0/turn_routing_vi.jsonl",
+        "embedding_model": "intfloat/multilingual-e5-small@614241f622f53c4eeff9890bdc4f31cfecc418b3",
+        "threshold": 0.58,
+        "margin": 0.0,
+        "execution": "local-heldout"
+      },
+      "metrics": {
+        "train_disposition_accuracy": 1.0,
+        "validation_disposition_accuracy": 1.0,
+        "test_disposition_accuracy": 0.7916667,
+        "test_source_exact": 0.8333333,
+        "test_unsupported_to_tool": 0.0,
+        "semantic_latency_p95_ms": 2.35
+      },
+      "artifacts": [
+        {"kind": "report", "path": "/tmp/soca-router-local/report.json", "tracked": false},
+        {"kind": "predictions", "path": "/tmp/soca-router-local/predictions.jsonl", "tracked": false}
+      ],
+      "reproducibility": "reproducible from tracked source, pinned corpus digest and pinned local model snapshot"
+    },
+    {
+      "run_id": "runtime-openrouter-blocking-20260730",
+      "run_type": "real_flow",
+      "source": {
+        "git_sha": "2a3d972eb770c590ef68d8c21dd8f9c6d7ab394c",
+        "dirty": true,
+        "state_digest": "e08ccbf3e628610ad0c4725ebd4dc6230bda778a46d171e09ab4aa2074d97765",
+        "ignored_untracked_paths": ["session.txt"]
+      },
+      "config": {
+        "provider": "openrouter",
+        "model_id": "google/gemini-3.5-flash-lite",
+        "model_revision": "provider-model-id; immutable provider revision unavailable",
+        "retrieval_mode": "hybrid",
+        "knowledge_embedding": "AITeamVN/Vietnamese_Embedding_v2@18b44161e041bf1d3a333ab5144b5b7b93f914d2",
+        "execution": "blocking",
+        "cases": 14,
+        "turns": 18
+      },
+      "metrics": {
+        "cases_passed": 1,
+        "provider_errors": 0,
+        "route_terminal_parity": null
+      },
+      "artifacts": [
+        {"kind": "report", "path": "/tmp/soca-router-remote-20260730/blocking/report.json", "tracked": false},
+        {"kind": "raw_log", "path": "/tmp/soca-router-remote-20260730/blocking/run.log.jsonl", "tracked": false}
+      ],
+      "reproducibility": "characterization only: source was dirty and provider exposes no immutable model revision"
+    },
+    {
+      "run_id": "runtime-openrouter-streaming-20260730",
+      "run_type": "real_flow",
+      "source": {
+        "git_sha": "2a3d972eb770c590ef68d8c21dd8f9c6d7ab394c",
+        "dirty": true,
+        "state_digest": "e08ccbf3e628610ad0c4725ebd4dc6230bda778a46d171e09ab4aa2074d97765",
+        "ignored_untracked_paths": ["session.txt"]
+      },
+      "config": {
+        "provider": "openrouter",
+        "model_id": "google/gemini-3.5-flash-lite",
+        "model_revision": "provider-model-id; immutable provider revision unavailable",
+        "retrieval_mode": "hybrid",
+        "knowledge_embedding": "AITeamVN/Vietnamese_Embedding_v2@18b44161e041bf1d3a333ab5144b5b7b93f914d2",
+        "execution": "streaming",
+        "cases": 14,
+        "turns": 18
+      },
+      "metrics": {
+        "cases_passed": 1,
+        "provider_errors": 0,
+        "route_terminal_parity_with_blocking": "18/18"
+      },
+      "artifacts": [
+        {"kind": "report", "path": "/tmp/soca-router-remote-20260730/streaming/report.json", "tracked": false},
+        {"kind": "raw_log", "path": "/tmp/soca-router-remote-20260730/streaming/run.log.jsonl", "tracked": false}
+      ],
+      "reproducibility": "characterization only: source was dirty and provider exposes no immutable model revision"
+    },
+    {
+      "run_id": "router-openrouter-mixed-20260730",
+      "run_type": "real_flow",
+      "source": {
+        "git_sha": "2a3d972eb770c590ef68d8c21dd8f9c6d7ab394c",
+        "dirty": true,
+        "state_digest": "e08ccbf3e628610ad0c4725ebd4dc6230bda778a46d171e09ab4aa2074d97765",
+        "ignored_untracked_paths": ["session.txt"]
+      },
+      "config": {
+        "provider": "openrouter",
+        "model_id": "google/gemini-3.5-flash-lite",
+        "model_revision": "provider-model-id; immutable provider revision unavailable",
+        "dataset": "eval/prompts/tool_router_vi.jsonl",
+        "dataset_revision": "content-sha256:8098326e232aaa9c26defa46522010ff2a26e63a490b33b65ba355651f934038",
+        "execution": "route-only",
+        "scored_rows": 25
+      },
+      "metrics": {
+        "precision": 0.95,
+        "recall": 0.8636364,
+        "f1": 0.9047619,
+        "accuracy": 0.84,
+        "false_trigger": "1/3",
+        "latency_p95_ms": 1763
+      },
+      "artifacts": [
+        {"kind": "predictions", "path": "/tmp/soca-router-remote-20260730/router-predictions.jsonl", "tracked": false},
+        {"kind": "raw_log", "path": "/tmp/soca-router-remote-20260730/router-run.log.jsonl", "tracked": false}
+      ],
+      "reproducibility": "characterization only: source was dirty and provider exposes no immutable model revision"
+    }
+  ]
+}
