@@ -1,41 +1,8 @@
-"""CLI: replicate Table VII of Barański et al. ICASSP 2025 for Vietnamese.
-
-= notebooks/04_table7_replication.ipynb (Mac CLI version).
-
-Compares 6 configurations on a mix of real speech + non-speech:
-
-    raw              — ASR only, no post-processing
-    deloop           — ASR + consecutive-repeat collapse
-    vad              — Silero VAD pre-filter + ASR
-    boh              — ASR + research-only Aho-Corasick BoH match
-    deloop_boh       — ASR + de-loop + research-only BoH
-    vad_deloop_boh   — production RobustASR pipeline, with optional BoH
-                       applied only after production for historical ablation
-
-Reports per config:
-  - WER + CER on real Vietnamese speech (FLEURS vi_vn)
-  - hallucination rate on non-speech (any non-empty output is a hallucination)
-  - p50/p95 latency per sample
-
-This is the centerpiece deliverable for the D2.5 CV bullet — replicating
-the paper's mitigation pattern for Vietnamese PhoWhisper-tiny.
-
-Output: eval/results/table7_replication.json
-
-Usage:
-    # one-time setup
-    uv run python -m local.collect_noise          # build noise dataset
-    uv run python -m local.download_fleurs        # build speech dataset
-    uv run python -m local.build_boh              # build research artifact
-
-    # main run
-    uv run python -m local.eval_table7
-    uv run python -m local.eval_table7 --n-speech 30 --n-noise 10  # smoke
-"""
-
 from __future__ import annotations
 
 import json
+import os
+import platform
 import random
 import time
 from dataclasses import dataclass
@@ -52,6 +19,7 @@ from rich.progress import track
 from rich.table import Table
 
 from eval.experimental.asr_boh import VietnameseBoH
+from eval.result_io import make_eval_artifact_metadata
 from eval.robustness_metrics import (
     STAGE_ORDER,
     Diagnostic,
@@ -138,7 +106,16 @@ def _print_stage_breakdown(report: RobustnessReport) -> None:
 def _fmt_pct(value: float | None) -> str:
     return "n/a" if value is None else f"{value * 100:.2f}%"
 
-CONFIG_CODES = ("raw", "deloop", "vad", "boh", "deloop_boh", "vad_deloop_boh")
+CONFIG_CODES = (
+    "raw",
+    "deloop",
+    "vad",
+    "boh",
+    "deloop_boh",
+    "vad_deloop_boh",
+    "production_no_boh",
+    "production_with_boh",
+)
 CONFIG_LABELS = {
     "raw": "(1) Raw ASR",
     "deloop": "(2) De-loop only",
@@ -146,6 +123,8 @@ CONFIG_LABELS = {
     "boh": "(4) BoH only",
     "deloop_boh": "(5) De-loop + BoH",
     "vad_deloop_boh": "(6) RobustASR + experimental BoH",
+    "production_no_boh": "Production RobustASR (no BoH)",
+    "production_with_boh": "Production RobustASR + experimental BoH",
 }
 
 
@@ -156,6 +135,7 @@ class Item:
     duration_ms: float
     kind: str  # "speech" | "noise"
     subtype: str = "unknown"  # noise: "pure" | "speech_like"; speech: "unknown"
+    source_path: Path | None = None
 
 
 def load_audio(path: Path) -> np.ndarray:
@@ -189,6 +169,7 @@ def load_speech_items(n: int) -> list[Item]:
                     ground_truth=row["ground_truth"],
                     duration_ms=len(audio) / cfg.SAMPLE_RATE * 1000,
                     kind="speech",
+                    source_path=cfg.FLEURS_WAV_DIR / row["filename"],
                 )
             )
             if len(items) >= n:
@@ -223,6 +204,7 @@ def load_noise_items(n: int) -> list[Item]:
                 duration_ms=len(audio) / cfg.SAMPLE_RATE * 1000,
                 kind="noise",
                 subtype=row.get("subtype", "pure"),
+                source_path=cfg.NOISE_ROOT / row["path"],
             )
         )
     return items
@@ -248,14 +230,18 @@ def run_config(
 
         # The final Table VII config must exercise the actual production class.
         # Earlier configs stay manual so they isolate each mitigation stage.
-        if code == "vad_deloop_boh":
+        if code in {"vad_deloop_boh", "production_no_boh", "production_with_boh"}:
             if robust_asr is None:
-                raise RuntimeError("robust_asr is required for vad_deloop_boh config")
+                raise RuntimeError(f"robust_asr is required for {code} config")
             result = robust_asr.transcribe(audio)
             eval_text = result.text.strip()
             boh_matches: tuple[str, ...] = ()
             rejection_reason = result.rejection_reason
-            if boh is not None and eval_text:
+            apply_experimental_boh = code in {
+                "vad_deloop_boh",
+                "production_with_boh",
+            }
+            if apply_experimental_boh and boh is not None and eval_text:
                 boh_result = boh.match_and_clean(eval_text)
                 eval_text = boh_result.cleaned_text.strip()
                 boh_matches = boh_result.matched_phrases
@@ -388,7 +374,27 @@ def compute_metrics(items: list[Item], predictions: list[str], latencies_ms: lis
     type=click.Choice(sorted(ASR_MODEL_REGISTRY)),
     help="PhoWhisper size to benchmark (robustness x model size).",
 )
-def main(n_speech: int, n_noise: int, configs: str, providers: str, model_key: str) -> None:
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Write the full JSON artifact to this path.",
+)
+@click.option(
+    "--ignore-source-path",
+    multiple=True,
+    type=click.Path(path_type=Path),
+    help="Explicitly exclude a pre-existing untracked path from source provenance.",
+)
+def main(
+    n_speech: int,
+    n_noise: int,
+    configs: str,
+    providers: str,
+    model_key: str,
+    output: Path | None,
+    ignore_source_path: tuple[Path, ...],
+) -> None:
     config_list = [c.strip() for c in configs.split(",") if c.strip()]
     unknown = [c for c in config_list if c not in CONFIG_CODES]
     if unknown:
@@ -482,8 +488,16 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str, model_key: s
     console.print(table)
 
     # Stage-contribution: which stage caught each non-speech item (full pipeline).
-    if "vad_deloop_boh" in reports:
-        _print_stage_breakdown(reports["vad_deloop_boh"])
+    stage_report_key = next(
+        (
+            key
+            for key in ("production_with_boh", "vad_deloop_boh", "production_no_boh")
+            if key in reports
+        ),
+        None,
+    )
+    if stage_report_key is not None:
+        _print_stage_breakdown(reports[stage_report_key])
 
     # Save. Default model keeps the canonical filename; others get their own so
     # a "robustness x model size" sweep does not overwrite itself.
@@ -493,8 +507,29 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str, model_key: s
         if model_key == DEFAULT_ASR_MODEL_KEY
         else f"table7_{model_key}.json"
     )
-    out_path = cfg.EVAL_RESULTS_DIR / out_name
+    out_path = output or (cfg.EVAL_RESULTS_DIR / out_name)
+    selected_audio_files = tuple(
+        item.source_path for item in items if item.source_path is not None
+    )
+    artifact = make_eval_artifact_metadata(
+        suite="asr_production_boh_ablation",
+        data_files=(
+            cfg.FLEURS_MANIFEST,
+            cfg.NOISE_MANIFEST,
+            *selected_audio_files,
+        ),
+        config={
+            "model_key": model_key,
+            "configs": config_list,
+            "providers": provider_list,
+            "seed": cfg.SEED,
+            "n_speech": len(speech_items),
+            "n_noise": len(noise_items),
+        },
+        ignored_untracked_paths=ignore_source_path,
+    )
     payload = {
+        "artifact": artifact.to_dict(),
         "metadata": {
             "execution_mode": "local",
             "n_speech": len(speech_items),
@@ -511,7 +546,11 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str, model_key: s
                 "speech_pad_ms": vad.speech_pad_ms,
             },
             "robust_asr": {
-                "full_pipeline_config": "vad_deloop_boh",
+                "production_configs": [
+                    code
+                    for code in ("production_no_boh", "production_with_boh")
+                    if code in config_list
+                ],
                 "uses_production_class": True,
                 "boh_applied_in_production": False,
                 "boh_applied_after_production_for_ablation": True,
@@ -522,6 +561,11 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str, model_key: s
             "noise_dataset": "ESC-50 (filtered) + synthetic silence/white/pink",
             "created_by": "local.eval_table7",
             "created_at_utc": datetime.now(UTC).isoformat(),
+            "hardware": {
+                "machine": platform.machine(),
+                "processor": platform.processor(),
+                "cpu_count": os.cpu_count(),
+            },
         },
         "results": {
             code: {
@@ -536,6 +580,7 @@ def main(n_speech: int, n_noise: int, configs: str, providers: str, model_key: s
             code: r["diagnostics"] for code, r in all_results.items()
         },
     }
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     console.print(f"\n[green]✓ Saved {out_path}[/green]")
 
