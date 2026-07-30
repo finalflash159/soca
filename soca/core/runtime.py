@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any, Literal, Protocol, cast
+from uuid import uuid4
 
 from soca.core.answer_validation import (
     AnswerValidationDecision,
@@ -88,7 +89,10 @@ from .workflow import (
     ActiveGoalStore,
     AuthorizationPolicy,
     ControlledWorkflowRunner,
+    GoalContract,
+    GoalDecision,
     GoalResolver,
+    StructuredGoalResolver,
     TurnBudget,
     WorkflowPlanner,
     WorkflowRun,
@@ -379,7 +383,11 @@ class AssistantRuntime:
         planner: WorkflowPlanner | None = None,
         explicit_call: ToolCall | None = None,
         source: Literal["text", "voice"] = "text",
-        continues_active_goal: bool = False,
+        goal_decision: GoalDecision | None = None,
+        structured_goal_resolver: StructuredGoalResolver | None = None,
+        working_summary: str = "",
+        recent_turns: tuple[str, ...] = (),
+        asr_alternatives: tuple[str, ...] = (),
         authorize: AuthorizationPolicy | None = None,
         cancelled: Callable[[], bool] | None = None,
         turn_id: str = "",
@@ -388,10 +396,43 @@ class AssistantRuntime:
         """Run the opt-in bounded workflow; normal turns remain legacy."""
         if self.options.turn_workflow == "legacy":
             raise RuntimeError("controlled workflow is disabled by turn_workflow=legacy")
+        input_event = check_input_text(text, self.guardrail_policy)
+        if input_event.blocked:
+            rejected_goal = GoalContract(
+                goal_id=uuid4().hex,
+                objective=text.strip() or "rejected input",
+            )
+            return ControlledWorkflowRunner(
+                self.tool_runtime,
+                budget=budget or TurnBudget(),
+                guardrail_policy=self.guardrail_policy,
+            ).run(
+                rejected_goal,
+                turn_id=turn_id,
+                surface="voice" if source == "voice" else "chat",
+                admission_error=input_event.reason,
+            )
+        if goal_decision is not None and structured_goal_resolver is not None:
+            raise ValueError("provide a goal decision or structured resolver, not both")
+        if goal_decision is None and structured_goal_resolver is None and explicit_call is None:
+            if self.llm is None:
+                raise RuntimeError(
+                    "non-explicit controlled workflow requires a goal resolver model"
+                )
+            structured_goal_resolver = StructuredGoalResolver(self.llm)
+        resolved_decision = goal_decision
+        if structured_goal_resolver is not None:
+            resolved_decision = structured_goal_resolver.decide(
+                text,
+                active_goal=self._active_goal_store.current,
+                working_summary=working_summary,
+                recent_turns=recent_turns,
+                asr_alternatives=asr_alternatives,
+            )
         resolution = self._goal_resolver.resolve(
             text,
             source=source,
-            continues_active_goal=continues_active_goal,
+            decision=resolved_decision,
         )
         runner = ControlledWorkflowRunner(
             self.tool_runtime,
@@ -406,6 +447,9 @@ class AssistantRuntime:
             cancelled=cancelled,
             turn_id=turn_id,
             surface="voice" if source == "voice" else "chat",
+            initial_model_calls=(
+                resolved_decision.model_calls if resolved_decision is not None else 0
+            ),
         )
 
     def run_text_turn(

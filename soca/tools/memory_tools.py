@@ -6,7 +6,13 @@ from uuid import uuid4
 
 from soca.memory.context import MemoryContextBuilder
 from soca.memory.proposals import MemoryProposal, ProposalKind, ProposalStore
-from soca.tools.base import SideEffectLevel, ToolResult, ToolSpec, object_schema
+from soca.tools.base import (
+    InvalidToolInput,
+    SideEffectLevel,
+    ToolResult,
+    ToolSpec,
+    object_schema,
+)
 
 
 def _hit_payload(hit: object) -> dict[str, Any]:
@@ -48,12 +54,13 @@ class MemorySearchTool:
                 required=["query"],
             ),
             side_effect=SideEffectLevel.READ_ONLY,
+            workflow_capability="memory_search",
         )
 
     def run(self, arguments: dict[str, Any]) -> ToolResult:
         query = str(arguments["query"]).strip()
         if not query:
-            raise ValueError("query must not be empty")
+            raise InvalidToolInput("empty_query")
         limit = max(1, min(int(arguments.get("limit") or self.max_limit), self.max_limit))
         context = self.builder.build(query, include_archive=True)
         hits = tuple(context.hits)[:limit]
@@ -133,6 +140,7 @@ class MemoryProposeNoteTool:
                 required=["kind", "statement", "evidence_excerpt"],
             ),
             side_effect=SideEffectLevel.LOCAL_STATE,
+            workflow_capability="memory_propose_note",
         )
 
     def run(self, arguments: dict[str, Any]) -> ToolResult:
@@ -140,7 +148,7 @@ class MemoryProposeNoteTool:
         source_episode_id = str(arguments.get("source_episode_id") or uuid4())
         kind_value = str(arguments["kind"])
         if kind_value not in {"preference", "stable_fact", "project", "correction"}:
-            raise ValueError("unknown proposal kind")
+            raise InvalidToolInput("unknown_proposal_kind")
         kind = cast(ProposalKind, kind_value)
         proposal = MemoryProposal(
             id=proposal_id,

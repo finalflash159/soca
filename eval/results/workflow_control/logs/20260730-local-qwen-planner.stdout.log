@@ -1,0 +1,96 @@
+llama_context: n_ctx_per_seq (8192) < n_ctx_train (262144) -- the full capacity of the model will not be utilized
+ggml_metal_init: skipping kernel_get_rows_bf16                     (not supported)
+ggml_metal_init: skipping kernel_set_rows_bf16                     (not supported)
+ggml_metal_init: skipping kernel_mul_mv_bf16_f32                   (not supported)
+ggml_metal_init: skipping kernel_mul_mv_bf16_f32_c4                (not supported)
+ggml_metal_init: skipping kernel_mul_mv_bf16_f32_1row              (not supported)
+ggml_metal_init: skipping kernel_mul_mv_bf16_f32_l4                (not supported)
+ggml_metal_init: skipping kernel_mul_mv_bf16_bf16                  (not supported)
+ggml_metal_init: skipping kernel_mul_mv_id_bf16_f32                (not supported)
+ggml_metal_init: skipping kernel_mul_mm_bf16_f32                   (not supported)
+ggml_metal_init: skipping kernel_mul_mm_id_bf16_f16                (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_bf16_h64           (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_bf16_h80           (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_bf16_h96           (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_bf16_h112          (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_bf16_h128          (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_bf16_h192          (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_bf16_hk192_hv128   (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_bf16_h256          (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_bf16_hk576_hv512   (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_vec_bf16_h64       (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_vec_bf16_h96       (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_vec_bf16_h128      (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_vec_bf16_h192      (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_vec_bf16_hk192_hv128 (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_vec_bf16_h256      (not supported)
+ggml_metal_init: skipping kernel_flash_attn_ext_vec_bf16_hk576_hv512 (not supported)
+ggml_metal_init: skipping kernel_cpy_f32_bf16                      (not supported)
+ggml_metal_init: skipping kernel_cpy_bf16_f32                      (not supported)
+ggml_metal_init: skipping kernel_cpy_bf16_bf16                     (not supported)
+{
+  "terminal_status": "achieved",
+  "error_code": null,
+  "route": "controlled_workflow",
+  "goal_kind": "new_goal",
+  "required_sources": [
+    "knowledge"
+  ],
+  "planned_actions": 2,
+  "tool_calls": 1,
+  "model_calls": 1,
+  "structured_repairs": 0,
+  "public_updates": 1,
+  "executed_actions": 1,
+  "promise_without_action": 0,
+  "terminal_events": 1,
+  "evidence_ids": [
+    "wiki/project/assistant-runtime.md",
+    "wiki/project/benchmarks.md"
+  ],
+  "response": "[K1] 05 — Assistant Runtime & Guardrails (wiki/project/assistant-runtime.md)\n`AssistantRuntime` (`core/runtime.py`) is the **brain of one text turn**. The same\nruntime serves voice through `VoicePipeline`, text through `soca ask/chat`, and\nthe TUI chat mode. It does **not** contain ASR or TTS. Its scope is:\nguardrails → tools → knowledge/memory → LLM → output.\n\n[K2] SoCa — Benchmarks (wiki/project/benchmarks.md)\n- MacBook M4 Pro, macOS arm64\n- Python 3.11.14 (`uv`-managed)\n- ONNX Runtime providers available: `CoreMLExecutionProvider`, `CPUExecutionProvider`\n- D2.5 runs use CoreML with CPU fallback (some ONNX nodes do not support CoreML — runtime auto-falls back per node, no manual partitioning)\n- D1 baseline ran on `CPUExecutionProvider` only (`intra_op_num_threads=4`)\n- D2 LLM uses Apple Metal via `llama-cpp-python` (CMake `-DGGML_METAL=on`)",
+  "elapsed_ms": 12415.002791967709,
+  "goal_resolver_usage": {},
+  "planner_prompt_manifest": {
+    "model_id": "qwen3_4b_q4_k_m",
+    "context_window": 8192,
+    "token_counter": "engine",
+    "requested_output_tokens": 512,
+    "effective_output_tokens": 512,
+    "input_budget_tokens": 7552,
+    "prompt_tokens": 383,
+    "safety_margin_tokens": 128,
+    "prompt_hash": "b020b1c111d8c90d8d1dca1ba0d87cae34821e76f8c3541f0565f1fe244a1bb7",
+    "components": [
+      {
+        "component_id": "planner_instructions",
+        "tokens": 97,
+        "included": true,
+        "required": true,
+        "priority": 0
+      },
+      {
+        "component_id": "planner_goal",
+        "tokens": 27,
+        "included": true,
+        "required": true,
+        "priority": 0
+      },
+      {
+        "component_id": "tool_catalog",
+        "tokens": 259,
+        "included": true,
+        "required": true,
+        "priority": 0
+      }
+    ],
+    "dropped_components": [],
+    "observed_prompt_tokens": 394,
+    "observed_prompt_token_source": "llm_result",
+    "provider_prompt_tokens": 394,
+    "prompt_token_delta": 11,
+    "provider_completion_tokens": 358
+  },
+  "planner_validation_error": "",
+  "planner_output": "{ \"final_instruction\": \"Tìm ghi chú ONNX Runtime từ knowledge vault.\", \"public_update\": \"Đang thực hiện việc tìm kiếm ghi chú ONNX Runtime trong knowledge vault.\", \"rationale\": \"Mục tiêu yêu cầu tìm kiếm một ghi chú cụ thể về ONNX Runtime từ nguồn knowledge. Vì vậy, cần sử dụng công cụ tìm kiếm trong knowledge để tra cứu nội dung liên quan. Công cụ knowledge.search phù hợp vì nó cho phép tìm kiếm các đoạn trích từ các ghi chú markdown. Việc sử dụng công cụ này là bắt buộc do yêu cầu nguồn 'knowledge'. Không cần thực hiện các hành động khác vì mục tiêu chỉ yêu cầu tìm kiếm thông tin từ knowledge.\", \"steps\": [ { \"action_id\": \"knowledge.search\", \"arguments\": { \"query\": \"ONNX Runtime\", \"limit\": 5 }, \"capability\": \"knowledge_search\", \"expected_observation\": \"Một danh sách các đoạn trích từ ghi chú markdown liên quan đến ONNX Runtime.\", \"purpose\": \"Tìm kiếm các ghi chú liên quan đến ONNX Runtime trong knowledge vault.\", \"required\": true, \"requires_authorization\": false, \"tool\": \"knowledge.search\"}, { \"action_id\": \"knowledge.read\", \"arguments\": { \"path\": \"notes/onnx_runtime.md\" }, \"capability\": \"knowledge_read\", \"expected_observation\": \"Nội dung đầy đủ của ghi chú ONNX Runtime tại đường dẫn đã chỉ định.\", \"purpose\": \"Đọc chi tiết ghi chú ONNX Runtime nếu có.\", \"required\": false, \"requires_authorization\": false, \"tool\": \"knowledge.read\"}] }"
+}

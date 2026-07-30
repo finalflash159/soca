@@ -86,7 +86,10 @@ from .workflow import (
     ControlledWorkflowRunner,
     DuplicateTerminalError,
     GoalContract,
+    GoalDecision,
+    GoalDecisionKind,
     GoalResolution,
+    GoalResolutionError,
     GoalResolver,
     GoalStatus,
     NodeOutcome,
@@ -94,6 +97,7 @@ from .workflow import (
     PlanOutputError,
     PlanStep,
     RetryLedger,
+    StructuredGoalResolver,
     StructuredWorkflowPlanner,
     TerminalOutcome,
     TerminalStatus,
@@ -127,7 +131,12 @@ if TYPE_CHECKING:
 
 
 def __getattr__(name: str):
-    if name in {"AssistantRuntime", "DefaultRuntimeToolRouter", "RuntimeOptions", "RuntimeToolRouter"}:
+    if name in {
+        "AssistantRuntime",
+        "DefaultRuntimeToolRouter",
+        "RuntimeOptions",
+        "RuntimeToolRouter",
+    }:
         from .runtime import (
             AssistantRuntime,
             DefaultRuntimeToolRouter,
@@ -167,6 +176,7 @@ def __getattr__(name: str):
             "warm_up_voice_runtime": warm_up_voice_runtime,
         }[name]
     raise AttributeError(name)
+
 
 __all__ = [
     "AudioPlaybackSession",
@@ -223,7 +233,10 @@ __all__ = [
     "ControlledWorkflowRunner",
     "Capability",
     "GoalContract",
+    "GoalDecision",
+    "GoalDecisionKind",
     "GoalResolution",
+    "GoalResolutionError",
     "GoalResolver",
     "GoalStatus",
     "NodeOutcome",
@@ -232,6 +245,7 @@ __all__ = [
     "PlanStep",
     "RetryLedger",
     "StructuredWorkflowPlanner",
+    "StructuredGoalResolver",
     "TerminalOutcome",
     "TerminalStatus",
     "ToolExecutionStatus",

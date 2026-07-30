@@ -3,7 +3,14 @@ from __future__ import annotations
 from typing import Any
 
 from soca.knowledge import KnowledgeSource
-from soca.tools.base import SideEffectLevel, ToolResult, ToolSpec, object_schema
+from soca.tools.base import (
+    InvalidToolInput,
+    SideEffectLevel,
+    ToolExecutionStatus,
+    ToolResult,
+    ToolSpec,
+    object_schema,
+)
 
 
 def _retrieval_metadata(diagnostics: Any | None) -> dict[str, Any]:
@@ -56,12 +63,13 @@ class KnowledgeSearchTool:
                 required=["query"],
             ),
             side_effect=SideEffectLevel.READ_ONLY,
+            workflow_capability="knowledge_search",
         )
 
     def run(self, arguments: dict[str, Any]) -> ToolResult:
         query = str(arguments["query"]).strip()
         if not query:
-            raise ValueError("query must not be empty")
+            raise InvalidToolInput("empty_query")
 
         limit = int(arguments.get("limit") or self.max_limit)
         limit = max(1, min(limit, self.max_limit))
@@ -138,14 +146,32 @@ class KnowledgeReadTool:
                 required=["path"],
             ),
             side_effect=SideEffectLevel.READ_ONLY,
+            workflow_capability="knowledge_read",
         )
 
     def run(self, arguments: dict[str, Any]) -> ToolResult:
         path = str(arguments["path"]).strip()
         if not path:
-            raise ValueError("path must not be empty")
+            raise InvalidToolInput("empty_path")
 
-        doc = self.source.read(path)
+        try:
+            doc = self.source.read(path)
+        except FileNotFoundError:
+            return ToolResult(
+                name=self.spec.name,
+                ok=False,
+                content="",
+                error="not_found",
+                status=ToolExecutionStatus.NOT_FOUND,
+            )
+        except ValueError:
+            return ToolResult(
+                name=self.spec.name,
+                ok=False,
+                content="",
+                error="invalid_path",
+                status=ToolExecutionStatus.INVALID,
+            )
         text = doc.text.strip()
         truncated = False
         if len(text) > self.max_chars:

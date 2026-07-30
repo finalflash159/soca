@@ -38,7 +38,15 @@ from .errors import (
     WorkflowErrorCode,
 )
 from .events import EventStatus, EventType, WorkflowEvent, WorkflowEventStream
-from .goal_resolver import ActiveGoalStore, GoalResolution, GoalResolver
+from .goal_resolver import (
+    ActiveGoalStore,
+    GoalDecision,
+    GoalDecisionKind,
+    GoalResolution,
+    GoalResolutionError,
+    GoalResolver,
+    StructuredGoalResolver,
+)
 from .planner import (
     ActionPlan,
     PlanOutputError,
@@ -53,7 +61,12 @@ from .runner import (
     WorkflowRun,
     action_fingerprint,
 )
-from .verifier import DeterministicVerifier, Verification, verify_tool_result
+from .verifier import (
+    DeterministicVerifier,
+    Verification,
+    source_for_capability,
+    verify_tool_result,
+)
 
 __all__ = [
     "ActionPlan",
@@ -75,7 +88,10 @@ __all__ = [
     "EvidenceStatus",
     "GoalConstraint",
     "GoalContract",
+    "GoalDecision",
+    "GoalDecisionKind",
     "GoalResolution",
+    "GoalResolutionError",
     "GoalResolver",
     "GoalStatus",
     "NodeOutcome",
@@ -91,6 +107,7 @@ __all__ = [
     "SourceKind",
     "StatePatch",
     "StructuredWorkflowPlanner",
+    "StructuredGoalResolver",
     "SuccessCriterion",
     "Terminal",
     "TerminalOutcome",
@@ -112,4 +129,5 @@ __all__ = [
     "WorkflowRun",
     "action_fingerprint",
     "verify_tool_result",
+    "source_for_capability",
 ]
