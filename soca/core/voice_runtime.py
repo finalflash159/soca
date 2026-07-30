@@ -11,6 +11,7 @@ import numpy as np
 from soca.asr import ASR_MODEL_REGISTRY, SpeechDetector
 from soca.asr.robust_asr import RobustASR, load_confidence_guard_calibration
 from soca.asr.whisper_onnx import VietnameseASR
+from soca.config import LlmSettings, SecretStore, load_settings
 from soca.core.knowledge_setup import build_knowledge_runtime_setup
 from soca.core.memory_setup import (
     MemoryMode,
@@ -33,7 +34,8 @@ from soca.core.turn_taking import partial_interval_from_cost
 from soca.core.workflow import ActiveGoalStore, GoalCheckpointStore
 from soca.knowledge.factory import DenseBackend, RetrievalConfig, RetrievalMode
 from soca.knowledge.retrievers.dense import FastEmbedModel
-from soca.llm import LocalLlamaCppLLM
+from soca.llm import LLMEngine
+from soca.llm.factory import SecretReader, build_llm_engine
 from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.memory import (
     SessionCheckpointStore,
@@ -92,6 +94,12 @@ class ResolvedVoiceRuntimeConfig:
     memory_recency_weight: float = 0.20
     memory_importance_weight: float = 0.10
     memory_recency_half_life_days: float = 30.0
+    # CLI overrides are distinct from the persisted app selection.  The engine
+    # UI leaves these false so the same LlmSettings drives chat and voice.
+    llm_model_is_override: bool = False
+    max_tokens_is_override: bool = False
+    temperature_is_override: bool = False
+    top_p_is_override: bool = False
 
 
 @dataclass
@@ -99,7 +107,7 @@ class VoiceRuntimeBundle:
     config: ResolvedVoiceRuntimeConfig
     detector: SpeechDetector
     asr: RobustASR
-    llm: LocalLlamaCppLLM
+    llm: LLMEngine
     tts: TTSEngine
     assistant_runtime: AssistantRuntime
     pipeline: VoicePipeline
@@ -109,6 +117,7 @@ class VoiceRuntimeBundle:
     session_memory: SessionMemory | None = None
     partial_interval_ms: int = 800  # partial cadence seed (handles device variance)
     partial_enabled: bool = True  # False when the device is too slow for partials
+    llm_settings: LlmSettings | None = None
 
     @property
     def asr_guard_status(self) -> str:
@@ -263,6 +272,10 @@ def resolve_voice_runtime_config(
         memory_recency_weight=memory_recency_weight,
         memory_importance_weight=memory_importance_weight,
         memory_recency_half_life_days=memory_recency_half_life_days,
+        llm_model_is_override=llm_model is not None,
+        max_tokens_is_override=max_tokens is not None,
+        temperature_is_override=temperature is not None,
+        top_p_is_override=top_p is not None,
     )
 
 
@@ -270,7 +283,32 @@ def build_voice_runtime(
     config: ResolvedVoiceRuntimeConfig,
     *,
     session_memory: SessionMemory | None = None,
+    llm_settings: LlmSettings | None = None,
+    secret_store: SecretReader | None = None,
+    engine_factory=build_llm_engine,
+    active_goal_store: ActiveGoalStore | None = None,
 ) -> VoiceRuntimeBundle:
+    selected_settings = llm_settings or load_settings()
+    if config.llm_model_is_override:
+        selected_settings = selected_settings.with_backend("local").with_model(config.llm_model)
+    if (
+        config.max_tokens_is_override
+        or config.temperature_is_override
+        or config.top_p_is_override
+    ):
+        selected_settings = selected_settings.with_generation(
+            max_tokens=(
+                config.max_tokens if config.max_tokens_is_override else selected_settings.max_tokens
+            ),
+            temperature=(
+                config.temperature
+                if config.temperature_is_override
+                else selected_settings.temperature
+            ),
+            top_p=config.top_p if config.top_p_is_override else selected_settings.top_p,
+        )
+    secrets = secret_store or SecretStore()
+
     detector = SpeechDetector()
     turn_detector = None
     if config.adaptive_endpoint:
@@ -292,11 +330,21 @@ def build_voice_runtime(
             max_compression_ratio=confidence_calibration.max_compression_ratio,
             confidence_profile_model_key=confidence_calibration.model_key,
         )
-    llm = LocalLlamaCppLLM(
-        model_key=config.llm_model,
+    llm = engine_factory(
+        selected_settings,
+        secrets,
+        local_factory=None,
         n_threads=config.llm_threads,
         n_gpu_layers=config.llm_gpu_layers,
     )
+
+    model_context_window = (
+        LLM_MODEL_REGISTRY[selected_settings.model_id].context_window
+        if selected_settings.backend == "local"
+        and selected_settings.model_id in LLM_MODEL_REGISTRY
+        else selected_settings.model_context_window
+    )
+    effective_max_tokens = selected_settings.effective_max_tokens
 
     memory_status = "disabled"
     knowledge_limit = config.knowledge_limit
@@ -323,8 +371,8 @@ def build_voice_runtime(
 
     if not config.no_memory:
         working_policy = WorkingMemoryPolicy.for_context_budget(
-            context_window=LLM_MODEL_REGISTRY[config.llm_model].context_window,
-            output_reserve_tokens=config.max_tokens,
+            context_window=model_context_window,
+            output_reserve_tokens=effective_max_tokens,
             mode="background_summary",
         )
         session_memory = (
@@ -403,13 +451,15 @@ def build_voice_runtime(
         knowledge_builder=knowledge_builder,
         memory_builder=memory_builder,
         options=RuntimeOptions(
-            max_tokens=config.max_tokens,
-            temperature=config.temperature,
-            top_p=config.top_p,
+            max_tokens=effective_max_tokens,
+            temperature=selected_settings.temperature,
+            top_p=selected_settings.top_p,
             knowledge_limit=knowledge_limit,
-            model_context_window=LLM_MODEL_REGISTRY[config.llm_model].context_window,
+            model_context_window=model_context_window,
+            model_max_output_tokens=selected_settings.model_max_output_tokens,
         ),
-        active_goal_store=(
+        active_goal_store=active_goal_store
+        or (
             ActiveGoalStore(
                 checkpoint_store=GoalCheckpointStore(default_session_checkpoint_home() / "goals"),
                 session_id=config.session_id,
@@ -444,6 +494,7 @@ def build_voice_runtime(
         knowledge_status=knowledge_status,
         session_memory=session_memory if not config.no_memory else None,
         turn_detector=turn_detector,
+        llm_settings=selected_settings,
     )
 
 
@@ -520,7 +571,11 @@ def _warm_up_llm(bundle: VoiceRuntimeBundle, *, prompt: str) -> VoiceRuntimeWarm
             component="llm",
             ok=True,
             latency_ms=(time.perf_counter() - t0) * 1000,
-            detail=bundle.config.llm_model,
+            detail=(
+                bundle.llm_settings.model_id
+                if bundle.llm_settings is not None
+                else bundle.config.llm_model
+            ),
         )
     except Exception as exc:
         return VoiceRuntimeWarmupResult(

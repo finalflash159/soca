@@ -707,3 +707,32 @@ def test_prompt_manifest_uses_active_engine_token_counter() -> None:
     assert manifest is not None
     assert manifest["token_counter"] == "engine"
     assert manifest["prompt_tokens"] == len(llm.calls[0]["user_msg"].split())
+
+
+def test_asr_alternatives_repair_transcript_before_runtime_routing() -> None:
+    decision = (
+        '{"kind":"new_goal","objective":"Tìm ghi chú về định lý Bayes",'
+        '"success_criteria":["knowledge_queried"],'
+        '"required_sources":["knowledge"],"constraints":[],'
+        '"unresolved_entities":[],"confidence":0.96,'
+        '"clarification_question":""}'
+    )
+    llm = SequenceLLM([decision, "Mình sẽ kiểm tra ghi chú của bạn."])
+    runtime = AssistantRuntime(llm=llm)
+
+    result = runtime.run_text_turn(
+        "tìm ghi chú về định lý bày ét",
+        source="asr",
+        metadata={"asr_alternatives": ["định lý Bayes", "định lý bài ét"]},
+    )
+
+    assert result.frame is not None
+    assert result.frame.text == "Tìm ghi chú về định lý Bayes"
+    assert result.frame.metadata["asr_goal_repair"] == {
+        "status": "repaired",
+        "alternatives": ["định lý Bayes", "định lý bài ét"],
+        "confidence": 0.96,
+        "decision": "new_goal",
+        "model_calls": 1,
+    }
+    assert len(llm.calls) == 2

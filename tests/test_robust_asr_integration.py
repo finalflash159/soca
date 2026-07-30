@@ -24,10 +24,12 @@ class MockASR:
         text: str,
         avg_logprob: float = 0.0,
         model_key: str = "phowhisper_tiny",
+        alternatives: tuple[str, ...] = (),
     ):
         self.text = text
         self.avg_logprob = avg_logprob
         self.model_key = model_key
+        self.alternatives = alternatives
         self.calls = 0
 
     def transcribe(self, audio: np.ndarray) -> ASRResult:
@@ -38,6 +40,7 @@ class MockASR:
             audio_duration_ms=len(audio) / 16_000 * 1000,
             rtf=0.0,
             avg_logprob=self.avg_logprob,
+            alternatives=self.alternatives,
         )
 
 
@@ -114,6 +117,18 @@ def test_deloop_then_clean_passes():
     assert result.text_after_deloop == "xin chào"
     assert result.was_looping is True
     assert result.rejection_reason == ""
+
+
+def test_backend_alternatives_survive_robust_asr_without_domain_rewrite():
+    alternatives = ("định lý Bayes", "định lý bài ét")
+    pipeline = RobustASR(
+        asr=MockASR("định lý bày ét", alternatives=alternatives),
+        vad=MockVAD(),
+    )
+
+    result = pipeline.transcribe(DUMMY_AUDIO)
+
+    assert result.alternatives == alternatives
 
 
 def test_boh_like_phrase_is_preserved_in_production_transcript():

@@ -438,6 +438,35 @@ def test_engine_voice_start_streams_loop_events() -> None:
     assert router_trace["memory_access_plan"]["archive_mode"] == "semantic"
 
 
+def test_engine_passes_one_selected_settings_and_goal_store_to_voice_builder(
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_build_voice_runtime(config, **kwargs):
+        captured.update(kwargs)
+        return _fake_voice_builder(config)
+
+    monkeypatch.setattr("soca.app.engine.build_voice_runtime", fake_build_voice_runtime)
+
+    from soca.app.engine import SocaEngine, _ProtocolWriter
+
+    instance = SocaEngine(
+        voice_config=make_voice_config(),
+        text_config=make_text_config(),
+        profile="baseline",
+        writer=_ProtocolWriter(ProtocolCapture()),
+        voice_player=_FakeAudioSink(),
+        warmup_voice=False,
+    )
+    controller = instance._ensure_voice_controller()
+    controller._build_runtime_bundle()
+
+    assert captured["llm_settings"] is instance.llm_settings
+    assert captured["secret_store"] is instance.secret_store
+    assert captured["active_goal_store"] is instance.active_goal_store
+
+
 def test_engine_no_model_rejects_voice_and_chat() -> None:
     capture = ProtocolCapture()
 

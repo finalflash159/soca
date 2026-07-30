@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -76,6 +77,7 @@ class ActiveGoalStore:
         checkpoint_store: GoalCheckpointStore | None = None,
         session_id: str = "default",
     ) -> None:
+        self._lock = threading.RLock()
         self._checkpoint_store = checkpoint_store
         self._session_id = session_id
         self._last_run: WorkflowRunCheckpoint | None = None
@@ -92,41 +94,47 @@ class ActiveGoalStore:
 
     @property
     def current(self) -> GoalContract | None:
-        return self._goal
+        with self._lock:
+            return self._goal
 
     @property
     def last_run(self) -> WorkflowRunCheckpoint | None:
-        return self._last_run
+        with self._lock:
+            return self._last_run
 
     def set(self, goal: GoalContract) -> GoalContract:
-        self._goal = goal
-        self._persist()
-        return goal
+        with self._lock:
+            self._goal = goal
+            self._persist()
+            return goal
 
     def clear(self) -> None:
-        self._goal = None
-        self._persist()
+        with self._lock:
+            self._goal = None
+            self._persist()
 
     def record_run(self, run: WorkflowRun) -> None:
-        self._last_run = WorkflowRunCheckpoint(
-            run_id=run.state.run_id,
-            goal_id=run.state.goal.goal_id,
-            terminal_status=run.terminal.status.value,
-            updated_at=now_checkpoint_time(),
-        )
-        self._persist()
+        with self._lock:
+            self._last_run = WorkflowRunCheckpoint(
+                run_id=run.state.run_id,
+                goal_id=run.state.goal.goal_id,
+                terminal_status=run.terminal.status.value,
+                updated_at=now_checkpoint_time(),
+            )
+            self._persist()
 
     def _persist(self) -> None:
-        if self._checkpoint_store is not None:
-            checkpoint = self._checkpoint_store.save(
-                self._session_id,
-                goal=self._goal,
-                last_run=self._last_run,
-                expected_revision=self._checkpoint_revision,
-                expected_digest=self._checkpoint_digest,
-            )
-            self._checkpoint_revision = checkpoint.revision
-            self._checkpoint_digest = checkpoint.digest
+        with self._lock:
+            if self._checkpoint_store is not None:
+                checkpoint = self._checkpoint_store.save(
+                    self._session_id,
+                    goal=self._goal,
+                    last_run=self._last_run,
+                    expected_revision=self._checkpoint_revision,
+                    expected_digest=self._checkpoint_digest,
+                )
+                self._checkpoint_revision = checkpoint.revision
+                self._checkpoint_digest = checkpoint.digest
 
 
 class GoalResolver:
@@ -334,6 +342,7 @@ class StructuredGoalResolver:
                 "A request that requires any source is not smalltalk.",
                 "Do not infer a source unless the user or active goal requires it.",
                 "If the user explicitly asks for their notes, set required_sources to knowledge and include success criterion knowledge_queried.",
+                "ASR alternatives are candidate transcriptions, not facts. If one resolves an entity, use that candidate in the objective; do not invent entities. If candidates conflict or remain unclear, preserve the unresolved entity and ask a clarification question.",
                 "Put ambiguous entities in unresolved_entities and provide a clarification question.",
                 "Return JSON only.",
                 json.dumps(payload, ensure_ascii=False, sort_keys=True),

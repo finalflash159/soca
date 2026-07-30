@@ -16,7 +16,7 @@ from eval.baseline_cases import RemediationCase, load_cases
 from eval.remediation_eval import DEFAULT_CORPUS_ROOT, DEFAULT_DATASETS, validate_corpus
 from eval.result_io import make_eval_artifact_metadata, write_json_artifact
 from soca.app.text_runtime import TextRuntimeConfig, build_text_runtime
-from soca.config import LlmSettings, load_settings
+from soca.config import LlmSettings, SecretStore, load_settings
 from soca.core import RuntimeResult, RuntimeRoute
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -408,6 +408,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     bundle = build_text_runtime(
         runtime_config,
         llm_settings=settings,
+        secret_store=SecretStore(dotenv_path=REPO_ROOT / ".env"),
     )
     run_config = BaselineRunConfig(
         execution_mode=args.execution_mode,

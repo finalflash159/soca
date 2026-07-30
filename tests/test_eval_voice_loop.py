@@ -249,7 +249,11 @@ def test_run_profile_eval_with_fake_runtime(monkeypatch, tmp_path: Path) -> None
         knowledge_status="disabled",
         asr_guard_status="confidence=disabled",
     )
-    monkeypatch.setattr(eval_voice_loop, "build_voice_runtime", lambda config: fake_bundle)
+    monkeypatch.setattr(
+        eval_voice_loop,
+        "build_voice_runtime",
+        lambda config, **kwargs: fake_bundle,
+    )
 
     args = SimpleNamespace(
         asr_model=None,
@@ -311,7 +315,11 @@ def test_run_profile_eval_playback_selects_sounddevice(monkeypatch, tmp_path: Pa
         knowledge_status="disabled",
         asr_guard_status="disabled",
     )
-    monkeypatch.setattr(eval_voice_loop, "build_voice_runtime", lambda config: fake_bundle)
+    monkeypatch.setattr(
+        eval_voice_loop,
+        "build_voice_runtime",
+        lambda config, **kwargs: fake_bundle,
+    )
     # Keep the audio device untouched: only stop() would reach it, and no session is opened.
     monkeypatch.setattr("soca.core.audio_out.sd.stop", lambda: None)
 
@@ -340,12 +348,23 @@ def test_run_profile_eval_playback_selects_sounddevice(monkeypatch, tmp_path: Pa
     assert result["playback_sink"] == "SoundDevicePlayer"
 
 
-def test_run_profile_eval_forwards_dense_backend(monkeypatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "build_error",
+    [
+        eval_voice_loop.TTSRuntimeUnavailableError("test capture"),
+        ValueError("invalid settings"),
+    ],
+)
+def test_run_profile_eval_forwards_dense_backend(
+    monkeypatch,
+    tmp_path: Path,
+    build_error: Exception,
+) -> None:
     seen: dict[str, str] = {}
 
-    def capture_config(config):
+    def capture_config(config, **kwargs):
         seen["backend"] = config.knowledge_dense_backend
-        raise eval_voice_loop.TTSRuntimeUnavailableError("test capture")
+        raise build_error
 
     monkeypatch.setattr(eval_voice_loop, "build_voice_runtime", capture_config)
     args = SimpleNamespace(

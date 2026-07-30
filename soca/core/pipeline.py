@@ -129,6 +129,7 @@ class VoicePipeline:
 
         transcript = getattr(asr_result, "text", "").strip()
         rejection_reason = getattr(asr_result, "rejection_reason", "")
+        asr_alternatives = _asr_alternatives(asr_result)
 
         if not transcript:
             repair = self._plan_repair(rejection_reason)
@@ -155,9 +156,7 @@ class VoicePipeline:
                 runtime_result = self.assistant_runtime.run_text_turn(
                     transcript,
                     source="asr",
-                    metadata={
-                        "asr_rejection_reason": rejection_reason,
-                    },
+                    metadata=_runtime_input_metadata(rejection_reason, asr_alternatives),
                 )
             response_text = getattr(runtime_result, "response_text", "").strip()
             llm_result = getattr(runtime_result, "llm_result", None)
@@ -201,11 +200,15 @@ class VoicePipeline:
 
         transcript = getattr(asr_result, "text", "").strip()
         rejection_reason = getattr(asr_result, "rejection_reason", "")
+        asr_alternatives = _asr_alternatives(asr_result)
 
         yield StreamingEvent(
             type="asr",
             text=transcript,
-            metadata={"rejection_reason": rejection_reason},
+            metadata={
+                "rejection_reason": rejection_reason,
+                "alternatives": list(asr_alternatives),
+            },
         )
 
         if not transcript:
@@ -226,12 +229,17 @@ class VoicePipeline:
             if speak_rejections:
                 chunks = chunk_text_for_tts(repair.text, min_chars=min_sentence_chars)
                 for sentence in chunks:
-                    yield StreamingEvent(type="sentence", text=sentence)
+                    yield StreamingEvent(
+                        type="sentence",
+                        text=sentence,
+                        metadata={"delivery": "repair", "terminal": False},
+                    )
                 yield from self._stream_tts_playback(
                     chunks,
                     sink=sink,
                     turn_start_time=t0,
                     interrupt_event=interrupt_event,
+                    delivery="repair",
                 )
 
             yield StreamingEvent(
@@ -240,6 +248,7 @@ class VoicePipeline:
                 latency_ms=(time.perf_counter() - t0) * 1000,
                 metadata={
                     "rejected": True,
+                    "terminal_status": "needs_clarification",
                     "rejection_reason": rejection_reason or "empty_transcript",
                     "stage_latencies_ms": self.metrics.snapshot(),
                     **repair_meta,
@@ -259,6 +268,7 @@ class VoicePipeline:
             yield from self._turn_streaming_runtime_stream(
                 transcript,
                 rejection_reason,
+                asr_alternatives=asr_alternatives,
                 turn_start_time=t0,
                 sink=sink,
                 min_sentence_chars=min_sentence_chars,
@@ -269,6 +279,7 @@ class VoicePipeline:
             yield from self._turn_streaming_runtime_blocking(
                 transcript,
                 rejection_reason,
+                asr_alternatives=asr_alternatives,
                 turn_start_time=t0,
                 sink=sink,
                 min_sentence_chars=min_sentence_chars,
@@ -333,6 +344,7 @@ class VoicePipeline:
         transcript: str,
         rejection_reason: str,
         *,
+        asr_alternatives: tuple[str, ...] = (),
         turn_start_time: float,
         sink: AudioSink,
         min_sentence_chars: int,
@@ -350,7 +362,7 @@ class VoicePipeline:
             runtime_result = runtime.run_text_turn(
                 transcript,
                 source="asr",
-                metadata={"asr_rejection_reason": rejection_reason},
+                metadata=_runtime_input_metadata(rejection_reason, asr_alternatives),
             )
 
         response_text = getattr(runtime_result, "response_text", "").strip()
@@ -358,7 +370,11 @@ class VoicePipeline:
 
         chunks = chunk_text_for_tts(response_text, min_chars=min_sentence_chars)
         for sentence in chunks:
-            yield StreamingEvent(type="sentence", text=sentence)
+            yield StreamingEvent(
+                type="sentence",
+                text=sentence,
+                metadata={"delivery": "final", "terminal": True},
+            )
 
         yield from self._stream_tts_playback(
             chunks,
@@ -373,6 +389,10 @@ class VoicePipeline:
             latency_ms=(time.perf_counter() - turn_start_time) * 1000,
             metadata={
                 "rejected": False,
+                "terminal_status": _runtime_terminal_status(
+                    runtime_result,
+                    interrupted=False,
+                ),
                 "runtime_blocked": bool(getattr(runtime_result, "blocked", False)),
                 "runtime_route": getattr(getattr(runtime_result, "route", None), "value", ""),
                 "stage_latencies_ms": self.metrics.snapshot(),
@@ -384,6 +404,7 @@ class VoicePipeline:
         transcript: str,
         rejection_reason: str,
         *,
+        asr_alternatives: tuple[str, ...] = (),
         turn_start_time: float,
         sink: AudioSink,
         min_sentence_chars: int,
@@ -401,13 +422,14 @@ class VoicePipeline:
         pump.start()
 
         runtime_result: Any | None = None
+        pending_sentences: list[str] = []
         runtime = self.assistant_runtime
         if runtime is None:
             raise RuntimeError("assistant runtime is not configured")
         stream = runtime.stream_text_turn(
             transcript,
             source="asr",
-            metadata={"asr_rejection_reason": rejection_reason},
+            metadata=_runtime_input_metadata(rejection_reason, asr_alternatives),
             min_sentence_chars=min_sentence_chars,
             first_sentence_min_chars=first_sentence_min_chars,
             first_clause_enabled=self.first_clause_enabled,
@@ -422,8 +444,12 @@ class VoicePipeline:
                 if event.type == "token":
                     yield StreamingEvent(type="llm_token", text=event.text)
                 elif event.type == "sentence":
-                    yield StreamingEvent(type="sentence", text=event.text)
-                    pump.submit(event.text)
+                    pending_sentences.append(event.text)
+                    yield StreamingEvent(
+                        type="sentence",
+                        text=event.text,
+                        metadata={"delivery": "answer_delta", "terminal": False},
+                    )
                 elif event.type == "result":
                     runtime_result = event.result
                 yield from pump.drain_ready()
@@ -431,12 +457,17 @@ class VoicePipeline:
             close = getattr(stream, "close", None)
             if callable(close):
                 close()
-        pump.close()
         interrupted = interrupt_event is not None and interrupt_event.is_set()
         if interrupted:
             yield StreamingEvent(type="interrupted", text="")
         elif runtime_result is not None:
+            if getattr(runtime_result, "blocked", False):
+                pending_sentences = [getattr(runtime_result, "response_text", "").strip()]
+            for sentence in pending_sentences:
+                if sentence:
+                    pump.submit(sentence)
             yield self._runtime_summary_event(runtime_result)
+        pump.close()
         yield from pump.drain_until_done()
         yield StreamingEvent(
             type="done",
@@ -445,6 +476,10 @@ class VoicePipeline:
             metadata={
                 "rejected": False,
                 "interrupted": interrupted,  # cho UI/loop biết
+                "terminal_status": _runtime_terminal_status(
+                    runtime_result,
+                    interrupted=interrupted,
+                ),
                 "runtime_blocked": bool(getattr(runtime_result, "blocked", False)),
                 "runtime_route": getattr(getattr(runtime_result, "route", None), "value", ""),
                 "stage_latencies_ms": self.metrics.snapshot(),
@@ -459,6 +494,7 @@ class VoicePipeline:
         sink: AudioSink,
         turn_start_time: float,
         interrupt_event: threading.Event | None = None,
+        delivery: str = "final",
     ) -> Iterator[StreamingEvent]:
         """Synthesize + play a fixed list of sentences via the shared pump."""
         pump = _TTSPlaybackPump(
@@ -468,6 +504,7 @@ class VoicePipeline:
             turn_start_time=turn_start_time,
             interrupt_event=interrupt_event,
             crossfade_ms=self.pcm_crossfade_ms,
+            delivery=delivery,
         )
         pump.start()
         pump.submit_all(sentences)
@@ -506,6 +543,7 @@ class _TTSPlaybackPump:
         turn_start_time: float,
         interrupt_event: threading.Event | None = None,
         crossfade_ms: float = 12.0,
+        delivery: str = "final",
     ) -> None:
         self._tts = tts
         self._sink = sink
@@ -514,6 +552,7 @@ class _TTSPlaybackPump:
         self._sentence_queue: queue.Queue[str | None] = queue.Queue()
         self._playback_queue: queue.Queue[_PlaybackChunk | object] = queue.Queue()
         self._crossfade_ms = crossfade_ms
+        self._delivery = delivery
         self._playback_summary: dict[str, Any] = {
             "crossfade_fallback_count": 0,
             "output_underflow_count": 0,
@@ -593,6 +632,7 @@ class _TTSPlaybackPump:
                 metadata: dict[str, float | int | str] = {
                     "chunk_index": index,
                     "tts_latency_ms": tts_result.latency_ms,
+                    "delivery": self._delivery,
                 }
                 if index == 0:
                     tts_ready_ttfa_ms = (first_ready_at - self._turn_start_time) * 1000.0
@@ -823,3 +863,38 @@ class _TTSPlaybackPump:
 
 def _speech_text(text: str) -> str:
     return normalize_text_for_tts(text) or text.strip()
+
+
+def _runtime_terminal_status(runtime_result: Any, *, interrupted: bool) -> str:
+    if interrupted:
+        return "cancelled"
+    if runtime_result is None:
+        return "system_failure"
+    if bool(getattr(runtime_result, "blocked", False)):
+        route = getattr(getattr(runtime_result, "route", None), "value", "")
+        return "needs_clarification" if route == "clarification" else "safe_failure"
+    return "achieved"
+
+
+def _asr_alternatives(asr_result: Any) -> tuple[str, ...]:
+    raw = getattr(asr_result, "alternatives", ())
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    values: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        value = " ".join(item.split())
+        if value and value not in values:
+            values.append(value)
+    return tuple(values)
+
+
+def _runtime_input_metadata(
+    rejection_reason: str,
+    alternatives: tuple[str, ...],
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {"asr_rejection_reason": rejection_reason}
+    if alternatives:
+        metadata["asr_alternatives"] = list(alternatives)
+    return metadata

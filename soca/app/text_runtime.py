@@ -224,6 +224,7 @@ def build_text_runtime(
     secret_store: SecretReader | None = None,
     engine_factory: LLMEngineFactory = build_llm_engine,
     embedding_model: EmbeddingModel | None = None,
+    active_goal_store: ActiveGoalStore | None = None,
 ) -> TextRuntimeBundle:
     """Build text-only AssistantRuntime without ASR or TTS.
 
@@ -375,7 +376,8 @@ def build_text_runtime(
             model_context_window=model_context_window,
             model_max_output_tokens=selected_settings.model_max_output_tokens,
         ),
-        active_goal_store=(
+        active_goal_store=active_goal_store
+        or (
             ActiveGoalStore(
                 checkpoint_store=GoalCheckpointStore(default_session_checkpoint_home() / "goals"),
                 session_id=config.session_id,
