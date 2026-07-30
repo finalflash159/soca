@@ -161,6 +161,7 @@ def test_voice_runtime_uses_selected_remote_llm_without_local_construction(
         vault=tmp_path,
         adaptive_endpoint=False,
         no_memory=True,
+        knowledge_retrieval_mode="cached_sparse",
     )
     settings = LlmSettings(
         backend="remote",
