@@ -4,6 +4,7 @@ import threading
 from dataclasses import dataclass
 
 import numpy as np
+import pytest
 
 from soca.core import NullAudioPlayer, VoicePipeline
 from soca.knowledge import KnowledgeCitation
@@ -237,6 +238,7 @@ def test_voice_pipeline_streaming_yields_asr_tokens_sentences_audio_and_done():
     assert "llm_token" in event_types
     assert "sentence" in event_types
     assert "tts" in event_types
+    assert "playback_started" in event_types
     assert "audio" in event_types
     assert event_types[-1] == "done"
     assert asr.calls == 1
@@ -252,6 +254,24 @@ def test_voice_pipeline_streaming_yields_asr_tokens_sentences_audio_and_done():
         for event in events
         if event.type == "tts"
     )
+    for playback_started in (
+        event for event in events if event.type == "playback_started"
+    ):
+        chunk_index = playback_started.metadata["chunk_index"]
+        tts_index = next(
+            index
+            for index, event in enumerate(events)
+            if event.type == "tts" and event.metadata["chunk_index"] == chunk_index
+        )
+        playback_index = events.index(playback_started)
+        audio_index = next(
+            index
+            for index, event in enumerate(events)
+            if event.type == "audio" and event.metadata["chunk_index"] == chunk_index
+        )
+        assert tts_index < playback_index < audio_index
+        assert playback_started.metadata["audio_duration_ms"] == pytest.approx(100.0)
+        assert playback_started.metadata["sync_granularity"] == "audio_chunk"
 
 
 def test_voice_pipeline_forwards_asr_alternatives_for_goal_repair() -> None:
@@ -360,6 +380,7 @@ def test_voice_pipeline_streaming_reject_path_speaks_fallback_by_default():
         "repair",
         "sentence",
         "tts",
+        "playback_started",
         "audio",
         "done",
     ]

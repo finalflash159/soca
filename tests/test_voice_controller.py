@@ -218,7 +218,13 @@ def test_voice_monitor_passive_silence_speaks_playful_call_out() -> None:
     assert fake_tts.calls == [repair.text]
     assert fake_player.play_calls == 1
     assert event_types.count("tts") == 1
+    assert event_types.count("playback_started") == 1
     assert event_types.count("audio") == 1
+    playback_started = next(
+        event for event in events if event.type == "playback_started"
+    )
+    assert playback_started.metadata["audio_duration_ms"] == 10.0
+    assert playback_started.metadata["sync_granularity"] == "audio_chunk"
     assert repair.metadata["repair_kind"] == "no_input"
     assert repair.metadata["repair_action"] == "reprompt"
 

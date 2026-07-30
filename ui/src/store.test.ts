@@ -186,6 +186,89 @@ describe("progress reducer", () => {
     expect(state.pendingAnswer).toBe("xin chào");
   });
 
+  it("tracks queued, playing, and completed speech chunks from playback events", () => {
+    let state = reduce(initialState, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "tts",
+        text: "Câu đầu tiên.",
+        latency_ms: 40,
+        metadata: { chunk_index: 0, delivery: "final" },
+        usage: null,
+      },
+    });
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "playback_started",
+        text: "Câu đầu tiên.",
+        latency_ms: null,
+        metadata: {
+          chunk_index: 0,
+          delivery: "final",
+          audio_duration_ms: 1200,
+          sync_granularity: "audio_chunk",
+        },
+        usage: null,
+      },
+    });
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "tts",
+        text: "Câu tiếp theo.",
+        latency_ms: 35,
+        metadata: { chunk_index: 1, delivery: "final" },
+        usage: null,
+      },
+    });
+
+    expect(state.voiceState).toBe("speaking");
+    expect(state.speechChunks).toEqual([
+      {
+        index: 0,
+        text: "Câu đầu tiên.",
+        durationMs: 1200,
+        status: "playing",
+      },
+      {
+        index: 1,
+        text: "Câu tiếp theo.",
+        durationMs: null,
+        status: "ready",
+      },
+    ]);
+
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "audio",
+        text: "Câu đầu tiên.",
+        latency_ms: 1200,
+        metadata: { chunk_index: 0, delivery: "final" },
+        usage: null,
+      },
+    });
+    expect(state.speechChunks[0]?.status).toBe("complete");
+
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "barge_in",
+        text: "Barge-in detected",
+        latency_ms: null,
+        metadata: { phase: "fired" },
+        usage: null,
+      },
+    });
+    expect(state.speechChunks).toEqual([]);
+  });
+
   it("keeps citations as protocol data and closes temporary info on a new turn", () => {
     let state = reduce(
       { ...initialState, activeInfo: "status" },

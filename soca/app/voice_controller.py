@@ -528,6 +528,21 @@ class VoiceMonitorController:
             )
         )
 
+        queue.put(
+            VoiceMonitorEvent(
+                "playback_started",
+                speech_text,
+                metadata={
+                    **tts_metadata,
+                    "audio_duration_ms": (
+                        len(tts_result.audio) / tts_result.sample_rate * 1000.0
+                        if tts_result.sample_rate > 0
+                        else 0.0
+                    ),
+                    "sync_granularity": "audio_chunk",
+                },
+            )
+        )
         playback = self.player.play(tts_result.audio, tts_result.sample_rate, blocking=True)
         queue.put(
             VoiceMonitorEvent(

@@ -19,6 +19,7 @@ StreamingEventType = Literal[
     "llm_token",
     "sentence",
     "tts",
+    "playback_started",
     "audio",
     "interrupted",
     "done",

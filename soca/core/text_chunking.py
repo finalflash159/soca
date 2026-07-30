@@ -9,6 +9,7 @@ _MARKDOWN_CODE_RE = re.compile(r"`([^`]+)`")
 _MARKDOWN_HEADING_RE = re.compile(r"(?m)^\s{0,3}#{1,6}\s+")
 _MARKDOWN_LIST_BULLET_RE = re.compile(r"(?m)^\s*[-*+]\s+")
 _MARKDOWN_RULE_RE = re.compile(r"(?m)^\s*[-*_]{3,}\s*$")
+_CITATION_TAG_RE = re.compile(r"(?<!\w)\[(?:[KMkm]\d+|\d+)\](?!\w)")
 _MULTISPACE_RE = re.compile(r"[ \t]{2,}")
 _CLAUSE_BOUNDARY_RE = re.compile(r"(?P<punct>[,;:]|[—–])(?P<trailing>[ \t]+)")
 _WORD_RE = re.compile(r"[^\W_]+", flags=re.UNICODE)
@@ -103,6 +104,7 @@ def normalize_text_for_tts(text: str) -> str:
         return ""
 
     cleaned = _MARKDOWN_RULE_RE.sub("", cleaned)
+    cleaned = _CITATION_TAG_RE.sub("", cleaned)
     cleaned = _MARKDOWN_HEADING_RE.sub("", cleaned)
     cleaned = _MARKDOWN_LIST_BULLET_RE.sub("", cleaned)
     cleaned = _MARKDOWN_LINK_RE.sub(r"\1", cleaned)
@@ -113,6 +115,7 @@ def normalize_text_for_tts(text: str) -> str:
     )
     cleaned = cleaned.replace("\\*", "*")
     cleaned = _MULTISPACE_RE.sub(" ", cleaned)
+    cleaned = re.sub(r"[ \t]+([,.;:!?])", r"\1", cleaned)
     cleaned = re.sub(r"\s+\n", "\n", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()

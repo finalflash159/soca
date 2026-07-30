@@ -1895,7 +1895,7 @@ class SocaEngine:
                     "analyzing",
                     operation="speech_recognition",
                 )
-            elif event.type in {"tts", "audio"}:
+            elif event.type in {"tts", "playback_started", "audio"}:
                 self._emit_turn_progress(
                     "voice",
                     "speech",

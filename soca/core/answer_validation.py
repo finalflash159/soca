@@ -34,6 +34,9 @@ class _ShadowGroundedness:
 
 
 _CITATION_LIKE_RE = re.compile(r"\[(?P<token>[KMkm][A-Za-z0-9]*)\]")
+_PRESENTATION_CITATION_RE = re.compile(
+    r"(?<!\w)\[(?P<token>(?:[KMkm]\d+|\d+))\](?!\w)"
+)
 _SOURCE_FOOTER_RE = re.compile(
     r"(?im)^[ \t]*(?:#{1,6}[ \t]+)?(?:nguồn|sources?)[ \t]*:[ \t]*(?:\n|$)"
 )
@@ -57,25 +60,14 @@ def answer_text_without_citation_labels(
     citations: tuple[KnowledgeCitation, ...],
 ) -> str:
     allowed = frozenset(expected_citation_labels(citations))
-    if not allowed:
-        return text.strip()
 
-    footer_matches = tuple(_SOURCE_FOOTER_RE.finditer(text))
+    footer_matches = tuple(_SOURCE_FOOTER_RE.finditer(text)) if allowed else ()
     if footer_matches:
         footer = footer_matches[-1]
-        footer_text = text[footer.end() :]
-        footer_labels = {
-            f"[{match.group('token').upper()}]"
-            for match in _CITATION_LIKE_RE.finditer(footer_text)
-        }
-        if not footer_text.strip() or footer_labels & allowed:
+        if text[: footer.start()].strip():
             text = text[: footer.start()]
 
-    def replace(match: re.Match[str]) -> str:
-        label = f"[{match.group('token').upper()}]"
-        return "" if label in allowed else match.group(0)
-
-    cleaned = _CITATION_LIKE_RE.sub(replace, text)
+    cleaned = _PRESENTATION_CITATION_RE.sub("", text)
     cleaned = re.sub(r"[ \t]+([,.;:!?])", r"\1", cleaned)
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r"\n[ \t]+\n", "\n\n", cleaned)

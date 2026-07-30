@@ -699,6 +699,28 @@ class _TTSPlaybackPump:
             metadata=metadata,
         )
 
+    @staticmethod
+    def _playback_started_event(
+        chunk: _PlaybackChunk,
+        *,
+        audio_duration_ms: float,
+    ) -> StreamingEvent:
+        event = chunk.event
+        metadata = dict(event.metadata or {})
+        metadata.update(
+            {
+                "audio_duration_ms": max(0.0, audio_duration_ms),
+                "sync_granularity": "audio_chunk",
+            }
+        )
+        return StreamingEvent(
+            type="playback_started",
+            text=event.text,
+            sample_rate=event.sample_rate,
+            tts=event.tts,
+            metadata=metadata,
+        )
+
     def _play_legacy(self, first: _PlaybackChunk) -> None:
         item: _PlaybackChunk | object = first
         while item is not self._DONE:
@@ -707,6 +729,12 @@ class _TTSPlaybackPump:
                 event = item.event
                 assert event.audio is not None
                 assert event.sample_rate is not None
+                self._event_queue.put(
+                    self._playback_started_event(
+                        item,
+                        audio_duration_ms=len(event.audio) / event.sample_rate * 1000.0,
+                    )
+                )
                 playback = self._sink.play(
                     event.audio,
                     event.sample_rate,
@@ -780,6 +808,12 @@ class _TTSPlaybackPump:
                     _to_float32_mono(event.audio),
                     event.sample_rate,
                     session.sample_rate,
+                )
+                self._event_queue.put(
+                    self._playback_started_event(
+                        item,
+                        audio_duration_ms=len(prepared) / session.sample_rate * 1000.0,
+                    )
                 )
 
                 slack_ms: float | None = None
