@@ -1,4 +1,4 @@
-# Local D2.5 Pipeline — Mac M-series CLI
+# Experimental ASR robustness workflow — Mac M-series CLI
 
 Phiên bản chạy thẳng trên Mac không cần Colab. Mirror của `notebooks/01-04` nhưng đóng gói thành CLI tuần tự, không phụ thuộc Google Drive.
 
@@ -25,7 +25,7 @@ extra `eval` vì BoH là tooling nghiên cứu, không phải production runtime
 ## Pipeline đầy đủ — 5 CLI tuần tự
 
 ```
-collect_noise   →  build_boh        →                         ┐
+collect_noise   →  experimental BoH build  →                  ┐
 download_fleurs →  calibrate_thresh → eval_table7 (benchmark) ┘
 ```
 
@@ -56,14 +56,13 @@ uv run python -m local.collect_noise --seed 7           # different RNG
 ### Bước 2: Build BoH (~10-25 phút trên M4 Pro với CoreML)
 
 ```bash
-uv run python -m local.build_boh
+uv run python -m eval.experimental.asr_boh.build
 ```
 
 Output:
 
 ```
-data/asr/boh/phowhisper_tiny_vi_boh_v1.json     # BoH model-specific
-data/asr/vi_boh_v1.json                          # alias cho runtime model
+data/asr/boh/phowhisper_tiny_vi_boh_v1.json     # research artifact, model-specific
 notebooks/outputs/{RUN_ID}/logs/boh_runs/phowhisper_tiny/phowhisper_noise_outputs.jsonl
 notebooks/outputs/{RUN_ID}/config_snapshot.json
 ```
@@ -71,10 +70,12 @@ notebooks/outputs/{RUN_ID}/config_snapshot.json
 Options thường dùng:
 
 ```bash
-uv run python -m local.build_boh --max-files 20        # smoke 20 file
-uv run python -m local.build_boh --providers cpu       # debug, force CPU
-uv run python -m local.build_boh --model phowhisper_tiny --model phowhisper_base \
-    --runtime-model phowhisper_tiny                     # multi-model run
+uv run python -m eval.experimental.asr_boh.build --max-files 20
+uv run python -m eval.experimental.asr_boh.build --providers cpu
+uv run python -m eval.experimental.asr_boh.build \
+    --model phowhisper_tiny --model phowhisper_base
+uv run python -m eval.experimental.asr_boh.review \
+    --boh-path data/asr/boh/phowhisper_tiny_vi_boh_v1.json
 ```
 
 ### Bước 3: Tải FLEURS vi speech (~2-3 phút)
@@ -131,7 +132,7 @@ Sample output:
 ┡━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━┩
 │ (1) Raw ASR         │  ~23%  │ ~12%  │  ~30-50%    │  ~700 ms   │  ~1200 ms  │
 │ (3) Silero VAD only │  ~25%  │ ~13%  │   ~0-3%     │  ~500 ms   │  ~1200 ms  │
-│ (6) Full pipeline   │  ~25%  │ ~13%  │   ~0-2%     │  ~500 ms   │  ~1200 ms  │
+│ (6) Production + experimental BoH │ ~25% │ ~13% │ ~0-2% │ ~500 ms │ ~1200 ms │
 └─────────────────────┴────────┴───────┴─────────────┴────────────┴────────────┘
 ```
 
@@ -144,7 +145,8 @@ Options:
 ```bash
 uv run python -m local.eval_table7                                # default 50+20
 uv run python -m local.eval_table7 --n-speech 200 --n-noise 100  # serious run
-uv run python -m local.eval_table7 --configs raw,vad_deloop_boh  # quick A/B
+uv run python -m local.eval_table7 \
+    --configs production_no_boh,production_with_boh              # paired A/B
 uv run python -m local.eval_table7 --providers cpu               # force CPU
 ```
 
