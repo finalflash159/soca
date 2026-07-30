@@ -411,7 +411,7 @@ def run_profile_eval(
             config,
             secret_store=SecretStore(dotenv_path=REPO_ROOT / ".env"),
         )
-    except (FileNotFoundError, TTSRuntimeUnavailableError, ImportError, RuntimeError) as exc:
+    except (FileNotFoundError, TTSRuntimeUnavailableError, ImportError, RuntimeError, ValueError) as exc:
         return {
             "profile": profile_key,
             "config": runtime_config_to_dict(config),

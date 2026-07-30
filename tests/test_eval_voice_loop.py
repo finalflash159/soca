@@ -348,12 +348,23 @@ def test_run_profile_eval_playback_selects_sounddevice(monkeypatch, tmp_path: Pa
     assert result["playback_sink"] == "SoundDevicePlayer"
 
 
-def test_run_profile_eval_forwards_dense_backend(monkeypatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "build_error",
+    [
+        eval_voice_loop.TTSRuntimeUnavailableError("test capture"),
+        ValueError("invalid settings"),
+    ],
+)
+def test_run_profile_eval_forwards_dense_backend(
+    monkeypatch,
+    tmp_path: Path,
+    build_error: Exception,
+) -> None:
     seen: dict[str, str] = {}
 
     def capture_config(config, **kwargs):
         seen["backend"] = config.knowledge_dense_backend
-        raise eval_voice_loop.TTSRuntimeUnavailableError("test capture")
+        raise build_error
 
     monkeypatch.setattr(eval_voice_loop, "build_voice_runtime", capture_config)
     args = SimpleNamespace(

@@ -1,4 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -116,3 +118,31 @@ def test_checkpoint_goal_serialization_preserves_status() -> None:
 
     assert restored.status is GoalStatus.ACTIVE
     assert restored.required_sources == (SourceKind.KNOWLEDGE,)
+
+
+def test_shared_goal_store_serializes_concurrent_goal_and_run_writes(tmp_path: Path) -> None:
+    checkpoint_store = GoalCheckpointStore(tmp_path / "goals")
+    active = ActiveGoalStore(checkpoint_store=checkpoint_store, session_id="session-1")
+    goal = _goal()
+    run = SimpleNamespace(
+        state=SimpleNamespace(run_id="run-1", goal=goal),
+        terminal=SimpleNamespace(status=SimpleNamespace(value="achieved")),
+    )
+
+    def write_goal() -> None:
+        for _ in range(20):
+            active.set(goal)
+
+    def write_run() -> None:
+        for _ in range(20):
+            active.record_run(run)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(write_goal), pool.submit(write_run)]
+        for future in futures:
+            future.result()
+
+    restored = ActiveGoalStore(checkpoint_store=checkpoint_store, session_id="session-1")
+    assert restored.current == goal
+    assert restored.last_run is not None
+    assert restored.last_run.run_id == "run-1"
