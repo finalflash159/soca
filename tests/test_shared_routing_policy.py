@@ -10,7 +10,8 @@ from soca.core.semantic_turn_router import build_semantic_turn_router
 from soca.core.tool_routing import SemanticRouterConfig, ToolRouterConfig
 from soca.knowledge import KnowledgeContextBuilder
 from soca.llm.base import LLMResult
-from soca.tools import LocalTimeTool, ToolRuntime
+from soca.tools import KnowledgeSearchTool, ToolRuntime
+from tests.fake_tools import ReadOnlyInspectTool
 from tests.test_assistant_runtime import FakeKnowledgeSource, SpyLLM
 
 
@@ -45,7 +46,7 @@ class _RouteFallbackLLM:
         )
 
 
-def _router(tmp_path: Path):
+def _router(tmp_path: Path, source: FakeKnowledgeSource | None = None):
     tmp_path.mkdir(parents=True, exist_ok=True)
     examples = tmp_path / "shared-turns.jsonl"
     examples.write_text(
@@ -56,7 +57,7 @@ def _router(tmp_path: Path):
         encoding="utf-8",
     )
     router = build_semantic_turn_router(
-        tool_runtime=ToolRuntime([]),
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]) if source is not None else ToolRuntime([]),
         config=SemanticRouterConfig(
             enabled=True,
             threshold=0.58,
@@ -76,13 +77,15 @@ def test_chat_and_voice_use_the_same_retrieval_policy(tmp_path: Path) -> None:
     voice_llm = SpyLLM(text="Theo [K1], ghi chú nói về Bayes.")
     chat_runtime = AssistantRuntime(
         llm=chat_llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(chat_source)]),
         knowledge_builder=KnowledgeContextBuilder(chat_source),
-        tool_router=_router(tmp_path / "chat"),
+        tool_router=_router(tmp_path / "chat", chat_source),
     )
     voice_runtime = AssistantRuntime(
         llm=voice_llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(voice_source)]),
         knowledge_builder=KnowledgeContextBuilder(voice_source),
-        tool_router=_router(tmp_path / "voice"),
+        tool_router=_router(tmp_path / "voice", voice_source),
     )
 
     query = "Ghi chú nói Bayes thế nào?"
@@ -94,8 +97,8 @@ def test_chat_and_voice_use_the_same_retrieval_policy(tmp_path: Path) -> None:
     assert voice_result.trace is not None
     assert chat_result.trace.disposition == voice_result.trace.disposition == "retrieval_request"
     assert chat_result.trace.selected_sources == voice_result.trace.selected_sources == ("knowledge",)
-    assert chat_source.search_calls == [(query, 16)]
-    assert voice_source.search_calls == [(query, 16)]
+    assert chat_source.search_calls == [(query, 3)]
+    assert voice_source.search_calls == [(query, 3)]
     assert "[K1]" in chat_llm.calls[0]["user_msg"]
     assert "[K1]" in voice_llm.calls[0]["user_msg"]
 
@@ -139,7 +142,7 @@ def test_router_setup_keeps_semantic_policy_enabled_for_voice(tmp_path: Path) ->
     )
 
     assert router.select("Ghi chú nói Bayes thế nào?", knowledge_limit=3) is None
-    assert router.last_tier == "semantic"
+    assert router.last_tier == "none"
     assert router.last_decision.sources == ("knowledge",)
 
 
@@ -151,7 +154,7 @@ def test_cascade_uses_one_llm_attempt_after_semantic_uncertainty(tmp_path: Path)
     )
     router = build_runtime_tool_router(
         llm=_RouteFallbackLLM(),
-        tool_runtime=ToolRuntime([LocalTimeTool()]),
+        tool_runtime=ToolRuntime([ReadOnlyInspectTool()]),
         deterministic=DefaultRuntimeToolRouter(enable_memory_search=False),
         config=ToolRouterConfig(
             mode="cascade",

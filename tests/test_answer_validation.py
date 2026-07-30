@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from soca.core.answer_validation import (
+    answer_text_without_citation_labels,
     expected_citation_labels,
     validate_grounded_answer,
 )
@@ -14,6 +15,20 @@ def test_answer_validation_accepts_knowledge_and_memory_provenance() -> None:
     )
     decision = validate_grounded_answer("Theo [K1] và [M1] thì đúng.", citations)
     assert decision.status == "valid"
+
+
+def test_presentation_removes_only_validated_labels_from_answer_text() -> None:
+    citations = (
+        KnowledgeCitation("wiki/a.md", "A"),
+        KnowledgeCitation("memory/b.md", "B", source="memory"),
+    )
+
+    text = answer_text_without_citation_labels(
+        "Bayes cập nhật xác suất [K1]. Sở thích đã lưu [M1]. Nhãn lạ [K9].",
+        citations,
+    )
+
+    assert text == "Bayes cập nhật xác suất. Sở thích đã lưu. Nhãn lạ [K9]."
 
 
 def test_expected_citation_labels_follow_each_source_sequence() -> None:

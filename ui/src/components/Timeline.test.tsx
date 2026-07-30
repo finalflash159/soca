@@ -26,4 +26,34 @@ describe("TimelineLine", () => {
     expect(frame).not.toContain("╭");
     view.unmount();
   });
+
+  it("renders structured sources once at the end of the answer", () => {
+    const view = render(
+      <TimelineLine
+        entry={{
+          kind: "soca",
+          text: "Attention dùng query, key và value.",
+          citations: [
+            {
+              label: "K1",
+              path: "wiki/learning/attention.md",
+              title: "Attention",
+              line_start: 12,
+              line_end: 18,
+              source: "knowledge",
+            },
+          ],
+        }}
+      />,
+    );
+
+    const frame = view.lastFrame() ?? "";
+    expect(frame).toContain("Attention dùng query, key và value.");
+    expect(frame).toContain("── nguồn");
+    expect(frame).toContain("K1  Attention · wiki/learning/attention.md:12-18");
+    expect(frame.indexOf("── nguồn")).toBeGreaterThan(
+      frame.indexOf("Attention dùng query, key và value."),
+    );
+    view.unmount();
+  });
 });

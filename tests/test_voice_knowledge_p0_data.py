@@ -22,7 +22,7 @@ def _write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
 
 def test_p0_route_dataset_is_family_split_and_not_demo_content() -> None:
     rows = load_route_dataset(P0 / "turn_routing_vi.jsonl")
-    assert len(rows) == 66
+    assert len(rows) == 94
     assert {row["split"] for row in rows} == {"train", "validation", "test"}
     assert all("knowledge_vault" not in row["query"] for row in rows)
     assert all("dinh-duong" not in row["query"] for row in rows)
@@ -62,7 +62,7 @@ def test_cascade_evaluator_scores_disposition_source_and_family(tmp_path: Path) 
     predictions = tmp_path / "predictions.jsonl"
     rows = [
         {"id": "train", "family": "train-family", "split": "train", "query": "x", "disposition": "smalltalk", "sources": []},
-        {"id": "validation", "family": "validation-family", "split": "validation", "query": "y", "disposition": "direct_tool", "sources": [], "tool": "local_time.now"},
+        {"id": "validation", "family": "validation-family", "split": "validation", "query": "y", "disposition": "direct_tool", "sources": [], "tool": "knowledge.catalog"},
         {"id": "test", "family": "test-family", "split": "test", "query": "z", "disposition": "out_of_scope", "sources": []},
     ]
     _write_jsonl(dataset, rows)
@@ -70,7 +70,7 @@ def test_cascade_evaluator_scores_disposition_source_and_family(tmp_path: Path) 
         predictions,
         [
             {"id": "train", "disposition": "smalltalk", "sources": [], "tool": "none"},
-            {"id": "validation", "disposition": "direct_tool", "sources": [], "tool": "local_time.now"},
+            {"id": "validation", "disposition": "direct_tool", "sources": [], "tool": "knowledge.catalog"},
             {"id": "test", "disposition": "out_of_scope", "sources": [], "tool": "none"},
         ],
     )

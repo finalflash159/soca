@@ -21,6 +21,7 @@ export function TimelineLine({ entry }: { entry: TimelineEntry }) {
         <Box paddingX={1} marginBottom={1}>
           <Box
             width="100%"
+            flexDirection="column"
             borderStyle="round"
             borderColor={lerpHex(COLOR.accent, COLOR.border, 0.72)}
             paddingX={1}
@@ -31,6 +32,28 @@ export function TimelineLine({ entry }: { entry: TimelineEntry }) {
               </Text>
               <Text color={COLOR.text}>{entry.text}</Text>
             </Text>
+            {entry.citations && entry.citations.length > 0 ? (
+              <Box flexDirection="column" marginTop={1}>
+                <Text color={COLOR.border}>── nguồn</Text>
+                {entry.citations.map((citation) => {
+                  const lines =
+                    citation.line_start && citation.line_end
+                      ? `:${citation.line_start}-${citation.line_end}`
+                      : "";
+                  return (
+                    <Text
+                      key={`${citation.source}:${citation.label}:${citation.path}`}
+                      color={COLOR.muted}
+                    >
+                      <Text bold color={COLOR.alt}>
+                        {citation.label}
+                      </Text>
+                      {`  ${citation.title} · ${citation.path}${lines}`}
+                    </Text>
+                  );
+                })}
+              </Box>
+            ) : null}
           </Box>
         </Box>
       );

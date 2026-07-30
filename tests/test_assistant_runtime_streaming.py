@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from soca.core import AssistantRuntime, RuntimeRoute
 from soca.core.tool_routing import ToolRouterDecision
@@ -11,7 +9,8 @@ from soca.core.turn import RuntimeResult
 from soca.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
 from soca.llm import LLMResult
 from soca.memory import MemoryContextBuilder, SessionMemory
-from soca.tools import KnowledgeSearchTool, LocalTimeTool, ToolRuntime
+from soca.tools import KnowledgeSearchTool, ToolCall, ToolRuntime
+from tests.fake_tools import ReadOnlyInspectTool
 
 
 @dataclass(frozen=True)
@@ -137,6 +136,24 @@ class SemanticRetrievalRouter:
         return None
 
 
+class StaticToolRouter:
+    last_tier = "test"
+
+    def __init__(self, call: ToolCall) -> None:
+        self.call = call
+        self.last_decision = ToolRouterDecision(
+            call=call,
+            reason="test_direct_tool",
+            disposition="direct_tool",
+            handler=call.name,
+            selected_routes=("direct_tool",),
+        )
+
+    def select(self, text: str, *, knowledge_limit: int) -> ToolCall:
+        del text, knowledge_limit
+        return self.call
+
+
 def _collect(
     events: Iterator,
 ) -> tuple[list[str], list[str], RuntimeResult | None, list]:
@@ -175,6 +192,7 @@ def test_empty_retrieval_streams_when_citations_are_not_required() -> None:
     llm = StreamSpyLLM(["Mình không tìm thấy nội dung này trong ghi chú của bạn."])
     runtime = AssistantRuntime(
         llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(EmptyKnowledgeSource())]),
         knowledge_builder=KnowledgeContextBuilder(EmptyKnowledgeSource()),
         tool_router=SemanticRetrievalRouter(),
     )
@@ -266,20 +284,29 @@ def test_stream_per_sentence_guard_blocks_realtime_claim() -> None:
     assert result.route == RuntimeRoute.BLOCKED
 
 
-def test_stream_tool_route_has_no_tokens_and_returns_tool_result() -> None:
-    fixed_now = datetime(2026, 5, 29, 9, 30, tzinfo=ZoneInfo("Asia/Ho_Chi_Minh"))
-    tool_runtime = ToolRuntime([LocalTimeTool(now_fn=lambda: fixed_now)])
-    llm = StreamSpyLLM(["ignored"])
-    runtime = AssistantRuntime(llm=llm, tool_runtime=tool_runtime)
+def test_stream_inspect_route_synthesizes_without_citations() -> None:
+    tool_runtime = ToolRuntime([ReadOnlyInspectTool()])
+    llm = StreamSpyLLM(["Catalog hiện có index [K1]."])
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=tool_runtime,
+        tool_router=StaticToolRouter(ToolCall("knowledge.inspect", {})),
+    )
 
-    tokens, sentences, result, _ = _collect(runtime.stream_text_turn("time:", min_sentence_chars=8))
+    tokens, sentences, result, _ = _collect(
+        runtime.stream_text_turn("show catalog", min_sentence_chars=8)
+    )
 
-    assert tokens == []
-    assert sentences  # tool text is chunked into at least one sentence
+    assert tokens == ["Catalog hiện có index [K1]."]
+    assert sentences == ["Catalog hiện có index [K1]."]
     assert result is not None
-    assert result.route == RuntimeRoute.TOOL_DIRECT
-    assert "09:30" in result.response_text
-    assert llm.stream_calls == []
+    assert result.route == RuntimeRoute.KNOWLEDGE_LLM
+    assert result.trace is not None
+    assert result.trace.tool_calls[0].name == "knowledge.inspect"
+    assert llm.stream_calls
+    prompt = llm.stream_calls[0]["user_msg"]
+    assert "Vault navigation metadata (not evidence; do not cite):" in prompt
+    assert "Knowledge:\n" not in prompt
 
 
 def test_stream_input_guardrail_block_speaks_safe_message_without_llm() -> None:
@@ -305,6 +332,7 @@ def test_stream_knowledge_llm_route_when_metadata_requests_knowledge() -> None:
     llm = StreamSpyLLM(["Theo [K1], protein hỗ trợ cơ bắp."])
     runtime = AssistantRuntime(
         llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
         knowledge_builder=KnowledgeContextBuilder(source),
         memory_builder=memory_builder,
     )
@@ -357,6 +385,7 @@ def test_stream_semantic_retrieval_holds_output_until_validation() -> None:
     llm = StreamSpyLLM(["Theo [K1], protein hỗ trợ cơ bắp."])
     runtime = AssistantRuntime(
         llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
         knowledge_builder=KnowledgeContextBuilder(source),
         tool_router=SemanticRetrievalRouter(),
     )
@@ -372,7 +401,7 @@ def test_stream_semantic_retrieval_holds_output_until_validation() -> None:
     assert [event.type for event in events] == ["sentence", "result"]
     assert llm.stream_calls == []
     assert len(llm.generate_calls) == 1
-    assert source.search_calls == [("Protein có tác dụng gì?", 16)]
+    assert source.search_calls == [("Protein có tác dụng gì?", 3)]
 
 
 def test_grounded_stream_never_emits_uncited_draft_before_repair() -> None:
@@ -385,6 +414,7 @@ def test_grounded_stream_never_emits_uncited_draft_before_repair() -> None:
     )
     runtime = AssistantRuntime(
         llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
         knowledge_builder=KnowledgeContextBuilder(source),
         tool_router=SemanticRetrievalRouter(),
     )

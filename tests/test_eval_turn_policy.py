@@ -22,7 +22,7 @@ def test_policy_evaluator_separates_unsupported_tool_and_parity(tmp_path: Path) 
         "\n".join(
             [
                 json.dumps({"id": "weather-text", "disposition": "out_of_scope", "sources": [], "tool": "none", "parity_id": "weather"}),
-                json.dumps({"id": "weather-asr", "disposition": "direct_tool", "sources": [], "tool": "local_time.now", "parity_id": "weather"}),
+                json.dumps({"id": "weather-asr", "disposition": "direct_tool", "sources": [], "tool": "knowledge.catalog", "parity_id": "weather"}),
             ]
         ) + "\n",
         encoding="utf-8",

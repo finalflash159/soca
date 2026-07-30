@@ -382,10 +382,17 @@ function StatusBody({
         </Box>
       ) : null}
       {knowledge ? (
-        <Text color={COLOR.muted}>
-          knowledge · {knowledge.sparse_state} · dense {knowledge.dense_state} ·{" "}
-          {knowledge.documents} docs / {knowledge.chunks} chunks
-        </Text>
+        <Box flexDirection="column">
+          <Text color={COLOR.muted}>
+            knowledge · {knowledge.sparse_state} · dense {knowledge.dense_state} ·{" "}
+            {knowledge.documents} docs / {knowledge.chunks} chunks
+          </Text>
+          {knowledge.vault_path ? (
+            <Text color={COLOR.alt} wrap="truncate-end">
+              vault · {boundedText(knowledge.vault_path, 96)}
+            </Text>
+          ) : null}
+        </Box>
       ) : null}
       {runtimeComponents && runtimeComponents.length > 0 ? (
         <Box marginTop={1} flexDirection="column">

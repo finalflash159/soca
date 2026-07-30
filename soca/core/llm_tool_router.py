@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -45,6 +46,8 @@ def _build_prompt(
     *,
     repair_code: str = "",
     previous_output: str = "",
+    vault_manifest: str = "",
+    turn_context: str = "",
 ) -> str:
     prompt = "\n".join(
         [
@@ -56,8 +59,21 @@ def _build_prompt(
             "retrieval_request leaves handler null and may choose knowledge, memory, or both.",
             "smalltalk is friendly conversation; out_of_scope must not call an answer tool.",
             "Use unresolved when intent is unclear. Never invent a handler or argument.",
+            "knowledge.inspect returns navigation metadata only; it is never answer evidence or a citation.",
+            "Use knowledge.inspect for inventory requests (what notes, documents, folders, headings, or links exist) and for explicit relationship/navigation questions.",
+            "Do not use knowledge.search merely to enumerate files or describe vault structure.",
+            "Use knowledge.search for content evidence requested from the local vault; it is not a general-knowledge answer tool.",
+            "Choose the next evidence operation, not the final prose answer: a request whose answer is a list of paths/folders/headings or a map of links must call knowledge.inspect; a request whose answer depends on note-body facts must retrieve with knowledge.search/read.",
+            "A search hit that happens to mention a folder is not a substitute for an inventory or relationship inspection.",
+            "If the user refers to notes, the vault, a journal, or a prior retrieval, prefer retrieval_request even when the wording is indirect.",
+            "Do not classify a turn as out_of_scope merely because the query is colloquial, abbreviated, or asks for a personal fact.",
+            "Classify the user's intent, not isolated words such as knowledge, note, link, or structure.",
             "Enabled tools:",
             json.dumps(catalog, ensure_ascii=False, sort_keys=True),
+            "Vault navigation context (metadata only; never evidence):",
+            vault_manifest or "No vault manifest is available.",
+            "Conversation/goal context:",
+            turn_context or "No prior goal context is available.",
             'User text: ' + json.dumps(text, ensure_ascii=False),
         ]
     )
@@ -80,12 +96,18 @@ class LLMToolRouter:
         tool_runtime: ToolRuntime,
         *,
         config: ToolRouterConfig | None = None,
+        vault_manifest_provider: Callable[[], str] | None = None,
     ) -> None:
         self._llm = llm
         self._tool_runtime = tool_runtime
         self._config = config or ToolRouterConfig(mode="llm")
         self.last_tier = "none"
         self.last_decision = ToolRouterDecision()
+        self._vault_manifest_provider = vault_manifest_provider
+        self._turn_context = ""
+
+    def set_context(self, *, turn_context: str = "") -> None:
+        self._turn_context = turn_context.strip()
 
     def select(self, text: str, *, knowledge_limit: int) -> ToolCall | None:
         del knowledge_limit
@@ -111,6 +133,43 @@ class LLMToolRouter:
             if not repaired.error_code:
                 return self._finish(repaired.raw)
         return self._fail_closed(f"llm_invalid_output:{first.error_code}")
+
+    def refine(
+        self,
+        text: str,
+        *,
+        observation: str,
+        knowledge_limit: int,
+    ) -> ToolCall | None:
+        """Choose one bounded retrieval refinement after weak evidence.
+
+        Refinement is deliberately restricted to a direct read-only tool call.
+        The answer model remains responsible for synthesis and abstention.
+        """
+        del knowledge_limit
+        catalog = _tool_catalog(self._tool_runtime)
+        refinement_text = "\n".join(
+            (
+                "Original user request:",
+                text.strip(),
+                "Observation from the first retrieval attempt:",
+                observation.strip()[:4_000],
+                "Choose one next read-only retrieval action if it can improve evidence. "
+                "Use direct_tool with knowledge.search/read or memory.search. "
+                "If no useful refinement exists, return unresolved.",
+            )
+        )
+        attempt = self._attempt(refinement_text, catalog)
+        if attempt.provider_failed or attempt.error_code:
+            return None
+        call = self._finish(attempt.raw)
+        if call is None or call.name not in {
+            "knowledge.search",
+            "knowledge.read",
+            "memory.search",
+        }:
+            return None
+        return call
 
     def _finish(self, raw: str) -> ToolCall | None:
         try:
@@ -148,11 +207,19 @@ class LLMToolRouter:
         repair_code: str = "",
         previous_output: str = "",
     ) -> RouterAttempt:
+        try:
+            vault_manifest = (
+                self._vault_manifest_provider() if self._vault_manifest_provider else ""
+            )
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            vault_manifest = f"Vault manifest unavailable ({type(exc).__name__})."
         prompt = _build_prompt(
             text,
             catalog,
             repair_code=repair_code,
             previous_output=previous_output,
+            vault_manifest=vault_manifest,
+            turn_context=self._turn_context,
         )
         try:
             if (

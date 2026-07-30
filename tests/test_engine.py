@@ -16,6 +16,7 @@ from soca.app.engine import (
 from soca.app.text_runtime import TextRuntimeBundle, TextRuntimeConfig
 from soca.core import ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
 from soca.core.turn import RuntimeResult, RuntimeRoute, RuntimeTrace
+from soca.knowledge import KnowledgeCitation
 
 
 class ProtocolCapture:
@@ -285,6 +286,23 @@ class _ManifestAssistantRuntime:
         )
 
 
+class _CitedAssistantRuntime:
+    def run_text_turn(self, text: str, *, source: str, metadata: dict) -> RuntimeResult:
+        del text, source, metadata
+        return RuntimeResult(
+            response_text="Attention dùng query, key và value [K1].",
+            route=RuntimeRoute.KNOWLEDGE_LLM,
+            citations=(
+                KnowledgeCitation(
+                    path="wiki/learning/attention.md",
+                    title="Attention",
+                    line_start=12,
+                    line_end=18,
+                ),
+            ),
+        )
+
+
 class _FailingAssistantRuntime:
     def run_text_turn(self, text: str, *, source: str, metadata: dict) -> RuntimeResult:
         raise RuntimeError("synthetic runtime failure")
@@ -303,6 +321,16 @@ def _fake_text_builder(config: TextRuntimeConfig, session_memory=None) -> TextRu
 def _manifest_text_builder(config: TextRuntimeConfig, session_memory=None) -> TextRuntimeBundle:
     return TextRuntimeBundle(
         runtime=_ManifestAssistantRuntime(),  # type: ignore[arg-type]
+        session_memory=session_memory,
+        llm_status="fake",
+        knowledge_status="fake",
+        memory_status="fake",
+    )
+
+
+def _cited_text_builder(config: TextRuntimeConfig, session_memory=None) -> TextRuntimeBundle:
+    return TextRuntimeBundle(
+        runtime=_CitedAssistantRuntime(),  # type: ignore[arg-type]
         session_memory=session_memory,
         llm_status="fake",
         knowledge_status="fake",
@@ -343,6 +371,36 @@ def test_engine_chat_roundtrip_emits_done_with_response() -> None:
     ]
     assert workflow[-1]["event"] == "turn_terminal"
     assert workflow[-1]["payload"]["terminal_status"] == "achieved"
+
+
+def test_engine_emits_clean_answer_and_structured_sources() -> None:
+    capture = ProtocolCapture()
+    code = run_engine(
+        voice_config=None,
+        text_config=make_text_config(),
+        profile="baseline",
+        stdin=_commands(capture, {"cmd": "chat", "text": "attention"}, '"done"'),
+        stdout=capture,
+        text_runtime_builder=_cited_text_builder,
+    )
+
+    assert code == 0
+    done = next(
+        event
+        for event in capture.events()
+        if event["event"] == "chat" and event["type"] == "done"
+    )
+    assert done["text"] == "Attention dùng query, key và value."
+    assert done["citations"] == [
+        {
+            "label": "K1",
+            "path": "wiki/learning/attention.md",
+            "title": "Attention",
+            "line_start": 12,
+            "line_end": 18,
+            "source": "knowledge",
+        }
+    ]
 
 
 def test_engine_context_exposes_last_prompt_manifest() -> None:

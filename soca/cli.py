@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -41,6 +42,18 @@ from soca.memory import SessionPersistence
 
 console = Console()
 REPO_ROOT = Path(__file__).resolve().parents[1]
+UI_VAULT_ENV = "SOCA_VAULT"
+
+
+def resolve_ui_vault(vault: Path | None) -> Path:
+    """Resolve the UI vault without baking a repository fixture into production."""
+
+    if vault is not None:
+        return vault.expanduser().resolve()
+    configured = os.environ.get(UI_VAULT_ENV, "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return (Path.home() / "KnowledgeVault").resolve()
 
 
 def run_module(module: str, *args: str) -> None:
@@ -455,7 +468,7 @@ def profiles_command(show_paths: bool) -> None:
 @click.option("--resume-session", is_flag=True, help="Resume the selected local session checkpoint.")
 @click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="cascade", show_default=True)
 @click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", show_default=True)
-@click.option("--semantic-router/--no-semantic-router", default=True, show_default=True)
+@click.option("--semantic-router/--no-semantic-router", default=False, show_default=True)
 @click.option("--semantic-router-threshold", type=float, default=0.58, show_default=True)
 @click.option("--semantic-router-margin", type=float, default=0.0, show_default=True)
 @click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None)
@@ -574,7 +587,7 @@ def ask(
 @click.option("--resume-session", is_flag=True, help="Resume the selected local session checkpoint.")
 @click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="cascade", show_default=True)
 @click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", show_default=True)
-@click.option("--semantic-router/--no-semantic-router", default=True, show_default=True)
+@click.option("--semantic-router/--no-semantic-router", default=False, show_default=True)
 @click.option("--semantic-router-threshold", type=float, default=0.58, show_default=True)
 @click.option("--semantic-router-margin", type=float, default=0.0, show_default=True)
 @click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None)
@@ -680,9 +693,11 @@ def chat(
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
-    show_default=True,
-    help="Knowledge vault root for the UI session.",
+    default=None,
+    help=(
+        "Knowledge vault root for the UI session. Overrides SOCA_VAULT; "
+        "unset uses ~/KnowledgeVault."
+    ),
 )
 @click.option(
     "--session-persistence",
@@ -699,7 +714,7 @@ def ui(
     quick_mode: str | None,
     quick_profile: str | None,
     no_model: bool,
-    vault: Path,
+    vault: Path | None,
     session_persistence: str,
     session_id: str,
     resume_session: bool,
@@ -709,13 +724,14 @@ def ui(
     Quick form: soca ui [status|chat|voice] [profile]. Without a mode the UI
     opens on the splash screen.
     """
+    selected_vault = resolve_ui_vault(vault)
     if session_persistence != "ram_only" or session_id != "default" or resume_session:
         ctx.exit(
             _launch_ink_ui(
                 mode=quick_mode,
                 profile=quick_profile,
                 no_model=no_model,
-                vault=vault,
+                vault=selected_vault,
                 session_persistence=session_persistence,
                 session_id=session_id,
                 resume_session=resume_session,
@@ -726,7 +742,7 @@ def ui(
             mode=quick_mode,
             profile=quick_profile,
             no_model=no_model,
-            vault=vault,
+            vault=selected_vault,
         )
     )
 
@@ -752,7 +768,7 @@ def build_text_runtime_config(
     session_resume: bool = False,
     tool_router_mode: str = "cascade",
     tool_router_response_mode: str = "prompt_json",
-    semantic_router_enabled: bool = True,
+    semantic_router_enabled: bool = False,
     semantic_router_threshold: float = 0.58,
     semantic_router_margin: float = 0.0,
     semantic_router_examples: Path | None = None,
@@ -994,7 +1010,7 @@ def engine(
 @click.option("--resume-session", is_flag=True, hidden=True)
 @click.option("--tool-router", type=click.Choice(["deterministic", "llm", "cascade"]), default="cascade", hidden=True)
 @click.option("--router-response", type=click.Choice(["prompt_json", "json_schema"]), default="prompt_json", hidden=True)
-@click.option("--semantic-router/--no-semantic-router", default=True, hidden=True)
+@click.option("--semantic-router/--no-semantic-router", default=False, hidden=True)
 @click.option("--semantic-router-threshold", type=float, default=0.58, hidden=True)
 @click.option("--semantic-router-margin", type=float, default=0.0, hidden=True)
 @click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None, hidden=True)

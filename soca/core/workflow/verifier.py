@@ -20,10 +20,10 @@ VerifierRule = Callable[[GoalContract, ToolResult], Verification]
 
 
 _CAPABILITY_SOURCES = {
+    Capability.KNOWLEDGE_CATALOG: SourceKind.KNOWLEDGE,
     Capability.KNOWLEDGE_SEARCH: SourceKind.KNOWLEDGE,
     Capability.KNOWLEDGE_READ: SourceKind.KNOWLEDGE,
     Capability.MEMORY_SEARCH: SourceKind.MEMORY,
-    Capability.LOCAL_TIME: SourceKind.LOCAL_TIME,
 }
 
 
@@ -34,7 +34,6 @@ def source_for_capability(capability: Capability) -> SourceKind | None:
 _CRITERION_SOURCES = {
     "knowledge_queried": SourceKind.KNOWLEDGE,
     "memory_queried": SourceKind.MEMORY,
-    "local_time_observed": SourceKind.LOCAL_TIME,
 }
 
 

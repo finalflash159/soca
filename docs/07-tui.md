@@ -23,6 +23,9 @@ uv run soca ui voice baseline           # vào thẳng voice mode
 ```
 
 Dev UI: `cd ui && npm run dev`. Override lệnh engine: env `SOCA_ENGINE_CMD`.
+Chọn vault cho UI bằng `--vault PATH` hoặc `SOCA_VAULT`; nếu không đặt thì UI
+dùng `~/KnowledgeVault`. Ví dụ với showcase vault đã được làm giàu:
+`SOCA_VAULT=eval/fixtures/knowledge_vault uv run soca ui chat`.
 
 ## Cấu trúc `ui/src/`
 

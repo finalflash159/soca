@@ -1,6 +1,6 @@
-{"id":"tr-001","family":"local-time-current","split":"train","query":"Bây giờ là mấy giờ?","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
-{"id":"tr-002","family":"local-time-current","split":"train","query":"Cho tôi biết giờ hiện tại với","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
-{"id":"tr-003","family":"local-time-current","split":"train","query":"Đồng hồ đang chỉ mấy giờ rồi?","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"tr-001","family":"realtime-unavailable-train","split":"train","query":"Bây giờ là mấy giờ?","disposition":"out_of_scope","sources":[]}
+{"id":"tr-002","family":"realtime-unavailable-train","split":"train","query":"Cho tôi biết giờ hiện tại với","disposition":"out_of_scope","sources":[]}
+{"id":"tr-003","family":"realtime-unavailable-train","split":"train","query":"Đồng hồ đang chỉ mấy giờ rồi?","disposition":"out_of_scope","sources":[]}
 {"id":"tr-004","family":"knowledge-study","split":"train","query":"Ghi chú của tôi nói định lý Bayes thế nào?","disposition":"retrieval_request","sources":["knowledge"]}
 {"id":"tr-005","family":"knowledge-study","split":"train","query":"Trong note có giải thích xác suất Bayes không?","disposition":"retrieval_request","sources":["knowledge"]}
 {"id":"tr-006","family":"knowledge-study","split":"train","query":"Tìm phần ghi chú học tập về Bayes giúp tôi","disposition":"retrieval_request","sources":["knowledge"]}
@@ -19,9 +19,9 @@
 {"id":"tr-019","family":"unresolved-reference","split":"train","query":"Cái đó thế nào rồi?","disposition":"unresolved","sources":[]}
 {"id":"tr-020","family":"unresolved-reference","split":"train","query":"Tìm cho tôi cái hôm trước","disposition":"unresolved","sources":[]}
 {"id":"tr-021","family":"unresolved-reference","split":"train","query":"Nó đã xong chưa?","disposition":"unresolved","sources":[]}
-{"id":"tr-022","family":"local-time-zone","split":"validation","query":"Theo giờ Việt Nam hiện tại là mấy giờ?","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
-{"id":"tr-023","family":"local-time-zone","split":"validation","query":"Ở Hà Nội lúc này là mấy giờ?","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
-{"id":"tr-024","family":"local-time-zone","split":"validation","query":"Bạn đọc giúp tôi ngày giờ địa phương nhé","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"tr-022","family":"realtime-unavailable-validation","split":"validation","query":"Theo giờ Việt Nam hiện tại là mấy giờ?","disposition":"out_of_scope","sources":[]}
+{"id":"tr-023","family":"realtime-unavailable-validation","split":"validation","query":"Ở Hà Nội lúc này là mấy giờ?","disposition":"out_of_scope","sources":[]}
+{"id":"tr-024","family":"realtime-unavailable-validation","split":"validation","query":"Bạn đọc giúp tôi ngày giờ địa phương nhé","disposition":"out_of_scope","sources":[]}
 {"id":"tr-025","family":"knowledge-project","split":"validation","query":"Tài liệu dự án mô tả pipeline RAG như thế nào?","disposition":"retrieval_request","sources":["knowledge"]}
 {"id":"tr-026","family":"knowledge-project","split":"validation","query":"Trong wiki có ghi cách dùng hybrid retrieval không?","disposition":"retrieval_request","sources":["knowledge"]}
 {"id":"tr-027","family":"knowledge-project","split":"validation","query":"Tìm note nói về cách đánh giá semantic router","disposition":"retrieval_request","sources":["knowledge"]}
@@ -40,9 +40,9 @@
 {"id":"tr-040","family":"oos-file-mention","split":"validation","query":"Tôi đang viết truyện có nhân vật mở file notes.md","disposition":"out_of_scope","sources":[]}
 {"id":"tr-041","family":"oos-file-mention","split":"validation","query":"Trong câu chuyện có nhắc đến wiki/project.md","disposition":"out_of_scope","sources":[]}
 {"id":"tr-042","family":"oos-file-mention","split":"validation","query":"Từ file private.md trong tiểu thuyết có nghĩa gì?","disposition":"out_of_scope","sources":[]}
-{"id":"tr-043","family":"local-time-asr","split":"test","query":"bây giờ là mấy giờ nhỉ","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
-{"id":"tr-044","family":"local-time-asr","split":"test","query":"cho mình biết giờ hiện tại với","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
-{"id":"tr-045","family":"local-time-asr","split":"test","query":"múi giờ việt nam đang là mấy giờ","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"tr-043","family":"realtime-unavailable-test","split":"test","query":"bây giờ là mấy giờ nhỉ","disposition":"out_of_scope","sources":[]}
+{"id":"tr-044","family":"realtime-unavailable-test","split":"test","query":"cho mình biết giờ hiện tại với","disposition":"out_of_scope","sources":[]}
+{"id":"tr-045","family":"realtime-unavailable-test","split":"test","query":"múi giờ việt nam đang là mấy giờ","disposition":"out_of_scope","sources":[]}
 {"id":"tr-046","family":"knowledge-voice","split":"test","query":"ghi chú của tôi nói định lý Bayes ra sao","disposition":"retrieval_request","sources":["knowledge"]}
 {"id":"tr-047","family":"knowledge-voice","split":"test","query":"trong tài liệu có benchmark TTFA nào không","disposition":"retrieval_request","sources":["knowledge"]}
 {"id":"tr-048","family":"knowledge-voice","split":"test","query":"tìm phần safety disclaimer sức khỏe","disposition":"retrieval_request","sources":["knowledge"]}
@@ -64,3 +64,31 @@
 {"id":"tr-064","family":"unresolved-ellipsis","split":"test","query":"Ừ, vậy cái kia thì sao?","disposition":"unresolved","sources":[]}
 {"id":"tr-065","family":"unresolved-ellipsis","split":"test","query":"Nói tiếp phần đó đi","disposition":"unresolved","sources":[]}
 {"id":"tr-066","family":"unresolved-ellipsis","split":"test","query":"Còn cái hôm qua tôi hỏi thì sao?","disposition":"unresolved","sources":[]}
+{"id":"tr-067","family":"knowledge-catalog-inventory-train","split":"train","query":"Kho ghi chú hiện có những mảng kiến thức nào?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"tr-068","family":"knowledge-catalog-inventory-train","split":"train","query":"Ngoài ghi chú Bayes thì trong tài liệu của tôi còn những gì?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"tr-069","family":"knowledge-catalog-relations-train","split":"train","query":"Các note trong knowledge liên kết với nhau như thế nào?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"tr-070","family":"knowledge-catalog-inventory-validation","split":"validation","query":"Cho tôi xem tổng quan cấu trúc kho kiến thức hiện tại","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"tr-071","family":"knowledge-catalog-relations-validation","split":"validation","query":"Note nào đang trỏ tới ghi chú về ONNX Runtime?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"tr-072","family":"knowledge-catalog-inventory-validation","split":"validation","query":"Tôi đã lưu tài liệu ở những nhóm nào rồi?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"tr-073","family":"knowledge-catalog-inventory-test","split":"test","query":"Liệt kê bản đồ tài liệu của tôi mà không tóm tắt nội dung từng note","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"tr-074","family":"knowledge-catalog-relations-test","split":"test","query":"Ghi chú về RAG có đường dẫn hay backlink tới tài liệu nào?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"tr-075","family":"knowledge-catalog-paraphrase","split":"test","query":"Ngoài nội dung vừa nhắc tới, tôi còn cất những chủ đề nào khác?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"tr-076","family":"catalog-keyword-hard-negative","split":"test","query":"Giải thích khái niệm cấu trúc dữ liệu graph trong ghi chú của tôi","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-077","family":"catalog-keyword-hard-negative","split":"test","query":"Tìm đoạn note có từ backlink và wikilink","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-078","family":"knowledge-catalog-contrast-train","split":"train","query":"Tài liệu nào liên kết trực tiếp tới note về embedding?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"tr-079","family":"knowledge-catalog-contrast-train","split":"train","query":"Cho tôi xem backlink và đường dẫn giữa các ghi chú","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"tr-080","family":"knowledge-catalog-contrast-train","split":"train","query":"Bản đồ tài liệu hiện có những nhánh và chủ đề nào?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"tr-081","family":"knowledge-catalog-contrast-train","split":"train","query":"Ngoài chủ đề vừa nói, kho kiến thức còn lưu mảng nào khác?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"tr-082","family":"knowledge-content-contrast-train","split":"train","query":"Tìm nội dung ghi chú giải thích graph và backlink","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-083","family":"knowledge-content-contrast-train","split":"train","query":"Tra đoạn văn có nhắc đến wikilink trong tài liệu","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-084","family":"knowledge-content-contrast-train","split":"train","query":"Ghi chú của tôi giải thích cấu trúc dữ liệu graph ra sao?","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-085","family":"knowledge-content-contrast-train","split":"train","query":"Tìm phần nội dung nói về cách tạo đường dẫn Markdown","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-086","family":"knowledge-content-contrast-train","split":"train","query":"Trong tài liệu có benchmark latency nào không?","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-087","family":"knowledge-content-contrast-train","split":"train","query":"Tra note nói về TTFA và tốc độ sinh token","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-088","family":"both-content-contrast-train","split":"train","query":"Tìm cả knowledge và memory về quyết định model embedding","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"tr-089","family":"both-content-contrast-train","split":"train","query":"Thông tin tôi từng lưu về backend nằm trong tài liệu hay ký ức?","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"tr-090","family":"concept-definition-contrast-train","split":"train","query":"Từ knowledge trong tiếng Anh có nghĩa là gì?","disposition":"out_of_scope","sources":[]}
+{"id":"tr-091","family":"concept-definition-contrast-train","split":"train","query":"Giải thích khái niệm knowledge base nói chung","disposition":"out_of_scope","sources":[]}
+{"id":"tr-092","family":"knowledge-content-contrast-test","split":"test","query":"Tìm trong ghi chú con số p95 của benchmark retrieval","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-093","family":"both-content-contrast-test","split":"test","query":"Tra cả note lẫn memory về lựa chọn reranker của tôi","disposition":"retrieval_request","sources":["knowledge","memory"]}
+{"id":"tr-094","family":"concept-definition-contrast-test","split":"test","query":"Khái niệm kho tri thức nói chung là gì?","disposition":"out_of_scope","sources":[]}

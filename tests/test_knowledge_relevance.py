@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from soca.knowledge import KnowledgeDocument, KnowledgeHit
 from soca.knowledge.relevance import RelevancePolicy, assess_relevance
 
@@ -97,8 +99,7 @@ def test_retrieval_modes_keep_separate_score_distributions() -> None:
 
     assert sparse.min_lexical_coverage == 0.65
     assert sparse.min_dense_score == 0.55
-    assert hybrid.min_lexical_coverage == 0.95
-    assert hybrid.min_dense_score == 0.52
+    assert hybrid == sparse
 
 
 def test_generic_lexical_overlap_is_not_enough_when_sparse_score_is_weak() -> None:
@@ -175,3 +176,58 @@ def test_hybrid_margin_does_not_compare_dense_and_sparse_signals() -> None:
     )
 
     assert assessment.margin is None
+
+
+def test_same_backend_margin_is_sorted_before_comparison() -> None:
+    assessment = assess_relevance(
+        "định lý Bayes",
+        (
+            _hit(
+                "wiki/later.md",
+                "Bayes later",
+                "Bayes evidence.",
+                backend="dense",
+                dense_score=0.60,
+            ),
+            _hit(
+                "wiki/top.md",
+                "Bayes top",
+                "Bayes evidence.",
+                backend="dense",
+                dense_score=0.80,
+            ),
+        ),
+    )
+
+    assert assessment.margin == pytest.approx(0.2)
+
+
+def test_fusion_floor_rejects_lower_ranked_distractors() -> None:
+    assessment = assess_relevance(
+        "định lý Bayes",
+        (
+            KnowledgeHit(
+                document=KnowledgeDocument(
+                    "wiki/bayes.md",
+                    "wiki/bayes.md",
+                    "Định lý Bayes",
+                    "Định lý Bayes evidence.",
+                ),
+                score=1.0,
+                snippet="Định lý Bayes evidence.",
+                retrieval_backend="hybrid",
+                sparse_score=10.0,
+                fusion_score=1.0,
+            ),
+            KnowledgeHit(
+                document=KnowledgeDocument("wiki/noise.md", "wiki/noise.md", "Noise", "x"),
+                score=0.2,
+                snippet="x",
+                retrieval_backend="hybrid",
+                dense_score=0.8,
+                fusion_score=0.2,
+            ),
+        ),
+    )
+
+    assert [hit.document.path for hit in assessment.accepted_hits] == ["wiki/bayes.md"]

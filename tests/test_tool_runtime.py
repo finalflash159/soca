@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -11,7 +9,6 @@ from soca.knowledge import MarkdownVaultKnowledgeSource
 from soca.tools import (
     KnowledgeReadTool,
     KnowledgeSearchTool,
-    LocalTimeTool,
     SideEffectLevel,
     ToolCall,
     ToolExecutionStatus,
@@ -112,19 +109,6 @@ def test_tool_runtime_rejects_disabled_and_excessive_side_effects() -> None:
     assert restricted.ok is False
     assert "exceeds allowed level" in restricted.error
     assert restricted.status is ToolExecutionStatus.DENIED
-
-
-def test_local_time_tool_returns_current_time() -> None:
-    fixed_now = datetime(2026, 5, 29, 9, 30, tzinfo=ZoneInfo("Asia/Ho_Chi_Minh"))
-    tool = LocalTimeTool(now_fn=lambda: fixed_now)
-
-    result = tool.run({})
-
-    assert result.ok is True
-    assert result.content == "Bây giờ là 09:30, ngày 29/05/2026."
-    assert result.data["timezone"] == "Asia/Ho_Chi_Minh"
-    assert result.data["hour"] == 9
-    assert result.data["minute"] == 30
 
 
 def test_knowledge_search_tool_returns_hits(tmp_path: Path) -> None:

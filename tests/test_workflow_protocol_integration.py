@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from soca.core import AssistantRuntime, RuntimeOptions
 from soca.core.workflow import EventType, TerminalStatus
@@ -10,31 +8,21 @@ from soca.core.workflow.protocol import (
     workflow_event_from_protocol,
     workflow_event_to_protocol,
 )
-from soca.tools import LocalTimeTool, ToolCall, ToolRuntime
+from soca.tools import ToolCall, ToolRuntime
+from tests.fake_tools import ReadOnlyInspectTool
 
 
 def test_public_runtime_emits_serializable_protocol_v2_trajectory() -> None:
     runtime = AssistantRuntime(
         tool_runtime=ToolRuntime(
-            [
-                LocalTimeTool(
-                    now_fn=lambda: datetime(
-                        2026,
-                        7,
-                        30,
-                        9,
-                        30,
-                        tzinfo=ZoneInfo("Asia/Ho_Chi_Minh"),
-                    )
-                )
-            ]
+            [ReadOnlyInspectTool()]
         ),
         options=RuntimeOptions(turn_workflow="shadow"),
     )
 
     result = runtime.run_controlled_workflow(
-        "Cho tôi biết giờ local",
-        explicit_call=ToolCall("local_time.now", {}),
+        "Cho tôi biết cấu trúc knowledge",
+        explicit_call=ToolCall("knowledge.inspect", {}),
         source="voice",
     )
     wire_events = [

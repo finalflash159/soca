@@ -100,6 +100,31 @@ describe("parseEngineEvent", () => {
     expect(event?.event).toBe("llm_catalog");
   });
 
+  it("preserves structured citations on a completed chat event", () => {
+    const event = parseEngineEvent(
+      JSON.stringify({
+        event: "chat",
+        type: "done",
+        text: "Attention dùng query, key và value.",
+        citations: [
+          {
+            label: "K1",
+            path: "wiki/learning/attention.md",
+            title: "Attention",
+            line_start: 12,
+            line_end: 18,
+            source: "knowledge",
+          },
+        ],
+      }),
+    );
+
+    expect(event?.event).toBe("chat");
+    if (event?.event === "chat") {
+      expect(event.citations?.[0]?.path).toBe("wiki/learning/attention.md");
+    }
+  });
+
   it("parses the structured context token breakdown", () => {
     const event = parseEngineEvent(
       JSON.stringify({

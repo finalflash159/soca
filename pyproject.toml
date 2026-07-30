@@ -16,6 +16,7 @@ dependencies = [
     "scipy>=1.13",
     "tqdm>=4.66",
     "rich>=13.7", # pretty terminal output for the metrics logger
+    "markdown-it-py>=4.0,<5", # parse vault navigation metadata safely
     "click>=8.1", # CLI framework
     "huggingface-hub>=1.14.0",
     "llama-cpp-python>=0.3.0",

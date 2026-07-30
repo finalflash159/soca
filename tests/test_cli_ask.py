@@ -71,7 +71,7 @@ def write_vault(root: Path) -> None:
     )
 
 
-def test_ask_time_question_uses_tool_without_llm(tmp_path: Path) -> None:
+def test_ask_time_question_has_no_removed_local_time_tool(tmp_path: Path) -> None:
     result = CliRunner().invoke(
         main,
         [
@@ -80,15 +80,16 @@ def test_ask_time_question_uses_tool_without_llm(tmp_path: Path) -> None:
             "--vault",
             str(tmp_path),
             "--no-llm",
+            "--tool-router",
+            "deterministic",
             "--trace",
         ],
     )
 
     assert result.exit_code == 0, result.output
-    assert "Route: tool_direct" in result.output
-    assert "local_time.now" in result.output
-    assert "used_tool" in result.output
-    assert "used_llm" in result.output
+    assert "Route: blocked" in result.output
+    assert "local_time.now" not in result.output
+    assert "Tool calls" not in result.output
 
 
 def test_ask_without_llm_blocks_unsupported_request_without_a_tool_call(tmp_path: Path) -> None:

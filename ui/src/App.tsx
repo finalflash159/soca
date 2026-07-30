@@ -104,7 +104,8 @@ export function App({
   });
   const [input, setInput] = useState("");
   const [showHelp, setShowHelp] = useState(false);
-  const [workflowExpanded, setWorkflowExpanded] = useState(false);
+  const [workflowVisible, setWorkflowVisible] = useState(false);
+  const [retrievalVisible, setRetrievalVisible] = useState(false);
   const [commandIndex, setCommandIndex] = useState(0);
   const [settingsReturnMode, setSettingsReturnMode] = useState<
     "chat" | "voice"
@@ -281,6 +282,13 @@ export function App({
     }
   }
 
+  function sendChatTurn(text: string): void {
+    setWorkflowVisible(false);
+    setRetrievalVisible(false);
+    dispatch({ type: "user_message", text });
+    engine?.send({ cmd: "chat", text });
+  }
+
   function onSubmit(raw: string) {
     let text = raw.trim();
     if (text.startsWith("/") && selectedCommand) {
@@ -312,8 +320,7 @@ export function App({
             text: "Cú pháp: /k <câu hỏi> — ép dùng knowledge context",
           });
         } else {
-          dispatch({ type: "user_message", text });
-          engine?.send({ cmd: "chat", text });
+          sendChatTurn(text);
         }
         return;
       }
@@ -332,8 +339,21 @@ export function App({
       } else if (cmd === "/context") {
         showInfo("context");
       } else if (cmd === "/workflow") {
-        setWorkflowExpanded((expanded) => !expanded);
         dispatch({ type: "clear_info" });
+        if (state.workflowEvents.length === 0) {
+          dispatch({ type: "system_message", text: "Chưa có workflow trace cho lượt hiện tại." });
+        } else {
+          setWorkflowVisible((visible) => !visible);
+          setRetrievalVisible(false);
+        }
+      } else if (cmd === "/retrieval") {
+        dispatch({ type: "clear_info" });
+        if (!state.retrievalTrace) {
+          dispatch({ type: "system_message", text: "Lượt hiện tại không có retrieval trace." });
+        } else {
+          setRetrievalVisible((visible) => !visible);
+          setWorkflowVisible(false);
+        }
       } else if (cmd === "/listen") {
         dispatch({ type: "clear_info" });
         switchMode("voice");
@@ -382,9 +402,7 @@ export function App({
       });
       return;
     }
-    setWorkflowExpanded(false);
-    dispatch({ type: "user_message", text });
-    engine?.send({ cmd: "chat", text });
+    sendChatTurn(text);
   }
 
   const llm = state.llmConfig
@@ -479,14 +497,14 @@ export function App({
         />
       ) : null}
 
-      {state.workflowEvents.length > 0 ? (
+      {workflowVisible && state.workflowEvents.length > 0 ? (
         <WorkflowInspector
           events={state.workflowEvents}
           pendingAnswer={state.pendingAnswer}
           terminalStatus={state.workflowTerminalStatus}
-          expanded={workflowExpanded}
+          expanded
           width={panelWidth}
-          onToggle={() => setWorkflowExpanded((expanded) => !expanded)}
+          onToggle={() => setWorkflowVisible(false)}
         />
       ) : null}
 
@@ -516,7 +534,7 @@ export function App({
         />
       ) : null}
 
-      {state.retrievalTrace ? (
+      {retrievalVisible && state.retrievalTrace ? (
         <Box paddingX={1} marginTop={1}>
           <Panel
             title="retrieval"
@@ -526,20 +544,6 @@ export function App({
           >
             <RetrievalInspector trace={state.retrievalTrace} width={panelWidth - 2} />
           </Panel>
-        </Box>
-      ) : null}
-
-      {state.mode !== "settings" && state.routerTier !== "none" ? (
-        <Box paddingX={1} flexDirection="column">
-          <Text
-            color={COLOR.muted}
-          >{`router ${state.routerTier} · ${state.routerLatencyMs.toFixed(1)}ms`}</Text>
-          <Text color={state.memoryMode === "degraded" ? ROLE.danger : COLOR.muted}>
-            memory {state.memoryMode} · {state.memoryHits} hits
-            {state.memoryTelemetry?.background_status
-              ? ` · summary ${state.memoryTelemetry.background_status}`
-              : ""}
-          </Text>
         </Box>
       ) : null}
 

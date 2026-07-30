@@ -5,19 +5,19 @@
 {"id":"knowledge-005","text":"Ngân sách ăn uống tháng này còn bao nhiêu?","tool":"knowledge.search","argument_policy":"raw_query"}
 {"id":"knowledge-006","text":"RAG hiện tại của dự án chạy qua những bước nào?","tool":"knowledge.search","argument_policy":"raw_query"}
 {"id":"knowledge-007","text":"Nếu tôi hỏi vấn đề sức khỏe thì SoCa phải cảnh báo gì?","tool":"knowledge.search","argument_policy":"raw_query"}
-{"id":"time-001","text":"Bây giờ là mấy giờ?","tool":"local_time.now","argument_policy":"none"}
-{"id":"time-002","text":"Cho tôi biết giờ hiện tại","tool":"local_time.now","argument_policy":"none"}
-{"id":"time-003","text":"Bây giờ ở Hà Nội là mấy giờ?","tool":"local_time.now","argument_policy":"none"}
-{"id":"time-004","text":"Hiện tại là mấy giờ rồi nhỉ","tool":"local_time.now","argument_policy":"none"}
-{"id":"time-005","text":"Múi giờ Việt Nam đang là mấy giờ","tool":"local_time.now","argument_policy":"none"}
-{"id":"time-006","text":"Bạn xem giúp thời gian hiện tại với","tool":"local_time.now","argument_policy":"none"}
-{"id":"time-007","text":"Giờ địa phương lúc này là bao nhiêu","tool":"local_time.now","argument_policy":"none"}
-{"id":"time-008","text":"Tôi cần biết đồng hồ hiện đang chỉ mấy giờ","tool":"local_time.now","argument_policy":"none"}
-{"id":"time-009","text":"Hôm nay là ngày bao nhiêu và mấy giờ","tool":"local_time.now","argument_policy":"none"}
-{"id":"time-010","text":"Bây giờ theo giờ Việt Nam là bao nhiêu","tool":"local_time.now","argument_policy":"none"}
-{"id":"time-011","text":"Có thể đọc giờ hiện tại cho tôi không","tool":"local_time.now","argument_policy":"none"}
-{"id":"time-012","text":"Thời điểm này ở đây là mấy giờ","tool":"local_time.now","argument_policy":"none"}
-{"id":"time-013","text":"Mình muốn xem ngày giờ hiện tại","tool":"local_time.now","argument_policy":"none"}
+{"id":"catalog-001","text":"Kho ghi chú hiện có những mảng kiến thức nào?","tool":"knowledge.catalog","argument_policy":"none"}
+{"id":"catalog-002","text":"Ngoài ghi chú Bayes thì tài liệu của tôi còn những gì?","tool":"knowledge.catalog","argument_policy":"none"}
+{"id":"catalog-003","text":"Các note trong vault liên kết với nhau như thế nào?","tool":"knowledge.catalog","argument_policy":"none"}
+{"id":"catalog-004","text":"Note nào đang trỏ tới ghi chú về ONNX Runtime?","tool":"knowledge.catalog","argument_policy":"none"}
+{"id":"catalog-005","text":"Cho tôi xem tổng quan cấu trúc kho kiến thức hiện tại","tool":"knowledge.catalog","argument_policy":"none"}
+{"id":"catalog-006","text":"Tôi đã lưu tài liệu ở những nhóm nào rồi?","tool":"knowledge.catalog","argument_policy":"none"}
+{"id":"catalog-007","text":"Liệt kê bản đồ tài liệu của tôi","tool":"knowledge.catalog","argument_policy":"none"}
+{"id":"catalog-008","text":"Ghi chú RAG có backlink tới tài liệu nào?","tool":"knowledge.catalog","argument_policy":"none"}
+{"id":"catalog-009","text":"Những chủ đề nào đang có trong kho kiến thức?","tool":"knowledge.catalog","argument_policy":"none"}
+{"id":"catalog-010","text":"Tài liệu của tôi được tổ chức thành những thư mục nào?","tool":"knowledge.catalog","argument_policy":"none"}
+{"id":"catalog-011","text":"Có liên kết nào chưa trỏ tới note tồn tại không?","tool":"knowledge.catalog","argument_policy":"none"}
+{"id":"catalog-012","text":"Cho tôi biết quan hệ giữa các ghi chú","tool":"knowledge.catalog","argument_policy":"none"}
+{"id":"catalog-013","text":"Ngoài nội dung vừa nhắc tới, tôi còn cất chủ đề nào khác?","tool":"knowledge.catalog","argument_policy":"none"}
 {"id":"knowledge-008","text":"Trong wiki có ghi cách dùng hybrid retrieval không?","tool":"knowledge.search","argument_policy":"raw_query"}
 {"id":"knowledge-009","text":"Tìm ghi chú về cách đánh giá semantic router","tool":"knowledge.search","argument_policy":"raw_query"}
 {"id":"knowledge-010","text":"Các nguyên tắc guardrail của SoCa là gì?","tool":"knowledge.search","argument_policy":"raw_query"}

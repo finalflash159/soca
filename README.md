@@ -140,8 +140,7 @@ Profiles drive both voice and text; `--llm-model` overrides both. Details:
 `soca ask` is the fastest way to exercise routing without mic/TTS:
 
 ```bash
-uv run soca ask "time:" --trace                  # deterministic local time tool
-uv run soca ask "mấy giờ rồi?" --trace             # semantic local time when the embedder is provisioned
+uv run soca ask "mấy giờ rồi?" --trace             # truthful out-of-scope response; no time tool is installed
 uv run soca ask "wiki: chất đạm là gì?" --trace     # knowledge search
 uv run soca ask "memory: lựa chọn TTS của tôi" --trace # private memory search
 uv run soca ask "đọc private/secrets.md" --no-llm --trace   # guardrail block
@@ -159,7 +158,7 @@ soca/
   tts/         Valtec ONNX Vietnamese TTS runtime, config, and factory
   knowledge/   Markdown vault search and context packing
   memory/      long-term profile memory + RAM session memory
-  tools/       ToolRuntime, tool specs, local time/knowledge tools
+  tools/       ToolRuntime, tool specs, knowledge/memory tools
   app/         presentation: CLI helpers + engine (UI itself lives in ui/, Ink)
 
 docs/          system design (start at docs/README.md)

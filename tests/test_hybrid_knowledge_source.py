@@ -127,6 +127,28 @@ def test_hybrid_keeps_two_chunks_from_one_document_as_distinct_hits(tmp_path: Pa
     assert all(hit.fusion_score is not None for hit in hits)
 
 
+def test_custom_lexical_fusion_aggregates_chunks_at_document_boundary(
+    tmp_path: Path,
+) -> None:
+    _make_vault(tmp_path)
+    source = _source(
+        tmp_path,
+        tmp_path / "index",
+        model=FakeEmbeddingModel(),
+        config=HybridConfig(
+            sparse_backend="lexical_custom",
+            dense_weight=0.25,
+        ),
+    )
+
+    hits = source.search("protein", limit=10)
+
+    paths = [hit.document.path for hit in hits]
+    assert len(paths) == len(set(paths))
+    assert all(hit.document.id in paths for hit in hits)
+    assert all(hit.fusion_score is not None for hit in hits)
+
+
 def test_dense_retrieval_is_not_blocked_by_a_lexical_miss(tmp_path: Path) -> None:
     _make_vault(tmp_path)
     model = FakeEmbeddingModel()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from soca.core.llm_tool_router import LLMToolRouter
 from soca.core.router_cascade import CascadeToolRouter
@@ -22,13 +23,19 @@ def build_runtime_tool_router(
     config: ToolRouterConfig,
     embedding_model: EmbeddingModel | None,
     voice: bool,
+    vault_manifest_provider: Callable[[], str] | None = None,
 ) -> RuntimeToolRouter:
     if config.mode == "deterministic":
         return deterministic
     if config.mode == "llm":
         if llm is None or (voice and not config.enabled_in_voice):
             raise RuntimeError("llm_tool_router_unavailable")
-        return LLMToolRouter(llm, tool_runtime, config=config)
+        return LLMToolRouter(
+            llm,
+            tool_runtime,
+            config=config,
+            vault_manifest_provider=vault_manifest_provider,
+        )
 
     # Capability routing is surface-independent: the ASR transcript enters
     # the same semantic policy as text.  Only the optional LLM-router tier has
@@ -47,7 +54,12 @@ def build_runtime_tool_router(
     if llm is not None and (not voice or config.enabled_in_voice):
         # Deterministic and semantic tiers have already had their chance. The
         # LLM tier is a bounded capability classifier, not an answer fallback.
-        llm_router = LLMToolRouter(llm, tool_runtime, config=config)
+        llm_router = LLMToolRouter(
+            llm,
+            tool_runtime,
+            config=config,
+            vault_manifest_provider=vault_manifest_provider,
+        )
     if semantic_router is None and llm_router is None:
         return deterministic
     return CascadeToolRouter(deterministic, semantic_router, llm_router)

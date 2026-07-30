@@ -26,12 +26,19 @@ class SemanticRouterConfig:
     enabled: bool = False
     threshold: float = 0.0
     margin: float = 0.0
+    direct_tool_threshold: float = 0.85
+    direct_tool_retrieval_margin: float = 0.01
     examples_path: Path | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.enabled, bool):
             raise ValueError("semantic enabled must be a boolean")
-        for name, value in (("threshold", self.threshold), ("margin", self.margin)):
+        for name, value in (
+            ("threshold", self.threshold),
+            ("margin", self.margin),
+            ("direct_tool_threshold", self.direct_tool_threshold),
+            ("direct_tool_retrieval_margin", self.direct_tool_retrieval_margin),
+        ):
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 raise ValueError(f"semantic {name} must be numeric")
             if not math.isfinite(value) or not 0.0 <= value <= 1.0:
@@ -192,6 +199,8 @@ def parse_route_decision(raw: str, *, max_chars: int) -> ParsedRouteDecision:
         raise RouterOutputError("duplicate_sources")
     if route == "direct_tool" and handler is None:
         raise RouterOutputError("direct_route_missing_handler")
+    if route == "retrieval_request" and not sources:
+        raise RouterOutputError("retrieval_missing_sources")
     if route != "direct_tool" and handler is not None:
         raise RouterOutputError("non_direct_route_has_handler")
     if route != "retrieval_request" and sources:

@@ -29,6 +29,10 @@ from soca.app.voice_controller import (
 )
 from soca.config import DEFAULT_SETTINGS, LlmSettings, SecretStore, load_settings, save_settings
 from soca.core import AudioSink, ResolvedVoiceRuntimeConfig
+from soca.core.answer_validation import (
+    answer_text_without_citation_labels,
+    citation_records,
+)
 from soca.core.context_budget import (
     PromptAssembler,
     PromptBudgetError,
@@ -1542,10 +1546,14 @@ class SocaEngine:
                 {
                     "event": "chat",
                     "type": "done",
-                    "text": result.response_text,
+                    "text": answer_text_without_citation_labels(
+                        result.response_text,
+                        result.citations,
+                    ),
                     "route": result.route.value,
                     "blocked": result.blocked,
                     "usage": usage,
+                    "citations": list(citation_records(result.citations)),
                 }
             )
             terminal_emitted = True

@@ -1,5 +1,5 @@
-{"id":"vp-001-text","parity_id":"vp-001","family":"local-time","split":"train","input_mode":"text","transcript":"Bây giờ là mấy giờ?","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
-{"id":"vp-001-asr","parity_id":"vp-001","family":"local-time","split":"train","input_mode":"asr","transcript":"bây giờ là mấy giờ","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"vp-001-text","parity_id":"vp-001","family":"realtime-unavailable","split":"train","input_mode":"text","transcript":"Bây giờ là mấy giờ?","disposition":"out_of_scope","sources":[]}
+{"id":"vp-001-asr","parity_id":"vp-001","family":"realtime-unavailable","split":"train","input_mode":"asr","transcript":"bây giờ là mấy giờ","disposition":"out_of_scope","sources":[]}
 {"id":"vp-002-text","parity_id":"vp-002","family":"knowledge","split":"train","input_mode":"text","transcript":"Ghi chú của tôi nói về Bayes thế nào?","disposition":"retrieval_request","sources":["knowledge"]}
 {"id":"vp-002-asr","parity_id":"vp-002","family":"knowledge","split":"train","input_mode":"asr","transcript":"ghi chú của tôi nói về bay ét thế nào","disposition":"retrieval_request","sources":["knowledge"]}
 {"id":"vp-003-text","parity_id":"vp-003","family":"memory","split":"validation","input_mode":"text","transcript":"Tôi đã chọn TTS nào và vì sao?","disposition":"retrieval_request","sources":["memory"]}

@@ -1,4 +1,5 @@
 import type {
+  CitationRecord,
   ContextEvent,
   EngineEvent,
   LlmConfigEvent,
@@ -26,7 +27,7 @@ export type VoiceState =
 export interface TimelineEntry {
   kind: "user" | "soca" | "system" | "error";
   text: string;
-  citations?: string[];
+  citations?: CitationRecord[];
   latencyMs?: number;
 }
 
@@ -79,6 +80,7 @@ export interface LlmProviderStatus {
 }
 
 export interface KnowledgeIndexStatus {
+  vault_path?: string;
   sparse_state: string;
   dense_state: string;
   revision: number;
@@ -210,6 +212,20 @@ function push(
   return [...timeline.slice(-199), entry];
 }
 
+function citationRecords(value: unknown): CitationRecord[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is CitationRecord => {
+    if (typeof item !== "object" || item === null) return false;
+    const record = item as Record<string, unknown>;
+    return (
+      typeof record["label"] === "string" &&
+      typeof record["path"] === "string" &&
+      typeof record["title"] === "string" &&
+      (record["source"] === "knowledge" || record["source"] === "memory")
+    );
+  });
+}
+
 // Voice event type -> UI state, mirroring the Textual _VOICE_RENDERERS table.
 function reduceVoiceCore(
   state: AppState,
@@ -308,6 +324,7 @@ function reduceVoiceCore(
         next.timeline = push(state.timeline, {
           kind: "soca",
           text: event.text,
+          citations: citationRecords(meta["citations"]),
           latencyMs: event.latency_ms ?? undefined,
         });
       }
@@ -451,6 +468,7 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
             timeline: push(state.timeline, {
               kind: "soca",
               text: event.text ?? "",
+              citations: event.citations ?? [],
               latencyMs:
                 event.usage &&
                 typeof event.usage["total_latency_ms"] === "number"
@@ -643,6 +661,7 @@ export function reduce(state: AppState, action: Action): AppState {
     case "user_message":
       return {
         ...state,
+        activeInfo: null,
         chatBusy: true,
         turnProgress: null,
         progressQueue: [],

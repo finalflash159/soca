@@ -344,7 +344,7 @@
       "license": "MIT",
       "license_url": "https://github.com/finalflash159/shrike-7/blob/main/LICENSE",
       "path": "wiki/project/assistant-runtime.md",
-      "sha256": "a1cbe3b84b663cafb32c2c5d98be6648f0817dc970098d3c3aa877f522568871",
+      "sha256": "370648df3ebb185bfff253ca6c4927a4bf96a053b239c08f109e8bd512bf2e75",
       "source": "repository:docs/05-assistant-runtime.md"
     },
     {
@@ -358,7 +358,7 @@
       "license": "MIT",
       "license_url": "https://github.com/finalflash159/shrike-7/blob/main/LICENSE",
       "path": "wiki/project/benchmarks.md",
-      "sha256": "d527b9883841e4ccabfc8a1ddf9e21f02b0f45ecd354c0badc9c386e7f612e7d",
+      "sha256": "4a305702860d557869c333fbdd616131942ecf040c5b25a60057f75c35d73186",
       "source": "repository:BENCHMARKS.md"
     }
   ],

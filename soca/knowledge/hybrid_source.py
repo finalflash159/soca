@@ -7,6 +7,7 @@ from threading import RLock
 from typing import Literal
 
 from soca.knowledge.base import KnowledgeDocument, KnowledgeHit
+from soca.knowledge.catalog import CatalogIndexSnapshot
 from soca.knowledge.index.dense_persistence import DenseIndexStore
 from soca.knowledge.index.models import VaultIndex
 from soca.knowledge.index.vault_index import VaultIndexer, VaultIndexStore
@@ -27,6 +28,7 @@ from soca.knowledge.retrievers.dense import DenseIndex, DenseRetriever, Embeddin
 from soca.knowledge.retrievers.linear import linear_score_fusion
 from soca.knowledge.retrievers.rrf import reciprocal_rank_fusion
 from soca.knowledge.retrievers.sparse_chunk import SparseChunkRetriever
+from soca.knowledge.retrievers.sparse_document import SparseDocumentRetriever
 
 LOGGER = logging.getLogger(__name__)
 RetrievalMode = Literal["cached_sparse", "hybrid"]
@@ -156,7 +158,9 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
         self._dense_index: DenseIndex | None = None
         self._last_dense_failure_reason = ""
         self._sparse_index: VaultIndex | None = None
-        self._sparse: SparseChunkRetriever | Bm25ChunkRetriever | None = None
+        self._sparse: (
+            SparseChunkRetriever | SparseDocumentRetriever | Bm25ChunkRetriever | None
+        ) = None
         self._index_lock = RLock()
         self._watcher: IndexWatcher | None = None
         if lifecycle not in {"legacy", "v2"}:
@@ -185,7 +189,7 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
     ) -> tuple[
         VaultIndex,
         DenseIndex | None,
-        SparseChunkRetriever | Bm25ChunkRetriever | None,
+        SparseChunkRetriever | SparseDocumentRetriever | Bm25ChunkRetriever | None,
     ]:
         with self._index_lock:
             self._last_dense_failure_reason = ""
@@ -236,7 +240,7 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
         sparse_hits: list[RankedHit] = []
         dense_hits: list[RankedHit] = []
         sparse_scores: dict[str, float] = {}
-        dense_scores: dict[str, float] = {}
+        sparse_document_hits: dict[str, KnowledgeHit] = {}
         sparse_state = "ready" if sparse is not None else "absent"
         dense_state = self._legacy_dense_state(dense_index, vault_index)
         unavailable_reason = self._last_dense_failure_reason
@@ -244,7 +248,17 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
             dense_state = "unavailable"
         retriever_limit = max(limit, self._config.per_retriever_limit)
         if sparse is not None:
-            sparse_hits = sparse.rank(query, limit=retriever_limit)
+            if isinstance(sparse, SparseDocumentRetriever):
+                document_hits = sparse.search(query, limit=retriever_limit)
+                sparse_document_hits = {
+                    hit.document.path: hit for hit in document_hits
+                }
+                sparse_hits = [
+                    RankedHit(hit.document.path, rank, hit.score)
+                    for rank, hit in enumerate(document_hits, start=1)
+                ]
+            else:
+                sparse_hits = sparse.rank(query, limit=retriever_limit)
             sparse_scores = {hit.chunk_id: hit.score for hit in sparse_hits}
 
         max_dense_score: float | None = None
@@ -258,15 +272,18 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
                 raise DenseUnavailableError("dense query failed") from exc
             else:
                 dense_hits = list(dense_ranking.hits)
-                dense_scores = {hit.chunk_id: hit.score for hit in dense_hits}
                 max_dense_score = dense_ranking.max_score
 
+        dense_score_map = self._document_dense_scores(vault_index, dense_hits)
         return self._build_batch(
             vault_index,
-            self._fuse(sparse_hits, dense_hits)[:limit],
+            self._fuse(vault_index, sparse_hits, dense_hits)[:limit],
             max_dense_score,
             sparse_scores=sparse_scores,
-            dense_scores=dense_scores,
+            dense_scores=dense_score_map,
+            sparse_hits=sparse_hits,
+            sparse_document_hits=sparse_document_hits,
+            dense_hits=dense_hits,
             sparse_state=sparse_state,
             dense_state=dense_state,
             unavailable_reason=unavailable_reason,
@@ -289,14 +306,24 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
         sparse_hits: list[RankedHit] = []
         dense_hits: list[RankedHit] = []
         sparse_scores: dict[str, float] = {}
-        dense_scores: dict[str, float] = {}
+        sparse_document_hits: dict[str, KnowledgeHit] = {}
         retriever_limit = max(limit, self._config.per_retriever_limit)
         if self._config.sparse_enabled:
             if self._sparse_index is not vault_index:
                 self._sparse = self._new_sparse_retriever(vault_index)
                 self._sparse_index = vault_index
             assert self._sparse is not None
-            sparse_hits = self._sparse.rank(query, limit=retriever_limit)
+            if isinstance(self._sparse, SparseDocumentRetriever):
+                document_hits = self._sparse.search(query, limit=retriever_limit)
+                sparse_document_hits = {
+                    hit.document.path: hit for hit in document_hits
+                }
+                sparse_hits = [
+                    RankedHit(hit.document.path, rank, hit.score)
+                    for rank, hit in enumerate(document_hits, start=1)
+                ]
+            else:
+                sparse_hits = self._sparse.rank(query, limit=retriever_limit)
             sparse_scores = {hit.chunk_id: hit.score for hit in sparse_hits}
         max_dense_score: float | None = None
         sparse_state = _enum_value(snapshot.sparse_state)
@@ -317,16 +344,19 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
                 raise DenseUnavailableError("dense query failed") from exc
             else:
                 dense_hits = list(dense_ranking.hits)
-                dense_scores = {hit.chunk_id: hit.score for hit in dense_hits}
                 max_dense_score = dense_ranking.max_score
         elif self._config.dense_enabled:
             raise DenseUnavailableError(f"dense index is not ready: {dense_state}")
+        dense_score_map = self._document_dense_scores(vault_index, dense_hits)
         return self._build_batch(
             vault_index,
-            self._fuse(sparse_hits, dense_hits)[:limit],
+            self._fuse(vault_index, sparse_hits, dense_hits)[:limit],
             max_dense_score,
             sparse_scores=sparse_scores,
-            dense_scores=dense_scores,
+            dense_scores=dense_score_map,
+            sparse_hits=sparse_hits,
+            sparse_document_hits=sparse_document_hits,
+            dense_hits=dense_hits,
             sparse_state=sparse_state if self._config.sparse_enabled else "absent",
             dense_state=dense_state if self._config.dense_enabled else "absent",
             unavailable_reason=unavailable_reason,
@@ -366,13 +396,84 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
         *,
         sparse_scores: dict[str, float],
         dense_scores: dict[str, float],
+        sparse_hits: list[RankedHit],
+        sparse_document_hits: dict[str, KnowledgeHit],
+        dense_hits: list[RankedHit],
         sparse_state: str,
         dense_state: str,
         unavailable_reason: str,
     ) -> RetrievalBatch:
         hits: list[KnowledgeHit] = []
+        sparse_by_id = {hit.chunk_id: hit for hit in sparse_hits}
+        dense_candidates: dict[str, list[RankedHit]] = {}
+        for hit in dense_hits:
+            chunk = vault_index.chunk_by_id(hit.chunk_id)
+            if chunk is None:
+                continue
+            dense_candidates.setdefault(chunk.document_path, []).append(hit)
+        dense_by_document = {
+            path: self._best_dense_representative(vault_index, candidates)
+            or max(candidates, key=lambda hit: hit.score)
+            for path, candidates in dense_candidates.items()
+        }
+
         for chunk_id, score in fused:
             chunk = vault_index.chunk_by_id(chunk_id)
+            if chunk is None and self._config.sparse_backend == "lexical_custom":
+                document = vault_index.document_by_path(chunk_id)
+                if document is None:
+                    LOGGER.warning("Retriever returned an unknown document id")
+                    continue
+                dense_hit = dense_by_document.get(chunk_id)
+                sparse_document_hit = sparse_document_hits.get(chunk_id)
+                sparse_hit = sparse_by_id.get(chunk_id)
+                if dense_hit is not None:
+                    representative_chunk = vault_index.chunk_by_id(dense_hit.chunk_id)
+                    if representative_chunk is None:
+                        continue
+                    if _is_metadata_only_chunk(representative_chunk.text) and (
+                        sparse_document_hit is not None
+                    ):
+                        snippet = sparse_document_hit.snippet
+                        line_start = sparse_document_hit.line_start
+                        line_end = sparse_document_hit.line_end
+                    else:
+                        # Keep document-level metadata/body for relevance and
+                        # catalog provenance; the snippet remains the selected
+                        # chunk so the prompt does not receive the whole file.
+                        snippet = representative_chunk.text
+                        line_start = representative_chunk.line_start
+                        line_end = representative_chunk.line_end
+                elif sparse_document_hit is not None:
+                    snippet = sparse_document_hit.snippet
+                    line_start = sparse_document_hit.line_start
+                    line_end = sparse_document_hit.line_end
+                elif sparse_hit is not None:
+                    snippet = self._document_snippet(document)
+                    line_start = None
+                    line_end = None
+                else:
+                    continue
+                hits.append(
+                    KnowledgeHit(
+                        document=document,
+                        score=score,
+                        snippet=snippet,
+                        line_start=line_start,
+                        line_end=line_end,
+                        retrieval_backend=(
+                            "hybrid"
+                            if chunk_id in sparse_scores and chunk_id in dense_scores
+                            else "dense"
+                            if chunk_id in dense_scores
+                            else self._config.sparse_backend
+                        ),
+                        sparse_score=sparse_scores.get(chunk_id),
+                        dense_score=dense_scores.get(chunk_id),
+                        fusion_score=score,
+                    )
+                )
+                continue
             if chunk is None:
                 LOGGER.warning("Retriever returned an unknown chunk id")
                 continue
@@ -432,19 +533,33 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
     def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
         return list(self.retrieve(query, limit=limit).hits)
 
+    def catalog_index_snapshot(self) -> CatalogIndexSnapshot:
+        if self._lifecycle == "v2":
+            assert self._coordinator is not None
+            snapshot = self._coordinator.snapshot()
+            return CatalogIndexSnapshot(
+                revision=snapshot.revision,
+                index=snapshot.sparse_index,
+            )
+        vault_index, _, _ = self._refresh_indexes()
+        return CatalogIndexSnapshot(revision=0, index=vault_index)
+
     def _new_sparse_retriever(
         self,
         vault_index: VaultIndex,
-    ) -> SparseChunkRetriever | Bm25ChunkRetriever:
+    ) -> SparseChunkRetriever | SparseDocumentRetriever | Bm25ChunkRetriever:
         if self._config.sparse_backend == "bm25":
             return Bm25ChunkRetriever(vault_index.chunks)
-        return SparseChunkRetriever(vault_index.chunks, self.scoring)
+        return SparseDocumentRetriever(vault_index.documents, self.scoring)
 
     def _fuse(
         self,
+        vault_index: VaultIndex,
         sparse_hits: list[RankedHit],
         dense_hits: list[RankedHit],
     ) -> tuple[tuple[str, float], ...]:
+        if self._config.sparse_backend == "lexical_custom":
+            return self._fuse_documents(vault_index, sparse_hits, dense_hits)
         if self._config.fusion == "linear":
             return linear_score_fusion(
                 sparse_hits,
@@ -453,6 +568,78 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
             )
         lists = tuple(hits for hits in (sparse_hits, dense_hits) if hits)
         return reciprocal_rank_fusion(lists, k=self._config.rrf_k)
+
+    def _fuse_documents(
+        self,
+        vault_index: VaultIndex,
+        sparse_hits: list[RankedHit],
+        dense_hits: list[RankedHit],
+    ) -> tuple[tuple[str, float], ...]:
+        sparse_by_document = {hit.chunk_id: hit for hit in sparse_hits}
+        dense_candidates: dict[str, list[RankedHit]] = {}
+        for hit in dense_hits:
+            chunk = vault_index.chunk_by_id(hit.chunk_id)
+            if chunk is None:
+                continue
+            dense_candidates.setdefault(chunk.document_path, []).append(hit)
+
+        dense_by_document = {
+            path: RankedHit(
+                path,
+                max(candidates, key=lambda hit: hit.score).rank,
+                max(candidates, key=lambda hit: hit.score).score,
+            )
+            for path, candidates in dense_candidates.items()
+        }
+
+        sparse_ranked = tuple(
+            RankedHit(path, rank, hit.score)
+            for rank, (path, hit) in enumerate(
+                sparse_by_document.items(),
+                start=1,
+            )
+        )
+        dense_ranked = tuple(dense_by_document.values())
+        if self._config.fusion == "linear":
+            return linear_score_fusion(
+                sparse_ranked,
+                dense_ranked,
+                dense_weight=self._config.dense_weight,
+            )
+        lists = tuple(hits for hits in (sparse_ranked, dense_ranked) if hits)
+        return reciprocal_rank_fusion(lists, k=self._config.rrf_k)
+
+    def _document_dense_scores(
+        self,
+        vault_index: VaultIndex,
+        dense_hits: list[RankedHit],
+    ) -> dict[str, float]:
+        if self._config.sparse_backend != "lexical_custom":
+            return {hit.chunk_id: hit.score for hit in dense_hits}
+        scores: dict[str, float] = {}
+        for hit in dense_hits:
+            chunk = vault_index.chunk_by_id(hit.chunk_id)
+            if chunk is None:
+                continue
+            scores[chunk.document_path] = max(scores.get(chunk.document_path, -1.0), hit.score)
+        return scores
+
+    @staticmethod
+    def _best_dense_representative(
+        vault_index: VaultIndex,
+        hits: list[RankedHit],
+    ) -> RankedHit | None:
+        candidates = [
+            hit
+            for hit in hits
+            if (chunk := vault_index.chunk_by_id(hit.chunk_id)) is not None
+            and not _is_metadata_only_chunk(chunk.text)
+        ]
+        return max(candidates, key=lambda hit: hit.score) if candidates else None
+
+    @staticmethod
+    def _document_snippet(document: KnowledgeDocument) -> str:
+        return document.text
 
 
 def _enum_value(value: object) -> str:
@@ -469,3 +656,20 @@ def _score_separation(scores: dict[str, float]) -> float | None:
     if len(values) < 2:
         return None
     return float(values[0] - values[1])
+
+
+def _is_metadata_only_chunk(text: str) -> bool:
+    """Identify a YAML frontmatter-only Markdown chunk.
+
+    Frontmatter is useful catalog metadata but should not be used as the
+    answer snippet when a content chunk for the same document is available.
+    This parser is format-based and deliberately independent of vault topics.
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return False
+    try:
+        closing = next(index for index, line in enumerate(lines[1:], start=1) if line.strip() == "---")
+    except StopIteration:
+        return False
+    return not any(line.strip() for line in lines[closing + 1 :])

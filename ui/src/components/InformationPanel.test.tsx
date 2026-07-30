@@ -48,6 +48,7 @@ describe("InformationPanel", () => {
           voice: "NF",
         }}
         knowledge={{
+          vault_path: "/tmp/real-rag-vault",
           sparse_state: "ready",
           dense_state: "ready",
           revision: 1,
@@ -77,6 +78,7 @@ describe("InformationPanel", () => {
     expect(frame).toContain("remote · openrouter · some/model");
     expect(frame).toContain("Voice runtime");
     expect(frame).toContain("ASR phowhisper_small");
+    expect(frame).toContain("vault · /tmp/real-rag-vault");
     expect(frame).not.toContain("baseline");
     panel.unmount();
   });

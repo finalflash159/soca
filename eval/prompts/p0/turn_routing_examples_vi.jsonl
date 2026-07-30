@@ -1,5 +1,5 @@
-{"id":"ex-time-001","family":"example-time","text":"Bây giờ là mấy giờ?","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
-{"id":"ex-time-002","family":"example-time","text":"Cho tôi biết giờ địa phương hiện tại","disposition":"direct_tool","sources":[],"tool":"local_time.now"}
+{"id":"ex-catalog-001","family":"knowledge-catalog","text":"Kho ghi chú hiện có những mảng nào?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"ex-catalog-002","family":"knowledge-catalog","text":"Các note liên kết với nhau thế nào?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
 {"id":"ex-knowledge-001","family":"example-knowledge","text":"Ghi chú của tôi nói về định lý Bayes thế nào?","disposition":"retrieval_request","sources":["knowledge"]}
 {"id":"ex-knowledge-002","family":"example-knowledge","text":"Trong tài liệu dự án có ghi kiến trúc RAG ra sao không?","disposition":"retrieval_request","sources":["knowledge"]}
 {"id":"ex-memory-001","family":"example-memory","text":"Tôi đã quyết chọn TTS nào và vì sao?","disposition":"retrieval_request","sources":["memory"]}

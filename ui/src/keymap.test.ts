@@ -14,6 +14,12 @@ describe("slash command registry", () => {
     expect(filterSlashCommands("/").map((command) => command.value)).toContain(
       "/memory-proposals",
     );
+    expect(filterSlashCommands("/").map((command) => command.value)).toContain(
+      "/workflow",
+    );
+    expect(filterSlashCommands("/").map((command) => command.value)).toContain(
+      "/retrieval",
+    );
     expect(filterSlashCommands("/").map((command) => command.value)).not.toContain(
       "/inspect",
     );

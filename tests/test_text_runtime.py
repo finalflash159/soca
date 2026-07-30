@@ -120,8 +120,8 @@ def test_text_runtime_uses_shared_source_and_k_query_returns_citation(
 def test_session_memory_records_turn_without_vault(tmp_path: Path) -> None:
     bundle = build_text_runtime(_config(tmp_path / "absent", no_memory=False))
 
-    # A deterministic tool turn still appends to session memory.
-    bundle.runtime.run_text_turn("time:", source="test")
+    # A deterministic memory tool turn still appends to session memory.
+    bundle.runtime.run_text_turn("memory: something", source="test")
 
     assert bundle.session_memory is not None
     assert [turn.role for turn in bundle.session_memory.turns] == ["user", "assistant"]
@@ -135,7 +135,7 @@ def test_text_runtime_uses_injected_session_memory(tmp_path: Path) -> None:
     )
 
     assert bundle.session_memory is shared
-    bundle.runtime.run_text_turn("time:", source="test")
+    bundle.runtime.run_text_turn("memory: something", source="test")
     assert len(shared.turns) == 2
 
 

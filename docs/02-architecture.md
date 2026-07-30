@@ -25,7 +25,7 @@ soca/
 ├── tts/                    # Valtec Vietnamese TTS runtime + factory
 ├── knowledge/              # Markdown vault + retrieval context
 ├── memory/                 # Long-term (profile.md) + session memory (RAM)
-├── tools/                  # ToolRuntime: local_time, knowledge tools
+├── tools/                  # ToolRuntime: knowledge and memory tools
 └── app/                    # Presentation layer
     ├── cli ↔ voice_loop.py / text_chat.py / text_runtime.py / console.py / usage_view.py
     └── tui/                # Textual app: app.py, voice.py, widgets.py, voice_view.py, ...

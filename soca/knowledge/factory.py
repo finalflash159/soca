@@ -12,12 +12,17 @@ from soca.knowledge.indexing.models import load_model
 RetrievalMode = Literal["cached_sparse", "chunk_sparse", "hybrid"]
 DenseBackend = Literal["aiteamvn_v2"]
 IndexLifecycle = Literal["legacy", "v2"]
+SparseBackend = Literal["bm25", "lexical_custom"]
+FusionMode = Literal["linear", "rrf"]
 
 
 @dataclass(frozen=True)
 class RetrievalConfig:
     mode: RetrievalMode = "hybrid"
     dense_backend: str = "aiteamvn_v2"
+    sparse_backend: SparseBackend = "lexical_custom"
+    fusion: FusionMode = "linear"
+    dense_weight: float = 0.25
     rrf_k: int = 60
     per_retriever_limit: int = 12
     lifecycle: IndexLifecycle = "v2"
@@ -29,6 +34,16 @@ class RetrievalConfig:
             raise ValueError("unknown retrieval mode")
         if self.mode == "hybrid" and self.dense_backend != "aiteamvn_v2":
             raise ValueError("unknown dense backend")
+        if self.sparse_backend not in {"bm25", "lexical_custom"}:
+            raise ValueError("unknown sparse backend")
+        if self.fusion not in {"linear", "rrf"}:
+            raise ValueError("unknown fusion mode")
+        if (
+            isinstance(self.dense_weight, bool)
+            or not isinstance(self.dense_weight, (int, float))
+            or not 0.0 <= float(self.dense_weight) <= 1.0
+        ):
+            raise ValueError("dense_weight must be in [0, 1]")
         if self.lifecycle not in {"legacy", "v2"}:
             raise ValueError("unknown index lifecycle")
         if not isinstance(self.watcher_enabled, bool):
@@ -82,6 +97,9 @@ def build_retrieval_source(
                 per_retriever_limit=resolved.per_retriever_limit,
                 sparse_enabled=True,
                 dense_enabled=False,
+                sparse_backend=resolved.sparse_backend,
+                fusion=resolved.fusion,
+                dense_weight=resolved.dense_weight,
             ),
             **common,
         )
@@ -94,9 +112,9 @@ def build_retrieval_source(
         config=HybridConfig(
             rrf_k=resolved.rrf_k,
             per_retriever_limit=resolved.per_retriever_limit,
-            sparse_backend="bm25",
-            fusion="linear",
-            dense_weight=0.75,
+            sparse_backend=resolved.sparse_backend,
+            fusion=resolved.fusion,
+            dense_weight=resolved.dense_weight,
         ),
         **common,
     )

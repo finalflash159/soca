@@ -12,15 +12,18 @@ from soca.tools.base import (
     TransientToolError,
     object_schema,
 )
-from soca.tools.knowledge_tools import KnowledgeReadTool, KnowledgeSearchTool
-from soca.tools.local_time import LocalTimeTool
+from soca.tools.knowledge_tools import (
+    KnowledgeInspectTool,
+    KnowledgeReadTool,
+    KnowledgeSearchTool,
+)
 from soca.tools.memory_tools import MemoryProposeNoteTool, MemorySearchTool
 
 __all__ = [
+    "KnowledgeInspectTool",
     "KnowledgeReadTool",
     "KnowledgeSearchTool",
     "InvalidToolInput",
-    "LocalTimeTool",
     "MemoryProposeNoteTool",
     "MemorySearchTool",
     "SideEffectLevel",
