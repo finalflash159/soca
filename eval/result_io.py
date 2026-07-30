@@ -9,7 +9,10 @@ import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+EvalRunType = Literal["benchmark", "smoke", "demo", "fake"]
+_EVAL_RUN_TYPES = frozenset({"benchmark", "smoke", "demo", "fake"})
 
 
 @dataclass(frozen=True)
@@ -25,6 +28,7 @@ class EvalRunPaths:
 class EvalArtifactMetadata:
     schema_version: str
     suite: str
+    run_type: EvalRunType
     git_commit: str
     generated_at_utc: str
     python_version: str
@@ -40,6 +44,7 @@ class EvalArtifactMetadata:
         return {
             "schema_version": self.schema_version,
             "suite": self.suite,
+            "run_type": self.run_type,
             "git_commit": self.git_commit,
             "generated_at_utc": self.generated_at_utc,
             "environment": {
@@ -132,13 +137,16 @@ def _hardware_metadata() -> dict[str, Any]:
 def make_eval_artifact_metadata(
     *,
     suite: str,
+    run_type: EvalRunType,
     data_files: tuple[Path, ...],
     config: dict[str, Any] | None = None,
-    schema_version: str = "soca-eval-artifact-v1",
+    schema_version: str = "soca-eval-artifact-v2",
     ignored_untracked_paths: tuple[Path, ...] = (),
 ) -> EvalArtifactMetadata:
     """Capture provenance required for a reproducible quality result."""
 
+    if run_type not in _EVAL_RUN_TYPES:
+        raise ValueError(f"unsupported eval run type: {run_type}")
     source_dirty, source_state_digest = _git_source_state(ignored_untracked_paths)
     files = tuple(
         {
@@ -151,6 +159,7 @@ def make_eval_artifact_metadata(
     return EvalArtifactMetadata(
         schema_version=schema_version,
         suite=suite,
+        run_type=run_type,
         git_commit=_git_commit(),
         generated_at_utc=datetime.now(UTC).isoformat(),
         python_version=platform.python_version(),

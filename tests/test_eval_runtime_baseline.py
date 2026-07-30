@@ -131,3 +131,10 @@ def test_report_keeps_capability_and_regression_counts_separate() -> None:
         "passed": 1,
         "failed": 0,
     }
+    assert report["decision"] == {
+        "status": "record_only",
+        "reason": "runtime_characterization_baseline",
+        "passed": 1,
+        "failed": 0,
+        "error_count": 0,
+    }

@@ -2,8 +2,9 @@
   "schema_version": "soca-runtime-remediation-baseline-v1",
   "generated_at_utc": "2026-07-30T01:15:40.238886+00:00",
   "artifact": {
-    "schema_version": "soca-eval-artifact-v1",
+    "schema_version": "soca-eval-artifact-v2",
     "suite": "runtime_remediation_baseline",
+    "run_type": "benchmark",
     "git_commit": "586412ac5ae9d603d40498f011bceef39d6b007b",
     "generated_at_utc": "2026-07-30T01:15:39.455145+00:00",
     "environment": {
@@ -319,6 +320,13 @@
     "retrieval_mode": "hybrid",
     "dense_backend": "aiteamvn_v2",
     "max_tokens": 4096
+  },
+  "decision": {
+    "status": "record_only",
+    "reason": "runtime_characterization_baseline",
+    "passed": 1,
+    "failed": 13,
+    "error_count": 0
   },
   "summary": {
     "cases": 14,

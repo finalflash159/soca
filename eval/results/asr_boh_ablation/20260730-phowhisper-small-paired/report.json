@@ -1,7 +1,8 @@
 {
   "artifact": {
-    "schema_version": "soca-eval-artifact-v1",
+    "schema_version": "soca-eval-artifact-v2",
     "suite": "asr_production_boh_ablation",
+    "run_type": "benchmark",
     "git_commit": "586412ac5ae9d603d40498f011bceef39d6b007b",
     "generated_at_utc": "2026-07-30T01:13:58.415087+00:00",
     "environment": {

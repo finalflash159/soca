@@ -339,12 +339,20 @@ def build_runtime_report(
     metadata: dict[str, Any],
     run_config: BaselineRunConfig,
 ) -> dict[str, Any]:
+    summary = _summary(records)
     return {
         "schema_version": "soca-runtime-remediation-baseline-v1",
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "artifact": metadata,
         "run_config": _json_value(run_config),
-        "summary": _summary(records),
+        "decision": {
+            "status": "record_only",
+            "reason": "runtime_characterization_baseline",
+            "passed": summary["passed"],
+            "failed": summary["failed"],
+            "error_count": summary["error_count"],
+        },
+        "summary": summary,
         "cases": list(records),
     }
 
@@ -358,7 +366,7 @@ def _write_jsonl(path: Path, records: Sequence[dict[str, Any]]) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the Phase 0 runtime remediation baseline.")
+    parser = argparse.ArgumentParser(description="Run the runtime remediation baseline.")
     parser.add_argument("--dataset", action="append", type=Path, dest="datasets")
     parser.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS_ROOT)
     parser.add_argument("--suite-kind", choices=("regression", "capability", "all"), default="all")
@@ -395,7 +403,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         session_turns=64,
         turn_chars=4_000,
         session_persistence="ram_only",
-        session_id="phase0-runtime-baseline",
+        session_id="runtime-remediation-baseline",
     )
     bundle = build_text_runtime(
         runtime_config,
@@ -412,6 +420,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     artifact = make_eval_artifact_metadata(
         suite="runtime_remediation_baseline",
+        run_type="benchmark",
         data_files=dataset_paths + corpus_files,
         config=_json_value(run_config),
         ignored_untracked_paths=tuple(args.ignore_source_path),

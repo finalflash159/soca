@@ -4,7 +4,12 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from local.eval_table7 import Item, derive_production_with_boh, run_config
+from local.eval_table7 import (
+    Item,
+    derive_production_with_boh,
+    requires_experimental_boh,
+    run_config,
+)
 
 
 class FakeRobustASR:
@@ -58,6 +63,11 @@ def test_production_no_boh_uses_unmodified_robust_asr_result() -> None:
     assert result["predictions"] == ["nội dung sạch"]
     assert boh.calls == 0
     assert result["diagnostics"][0]["production_final_text"] == "nội dung sạch"
+
+
+def test_production_no_boh_does_not_require_experimental_boh_artifact() -> None:
+    assert requires_experimental_boh(["production_no_boh"]) is False
+    assert requires_experimental_boh(["production_with_boh"]) is True
 
 
 def test_production_with_boh_applies_only_experimental_post_processing() -> None:

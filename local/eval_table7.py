@@ -116,6 +116,9 @@ CONFIG_CODES = (
     "production_no_boh",
     "production_with_boh",
 )
+EXPERIMENTAL_BOH_CONFIGS = frozenset(
+    {"boh", "deloop_boh", "vad_deloop_boh", "production_with_boh"}
+)
 CONFIG_LABELS = {
     "raw": "(1) Raw ASR",
     "deloop": "(2) De-loop only",
@@ -126,6 +129,10 @@ CONFIG_LABELS = {
     "production_no_boh": "Production RobustASR (no BoH)",
     "production_with_boh": "Production RobustASR + experimental BoH",
 }
+
+
+def requires_experimental_boh(configs: list[str]) -> bool:
+    return not EXPERIMENTAL_BOH_CONFIGS.isdisjoint(configs)
 
 
 @dataclass
@@ -237,10 +244,7 @@ def run_config(
             eval_text = result.text.strip()
             boh_matches: tuple[str, ...] = ()
             rejection_reason = result.rejection_reason
-            apply_experimental_boh = code in {
-                "vad_deloop_boh",
-                "production_with_boh",
-            }
+            apply_experimental_boh = code in EXPERIMENTAL_BOH_CONFIGS
             if apply_experimental_boh and boh is not None and eval_text:
                 boh_result = boh.match_and_clean(eval_text)
                 eval_text = boh_result.cleaned_text.strip()
@@ -471,7 +475,7 @@ def main(
     except FileNotFoundError:
         boh = None
         console.print("  [yellow]ASR + VAD ready; experimental BoH artifact is missing[/yellow]\n")
-    if boh is None and any("boh" in code for code in config_list):
+    if boh is None and requires_experimental_boh(config_list):
         raise click.ClickException(
             "Experimental BoH configuration requested but its model-specific artifact is missing."
         )
@@ -572,6 +576,7 @@ def main(
     )
     artifact = make_eval_artifact_metadata(
         suite="asr_production_boh_ablation",
+        run_type="benchmark",
         data_files=(
             cfg.FLEURS_MANIFEST,
             cfg.NOISE_MANIFEST,

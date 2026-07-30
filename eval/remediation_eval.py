@@ -164,6 +164,7 @@ def build_dataset_manifest(
 
     metadata = make_eval_artifact_metadata(
         suite="remediation_baseline",
+        run_type="benchmark",
         data_files=tuple(paths) + (audit_inventory,) + tuple(corpus_files),
         config={
             "quality_suite": True,

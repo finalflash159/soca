@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for Phase 0.
+Accepted.
 
 ## Context
 
@@ -14,7 +14,8 @@ vault from model, router and retrieval decisions.
 
 ## Decision
 
-Phase 0 introduces a provenance envelope (`soca-eval-artifact-v1`), an
+The remediation baseline introduces a provenance envelope
+(`soca-eval-artifact-v2`), an
 executable runtime baseline and a strict case loader for remediation suites.
 Every quality suite must declare one of
 `public_screening`, `sanitized_benchmark` or `private_release`. `demo_smoke` and
@@ -31,6 +32,12 @@ The baseline case contract records:
 - linked machine-readable audit items;
 - dataset class, split and provenance;
 - commit, file hashes, Python/platform/hardware and evaluation config.
+
+Every artifact also declares `run_type` as `benchmark`, `smoke`, `demo` or
+`fake`. Release evidence queries accept only `benchmark`; the runtime
+characterization reports additionally persist `decision.status=record_only`
+because this baseline freezes observed behavior instead of selecting a production
+winner.
 
 `eval.runtime_remediation_baseline` executes every trajectory through the real
 `AssistantRuntime` in blocking or streaming mode. Each turn records route,
@@ -64,7 +71,7 @@ provenance manifest and reviewed labels before it can become a release gate.
 The baseline intentionally records current failures; it does not relabel them
 as passes.
 
-The Phase 0 freeze artifacts are:
+The baseline freeze artifacts are:
 
 - `eval/results/remediation_baseline/20260730-dataset-manifest.json`;
 - blocking and streaming OpenRouter runs under

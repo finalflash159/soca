@@ -38,9 +38,12 @@ def test_eval_metadata_includes_hardware(tmp_path):
 
     artifact = make_eval_artifact_metadata(
         suite="contract",
+        run_type="smoke",
         data_files=(data_file,),
     ).to_dict()
 
+    assert artifact["schema_version"] == "soca-eval-artifact-v2"
+    assert artifact["run_type"] == "smoke"
     assert artifact["environment"]["hardware"]["cpu_count"]
     assert "memory_bytes" in artifact["environment"]["hardware"]
 
