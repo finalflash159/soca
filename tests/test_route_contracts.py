@@ -231,3 +231,24 @@ def test_llm_router_receives_manifest_context_and_can_refine_once() -> None:
     assert llm.prompts[1].startswith("You are SoCa's bounded retrieval refiner.")
     assert "Original user request:" in llm.prompts[1]
     assert "User text:" not in llm.prompts[1]
+
+
+def test_llm_router_logs_manifest_provider_failure(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def fail_manifest() -> str:
+        raise OSError("catalog unavailable")
+
+    router = LLMToolRouter(
+        _FakeRouterLLM(
+            '{"route":"smalltalk","handler":null,"arguments":{},"sources":[]}'
+        ),
+        ToolRuntime([ReadOnlyInspectTool()]),
+        config=ToolRouterConfig(mode="llm", repair_attempts=0),
+        vault_manifest_provider=fail_manifest,
+    )
+
+    with caplog.at_level("WARNING"):
+        assert router.select("xin chào", knowledge_limit=3) is None
+
+    assert "Vault manifest unavailable for capability routing (OSError)" in caplog.text

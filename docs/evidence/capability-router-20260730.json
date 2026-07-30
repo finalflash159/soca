@@ -109,6 +109,18 @@
         {"kind": "report", "path": "/tmp/soca-catalog-router-v4/report.json", "tracked": false},
         {"kind": "predictions", "path": "/tmp/soca-catalog-router-v4/predictions.jsonl", "tracked": false}
       ],
+      "outcome": {
+        "status": "characterization_complete",
+        "failures": [
+          "test disposition accuracy remained below the release gate",
+          "2 of 13 direct-tool cases were delegated as uncertain",
+          "source worktree was dirty"
+        ]
+      },
+      "decision": {
+        "status": "reject_as_release_evidence",
+        "reason": "Retain as local characterization only; do not select or release a production router from this run."
+      },
       "reproducibility": "characterization only: source was dirty; two uncertain direct actions are delegated to the bounded remote router"
     },
     {

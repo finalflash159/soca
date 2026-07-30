@@ -136,6 +136,25 @@ class SemanticRetrievalRouter:
         return None
 
 
+class ContextRecordingRouter:
+    last_tier = "llm"
+    last_decision = ToolRouterDecision(
+        reason="llm_smalltalk",
+        disposition="smalltalk",
+        selected_routes=("smalltalk",),
+    )
+
+    def __init__(self) -> None:
+        self.contexts: list[str] = []
+
+    def set_context(self, *, turn_context: str = "") -> None:
+        self.contexts.append(turn_context)
+
+    def select(self, text: str, *, knowledge_limit: int):
+        del text, knowledge_limit
+        return None
+
+
 class StaticToolRouter:
     last_tier = "test"
 
@@ -186,6 +205,19 @@ def test_stream_llm_route_emits_tokens_then_sentences_then_result() -> None:
     assert result.response_text == "Xin chào bạn. Mình là SoCa."
     assert llm.stream_calls and llm.stream_calls[0]["inject_persona"] is False
     assert llm.generate_calls == []
+
+
+def test_stream_sets_router_context_before_selecting_capability() -> None:
+    llm = StreamSpyLLM(["Xin chào bạn."])
+    router = ContextRecordingRouter()
+    runtime = AssistantRuntime(llm=llm, tool_router=router)
+
+    _, _, result, _ = _collect(
+        runtime.stream_text_turn("xin chào", source="asr", min_sentence_chars=8)
+    )
+
+    assert result is not None
+    assert router.contexts == ["Current surface: asr"]
 
 
 def test_empty_retrieval_streams_when_citations_are_not_required() -> None:

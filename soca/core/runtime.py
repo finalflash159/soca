@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -97,6 +98,8 @@ from .workflow import (
     WorkflowPlanner,
     WorkflowRun,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 DEFAULT_VAULT_MANIFEST_CHARS = 8_192
 
@@ -556,6 +559,7 @@ class AssistantRuntime:
             yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
             return
 
+        self._set_router_context(frame)
         with self._stage(draft, "tool_router"):
             tool_call = self.tool_router.select(
                 frame.text,
@@ -1919,6 +1923,10 @@ class AssistantRuntime:
                 max_chars=self.options.vault_manifest_chars
             )
         except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            LOGGER.warning(
+                "Vault manifest unavailable for answer planning (%s)",
+                type(exc).__name__,
+            )
             return (
                 "Vault manifest unavailable; use the knowledge tools and expose the "
                 f"typed retrieval failure if they cannot run ({type(exc).__name__})."
@@ -2168,8 +2176,8 @@ class AssistantRuntime:
                 PromptComponent(
                     "vault_manifest",
                     manifest_text,
-                    priority=5,
-                    required=True,
+                    priority=40,
+                    required=False,
                 )
             )
         if len(source_set) > 1:

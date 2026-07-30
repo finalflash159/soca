@@ -266,6 +266,10 @@ class LLMToolRouter:
         try:
             return self._vault_manifest_provider() if self._vault_manifest_provider else ""
         except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            LOGGER.warning(
+                "Vault manifest unavailable for capability routing (%s)",
+                type(exc).__name__,
+            )
             return f"Vault manifest unavailable ({type(exc).__name__})."
 
     def _run_prompt(self, prompt: str) -> RouterAttempt:
