@@ -337,3 +337,71 @@ def test_llm_select_invalidates_the_lazy_text_runtime() -> None:
 
     assert engine.text_bundle is None
     assert saved[0].backend == "remote"
+
+
+def test_llm_select_invalidates_idle_voice_runtime() -> None:
+    class IdleController:
+        def __init__(self) -> None:
+            self.stopped = False
+
+        def stop(self) -> None:
+            self.stopped = True
+
+    engine = SocaEngine(
+        voice_config=None,
+        text_config=TextRuntimeConfig(no_memory=True, vault=Path("/tmp/soca-test-vault")),
+        profile="baseline",
+        no_model=True,
+        writer=_ProtocolWriter(io.StringIO()),
+        llm_settings_loader=LlmSettings,
+        llm_settings_saver=lambda _settings: None,
+        secret_store=FakeSecrets({"groq": "sk-existing-1234"}),
+        catalog_fetcher=_catalog,
+    )
+    controller = IdleController()
+    engine.voice_controller = controller  # type: ignore[assignment]
+
+    engine.dispatch(
+        {
+            "cmd": "llm_select",
+            "backend": "remote",
+            "provider": "groq",
+            "model": "llama-3.1-8b-instant",
+        }
+    )
+
+    assert controller.stopped is True
+    assert engine.voice_controller is None
+
+
+def test_llm_select_rejects_hot_swap_while_voice_is_active() -> None:
+    class AliveThread:
+        def is_alive(self) -> bool:
+            return True
+
+    saved: list[LlmSettings] = []
+    engine = SocaEngine(
+        voice_config=None,
+        text_config=TextRuntimeConfig(no_memory=True, vault=Path("/tmp/soca-test-vault")),
+        profile="baseline",
+        no_model=True,
+        writer=_ProtocolWriter(io.StringIO()),
+        llm_settings_loader=LlmSettings,
+        llm_settings_saver=saved.append,
+        secret_store=FakeSecrets({"groq": "sk-existing-1234"}),
+        catalog_fetcher=_catalog,
+    )
+    engine.voice_stop_event = threading.Event()
+    engine._voice_threads = [AliveThread()]  # type: ignore[list-item]
+
+    engine.dispatch(
+        {
+            "cmd": "llm_select",
+            "backend": "remote",
+            "provider": "groq",
+            "model": "llama-3.1-8b-instant",
+        }
+    )
+
+    assert saved == []
+    assert engine.llm_settings.backend == "local"

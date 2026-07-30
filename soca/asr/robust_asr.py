@@ -135,6 +135,7 @@ class RobustASRResult:
     avg_logprob: float = 0.0
     compression_ratio: float = 0.0
     confidence_guard_status: str = ""
+    alternatives: tuple[str, ...] = ()
 
 
 class RobustASR:
@@ -215,6 +216,7 @@ class RobustASR:
         # Stage 2: ASR on speech-only audio (saves compute when VAD trimmed silence)
         asr_result = self.asr.transcribe(vad_result.speech_audio)
         raw_text = asr_result.text
+        alternatives = _normalise_alternatives(asr_result, primary=raw_text)
         avg_logprob = asr_result.avg_logprob
         raw_compression_ratio = compression_ratio(raw_text)
 
@@ -235,6 +237,7 @@ class RobustASR:
                 avg_logprob=avg_logprob,
                 compression_ratio=raw_compression_ratio,
                 confidence_guard_status=self.confidence_guard_status,
+                alternatives=alternatives,
             )
 
         if self.use_confidence_guard:
@@ -252,6 +255,7 @@ class RobustASR:
                     avg_logprob=avg_logprob,
                     compression_ratio=raw_compression_ratio,
                     confidence_guard_status=self.confidence_guard_status,
+                    alternatives=alternatives,
                 )
 
             if raw_compression_ratio > self.max_compression_ratio:
@@ -268,6 +272,7 @@ class RobustASR:
                     avg_logprob=avg_logprob,
                     compression_ratio=raw_compression_ratio,
                     confidence_guard_status=self.confidence_guard_status,
+                    alternatives=alternatives,
                 )
 
         # Stage 3: De-loop
@@ -300,6 +305,7 @@ class RobustASR:
             compression_ratio=raw_compression_ratio,
             total_latency_ms=(time.perf_counter() - t0) * 1000,
             confidence_guard_status=self.confidence_guard_status,
+            alternatives=alternatives,
         )
 
     def transcribe_file(self, path: str | Path) -> RobustASRResult:
@@ -307,3 +313,21 @@ class RobustASR:
 
         audio, _ = librosa.load(str(path), sr=16000, mono=True)
         return self.transcribe(audio.astype(np.float32))
+
+
+def _normalise_alternatives(asr_result: Any, *, primary: str) -> tuple[str, ...]:
+    """Preserve backend-provided N-best text without inventing candidates."""
+    raw = getattr(asr_result, "alternatives", ())
+    if not isinstance(raw, (list, tuple)):
+        return ()
+    primary_normalized = " ".join(primary.split()).casefold()
+    values: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        normalized = " ".join(item.split())
+        if not normalized or normalized.casefold() == primary_normalized:
+            continue
+        if normalized not in values:
+            values.append(normalized)
+    return tuple(values)

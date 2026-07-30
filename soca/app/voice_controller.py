@@ -202,6 +202,21 @@ class VoiceMonitorController:
                     "memory_status": self.bundle.memory_status,
                     "knowledge_status": self.bundle.knowledge_status,
                     "asr_guard_status": self.bundle.asr_guard_status,
+                    "llm_backend": (
+                        self.bundle.llm_settings.backend
+                        if self.bundle.llm_settings is not None
+                        else "unknown"
+                    ),
+                    "llm_provider": (
+                        self.bundle.llm_settings.provider_key
+                        if self.bundle.llm_settings is not None
+                        else ""
+                    ),
+                    "llm_model": (
+                        self.bundle.llm_settings.model_id
+                        if self.bundle.llm_settings is not None
+                        else self.bundle.config.llm_model
+                    ),
                 },
             )
         )
@@ -500,6 +515,7 @@ class VoiceMonitorController:
             "chunk_index": 0,
             "ttfa_ms": (audio_ready - turn_start) * 1000,
             "tts_latency_ms": tts_result.latency_ms,
+            "delivery": "repair",
             "repair_kind": choice.kind.value,
             "repair_action": choice.action.value,
         }
@@ -531,6 +547,7 @@ class VoiceMonitorController:
                 latency_ms=(time.perf_counter() - turn_start) * 1000,
                 metadata={
                     "rejected": True,
+                    "terminal_status": "cancelled" if leaves_voice else "needs_clarification",
                     "rejection_reason": "passive_silence",
                     **metadata,
                 },

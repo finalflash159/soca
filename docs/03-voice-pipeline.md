@@ -37,7 +37,7 @@ flowchart TD
     ASR --> Q{empty transcript?}
     Q -->|yes| REP[_plan_repair<br/>emit repair + speak follow-up]
     Q -->|no| HAS{runtime has<br/>stream_text_turn?}
-    HAS -->|yes| STREAM[_turn_streaming_runtime_stream<br/>token→sentence→parallel TTS]
+    HAS -->|yes| STREAM[_turn_streaming_runtime_stream<br/>token→answer delta→verified TTS]
     HAS -->|no| BLOCK[_turn_streaming_runtime_blocking<br/>generate all text before TTS]
     STREAM --> DONE[emit done]
     BLOCK --> DONE
@@ -47,18 +47,22 @@ flowchart TD
 ## Streaming Event Sequence (`StreamingEvent.type`)
 
 ```text
-asr → [repair]? → runtime → (llm_token | sentence | tts | audio)* → done
+asr → [repair]? → runtime → (llm_token | answer_delta | tts | audio)* → done
 ```
 
-- `asr`: transcript and `rejection_reason`.
+- `asr`: transcript, `rejection_reason`, and backend-provided alternatives when available.
 - `repair`: only when ASR rejects; contains follow-up text plus
   `repair_kind/action/attempt`.
 - `runtime`: route/blocked/citations/usage summary.
 - `llm_token`: raw token for live display.
-- `sentence`: a guardrail-checked sentence ready for TTS.
-- `tts`: synthesized audio chunk, including `ttfa_ms` for the first chunk.
+- `sentence`: a UI answer delta. It is marked `delivery=answer_delta` while the
+  runtime is still open; the final answer path marks buffered chunks as
+  `delivery=final`.
+- `tts`: synthesized audio chunk. Factual streamed answers are enqueued only
+  after the runtime emits its result; repair speech is marked `delivery=repair`.
 - `audio`: playback finished for a chunk, including `playback_latency_ms`.
-- `done`: end of turn, with rejected/route/stage latency metadata.
+- `done`: end of turn, with `terminal_status`; interruption is `cancelled`, and
+  an ASR repair is `needs_clarification`, never `achieved`.
 
 ## Streaming Thread Model
 
@@ -77,7 +81,7 @@ flowchart LR
         P[sink.play blocking]
     end
 
-    G -->|sentence| SQ[(sentence_queue)]
+    G -->|verified final sentence| SQ[(sentence_queue)]
     SQ --> T
     T -->|audio chunk| PQ[(playback_queue)]
     PQ --> P
@@ -86,9 +90,10 @@ flowchart LR
     EQ --> G
 ```
 
-This lets the system **synthesize sentence N+1 while playing sentence N**. The
-first sentence can reach the speaker without waiting for the whole answer, which
-reduces time-to-first-audio.
+The UI can receive answer deltas immediately, but the queue stays empty until
+the runtime result is available. This prevents factual audio from being spoken
+before the final runtime verification. Once released, the system synthesizes
+sentence N+1 while playing sentence N.
 
 > Streaming note: per-sentence guardrails on LLM routes are equivalent to
 > full-text checking because `check_final_output` is a stateless substring scan.
@@ -131,7 +136,7 @@ flowchart LR
     cfg[ResolvedVoiceRuntimeConfig] --> BVR[build_voice_runtime]
     BVR --> det[VAD detector]
     BVR --> asr[RobustASR]
-    BVR --> llm[llama.cpp LLM]
+    BVR --> llm[shared selected LLM engine]
     BVR --> tts[TTS engine]
     BVR --> ar[AssistantRuntime]
     det & asr & llm & tts & ar --> bundle[(VoiceRuntimeBundle)]
@@ -144,11 +149,12 @@ flowchart LR
 | ---------------- | ------------------------------ | -------------------------------------------------------------------- |
 | Loop             | `app/voice_loop.py` sync       | `app/tui/voice.py` `VoiceMonitorController` worker thread + Queue    |
 | Display          | `console.py` prints each event | Status bar + timeline + inspector. See [07](./07-tui.md)             |
-| No-reply ladder  | Not wired yet                  | Yes: passive silence call-out. See [06](./06-conversation-repair.md) |
-| Repair on reject | `print_followup` + TTS         | `repair` event → timeline + TTS                                      |
+| No-reply ladder  | Per-turn repair + TTS         | Per-turn repair + passive silence call-out                           |
+| Repair on reject | `repair` event + TTS           | `repair` event → timeline + TTS                                      |
 
-Both paths call `bundle.pipeline.turn_streaming(...)`, so the **audio pipeline is
-the same**. Only the presentation layer and loop control differ.
+Both paths call `bundle.pipeline.turn_streaming(...)`, so the **audio pipeline
+and selected LLM are the same**. The controller/console only differ in event
+presentation and loop control.
 
 ## Clause Chunking And PCM Join
 

@@ -36,6 +36,7 @@ from soca.core.context_budget import (
     capability_from_values,
 )
 from soca.core.usage import SessionUsage, TurnUsage
+from soca.core.voice_runtime import build_voice_runtime
 from soca.core.workflow.protocol import (
     CURRENT_PROTOCOL_VERSION,
     adapt_legacy_command,
@@ -240,9 +241,15 @@ class SocaEngine:
     def hello(self) -> None:
         stack: dict[str, Any] = {"llm": self.text_config.llm_model}
         if self.voice_config is not None:
+            selected = self._selected_voice_settings()
+            llm_label = (
+                f"{selected.provider_key}:{selected.model_id}"
+                if selected.backend == "remote"
+                else selected.model_id
+            )
             stack = {
                 "asr": self.voice_config.asr_model,
-                "llm": self.voice_config.llm_model,
+                "llm": llm_label,
                 "tts": VALTEC_TTS_CONFIG.key,
                 "voice": self.voice_config.tts_voice,
             }
@@ -420,15 +427,27 @@ class SocaEngine:
                 "loaded" if voice_bundle is not None else ("ready" if asr_ready else "missing"),
                 f"{self.voice_config.asr_model} · ONNX Runtime",
             )
-            voice_llm_config = get_model_config(self.voice_config.llm_model)
-            voice_llm_ready = voice_llm_config.local_path.is_file()
+            voice_settings = self._selected_voice_settings()
+            if voice_settings.backend == "remote":
+                voice_llm_ready = self.secret_store.has_key(voice_settings.provider_key)
+                voice_llm_state = "loaded" if voice_bundle is not None else (
+                    "ready" if voice_llm_ready else "missing"
+                )
+                voice_llm_detail = (
+                    f"remote · {voice_settings.provider_key}:{voice_settings.model_id}"
+                )
+            else:
+                local_config = get_model_config(voice_settings.model_id)
+                voice_llm_ready = local_config.local_path.is_file()
+                voice_llm_state = "loaded" if voice_bundle is not None else (
+                    "ready" if voice_llm_ready else "missing"
+                )
+                voice_llm_detail = f"local · {voice_settings.model_id}"
             add(
                 "voice_llm",
                 "Voice LLM",
-                "loaded"
-                if voice_bundle is not None
-                else ("ready" if voice_llm_ready else "missing"),
-                f"local · {self.voice_config.llm_model}",
+                voice_llm_state,
+                voice_llm_detail,
             )
             try:
                 from soca.tts.valtec.artifacts import resolve_current_valtec_release
@@ -564,6 +583,9 @@ class SocaEngine:
         self._start_catalog_fetch(provider, api_key, purpose="models", query=query)
 
     def _cmd_llm_set_key(self, command: dict[str, Any]) -> None:
+        if self._voice_is_active():
+            self._error("Không thể đổi API key khi voice đang chạy; hãy dừng voice trước.")
+            return
         provider = self._provider_from_command(command)
         if provider is None:
             return
@@ -586,6 +608,9 @@ class SocaEngine:
     def _cmd_llm_select(self, command: dict[str, Any]) -> None:
         if self._chat_lock.locked():
             self._error("Không thể đổi LLM khi lượt chat hiện tại đang chạy.")
+            return
+        if self._voice_is_active():
+            self._error("Không thể đổi LLM khi voice đang chạy; hãy dừng voice trước.")
             return
         backend = command.get("backend")
         if backend not in ("local", "remote"):
@@ -646,6 +671,7 @@ class SocaEngine:
             return
         self.llm_settings = settings
         self.text_bundle = None
+        self._invalidate_voice_runtime()
         self._last_prompt_manifest = None
         self._emit_llm_config()
 
@@ -853,6 +879,7 @@ class SocaEngine:
             return
         self.llm_settings = refreshed
         self.text_bundle = None
+        self._invalidate_voice_runtime()
         self._last_prompt_manifest = None
 
     def _key_validation_is_current(self, provider_key: str, fingerprint: str) -> bool:
@@ -871,6 +898,7 @@ class SocaEngine:
         # A runtime may have captured the previous key when a chat was already
         # initialized; force the next turn to rebuild with this key.
         self.text_bundle = None
+        self._invalidate_voice_runtime()
         self._emit_key_status(
             provider.key,
             ok=True,
@@ -1621,6 +1649,33 @@ class SocaEngine:
         if self.voice_controller is not None:
             self.voice_controller.stop()
 
+    def _voice_is_active(self) -> bool:
+        stop_event = self.voice_stop_event
+        return bool(
+            stop_event is not None
+            and not stop_event.is_set()
+            and any(thread.is_alive() for thread in self._voice_threads)
+        )
+
+    def _invalidate_voice_runtime(self) -> None:
+        """Drop an idle voice bundle so the next start sees current settings."""
+        if self._voice_is_active():
+            # A background catalog refresh may race with a voice start.  Keep
+            # the active bundle unchanged; the command-level mutation guard
+            # prevents intentional hot-swaps and the next idle refresh will
+            # rebuild from the persisted settings.
+            return
+        controller = self.voice_controller
+        if controller is not None:
+            controller.stop()
+        self.voice_controller = None
+
+    def _selected_voice_settings(self) -> LlmSettings:
+        settings = self.llm_settings
+        if self.voice_config is not None and self.voice_config.llm_model_is_override:
+            return settings.with_backend("local").with_model(self.voice_config.llm_model)
+        return settings
+
     def _ensure_voice_controller(self) -> VoiceMonitorController:
         if self.voice_controller is not None:
             return self.voice_controller
@@ -1629,6 +1684,23 @@ class SocaEngine:
         kwargs: dict[str, Any] = {}
         if self.voice_runtime_builder is not None:
             kwargs["runtime_builder"] = self.voice_runtime_builder
+        else:
+            # The engine owns the selected settings and secret reader.  Pass
+            # those exact objects into voice instead of relying on a second
+            # disk read that could lag behind the chat selection.
+            def build_selected_voice_runtime(
+                config: ResolvedVoiceRuntimeConfig,
+                *,
+                session_memory: SessionMemory | None = None,
+            ):
+                return build_voice_runtime(
+                    config,
+                    session_memory=session_memory,
+                    llm_settings=self._selected_voice_settings(),
+                    secret_store=self.secret_store,
+                )
+
+            kwargs["runtime_builder"] = build_selected_voice_runtime
         if self.voice_recorder is not None:
             kwargs["recorder"] = self.voice_recorder
         player = self.voice_player

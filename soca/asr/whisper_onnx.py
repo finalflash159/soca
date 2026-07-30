@@ -20,6 +20,9 @@ class ASRResult:
     audio_duration_ms: float
     rtf: float  # Real-Time Factor: latency / audio_duration
     avg_logprob: float = 0.0
+    # Backends that can decode N-best hypotheses may populate this.  The
+    # current greedy Whisper decoder intentionally leaves it empty.
+    alternatives: tuple[str, ...] = ()
 
     def to_dict(self) -> dict:
         return asdict(self)

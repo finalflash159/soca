@@ -13,6 +13,7 @@ from soca.tts import TTSResult
 class FakeASRResult:
     text: str
     rejection_reason: str = ""
+    alternatives: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -21,14 +22,24 @@ class FakeLLMResult:
 
 
 class FakeASR:
-    def __init__(self, text: str, rejection_reason: str = "") -> None:
+    def __init__(
+        self,
+        text: str,
+        rejection_reason: str = "",
+        alternatives: tuple[str, ...] = (),
+    ) -> None:
         self.text = text
         self.rejection_reason = rejection_reason
+        self.alternatives = alternatives
         self.calls = 0
 
     def transcribe(self, audio: np.ndarray) -> FakeASRResult:
         self.calls += 1
-        return FakeASRResult(text=self.text, rejection_reason=self.rejection_reason)
+        return FakeASRResult(
+            text=self.text,
+            rejection_reason=self.rejection_reason,
+            alternatives=self.alternatives,
+        )
 
 
 class SpyLLM:
@@ -99,6 +110,7 @@ class FakeStreamingRuntime:
     def __init__(self, sentences: list[str]) -> None:
         self.sentences = list(sentences)
         self.calls: list[str] = []
+        self.metadata_calls: list[dict | None] = []
 
     def stream_text_turn(
         self,
@@ -114,6 +126,7 @@ class FakeStreamingRuntime:
         first_clause_max_scan_chars: int = 80,
     ):
         self.calls.append(text)
+        self.metadata_calls.append(metadata)
         for sentence in self.sentences:
             yield FakeRuntimeStreamEvent(type="token", text=sentence)
             yield FakeRuntimeStreamEvent(type="sentence", text=sentence)
@@ -219,6 +232,40 @@ def test_voice_pipeline_streaming_yields_asr_tokens_sentences_audio_and_done():
     assert asr.calls == 1
     assert runtime.calls == ["xin chao"]
     assert tts.calls == ["Xin chào bạn.", "Mình là SoCa."]
+    assert all(
+        event.metadata == {"delivery": "answer_delta", "terminal": False}
+        for event in events
+        if event.type == "sentence"
+    )
+    assert all(
+        event.metadata["delivery"] == "final"
+        for event in events
+        if event.type == "tts"
+    )
+
+
+def test_voice_pipeline_forwards_asr_alternatives_for_goal_repair() -> None:
+    alternatives = ("định lý Bayes", "định lý bài ét")
+    asr = FakeASR("định lý bày ét", alternatives=alternatives)
+    runtime = FakeStreamingRuntime(["Mình sẽ kiểm tra ghi chú của bạn."])
+    pipeline = VoicePipeline(asr=asr, llm=SpyLLM(), tts=SpyTTS(), assistant_runtime=runtime)
+
+    events = list(
+        pipeline.turn_streaming(
+            np.zeros(16000, dtype=np.float32),
+            audio_sink=NullAudioPlayer(),
+            min_sentence_chars=8,
+        )
+    )
+
+    asr_event = next(event for event in events if event.type == "asr")
+    assert asr_event.metadata["alternatives"] == list(alternatives)
+    assert runtime.metadata_calls == [
+        {
+            "asr_rejection_reason": "",
+            "asr_alternatives": list(alternatives),
+        }
+    ]
 
 
 def test_voice_pipeline_streaming_strips_markdown_before_tts():
@@ -266,6 +313,12 @@ def test_voice_pipeline_streaming_reject_path_speaks_fallback_by_default():
     repair = next(event for event in events if event.type == "repair")
     assert repair.metadata["repair_kind"] == "no_input"
     assert events[-1].metadata["rejected"] is True
+    assert events[-1].metadata["terminal_status"] == "needs_clarification"
+    assert all(
+        event.metadata["delivery"] == "repair"
+        for event in events
+        if event.type in {"sentence", "tts"}
+    )
     assert events[-1].metadata["repair_kind"] == "no_input"
     assert llm.calls == []
     assert tts.calls == [pipeline.reject_response]
@@ -343,6 +396,7 @@ def test_voice_pipeline_streaming_interrupt_event_stops_turn():
 
     assert event_types == ["asr", "interrupted", "done"]
     assert events[-1].metadata["interrupted"] is True
+    assert events[-1].metadata["terminal_status"] == "cancelled"
     # Interrupt fired first -> pump synthesizes and plays nothing.
     assert tts.calls == []
     assert "tts" not in event_types

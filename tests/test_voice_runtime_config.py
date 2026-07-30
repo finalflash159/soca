@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from soca.config import LlmSettings
 from soca.core import (
     RuntimeOptions,
     build_voice_runtime,
@@ -127,7 +128,9 @@ def test_voice_runtime_uses_shared_knowledge_setup(
         "load_confidence_guard_calibration",
         lambda _model_key: None,
     )
-    monkeypatch.setattr(voice_runtime, "LocalLlamaCppLLM", lambda **kwargs: object())
+    def fake_engine_factory(settings, secrets, **kwargs):
+        del settings, secrets, kwargs
+        return object()
     monkeypatch.setattr(voice_runtime, "create_tts_engine", lambda **kwargs: object())
     monkeypatch.setattr(voice_runtime, "VoicePipeline", lambda **kwargs: object())
     monkeypatch.setattr(voice_runtime, "default_repair_catalog", lambda: object())
@@ -138,7 +141,7 @@ def test_voice_runtime_uses_shared_knowledge_setup(
         no_memory=True,
     )
 
-    bundle = build_voice_runtime(config)
+    bundle = build_voice_runtime(config, engine_factory=fake_engine_factory)
 
     assert setup_calls == [
         (config.vault, RuntimeOptions().knowledge_limit),
@@ -147,3 +150,36 @@ def test_voice_runtime_uses_shared_knowledge_setup(
     assert bundle.assistant_runtime.knowledge_builder is shared_setup.builder
     assert bundle.assistant_runtime.tool_runtime.get("knowledge.search") is shared_setup.search_tool
     assert bundle.assistant_runtime.tool_runtime.get("knowledge.read") is shared_setup.read_tool
+
+
+def test_voice_runtime_uses_selected_remote_llm_without_local_construction(
+    tmp_path: Path,
+) -> None:
+    config = resolve_voice_runtime_config(
+        profile_key="baseline",
+        vault=tmp_path,
+        adaptive_endpoint=False,
+        no_memory=True,
+    )
+    settings = LlmSettings(
+        backend="remote",
+        provider_key="openrouter",
+        model_id="google/gemini-3.5-flash-lite",
+    )
+    calls: list[tuple[LlmSettings, object]] = []
+
+    def fake_engine_factory(selected, secrets, **kwargs):
+        calls.append((selected, secrets))
+        del kwargs
+        return object()
+
+    bundle = build_voice_runtime(
+        config,
+        llm_settings=settings,
+        secret_store=object(),  # type: ignore[arg-type]
+        engine_factory=fake_engine_factory,
+    )
+
+    assert len(calls) == 1
+    assert calls[0][0] is settings
+    assert bundle.llm_settings == settings
