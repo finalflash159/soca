@@ -16,6 +16,10 @@ from soca.memory.session_store import (
 from soca.memory.summary import LocalSummaryWorkerProcess, build_production_summary_worker
 from soca.memory.working import WorkingMemory, WorkingMemoryPolicy, approximate_tokens
 
+
+class MemoryCapacityError(RuntimeError):
+    """Working memory exceeded its contract without a safe summary."""
+
 RECENT_CONVERSATION_HEADER = "Recent conversation:"
 VALID_ROLES = {"user", "assistant"}
 SessionPersistence = Literal["ram_only", "local_resumable"]
@@ -122,11 +126,6 @@ class SessionMemory:
         self._pending_sequences.extend(
             turn.sequence for turn in self.working.snapshot.turns if turn.status == "pending"
         )
-        # A completed async failure remains visible through the coordinator so
-        # the UI can report it.  Its deterministic trim fallback, however,
-        # must run only once: repeatedly trimming keeps the prompt below the
-        # auto-compaction watermark forever and prevents a later retry.
-        self._trimmed_failure_generation: int | None = None
         if turns is not None:
             for turn in turns:
                 self.append(turn.role, turn.text)
@@ -163,7 +162,7 @@ class SessionMemory:
         self._enforce_hard_limit()
         if self.working.snapshot.token_count >= self.working.policy.high_watermark_tokens:
             result = self.compaction.request()
-            if result.status in {"trim_only", "unavailable", "failed"}:
+            if result.status == "trim_only" and self.working.policy.mode == "trim_only":
                 self.working.trim_only()
         self._save_checkpoint()
 
@@ -268,12 +267,6 @@ class SessionMemory:
 
     def _poll_compaction(self) -> CompactionResult:
         result = self.compaction.status()
-        if (
-            result.status == "failed"
-            and result.generation != self._trimmed_failure_generation
-        ):
-            self.working.trim_only()
-            self._trimmed_failure_generation = result.generation
         if result.status in {"published", "trim_only", "unavailable", "failed"}:
             self._save_checkpoint()
         return result
@@ -282,7 +275,12 @@ class SessionMemory:
         if self.working.snapshot.token_count <= self.working.policy.hard_limit_tokens:
             return
         self.compaction.cancel()
-        self.working.trim_only()
+        if self.working.policy.mode == "trim_only":
+            self.working.trim_only()
+            return
+        raise MemoryCapacityError(
+            "working memory exceeded its hard limit before a valid summary was published"
+        )
 
     def _save_checkpoint(self) -> None:
         if self.persistence != "local_resumable" or self.checkpoint_store is None:
@@ -318,4 +316,9 @@ class SessionMemory:
             self._checkpoint_digest = None
 
 
-__all__ = ["SessionMemory", "SessionMemoryStats", "SessionPersistence"]
+__all__ = [
+    "MemoryCapacityError",
+    "SessionMemory",
+    "SessionMemoryStats",
+    "SessionPersistence",
+]

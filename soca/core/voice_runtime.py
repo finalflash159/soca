@@ -30,6 +30,7 @@ from soca.core.tool_routing import (
     ToolRouterMode,
 )
 from soca.core.turn_taking import partial_interval_from_cost
+from soca.core.workflow import ActiveGoalStore, GoalCheckpointStore
 from soca.knowledge.factory import DenseBackend, RetrievalConfig, RetrievalMode
 from soca.knowledge.retrievers.dense import FastEmbedModel
 from soca.llm import LocalLlamaCppLLM
@@ -407,6 +408,14 @@ def build_voice_runtime(
             top_p=config.top_p,
             knowledge_limit=knowledge_limit,
             model_context_window=LLM_MODEL_REGISTRY[config.llm_model].context_window,
+        ),
+        active_goal_store=(
+            ActiveGoalStore(
+                checkpoint_store=GoalCheckpointStore(default_session_checkpoint_home() / "goals"),
+                session_id=config.session_id,
+            )
+            if config.session_persistence == "local_resumable"
+            else None
         ),
     )
 

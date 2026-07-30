@@ -39,6 +39,29 @@ def _freeze_mapping(value: Mapping[str, Any]) -> Mapping[str, Any]:
     return _freeze_json(value)
 
 
+def _json_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_value(item) for item in value]
+    if isinstance(value, StrEnum):
+        return value.value
+    return value
+
+
+def _list_value(value: Any, field_name: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise ValueError(f"checkpoint {field_name} must be a list")
+    return value
+
+
+def _mapping_list(value: Any, field_name: str) -> list[Mapping[str, Any]]:
+    values = _list_value(value, field_name)
+    if not all(isinstance(item, Mapping) for item in values):
+        raise ValueError(f"checkpoint {field_name} items must be objects")
+    return values
+
+
 class GoalStatus(StrEnum):
     NEW = "new"
     ACTIVE = "active"
@@ -191,6 +214,98 @@ class GoalContract:
                 "Required sources: " + ", ".join(source.value for source in self.required_sources)
             )
         return "\n".join(parts)
+
+    def to_checkpoint_dict(self) -> dict[str, Any]:
+        return {
+            "goal_id": self.goal_id,
+            "objective": self.objective,
+            "success_criteria": [
+                {
+                    "kind": item.kind,
+                    "description": item.description,
+                    "source": item.source.value if item.source is not None else None,
+                }
+                for item in self.success_criteria
+            ],
+            "constraints": [
+                {"kind": item.kind, "value": _json_value(item.value)}
+                for item in self.constraints
+            ],
+            "required_sources": [item.value for item in self.required_sources],
+            "resolved_entities": [
+                {
+                    "surface": item.surface,
+                    "canonical": item.canonical,
+                    "confidence": item.confidence,
+                }
+                for item in self.resolved_entities
+            ],
+            "unresolved_entities": [
+                {"surface": item.surface, "reason": item.reason}
+                for item in self.unresolved_entities
+            ],
+            "status": self.status.value,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "parent_goal_id": self.parent_goal_id,
+        }
+
+    @classmethod
+    def from_checkpoint_dict(cls, payload: object) -> GoalContract:
+        if not isinstance(payload, Mapping):
+            raise ValueError("checkpoint goal must be an object")
+        try:
+            criteria = tuple(
+                SuccessCriterion(
+                    kind=str(item["kind"]),
+                    description=str(item.get("description", "")),
+                    source=(
+                        SourceKind(str(item["source"]))
+                        if item.get("source") is not None
+                        else None
+                    ),
+                )
+                for item in _mapping_list(payload["success_criteria"], "success_criteria")
+            )
+            constraints = tuple(
+                GoalConstraint(kind=str(item["kind"]), value=item["value"])
+                for item in _mapping_list(payload["constraints"], "constraints")
+            )
+            resolved = tuple(
+                ResolvedEntity(
+                    surface=str(item["surface"]),
+                    canonical=str(item["canonical"]),
+                    confidence=float(item["confidence"]),
+                )
+                for item in _mapping_list(payload["resolved_entities"], "resolved_entities")
+            )
+            unresolved = tuple(
+                UnresolvedEntity(surface=str(item["surface"]), reason=str(item["reason"]))
+                for item in _mapping_list(payload["unresolved_entities"], "unresolved_entities")
+            )
+            required_sources = tuple(
+                SourceKind(str(value))
+                for value in _list_value(payload["required_sources"], "required_sources")
+            )
+            return cls(
+                goal_id=str(payload["goal_id"]),
+                objective=str(payload["objective"]),
+                success_criteria=criteria,
+                constraints=constraints,
+                required_sources=required_sources,
+                resolved_entities=resolved,
+                unresolved_entities=unresolved,
+                status=GoalStatus(str(payload["status"])),
+                created_at=str(payload["created_at"]),
+                updated_at=str(payload["updated_at"]),
+                parent_goal_id=(
+                    str(payload["parent_goal_id"])
+                    if payload.get("parent_goal_id") is not None
+                    else None
+                ),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("invalid checkpoint goal") from exc
 
 
 @dataclass(frozen=True)

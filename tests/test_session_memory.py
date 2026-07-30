@@ -3,7 +3,14 @@ from typing import Any, cast
 
 import pytest
 
-from soca.memory import MemoryContextBuilder, MemoryTurn, SessionMemory, WorkingSummaryArtifact
+from soca.memory import (
+    MemoryCapacityError,
+    MemoryContextBuilder,
+    MemoryTurn,
+    SessionMemory,
+    WorkingMemoryPolicy,
+    WorkingSummaryArtifact,
+)
 from soca.memory.summary import LocalSummaryWorkerProcess
 
 
@@ -57,6 +64,14 @@ class _FailOnceSummaryWorker(_ImmediateSummaryWorker):
             self.job = None
             return {"ok": False, "error": "transient worker failure"}
         return super().poll()
+
+
+class _AlwaysFailSummaryWorker(_ImmediateSummaryWorker):
+    def poll(self):
+        if self.job is None:
+            return None
+        self.job = None
+        return {"ok": False, "error": "summary worker unavailable"}
 
 
 def test_session_memory_renders_recent_conversation():
@@ -209,6 +224,14 @@ def test_session_memory_retries_auto_compaction_after_a_transient_summary_failur
     memory = SessionMemory(
         max_chars=100_000,
         max_turn_chars=10_000,
+        working_policy=WorkingMemoryPolicy(
+            hard_limit_tokens=32_768,
+            high_watermark_tokens=15_000,
+            target_tokens=12_000,
+            summary_budget_tokens=2_048,
+            recent_budget_tokens=512,
+            mode="background_summary",
+        ),
         summary_worker=cast(LocalSummaryWorkerProcess, cast(Any, worker)),
     )
     turn_text = "x" * 6_000  # approximately 1,500 tokens per message
@@ -220,9 +243,8 @@ def test_session_memory_retries_auto_compaction_after_a_transient_summary_failur
     assert memory.compaction_status().status == "failed"
     token_count_after_fallback = memory.stats().current_tokens
 
-    # The failure remains visible for the UI, but observing it again must not
-    # repeatedly discard older turns.  Subsequent growth can cross 15K and
-    # schedule a new async summary job.
+    # The failure remains visible for the UI and the source turns remain intact.
+    # Subsequent growth can cross 15K and schedule a new async summary job.
     assert memory.compaction_status().status == "failed"
     assert memory.stats().current_tokens == token_count_after_fallback
     for _ in range(3):
@@ -233,6 +255,33 @@ def test_session_memory_retries_auto_compaction_after_a_transient_summary_failur
 
     assert worker.start_count == 2
     assert memory.compaction_status().status == "published"
+
+
+def test_background_summary_failure_never_trims_source_history() -> None:
+    worker = _AlwaysFailSummaryWorker()
+    policy = WorkingMemoryPolicy(
+        hard_limit_tokens=1_000,
+        high_watermark_tokens=80,
+        target_tokens=60,
+        summary_budget_tokens=20,
+        recent_budget_tokens=10,
+        mode="background_summary",
+    )
+    memory = SessionMemory(
+        max_chars=100_000,
+        max_turn_chars=10_000,
+        working_policy=policy,
+        summary_worker=cast(LocalSummaryWorkerProcess, cast(Any, worker)),
+    )
+    for index in range(5):
+        memory.append("user", f"source user {index} " + "x" * 80)
+        memory.append("assistant", f"source answer {index} " + "y" * 80)
+
+    assert memory.compaction_status().status == "failed"
+    assert "source user 0" in memory.render()
+
+    with pytest.raises(MemoryCapacityError):
+        memory.append("user", "z" * 10_000)
 
 
 def test_memory_context_builder_combines_profile_and_session():

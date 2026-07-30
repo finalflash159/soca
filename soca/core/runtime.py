@@ -342,6 +342,7 @@ class AssistantRuntime:
         memory_builder: MemoryContextBuilder | None = None,
         guardrail_policy: GuardrailPolicy = DEFAULT_POLICY,
         options: RuntimeOptions | None = None,
+        active_goal_store: ActiveGoalStore | None = None,
     ) -> None:
         self.llm = llm
         self.tool_runtime = tool_runtime or ToolRuntime()
@@ -355,7 +356,7 @@ class AssistantRuntime:
         self.options = options or RuntimeOptions()
         self._prompt_safety_margin_tokens = self.options.context_safety_margin_tokens
         self._progress_callback: Callable[[str], None] | None = None
-        self._active_goal_store = ActiveGoalStore()
+        self._active_goal_store = active_goal_store or ActiveGoalStore()
         self._goal_resolver = GoalResolver(self._active_goal_store)
 
     def set_progress_callback(self, callback: Callable[[str], None] | None) -> None:
@@ -403,7 +404,7 @@ class AssistantRuntime:
                 goal_id=uuid4().hex,
                 objective=text.strip() or "rejected input",
             )
-            return ControlledWorkflowRunner(
+            workflow_run = ControlledWorkflowRunner(
                 self.tool_runtime,
                 budget=budget or TurnBudget(),
                 guardrail_policy=self.guardrail_policy,
@@ -413,6 +414,8 @@ class AssistantRuntime:
                 surface="voice" if source == "voice" else "chat",
                 admission_error=input_event.reason,
             )
+            self._active_goal_store.record_run(workflow_run)
+            return workflow_run
         if goal_decision is not None and structured_goal_resolver is not None:
             raise ValueError("provide a goal decision or structured resolver, not both")
         if goal_decision is None and structured_goal_resolver is None and explicit_call is None:
@@ -440,7 +443,7 @@ class AssistantRuntime:
             budget=budget or TurnBudget(),
             guardrail_policy=self.guardrail_policy,
         )
-        return runner.run(
+        workflow_run = runner.run(
             resolution.goal,
             planner=planner,
             explicit_call=explicit_call,
@@ -452,6 +455,8 @@ class AssistantRuntime:
                 resolved_decision.model_calls if resolved_decision is not None else 0
             ),
         )
+        self._active_goal_store.record_run(workflow_run)
+        return workflow_run
 
     def run_text_turn(
         self,

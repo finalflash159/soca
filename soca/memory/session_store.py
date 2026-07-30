@@ -32,11 +32,13 @@ def default_session_checkpoint_home() -> Path:
 
 class SessionCheckpointStore:
     def __init__(self, root: str | Path) -> None:
-        self.root = Path(root).expanduser().resolve()
-        self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        os.chmod(self.root, 0o700)
-        if self.root.is_symlink() or not self.root.is_dir():
+        root_path = Path(root).expanduser().absolute()
+        _reject_symlink_ancestors(root_path)
+        root_path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if root_path.is_symlink() or not root_path.is_dir():
             raise ValueError("session checkpoint root must be a real directory")
+        os.chmod(root_path, 0o700)
+        self.root = root_path
 
     def save(
         self,
@@ -216,6 +218,12 @@ def _check_expected_state(
         or _payload_digest(current) != expected_digest
     ):
         raise CheckpointConflictError("session checkpoint changed since it was read")
+
+
+def _reject_symlink_ancestors(path: Path) -> None:
+    for ancestor in (path, *path.parents):
+        if ancestor.is_symlink():
+            raise ValueError("session checkpoint root or parent must not be a symlink")
 
 
 __all__ = [
