@@ -470,7 +470,7 @@ def main(
     )
     vad = SpeechDetector()
     try:
-        boh = VietnameseBoH()
+        boh = VietnameseBoH(VietnameseBoH.path_for_model(model_key))
         console.print(f"  ASR + VAD + BoH ({len(boh)} phrases) ready\n")
     except FileNotFoundError:
         boh = None

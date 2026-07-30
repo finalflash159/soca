@@ -1,16 +1,4 @@
-"""CLI: interactive manual review of BoH artifact.
-
-Plan v3 requires a manual review pass between BoH construction and runtime.
-Walk through each phrase, decide keep/reject. Auto-saves after every
-decision so Ctrl+C doesn't lose progress.
-
-Usage:
-    uv run python -m local.boh_manual_review                  # review all
-    uv run python -m local.boh_manual_review --unreviewed-only  # only phrases not yet reviewed
-    uv run python -m local.boh_manual_review --start 30        # start from index 30
-    uv run python -m local.boh_manual_review --reset           # flip all keep=True, then review
-    uv run python -m local.boh_manual_review --boh-path data/asr/boh/other.json
-"""
+"""Interactively review a research-only BoH artifact."""
 
 from __future__ import annotations
 
@@ -23,8 +11,6 @@ import click
 from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
-
-from local import config as cfg
 
 console = Console()
 
@@ -92,7 +78,9 @@ def save_data(data: dict, path: Path) -> None:
 
 @click.command()
 @click.option(
-    "--boh-path", default=str(cfg.RUNTIME_BOH_PATH), type=click.Path(),
+    "--boh-path",
+    required=True,
+    type=click.Path(),
     help="BoH JSON to review.",
 )
 @click.option(
@@ -194,7 +182,7 @@ def main(boh_path: str, unreviewed_only: bool, start: int, reset: bool) -> None:
     review_log.append(
         {
             "applied_at_utc": datetime.now(UTC).isoformat(),
-            "applied_by": "local.boh_manual_review (interactive)",
+            "applied_by": "eval.experimental.asr_boh.review (interactive)",
             "n_decisions": counters["kept"] + counters["rejected"],
             "n_kept": counters["kept"],
             "n_rejected": counters["rejected"],
@@ -203,13 +191,6 @@ def main(boh_path: str, unreviewed_only: bool, start: int, reset: bool) -> None:
         }
     )
     save_data(data, path)
-
-    # Also propagate to per-model copy if main file is the runtime alias
-    if path == cfg.RUNTIME_BOH_PATH:
-        per_model = cfg.BOH_DIR / "phowhisper_tiny_vi_boh_v1.json"
-        if per_model.exists() and per_model != path:
-            shutil.copy2(path, per_model)
-            console.print(f"[dim]Synced → {per_model.name}[/dim]")
 
     n_kept_total = sum(1 for item in boh if item.get("keep", True))
     n_rejected_total = sum(1 for item in boh if not item.get("keep", True))

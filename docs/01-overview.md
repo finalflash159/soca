@@ -15,7 +15,7 @@ bake-offs before they become a default path. See `BENCHMARKS.md` and `eval/`.
 | Goal                                                   | Design Consequence                                                                |
 | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
 | Run offline on a personal machine, currently macOS ARM | Local backends: ONNX Runtime for ASR, llama.cpp for LLM, Torch/ONNX for TTS       |
-| Treat Vietnamese as first-class                        | RobustASR for PhoWhisper, BoH artifacts, Vietnamese TTS voices, Vietnamese repair |
+| Treat Vietnamese as first-class                        | RobustASR for PhoWhisper, Vietnamese TTS voices, Vietnamese repair, explicit ASR ablation tooling |
 | Low latency and a more natural conversational feel     | Token→sentence→TTS streaming, per-sentence guardrails, natural repair follow-ups  |
 | Easy model swapping and comparison                     | Registries, runtime profiles, and evaluation harnesses                            |
 | Two experiences: scriptable and visual                 | `soca voice/ask/chat` for CLI and `soca ui` for the Textual TUI                   |
@@ -93,7 +93,7 @@ be tested with fake runtimes.
 ## Current Status
 
 - ✅ Local voice loop runs (`soca voice`).
-- ✅ RobustASR: VAD, de-loop, confidence guard, BoH, hallucination heuristics.
+- ✅ RobustASR: VAD, confidence guard, de-loop, and general hallucination heuristics.
 - ✅ ASR/LLM/TTS registries, profiles, and resolved runtime config.
 - ✅ AssistantRuntime: multi-stage guardrails, tool routing, knowledge+memory,
   citations, trace, and streaming.

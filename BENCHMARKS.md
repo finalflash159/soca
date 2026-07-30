@@ -172,7 +172,7 @@ phrases are model-specific.
 
 | Field            | Value                                                                     |
 | ---------------- | ------------------------------------------------------------------------- |
-| Runtime          | `local.build_boh` + `soca.asr.VietnameseASR`                              |
+| Runtime          | `eval.experimental.asr_boh.build` + `soca.asr.VietnameseASR`               |
 | Model            | `huuquyet/PhoWhisper-base` (74M params)                                   |
 | Noise data       | 800 rows from `data/noise_for_boh/manifest.jsonl`                         |
 | Providers        | `CoreMLExecutionProvider`, `CPUExecutionProvider` fallback                |
@@ -228,7 +228,7 @@ base/quality ASR candidates.
 
 | Field            | Value                                                                      |
 | ---------------- | -------------------------------------------------------------------------- |
-| Runtime          | `local.build_boh` + `soca.asr.VietnameseASR`                               |
+| Runtime          | `eval.experimental.asr_boh.build` + `soca.asr.VietnameseASR`                |
 | Model            | `huuquyet/PhoWhisper-small` (244M params)                                  |
 | Noise data       | 800 rows from `data/noise_for_boh/manifest.jsonl`                          |
 | Providers        | `CoreMLExecutionProvider`, `CPUExecutionProvider` fallback                 |
@@ -870,7 +870,7 @@ pipeline (`soca.asr.RobustASR`), **(E)** Table VII-style benchmark.
 | Providers        | `CoreMLExecutionProvider` → `CPUExecutionProvider` fallback (4 threads)                                    |
 | Normalization    | NFC → lowercase → collapse whitespace → strip boundary punctuation (`. , ! ? ; : " ' " " ' ' ( ) [ ] { }`) |
 | Candidate filter | `count ≥ 2 AND len ≥ 5 chars`                                                                              |
-| Manual review    | Interactive CLI: per-phrase keep/reject (`local.boh_manual_review`)                                        |
+| Manual review    | Interactive CLI: per-phrase keep/reject (`eval.experimental.asr_boh.review`)                              |
 | Wall time        | 482 s on M4 Pro CoreML (~0.6 s/sample)                                                                     |
 | Run date         | 2026-05-20                                                                                                 |
 | Output path      | `data/asr/boh/phowhisper_tiny_vi_boh_v1.json` (gitignored)                                                 |
@@ -1017,7 +1017,7 @@ de-loop/BoH/heuristics.
 | (3) Silero VAD only   | 25.22% | 12.40% | **2%**      | 1260       | 2417       |
 | (4) BoH only          | 25.45% | 12.52% | 100%        | 1256       | 2730       |
 | (5) De-loop + BoH     | 24.62% | 12.03% | 100%        | 1213       | 2724       |
-| (6) **Full pipeline** | 25.22% | 12.40% | **0%**      | 1235       | 2471       |
+| (6) **VAD + de-loop + experimental BoH + heuristics** | 25.22% | 12.40% | **0%** | 1235 | 2471 |
 
 **Metric caveat**
 
@@ -1047,7 +1047,8 @@ filler. After calibration, `avg_logprob=-1.200 < -0.725`, so
 
 **Key finding**
 
-Full pipeline reduces hallucination rate from 100% to **0%** (50/50 noise
+The historical experimental configuration reduces hallucination rate from 100%
+to **0%** (50/50 noise
 samples correctly rejected) with **−0.23pp WER** on real Vietnamese speech
 (25.45% raw → 25.22% full) and **0% observed false positives** in this run.
 Note: full pipeline WER is **slightly lower** than raw because de-loop fixes

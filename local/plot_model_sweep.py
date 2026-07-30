@@ -1,17 +1,4 @@
-"""Cross-model size-sweep charts for the Table VII replication (P1.1 §6).
-
-Unlike ``plot_table7`` (one model, six configs), this reads the focused
-``raw`` + ``vad_deloop_boh`` runs of several PhoWhisper sizes and plots how
-accuracy, compute, and hallucination move with model size.
-
-    uv run python -m local.plot_model_sweep
-
-Produces into eval/results/figs/:
-  - model_sweep_wer_rtf.png    WER(raw) vs RTF across sizes (accuracy saturates,
-                               compute explodes; real-time line at RTF = 1)
-  - model_sweep_halluc.png     hallucination raw vs full per size (size never
-                               fixes raw hallucination; the pipeline always does)
-"""
+"""Render cross-model charts from historical raw and experimental BoH runs."""
 
 from __future__ import annotations
 
@@ -42,15 +29,21 @@ DEFAULT_SWEEP = [
 WER_COLOR = "#e6a817"
 RTF_COLOR = "#5b8def"
 RAW_COLOR = "#d1495b"
-FULL_COLOR = "#2a9d8f"
+EXPERIMENTAL_COLOR = "#2a9d8f"
+CURRENT_ABLATION_PAIR = ("production_no_boh", "production_with_boh")
+HISTORICAL_ABLATION_PAIR = ("raw", "vad_deloop_boh")
 
 
-def _rtf(raw_config: dict) -> float:
+def _rtf(reference_config: dict) -> float:
     """Real-time factor = mean processing time / mean clip duration."""
-    durs = [d["speech_duration_ms"] for d in raw_config["diagnostics"] if d.get("speech_duration_ms")]
+    durs = [
+        diagnostic["speech_duration_ms"]
+        for diagnostic in reference_config["diagnostics"]
+        if diagnostic.get("speech_duration_ms")
+    ]
     if not durs:
         return float("nan")
-    return (raw_config["latency_mean_ms"] / 1000) / (st.mean(durs) / 1000)
+    return (reference_config["latency_mean_ms"] / 1000) / (st.mean(durs) / 1000)
 
 
 def _resolve(results_dir: Path, filenames: str | tuple[str, ...]) -> Path | None:
@@ -63,6 +56,26 @@ def _resolve(results_dir: Path, filenames: str | tuple[str, ...]) -> Path | None
     return None
 
 
+def _ablation_pair(results: dict) -> tuple[dict, dict, str]:
+    if all(code in results for code in CURRENT_ABLATION_PAIR):
+        return (
+            results[CURRENT_ABLATION_PAIR[0]],
+            results[CURRENT_ABLATION_PAIR[1]],
+            "production_paired",
+        )
+    if all(code in results for code in HISTORICAL_ABLATION_PAIR):
+        return (
+            results[HISTORICAL_ABLATION_PAIR[0]],
+            results[HISTORICAL_ABLATION_PAIR[1]],
+            "historical_raw_experimental",
+        )
+    raise ValueError(
+        "ASR sweep report must contain one complete ablation pair: "
+        f"{CURRENT_ABLATION_PAIR!r} or {HISTORICAL_ABLATION_PAIR!r}; "
+        f"found {tuple(sorted(results))!r}"
+    )
+
+
 def load_sweep(results_dir: Path, sweep: list[tuple[str, int, str | tuple[str, ...]]]) -> list[dict]:
     """Read each model's focused JSON into a flat row of the metrics we plot."""
     rows: list[dict] = []
@@ -71,17 +84,17 @@ def load_sweep(results_dir: Path, sweep: list[tuple[str, int, str | tuple[str, .
         if path is None:
             continue
         report = json.loads(path.read_text(encoding="utf-8"))
-        raw = report["results"]["raw"]
-        full = report["results"]["vad_deloop_boh"]
+        reference, experimental, schema = _ablation_pair(report["results"])
         rows.append(
             {
                 "name": name,
                 "params_m": params_m,
-                "wer_raw": raw["wer"] * 100,
-                "cer_raw": raw["cer"] * 100,
-                "halluc_raw": raw["hallucination_rate"] * 100,
-                "halluc_full": full["hallucination_rate"] * 100,
-                "rtf": _rtf(raw),
+                "ablation_schema": schema,
+                "wer_reference": reference["wer"] * 100,
+                "cer_reference": reference["cer"] * 100,
+                "halluc_reference": reference["hallucination_rate"] * 100,
+                "halluc_experimental": experimental["hallucination_rate"] * 100,
+                "rtf": _rtf(reference),
             }
         )
     return rows
@@ -94,12 +107,12 @@ def _labels(rows: list[dict]) -> list[str]:
 def plot_wer_rtf(rows: list[dict], out: Path) -> None:
     """WER(raw) falling and RTF rising as size grows, with the real-time line."""
     x = range(len(rows))
-    wer = [r["wer_raw"] for r in rows]
+    wer = [r["wer_reference"] for r in rows]
     rtf = [r["rtf"] for r in rows]
 
     fig, ax1 = plt.subplots(figsize=(9, 5))
-    ax1.plot(list(x), wer, "o-", color=WER_COLOR, linewidth=2, label="WER (raw) %")
-    ax1.set_ylabel("WER (raw) %", color=WER_COLOR)
+    ax1.plot(list(x), wer, "o-", color=WER_COLOR, linewidth=2, label="WER (reference) %")
+    ax1.set_ylabel("WER (reference) %", color=WER_COLOR)
     ax1.tick_params(axis="y", labelcolor=WER_COLOR)
     ax1.set_ylim(0, max(wer) * 1.25)
     for i, v in enumerate(wer):
@@ -124,22 +137,41 @@ def plot_wer_rtf(rows: list[dict], out: Path) -> None:
 
 
 def plot_halluc(rows: list[dict], out: Path) -> None:
-    """Raw vs full hallucination per size: flat 100% raw, pipeline closes it."""
+    """Compare raw output with the historical experimental BoH configuration."""
     x = range(len(rows))
-    raw = [r["halluc_raw"] for r in rows]
-    full = [r["halluc_full"] for r in rows]
+    reference = [r["halluc_reference"] for r in rows]
+    experimental = [r["halluc_experimental"] for r in rows]
     width = 0.38
 
     fig, ax = plt.subplots(figsize=(9, 5))
-    ax.bar([i - width / 2 for i in x], raw, width, label="raw (no pipeline)", color=RAW_COLOR)
-    ax.bar([i + width / 2 for i in x], full, width, label="full (RobustASR)", color=FULL_COLOR)
-    for i, v in enumerate(full):
-        ax.text(i + width / 2, v + 1.5, f"{v:.1f}", ha="center", fontsize=8, color=FULL_COLOR)
+    ax.bar(
+        [i - width / 2 for i in x],
+        reference,
+        width,
+        label="reference",
+        color=RAW_COLOR,
+    )
+    ax.bar(
+        [i + width / 2 for i in x],
+        experimental,
+        width,
+        label="production + experimental BoH",
+        color=EXPERIMENTAL_COLOR,
+    )
+    for i, value in enumerate(experimental):
+        ax.text(
+            i + width / 2,
+            value + 1.5,
+            f"{value:.1f}",
+            ha="center",
+            fontsize=8,
+            color=EXPERIMENTAL_COLOR,
+        )
     ax.set_xticks(list(x))
     ax.set_xticklabels(_labels(rows))
     ax.set_ylabel("Hallucination %")
     ax.set_ylim(0, 108)
-    ax.set_title("Hallucination: size never fixes it, the pipeline always does")
+    ax.set_title("Historical hallucination ablation by PhoWhisper size")
     ax.legend()
     fig.tight_layout()
     fig.savefig(out, dpi=130)
@@ -172,7 +204,8 @@ def main(results_dir: str, outdir: str) -> None:
     if len(rows) < 2:
         raise click.ClickException(
             f"Need >=2 model result files in {results_dir} (found {len(rows)}). "
-            "Run local.eval_table7 --model <size> --configs raw,vad_deloop_boh first."
+            "Run local.eval_table7 --model <size> "
+            "--configs production_no_boh,production_with_boh first."
         )
     written = render_sweep(rows, Path(outdir))
     for path in written:

@@ -20,7 +20,7 @@ soca/
 │   ├── audio_out.py        #   AudioSink, SoundDevicePlayer, WavFileSink
 │   ├── metrics.py          #   MetricsLogger for per-stage latency
 │   └── usage.py            #   LLMUsage / TurnUsage / SessionUsage
-├── asr/                    # RobustASR + PhoWhisper ONNX + VAD/deloop/BoH/heuristics
+├── asr/                    # RobustASR + PhoWhisper ONNX + VAD/confidence/de-loop/heuristics
 ├── llm/                    # llama.cpp runner + registry + memory-aware + output cleaning
 ├── tts/                    # Valtec Vietnamese TTS runtime + factory
 ├── knowledge/              # Markdown vault + retrieval context
@@ -78,7 +78,7 @@ core; core does not import app. Violating this direction is technical debt.
 | ----------------------------- | ----------------------- | ------------------------------------------------------------------------------------- |
 | `AssistantRuntime`            | `core/runtime.py`       | Brain of one text turn: guardrail→tool→knowledge/memory→LLM, returns `RuntimeResult`  |
 | `VoicePipeline`               | `core/pipeline.py`      | Orchestrates one voice turn: ASR→runtime→TTS; supports streaming and non-stream paths |
-| `RobustASR`                   | `asr/robust_asr.py`     | Wraps PhoWhisper with five anti-hallucination layers                                  |
+| `RobustASR`                   | `asr/robust_asr.py`     | Wraps PhoWhisper with four production guard stages                                    |
 | `RuntimeToolRouter`           | `core/runtime.py`       | Protocol for deterministic tool selection before LLM calls                            |
 | `GuardrailPolicy` + `check_*` | `core/guardrails.py`    | Input/retrieval/tool/output safety checks                                             |
 | `RepairCatalog`               | `core/repair.py`        | Produces Vietnamese follow-up text when ASR rejects                                   |

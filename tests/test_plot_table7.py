@@ -1,7 +1,4 @@
-"""Smoke tests for Table VII chart rendering (P1.1 Pha D).
-
-Uses the Agg backend (headless) and a fake report — no benchmark run needed.
-"""
+"""Smoke tests for research-only ASR chart rendering."""
 
 from __future__ import annotations
 
@@ -50,9 +47,9 @@ def test_render_all_writes_expected_charts(tmp_path: Path) -> None:
         assert path.stat().st_size > 0
 
 
-def test_render_all_skips_stage_chart_without_full_config(tmp_path: Path) -> None:
+def test_render_all_skips_stage_chart_without_experimental_config(tmp_path: Path) -> None:
     report = _fake_report()
-    del report["results"]["vad_deloop_boh"]  # no full pipeline → no stage chart
+    del report["results"]["vad_deloop_boh"]
 
     written = render_all(report, tmp_path)
 

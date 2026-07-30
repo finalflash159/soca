@@ -33,7 +33,6 @@ class VietnameseBoH:
 
     DATA_ASR_DIR = Path(__file__).resolve().parents[3] / "data" / "asr"
     MODEL_ARTIFACT_DIR = DATA_ASR_DIR / "boh"
-    DEFAULT_PATH = DATA_ASR_DIR / "vi_boh_v1.json"
 
     @classmethod
     def artifact_name_for_model(cls, model_key: str) -> str:
@@ -43,12 +42,12 @@ class VietnameseBoH:
     def path_for_model(cls, model_key: str) -> Path:
         return cls.MODEL_ARTIFACT_DIR / cls.artifact_name_for_model(model_key)
 
-    def __init__(self, boh_path: str | Path | None = None):
-        path = Path(boh_path) if boh_path else self.DEFAULT_PATH
+    def __init__(self, boh_path: str | Path):
+        path = Path(boh_path)
         if not path.exists():
             raise FileNotFoundError(
                 f"BoH artifact not found: {path}\n"
-                "Build it via: uv run python -m local.build_boh"
+                "Build it via: uv run python -m eval.experimental.asr_boh.build"
             )
         data = json.loads(path.read_text(encoding="utf-8"))
         self.metadata = data.get("metadata", {})

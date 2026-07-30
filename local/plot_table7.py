@@ -1,13 +1,4 @@
-"""Render Table VII replication charts from a benchmark JSON (P1.1 Pha D).
-
-    uv run python -m local.plot_table7                                  # tiny (canonical)
-    uv run python -m local.plot_table7 --input eval/results/table7_phowhisper_large.json
-
-Produces into eval/results/figs/:
-  - wer_vs_halluc_<model>.png      recognition cost vs hallucination safety, per config
-  - stage_contribution_<model>.png which stage catches non-speech (full pipeline)
-  - halluc_by_subtype_<model>.png  pure vs speech-like hallucination, per config
-"""
+"""Render historical ASR ablation charts from a benchmark JSON."""
 
 from __future__ import annotations
 
@@ -27,9 +18,9 @@ CONFIG_SHORT = {
     "raw": "raw",
     "deloop": "+deloop",
     "vad": "+vad",
-    "boh": "+boh",
-    "deloop_boh": "deloop+boh",
-    "vad_deloop_boh": "full",
+    "boh": "experimental boh",
+    "deloop_boh": "deloop + experimental boh",
+    "vad_deloop_boh": "production + experimental boh",
 }
 
 
@@ -59,9 +50,9 @@ def plot_wer_vs_halluc(results: dict, model: str, out: Path) -> None:
     plt.close(fig)
 
 
-def plot_stage_contribution(full: dict, model: str, out: Path) -> None:
-    breakdown = full["robustness"]["noise_stage_breakdown"]
-    n_noise = max(full["robustness"]["n_noise"], 1)
+def plot_stage_contribution(ablation: dict, model: str, out: Path) -> None:
+    breakdown = ablation["robustness"]["noise_stage_breakdown"]
+    n_noise = max(ablation["robustness"]["n_noise"], 1)
     stages = [s for s in STAGE_ORDER if breakdown.get(s)]
     pct = [breakdown[s] / n_noise * 100 for s in stages]
     colors = ["#d1495b" if s == "accepted" else "#2a9d8f" for s in stages]
@@ -70,7 +61,7 @@ def plot_stage_contribution(full: dict, model: str, out: Path) -> None:
     positions = range(len(stages))
     ax.bar(positions, pct, color=colors)
     ax.set_ylabel("% of non-speech items")
-    ax.set_title(f"Which stage catches non-speech (full pipeline) - {model}")
+    ax.set_title(f"Non-speech catches in production + experimental BoH - {model}")
     ax.set_xticks(list(positions))
     ax.set_xticklabels(stages, rotation=20, ha="right")
     for i, v in enumerate(pct):
