@@ -1,5 +1,14 @@
 from .budget import BudgetLedger, BudgetSnapshot
-from .checkpoint import GoalCheckpoint, GoalCheckpointStore, WorkflowRunCheckpoint
+from .checkpoint import (
+    GoalCheckpoint,
+    GoalCheckpointConflictError,
+    GoalCheckpointCorruptError,
+    GoalCheckpointError,
+    GoalCheckpointPermissionError,
+    GoalCheckpointSchemaError,
+    GoalCheckpointStore,
+    WorkflowRunCheckpoint,
+)
 from .contracts import (
     Advance,
     CancellationState,
@@ -90,6 +99,11 @@ __all__ = [
     "GoalConstraint",
     "GoalContract",
     "GoalCheckpoint",
+    "GoalCheckpointConflictError",
+    "GoalCheckpointCorruptError",
+    "GoalCheckpointError",
+    "GoalCheckpointPermissionError",
+    "GoalCheckpointSchemaError",
     "GoalCheckpointStore",
     "GoalDecision",
     "GoalDecisionKind",

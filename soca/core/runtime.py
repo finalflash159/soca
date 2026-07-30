@@ -404,7 +404,7 @@ class AssistantRuntime:
                 goal_id=uuid4().hex,
                 objective=text.strip() or "rejected input",
             )
-            return ControlledWorkflowRunner(
+            workflow_run = ControlledWorkflowRunner(
                 self.tool_runtime,
                 budget=budget or TurnBudget(),
                 guardrail_policy=self.guardrail_policy,
@@ -414,6 +414,8 @@ class AssistantRuntime:
                 surface="voice" if source == "voice" else "chat",
                 admission_error=input_event.reason,
             )
+            self._active_goal_store.record_run(workflow_run)
+            return workflow_run
         if goal_decision is not None and structured_goal_resolver is not None:
             raise ValueError("provide a goal decision or structured resolver, not both")
         if goal_decision is None and structured_goal_resolver is None and explicit_call is None:

@@ -4,6 +4,9 @@ import pytest
 
 from soca.core.workflow import (
     ActiveGoalStore,
+    GoalCheckpointConflictError,
+    GoalCheckpointCorruptError,
+    GoalCheckpointPermissionError,
     GoalCheckpointStore,
     GoalConstraint,
     GoalContract,
@@ -40,11 +43,42 @@ def test_goal_checkpoint_round_trip_is_private_and_resumable(tmp_path: Path) -> 
 
 def test_goal_checkpoint_rejects_corruption_without_silent_reset(tmp_path: Path) -> None:
     store = GoalCheckpointStore(tmp_path / "goals")
-    target = store.save("session-1", goal=_goal(), last_run=None)
+    store.save("session-1", goal=_goal(), last_run=None)
+    target = store.path_for("session-1")
     target.write_text("not json", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="invalid goal checkpoint"):
+    with pytest.raises(GoalCheckpointCorruptError, match="cannot read goal checkpoint"):
         ActiveGoalStore(checkpoint_store=store, session_id="session-1")
+
+
+def test_goal_checkpoint_rejects_symlink_root_and_detects_conflict(tmp_path: Path) -> None:
+    real_root = tmp_path / "real"
+    real_root.mkdir()
+    linked_root = tmp_path / "linked"
+    linked_root.symlink_to(real_root, target_is_directory=True)
+
+    with pytest.raises(GoalCheckpointPermissionError):
+        GoalCheckpointStore(linked_root)
+
+    store = GoalCheckpointStore(real_root / "goals")
+    store.save("session-1", goal=_goal(), last_run=None)
+    loaded = store.load("session-1")
+    store.save(
+        "session-1",
+        goal=None,
+        last_run=None,
+        expected_revision=loaded.revision,
+        expected_digest=loaded.digest,
+    )
+
+    with pytest.raises(GoalCheckpointConflictError):
+        store.save(
+            "session-1",
+            goal=_goal(),
+            last_run=None,
+            expected_revision=loaded.revision,
+            expected_digest=loaded.digest,
+        )
 
 
 def test_goal_checkpoint_clear_persists_terminal_goal_state(tmp_path: Path) -> None:

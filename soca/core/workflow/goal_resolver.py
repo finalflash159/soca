@@ -9,7 +9,11 @@ from uuid import uuid4
 
 from soca.llm import LLMEngine, StructuredLLMEngine
 
-from .checkpoint import GoalCheckpointStore, WorkflowRunCheckpoint, now_checkpoint_time
+from .checkpoint import (
+    GoalCheckpointStore,
+    WorkflowRunCheckpoint,
+    now_checkpoint_time,
+)
 from .contracts import (
     GoalConstraint,
     GoalContract,
@@ -75,12 +79,16 @@ class ActiveGoalStore:
         self._checkpoint_store = checkpoint_store
         self._session_id = session_id
         self._last_run: WorkflowRunCheckpoint | None = None
+        self._checkpoint_revision: int | None = None
+        self._checkpoint_digest: str | None = None
         if checkpoint_store is None:
             self._goal = None
         else:
             checkpoint = checkpoint_store.load(session_id)
             self._goal = checkpoint.goal
             self._last_run = checkpoint.last_run
+            self._checkpoint_revision = checkpoint.revision or None
+            self._checkpoint_digest = checkpoint.digest
 
     @property
     def current(self) -> GoalContract | None:
@@ -110,11 +118,15 @@ class ActiveGoalStore:
 
     def _persist(self) -> None:
         if self._checkpoint_store is not None:
-            self._checkpoint_store.save(
+            checkpoint = self._checkpoint_store.save(
                 self._session_id,
                 goal=self._goal,
                 last_run=self._last_run,
+                expected_revision=self._checkpoint_revision,
+                expected_digest=self._checkpoint_digest,
             )
+            self._checkpoint_revision = checkpoint.revision
+            self._checkpoint_digest = checkpoint.digest
 
 
 class GoalResolver:

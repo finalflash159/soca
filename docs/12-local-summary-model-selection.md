@@ -217,6 +217,20 @@ raw JSON was kept outside Git. The same release run also verified that a failed
 summary preserves source turns and exposes `MemoryCapacityError` instead of
 silently trimming them.
 
+Reproducibility metadata for that table:
+
+| Field | Value |
+| --- | --- |
+| run id | `summary-lifecycle-smoke-20260730-m4pro-01` |
+| run type | real-flow smoke; **not** a benchmark or standalone release gate |
+| code revision | `e564b72` (PR branch before review fix) |
+| model revision | `a06e946bb6b655725eafa393f4a9745d460374c9` |
+| model file | `Qwen3-4B-Instruct-2507-Q4_K_M.gguf` |
+| data revision | script-generated conversation fixture in `scripts/smoke_test_working_memory_real.py`; no demo vault or benchmark corpus |
+| runtime/config | Apple M4 Pro, 48 GB, macOS arm64, Python 3.11.14; default XDG model root; no answer-smoke flag |
+| raw artifact | `/tmp/soca-memory-phase7-smoke.json` (local, outside Git) |
+| decision | lifecycle and fail-closed recovery pass; metrics are operational evidence, not a model bake-off result |
+
 Context allocation is dynamic from 4K up to a 32K maximum, so a short manual
 compaction does not pay the 32K KV-cache cost. A real post-compaction answer
 turn also passed with the persisted OpenRouter selection
