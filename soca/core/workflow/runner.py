@@ -3,8 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
-from typing import Any, Protocol
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
+from typing import Any, Protocol, cast
 from uuid import uuid4
 
 from soca.core.guardrails import (
@@ -13,33 +14,52 @@ from soca.core.guardrails import (
     check_final_output,
     check_tool_call,
 )
-from soca.tools import SideEffectLevel, ToolCall, ToolResult, ToolRuntime
+from soca.tools import (
+    SideEffectLevel,
+    ToolCall,
+    ToolExecutionStatus,
+    ToolResult,
+    ToolRuntime,
+)
 
 from .budget import BudgetLedger, BudgetSnapshot
 from .contracts import (
+    Advance,
+    Capability,
     GoalContract,
     GoalStatus,
+    NodeOutcome,
+    NodeTrace,
+    Observation,
+    SourceKind,
+    StatePatch,
+    Terminal,
     TerminalOutcome,
     TerminalStatus,
     TurnBudget,
     TurnNode,
     TurnSource,
+    TurnState,
+    VerificationReport,
 )
 from .errors import BudgetExceededError, WorkflowError, WorkflowErrorCode
 from .events import EventStatus, EventType, WorkflowEvent, WorkflowEventStream
 from .nodes import ToolExecutionNode
-from .planner import ActionPlan, PlanStep, WorkflowPlanner
-from .verifier import DeterministicVerifier, Verification
+from .planner import ActionPlan, PlanOutputError, PlanStep, WorkflowPlanner
+from .verifier import (
+    DeterministicVerifier,
+    Verification,
+    source_for_capability,
+    unmet_goal_criteria,
+)
 
 
 class AuthorizationPolicy(Protocol):
-    def __call__(self, goal: GoalContract, step: PlanStep) -> bool:
-        ...
+    def __call__(self, goal: GoalContract, step: PlanStep) -> bool: ...
 
 
 class CancellationCheck(Protocol):
-    def __call__(self) -> bool:
-        ...
+    def __call__(self) -> bool: ...
 
 
 @dataclass(frozen=True)
@@ -47,22 +67,30 @@ class WorkflowRun:
     events: tuple[WorkflowEvent, ...]
     terminal: TerminalOutcome
     budget: BudgetSnapshot
+    state: TurnState
     observations: tuple[ToolResult, ...] = ()
 
 
 class RetryLedger:
-    """Track attempts once per canonical action fingerprint for one run."""
-
     def __init__(self) -> None:
         self._attempts: dict[str, int] = {}
+        self._failures: dict[str, int] = {}
         self._completed: set[str] = set()
 
     def attempts(self, fingerprint: str) -> int:
         return self._attempts.get(fingerprint, 0)
 
+    def failures(self, fingerprint: str) -> int:
+        return self._failures.get(fingerprint, 0)
+
     def record_attempt(self, fingerprint: str) -> int:
-        count = self._attempts.get(fingerprint, 0) + 1
+        count = self.attempts(fingerprint) + 1
         self._attempts[fingerprint] = count
+        return count
+
+    def record_failure(self, fingerprint: str) -> int:
+        count = self.failures(fingerprint) + 1
+        self._failures[fingerprint] = count
         return count
 
     def mark_completed(self, fingerprint: str) -> None:
@@ -73,15 +101,13 @@ class RetryLedger:
 
 
 def action_fingerprint(goal: GoalContract, call: ToolCall) -> str:
-    """Create a stable idempotency key without storing user content in the key."""
     canonical = json.dumps(
         {
             "goal_id": goal.goal_id,
             "goal_revision": {
                 "objective": goal.objective,
                 "constraints": [
-                    {"kind": item.kind, "value": _jsonable(item.value)}
-                    for item in goal.constraints
+                    {"kind": item.kind, "value": _jsonable(item.value)} for item in goal.constraints
                 ],
                 "required_sources": [item.value for item in goal.required_sources],
                 "resolved_entities": [
@@ -123,24 +149,23 @@ class InvalidTransitionError(WorkflowError):
 
 _TRANSITIONS: Mapping[TurnNode, frozenset[TurnNode]] = {
     TurnNode.ADMIT: frozenset({TurnNode.RESOLVE_GOAL}),
-    TurnNode.RESOLVE_GOAL: frozenset({TurnNode.MAKE_PLAN, TurnNode.AUTHORIZE_ACTION}),
-    TurnNode.MAKE_PLAN: frozenset({TurnNode.AUTHORIZE_ACTION, TurnNode.SYNTHESIZE}),
+    TurnNode.RESOLVE_GOAL: frozenset({TurnNode.CHOOSE_CAPABILITY}),
+    TurnNode.CHOOSE_CAPABILITY: frozenset(
+        {TurnNode.MAKE_PLAN, TurnNode.AUTHORIZE_ACTION, TurnNode.ASK_CLARIFICATION}
+    ),
+    TurnNode.MAKE_PLAN: frozenset({TurnNode.AUTHORIZE_ACTION, TurnNode.ASK_CLARIFICATION}),
     TurnNode.AUTHORIZE_ACTION: frozenset({TurnNode.EXECUTE_ACTION}),
     TurnNode.EXECUTE_ACTION: frozenset({TurnNode.ASSESS_OBSERVATION}),
-    TurnNode.ASSESS_OBSERVATION: frozenset(
-        {TurnNode.VERIFY_ANSWER, TurnNode.EXECUTE_ACTION}
-    ),
-    TurnNode.VERIFY_ANSWER: frozenset(
-        {TurnNode.AUTHORIZE_ACTION, TurnNode.SYNTHESIZE}
-    ),
-    TurnNode.SYNTHESIZE: frozenset({TurnNode.FINALIZE}),
+    TurnNode.ASSESS_OBSERVATION: frozenset({TurnNode.AUTHORIZE_ACTION, TurnNode.SYNTHESIZE}),
+    TurnNode.SYNTHESIZE: frozenset({TurnNode.VERIFY_ANSWER}),
+    TurnNode.VERIFY_ANSWER: frozenset({TurnNode.REPAIR_ANSWER, TurnNode.FINALIZE}),
+    TurnNode.REPAIR_ANSWER: frozenset({TurnNode.VERIFY_ANSWER}),
+    TurnNode.ASK_CLARIFICATION: frozenset({TurnNode.FINALIZE}),
 }
 
 
 @dataclass
 class ControlledWorkflowRunner:
-    """Run a bounded, read-mostly workflow without changing legacy runtime."""
-
     tool_runtime: ToolRuntime
     verifier: DeterministicVerifier = field(default_factory=DeterministicVerifier)
     budget: TurnBudget = field(default_factory=TurnBudget)
@@ -157,7 +182,11 @@ class ControlledWorkflowRunner:
         turn_id: str = "",
         session_id: str = "in-memory-session",
         surface: TurnSource = "chat",
+        initial_model_calls: int = 0,
+        admission_error: str = "",
     ) -> WorkflowRun:
+        if initial_model_calls < 0:
+            raise ValueError("initial model calls must be non-negative")
         run_id = turn_id.strip() or f"run-{uuid4().hex}"
         ledger = BudgetLedger(self.budget)
         retries = RetryLedger()
@@ -167,126 +196,261 @@ class ControlledWorkflowRunner:
             goal_id=goal.goal_id,
             surface=surface,
         )
-        observations: list[ToolResult] = []
-        current = TurnNode.ADMIT
-        plan: ActionPlan | None = None
+        state = TurnState(
+            run_id=run_id,
+            session_id=session_id,
+            source=surface,
+            goal=goal,
+            node=TurnNode.ADMIT,
+            budget=self.budget,
+        )
+        results: list[ToolResult] = []
 
         def is_cancelled() -> bool:
             return bool(cancelled and cancelled())
 
-        def transition(target: TurnNode) -> None:
-            nonlocal current
-            current = self._move(current, target, ledger, stream)
+        def apply(outcome: NodeOutcome) -> TerminalOutcome | None:
+            nonlocal state
+            if isinstance(outcome, Terminal):
+                state = replace(state, terminal=outcome.outcome)
+                return outcome.outcome
+            if not isinstance(outcome, Advance):
+                raise WorkflowError(
+                    WorkflowErrorCode.PROTOCOL_ERROR,
+                    "runner received an unsupported retry outcome",
+                )
+            state = self._apply_advance(state, outcome, ledger, stream)
+            return None
+
+        def transition(
+            target: TurnNode,
+            *,
+            patch: Mapping[str, Any] | None = None,
+        ) -> None:
+            apply(Advance(target, StatePatch(dict(patch or {}))))
 
         def terminal(outcome: TerminalOutcome) -> WorkflowRun:
+            nonlocal state
+            apply(Terminal(outcome))
             if stream.terminal_outcome is None:
                 stream.emit_terminal(outcome)
             return WorkflowRun(
                 events=tuple(stream),
                 terminal=outcome,
                 budget=ledger.snapshot(),
-                observations=tuple(observations),
+                state=state,
+                observations=tuple(results),
             )
 
-        stream.emit(
-            EventType.TURN_STARTED,
-            TurnNode.ADMIT,
-            status=EventStatus.STARTED,
-        )
+        stream.emit(EventType.TURN_STARTED, state.node, status=EventStatus.STARTED)
         try:
+            if admission_error:
+                return terminal(
+                    self._failed_outcome(
+                        "input_guardrail",
+                        detail=admission_error,
+                    )
+                )
+            if initial_model_calls:
+                ledger.consume("model", initial_model_calls)
             if is_cancelled():
                 return terminal(self._cancelled_outcome("cancelled_before_start"))
+
             transition(TurnNode.RESOLVE_GOAL)
             stream.emit(
                 EventType.GOAL_RESOLVED,
-                current,
+                state.node,
                 status=EventStatus.COMPLETED,
                 payload={"objective": goal.objective},
             )
+            transition(TurnNode.CHOOSE_CAPABILITY)
 
             if explicit_call is not None:
+                step = self._explicit_step(explicit_call)
                 plan = ActionPlan(
-                    steps=(
-                        PlanStep(
-                            action_id="explicit-1",
-                            call=explicit_call,
-                            purpose="explicit_command",
-                        ),
-                    ),
-                    final_instruction="",
+                    steps=(step,),
                     rationale="explicit_command",
+                )
+                stream.emit(
+                    EventType.STEP_COMPLETED,
+                    state.node,
+                    status=EventStatus.COMPLETED,
+                    payload={
+                        "operation": "choose_capability",
+                        "capability": step.capability.value,
+                    },
                 )
             else:
                 if planner is None:
                     return terminal(self._failed_outcome("planner_required"))
+                stream.emit(
+                    EventType.STEP_COMPLETED,
+                    state.node,
+                    status=EventStatus.COMPLETED,
+                    payload={
+                        "operation": "choose_capability",
+                        "capability": "planner_catalog",
+                    },
+                )
                 transition(TurnNode.MAKE_PLAN)
                 stream.emit(
                     EventType.STEP_PROGRESS,
-                    current,
+                    state.node,
                     payload={"operation": "plan"},
                 )
-                self._bind_model_budget(planner, ledger)
+                ledger.consume("planner")
+                self._bind_planner_budget(planner, ledger)
                 if not self._has_model_budget_hook(planner):
                     ledger.consume("model")
                 plan = planner.plan(goal.planner_text())
 
             if not plan.steps:
                 return terminal(self._failed_outcome("empty_plan"))
+            ledger.consume("planned_action", len(plan.steps))
+            transition(
+                TurnNode.AUTHORIZE_ACTION,
+                patch={"plan": tuple(step.as_planned_action() for step in plan.steps)},
+            )
+            if plan.public_update:
+                stream.emit(
+                    EventType.PUBLIC_UPDATE,
+                    state.node,
+                    payload={
+                        "text": plan.public_update,
+                        "non_terminal": True,
+                        "scheduled_actions": len(plan.steps),
+                    },
+                )
 
-            for step in plan.steps:
+            reports: list[Verification] = []
+            achieved_sources: set[SourceKind] = set()
+            for index, step in enumerate(plan.steps):
                 if is_cancelled():
                     return terminal(self._cancelled_outcome("cancelled_before_action"))
-                result = self._run_step(
-                    goal,
+                if index > 0:
+                    transition(TurnNode.AUTHORIZE_ACTION)
+                result, observation, verification, failure = self._run_step(
+                    state,
                     step,
                     ledger=ledger,
                     retries=retries,
                     stream=stream,
-                    current=current,
                     authorize=authorize,
                     is_cancelled=is_cancelled,
                 )
-                current = result[0]
-                observations.append(result[1])
-                verification = result[2]
-                if result[3] is not None:
-                    return terminal(result[3])
-                if not verification.achieved:
-                    return terminal(self._failed_outcome(verification.reason))
+                results.append(result)
+                if step.required:
+                    reports.append(verification)
+                    if verification.achieved:
+                        source_kind = source_for_capability(step.capability)
+                        if source_kind is not None:
+                            achieved_sources.add(source_kind)
+                state = replace(
+                    state,
+                    node=TurnNode.ASSESS_OBSERVATION,
+                    observations=state.observations + (observation,),
+                    verification=VerificationReport(
+                        passed=verification.achieved,
+                        reason_code=verification.reason,
+                        unmet_criteria=verification.unmet_criteria,
+                        supported_evidence_ids=verification.evidence_ids,
+                    ),
+                )
+                if failure is not None:
+                    return terminal(failure)
+                if step.required and not verification.achieved:
+                    return terminal(
+                        self._failed_outcome(
+                            verification.reason,
+                            unmet_criteria=verification.unmet_criteria,
+                        )
+                    )
 
             if is_cancelled():
                 return terminal(self._cancelled_outcome("cancelled_before_answer"))
-            if current != TurnNode.SYNTHESIZE:
-                transition(TurnNode.SYNTHESIZE)
+            transition(
+                TurnNode.SYNTHESIZE,
+                patch={"draft_answer": self._observation_text(results)},
+            )
             stream.emit(
                 EventType.STEP_STARTED,
-                current,
+                state.node,
                 status=EventStatus.STARTED,
                 payload={"operation": "synthesize"},
             )
-            response_text = self._observation_text(observations)
+            response_text = state.draft_answer or ""
             output_event = check_final_output(
                 response_text,
                 knowledge_used=any(
                     result.name in {"knowledge.search", "knowledge.read", "memory.search"}
-                    for result in observations
+                    for result in results
                 ),
-                citations=self._citation_payload(observations),
-                tool_results=tuple(observations),
+                citations=self._citation_payload(results),
+                tool_results=tuple(results),
                 policy=self.guardrail_policy,
             )
             if output_event.blocked:
-                return terminal(self._failed_outcome("output_guardrail", detail=output_event.reason))
+                return terminal(
+                    self._failed_outcome(
+                        "output_guardrail",
+                        detail=output_event.reason,
+                    )
+                )
+
+            transition(TurnNode.VERIFY_ANSWER)
+            missing_sources = tuple(
+                source.value for source in goal.required_sources if source not in achieved_sources
+            )
+            unmet_success_criteria = unmet_goal_criteria(
+                goal,
+                achieved_sources=achieved_sources,
+                has_observation=any(report.achieved for report in reports),
+            )
+            passed = (
+                all(report.achieved for report in reports)
+                and not missing_sources
+                and not unmet_success_criteria
+            )
+            evidence_ids = tuple(
+                dict.fromkeys(
+                    evidence_id for report in reports for evidence_id in report.evidence_ids
+                )
+            )
+            final_report = VerificationReport(
+                passed=passed,
+                reason_code="goal_criteria_satisfied" if passed else "goal_criteria_unmet",
+                unmet_criteria=tuple(
+                    criterion for report in reports for criterion in report.unmet_criteria
+                )
+                + tuple(f"source:{source}" for source in missing_sources)
+                + unmet_success_criteria,
+                supported_evidence_ids=evidence_ids,
+            )
+            state = replace(state, verification=final_report)
+            stream.emit(
+                EventType.VERIFICATION_COMPLETED,
+                state.node,
+                status=EventStatus.COMPLETED if passed else EventStatus.FAILED,
+                payload={"passed": passed, "evidence_ids": list(evidence_ids)},
+            )
+            if not passed:
+                return terminal(
+                    self._failed_outcome(
+                        "goal_criteria_unmet",
+                        unmet_criteria=final_report.unmet_criteria,
+                    )
+                )
             transition(TurnNode.FINALIZE)
             return terminal(
                 TerminalOutcome(
                     status=TerminalStatus.ACHIEVED,
                     final_text=response_text,
                     goal_status=GoalStatus.ACHIEVED,
+                    evidence_ids=evidence_ids,
                     route="controlled_workflow",
                     metadata={
                         "goal_id": goal.goal_id,
-                        "observations": len(observations),
+                        "observations": len(results),
                         "planner_instruction": plan.final_instruction,
                         "rationale": plan.rationale,
                     },
@@ -296,7 +460,16 @@ class ControlledWorkflowRunner:
             return terminal(self._failed_outcome("budget_exhausted", detail=exc.budget_name))
         except InvalidTransitionError as exc:
             return terminal(self._failed_outcome("invalid_transition", detail=str(exc)))
-        except Exception as exc:  # noqa: BLE001 - controller boundary must terminalize
+        except PlanLookupError as exc:
+            return terminal(self._failed_outcome(str(exc)))
+        except PlanOutputError as exc:
+            return terminal(
+                self._failed_outcome(
+                    "planner_output_invalid",
+                    detail=exc.code,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - controller boundary terminalizes faults
             return terminal(
                 self._failed_outcome(
                     "workflow_error",
@@ -306,24 +479,30 @@ class ControlledWorkflowRunner:
 
     def _run_step(
         self,
-        goal: GoalContract,
+        state: TurnState,
         step: PlanStep,
         *,
         ledger: BudgetLedger,
         retries: RetryLedger,
         stream: WorkflowEventStream,
-        current: TurnNode,
         authorize: AuthorizationPolicy | None,
         is_cancelled: Callable[[], bool],
-    ) -> tuple[TurnNode, ToolResult, Verification, TerminalOutcome | None]:
-        fingerprint = action_fingerprint(goal, step.call)
+    ) -> tuple[ToolResult, Observation, Verification, TerminalOutcome | None]:
+        fingerprint = action_fingerprint(state.goal, step.call)
         tool = self.tool_runtime.get(step.call.name)
         if tool is None or not tool.spec.enabled:
+            result = ToolResult(
+                step.call.name,
+                False,
+                "",
+                error="unknown_tool",
+                status=ToolExecutionStatus.INVALID,
+            )
             return (
-                current,
-                ToolResult(step.call.name, False, "", error="unknown_tool"),
+                result,
+                self._observation(step, result),
                 Verification(False, "unknown_tool"),
-                self._failed_outcome("unknown_tool"),
+                self._failed_outcome("unknown_tool") if step.required else None,
             )
         guardrail_event = check_tool_call(
             self.tool_runtime,
@@ -336,89 +515,195 @@ class ControlledWorkflowRunner:
                 False,
                 "",
                 error=guardrail_event.reason,
+                status=ToolExecutionStatus.DENIED,
             )
             return (
-                current,
                 result,
+                self._observation(step, result),
                 Verification(False, guardrail_event.reason),
-                self._failed_outcome("guardrail_blocked", detail=guardrail_event.reason),
+                (
+                    self._failed_outcome(
+                        "guardrail_blocked",
+                        detail=guardrail_event.reason,
+                    )
+                    if step.required
+                    else None
+                ),
             )
-        needs_authorization = step.requires_authorization or tool.spec.side_effect != SideEffectLevel.READ_ONLY
-        if needs_authorization:
-            if authorize is None or not authorize(goal, step):
-                return (
-                    current,
-                    ToolResult(step.call.name, False, "", error="authorization_denied"),
-                    Verification(False, "authorization_denied"),
-                    self._failed_outcome("authorization_denied"),
-                )
+        needs_authorization = (
+            step.requires_authorization or tool.spec.side_effect != SideEffectLevel.READ_ONLY
+        )
+        if needs_authorization and (authorize is None or not authorize(state.goal, step)):
+            result = ToolResult(
+                step.call.name,
+                False,
+                "",
+                error="authorization_denied",
+                status=ToolExecutionStatus.DENIED,
+            )
+            return (
+                result,
+                self._observation(step, result),
+                Verification(False, "authorization_denied"),
+                (self._failed_outcome("authorization_denied") if step.required else None),
+            )
 
         if retries.is_completed(fingerprint):
-            result = ToolResult(step.call.name, False, "", error="duplicate_action")
+            result = ToolResult(
+                step.call.name,
+                False,
+                "",
+                error="duplicate_action",
+                status=ToolExecutionStatus.DENIED,
+            )
             return (
-                current,
                 result,
+                self._observation(step, result),
                 Verification(False, "duplicate_action"),
-                self._failed_outcome("duplicate_action"),
+                self._failed_outcome("duplicate_action") if step.required else None,
             )
 
         while True:
             if is_cancelled():
-                result = ToolResult(step.call.name, False, "", error="cancelled")
-                return current, result, Verification(False, "cancelled"), self._cancelled_outcome("cancelled_during_action")
-            if current != TurnNode.AUTHORIZE_ACTION:
-                current = self._move(current, TurnNode.AUTHORIZE_ACTION, ledger, stream)
+                result = ToolResult(
+                    step.call.name,
+                    False,
+                    "",
+                    error="cancelled",
+                    status=ToolExecutionStatus.CANCELLED,
+                )
+                return (
+                    result,
+                    self._observation(step, result),
+                    Verification(False, "cancelled"),
+                    self._cancelled_outcome("cancelled_during_action"),
+                )
             stream.emit(
                 EventType.STEP_STARTED,
-                current,
+                TurnNode.AUTHORIZE_ACTION,
                 status=EventStatus.STARTED,
                 payload={"action_id": step.action_id, "operation": "authorize"},
             )
-            current = self._move(current, TurnNode.EXECUTE_ACTION, ledger, stream)
-            ledger.consume("tool")
-            retries.record_attempt(fingerprint)
+            ledger.consume("transition")
             stream.emit(
-                EventType.STEP_PROGRESS,
-                current,
+                EventType.STEP_STARTED,
+                TurnNode.EXECUTE_ACTION,
+                status=EventStatus.STARTED,
                 payload={"action_id": step.action_id, "operation": "execute"},
             )
+            ledger.consume("tool")
+            retries.record_attempt(fingerprint)
             result = ToolExecutionNode(self.tool_runtime).execute(step.call)
             if not isinstance(result, ToolResult):
-                result = ToolResult(step.call.name, False, "", error="invalid_tool_result")
+                raise TypeError("tool runtime returned an invalid result")
             if result.ok:
                 retries.mark_completed(fingerprint)
-            current = self._move(current, TurnNode.ASSESS_OBSERVATION, ledger, stream)
+            else:
+                retries.record_failure(fingerprint)
+            ledger.consume("transition")
             stream.emit(
                 EventType.STEP_COMPLETED,
-                current,
+                TurnNode.ASSESS_OBSERVATION,
                 status=EventStatus.COMPLETED if result.ok else EventStatus.FAILED,
-                payload={"action_id": step.action_id, "result_ok": result.ok},
+                payload={
+                    "action_id": step.action_id,
+                    "result_status": cast(ToolExecutionStatus, result.status).value,
+                    "retryable": result.retryable,
+                },
             )
-            verification = self.verifier.verify(goal, result)
-            current = self._move(current, TurnNode.VERIFY_ANSWER, ledger, stream)
-            stream.emit(
-                EventType.VERIFICATION_COMPLETED,
-                current,
-                status=(
-                    EventStatus.COMPLETED if verification.achieved else EventStatus.FAILED
-                ),
-                payload={"action_id": step.action_id, "passed": verification.achieved},
-            )
+            action = step.as_planned_action()
+            verification = self.verifier.verify(state.goal, result, action)
             if verification.achieved:
-                return current, result, verification, None
-            if (
-                not result.ok
-                and ledger.snapshot().retries < self.budget.max_readonly_tool_retries
+                return result, self._observation(step, result), verification, None
+            retry_allowed = (
+                result.retryable
                 and (tool.spec.side_effect == SideEffectLevel.READ_ONLY or tool.spec.idempotent)
-            ):
+                and retries.failures(fingerprint) < self.budget.max_same_action_failures
+            )
+            if retry_allowed:
                 ledger.consume("retry")
                 stream.emit(
                     EventType.STEP_PROGRESS,
-                    current,
-                    payload={"action_id": step.action_id, "operation": "retry"},
+                    TurnNode.ASSESS_OBSERVATION,
+                    payload={
+                        "action_id": step.action_id,
+                        "operation": "retry",
+                        "failure_count": retries.failures(fingerprint),
+                    },
                 )
                 continue
-            return current, result, verification, None
+            return result, self._observation(step, result), verification, None
+
+    def _explicit_step(self, call: ToolCall) -> PlanStep:
+        tool = self.tool_runtime.get(call.name)
+        if tool is None or not tool.spec.enabled:
+            raise PlanLookupError("unknown_tool")
+        try:
+            capability = Capability(tool.spec.workflow_capability)
+        except ValueError as exc:
+            raise PlanLookupError("unsupported_tool_capability") from exc
+        return PlanStep(
+            action_id="explicit-1",
+            capability=capability,
+            call=call,
+            purpose="explicit_command",
+            expected_observation="tool receipt",
+            requires_authorization=tool.spec.side_effect != SideEffectLevel.READ_ONLY,
+        )
+
+    @staticmethod
+    def _observation(step: PlanStep, result: ToolResult) -> Observation:
+        status = cast(ToolExecutionStatus, result.status)
+        data = dict(result.data)
+        if result.content:
+            data["content"] = result.content
+        return Observation(
+            action_id=step.action_id,
+            status=status,
+            data=data,
+            error_code=result.error or None,
+            retryable=result.retryable,
+            committed=result.ok,
+            receipt=action_fingerprint_stub(step, result),
+        )
+
+    @staticmethod
+    def _apply_advance(
+        state: TurnState,
+        outcome: Advance,
+        ledger: BudgetLedger,
+        stream: WorkflowEventStream,
+    ) -> TurnState:
+        if outcome.next_node not in _TRANSITIONS.get(state.node, frozenset()):
+            raise InvalidTransitionError(state.node, outcome.next_node)
+        ledger.consume("transition")
+        patch = dict(outcome.patch.values)
+        unknown = set(patch) - set(TurnState.__dataclass_fields__)
+        if unknown:
+            raise WorkflowError(
+                WorkflowErrorCode.PROTOCOL_ERROR,
+                "state patch contains unknown fields",
+            )
+        now = datetime.now(UTC).isoformat()
+        trace = state.trace + (
+            NodeTrace(
+                node=outcome.next_node,
+                started_at=now,
+                finished_at=now,
+            ),
+        )
+        stream.emit(
+            EventType.STEP_STARTED,
+            outcome.next_node,
+            status=EventStatus.STARTED,
+            payload={"operation": outcome.next_node.value},
+        )
+        return replace(
+            state,
+            node=outcome.next_node,
+            trace=trace,
+            **patch,
+        )
 
     @staticmethod
     def _observation_text(observations: list[ToolResult]) -> str:
@@ -431,7 +716,9 @@ class ControlledWorkflowRunner:
         return "\n\n".join(parts).strip()
 
     @staticmethod
-    def _citation_payload(observations: list[ToolResult]) -> tuple[object, ...]:
+    def _citation_payload(
+        observations: list[ToolResult],
+    ) -> tuple[object, ...]:
         citations: list[object] = []
         for result in observations:
             hits = result.data.get("hits")
@@ -443,48 +730,55 @@ class ControlledWorkflowRunner:
         return tuple(citations)
 
     @staticmethod
-    def _move(
-        current: TurnNode,
-        target: TurnNode,
+    def _bind_planner_budget(
+        planner: WorkflowPlanner,
         ledger: BudgetLedger,
-        stream: WorkflowEventStream,
-    ) -> TurnNode:
-        if target not in _TRANSITIONS.get(current, frozenset()):
-            raise InvalidTransitionError(current, target)
-        ledger.consume("transition")
-        stream.emit(
-            EventType.STEP_STARTED,
-            target,
-            status=EventStatus.STARTED,
-            payload={"operation": target.value},
-        )
-        return target
-
-    @staticmethod
-    def _bind_model_budget(planner: WorkflowPlanner, ledger: BudgetLedger) -> None:
+    ) -> None:
+        hooks = getattr(planner, "set_budget_hooks", None)
+        if callable(hooks):
+            hooks(
+                model_call=lambda: ledger.consume("model"),
+                structured_repair=lambda: ledger.consume("structured_repair"),
+            )
+            return
         hook = getattr(planner, "set_model_call_hook", None)
         if callable(hook):
             hook(lambda: ledger.consume("model"))
 
     @staticmethod
     def _has_model_budget_hook(planner: WorkflowPlanner) -> bool:
-        return callable(getattr(planner, "set_model_call_hook", None))
+        return callable(getattr(planner, "set_budget_hooks", None)) or callable(
+            getattr(planner, "set_model_call_hook", None)
+        )
 
     @staticmethod
-    def _failed_outcome(code: str, *, detail: str = "") -> TerminalOutcome:
+    def _failed_outcome(
+        code: str,
+        *,
+        detail: str = "",
+        unmet_criteria: tuple[str, ...] = (),
+    ) -> TerminalOutcome:
         metadata: dict[str, Any] = {}
         if detail:
             metadata["detail"] = detail
         if code == "budget_exhausted":
             terminal_status = TerminalStatus.BUDGET_EXHAUSTED
-        elif code == "no_matching_observation":
+        elif code in {
+            "no_matching_observation",
+            "required_source_not_used",
+            "expected_observation_missing",
+            "goal_criteria_unmet",
+        }:
             terminal_status = TerminalStatus.INSUFFICIENT_EVIDENCE
         elif code in {
             "authorization_denied",
             "duplicate_action",
             "guardrail_blocked",
             "output_guardrail",
+            "input_guardrail",
             "unknown_tool",
+            "unsupported_tool_capability",
+            "planner_output_invalid",
         }:
             terminal_status = TerminalStatus.SAFE_FAILURE
         else:
@@ -493,6 +787,7 @@ class ControlledWorkflowRunner:
             status=terminal_status,
             final_text="",
             goal_status=GoalStatus.FAILED,
+            unmet_criteria=unmet_criteria,
             route="controlled_workflow",
             error_code=code,
             metadata=metadata,
@@ -507,3 +802,20 @@ class ControlledWorkflowRunner:
             route="controlled_workflow",
             error_code=code,
         )
+
+
+class PlanLookupError(ValueError):
+    pass
+
+
+def action_fingerprint_stub(step: PlanStep, result: ToolResult) -> str:
+    payload = json.dumps(
+        {
+            "action_id": step.action_id,
+            "tool": step.call.name,
+            "status": cast(ToolExecutionStatus, result.status).value,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()

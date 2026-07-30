@@ -5,7 +5,13 @@ from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from soca.tools.base import SideEffectLevel, ToolResult, ToolSpec, object_schema
+from soca.tools.base import (
+    InvalidToolInput,
+    SideEffectLevel,
+    ToolResult,
+    ToolSpec,
+    object_schema,
+)
 
 
 class LocalTimeTool:
@@ -31,6 +37,7 @@ class LocalTimeTool:
                 }
             ),
             side_effect=SideEffectLevel.READ_ONLY,
+            workflow_capability="local_time",
         )
 
     def run(self, arguments: dict[str, Any]) -> ToolResult:
@@ -38,7 +45,7 @@ class LocalTimeTool:
         try:
             timezone = ZoneInfo(timezone_name)
         except ZoneInfoNotFoundError as exc:
-            raise ValueError(f"Unknown timezone: {timezone_name}") from exc
+            raise InvalidToolInput("unknown_timezone") from exc
 
         now = self.now_fn()
         if now.tzinfo is None:

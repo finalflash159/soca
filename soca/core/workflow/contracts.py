@@ -7,6 +7,8 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
+from soca.tools.base import ToolExecutionStatus
+
 if TYPE_CHECKING:
     from .events import WorkflowEvent
 
@@ -58,6 +60,7 @@ class Capability(StrEnum):
     KNOWLEDGE_SEARCH = "knowledge_search"
     KNOWLEDGE_READ = "knowledge_read"
     MEMORY_SEARCH = "memory_search"
+    MEMORY_PROPOSE_NOTE = "memory_propose_note"
     LOCAL_TIME = "local_time"
     CLARIFICATION = "clarification"
     OUT_OF_SCOPE = "out_of_scope"
@@ -94,16 +97,6 @@ class TerminalStatus(StrEnum):
     BUDGET_EXHAUSTED = "budget_exhausted"
     CANCELLED = "cancelled"
     SYSTEM_FAILURE = "system_failure"
-
-
-class ToolExecutionStatus(StrEnum):
-    OK = "ok"
-    NOT_FOUND = "not_found"
-    INVALID = "invalid"
-    DENIED = "denied"
-    TRANSIENT_ERROR = "transient_error"
-    PERMANENT_ERROR = "permanent_error"
-    CANCELLED = "cancelled"
 
 
 class EvidenceStatus(StrEnum):
@@ -356,8 +349,13 @@ class StatePatch:
 @dataclass(frozen=True)
 class UsageDelta:
     transitions: int = 0
+    planned_actions: int = 0
     tool_calls: int = 0
     model_calls: int = 0
+    planner_calls: int = 0
+    retrieval_rounds: int = 0
+    structured_repairs: int = 0
+    answer_repairs: int = 0
     retries: int = 0
 
 

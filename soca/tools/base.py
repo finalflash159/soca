@@ -13,6 +13,36 @@ class SideEffectLevel(Enum):
     DEVICE = "device"
 
 
+class ToolExecutionStatus(Enum):
+    OK = "ok"
+    NOT_FOUND = "not_found"
+    INVALID = "invalid"
+    DENIED = "denied"
+    TRANSIENT_ERROR = "transient_error"
+    PERMANENT_ERROR = "permanent_error"
+    CANCELLED = "cancelled"
+
+
+class ToolRuntimeError(RuntimeError):
+    status = ToolExecutionStatus.PERMANENT_ERROR
+
+    def __init__(self, code: str, message: str = "") -> None:
+        super().__init__(message or code)
+        self.code = code
+
+
+class TransientToolError(ToolRuntimeError):
+    status = ToolExecutionStatus.TRANSIENT_ERROR
+
+
+class PermanentToolError(ToolRuntimeError):
+    status = ToolExecutionStatus.PERMANENT_ERROR
+
+
+class InvalidToolInput(ToolRuntimeError):
+    status = ToolExecutionStatus.INVALID
+
+
 SIDE_EFFECT_RANK = {
     SideEffectLevel.READ_ONLY: 0,
     SideEffectLevel.LOCAL_STATE: 1,
@@ -29,6 +59,7 @@ class ToolSpec:
     side_effect: SideEffectLevel = SideEffectLevel.READ_ONLY
     enabled: bool = True
     idempotent: bool = False
+    workflow_capability: str = ""
 
 
 @dataclass(frozen=True)
@@ -44,15 +75,26 @@ class ToolResult:
     content: str
     data: dict[str, Any] = field(default_factory=dict)
     error: str = ""
+    status: ToolExecutionStatus | None = None
+
+    def __post_init__(self) -> None:
+        status = self.status
+        if status is None:
+            status = ToolExecutionStatus.OK if self.ok else ToolExecutionStatus.PERMANENT_ERROR
+            object.__setattr__(self, "status", status)
+        if self.ok != (status is ToolExecutionStatus.OK):
+            raise ValueError("tool result ok flag and status disagree")
+
+    @property
+    def retryable(self) -> bool:
+        return self.status is ToolExecutionStatus.TRANSIENT_ERROR
 
 
 class Tool(Protocol):
     @property
-    def spec(self) -> ToolSpec:
-        ...
+    def spec(self) -> ToolSpec: ...
 
-    def run(self, arguments: dict[str, Any]) -> ToolResult:
-        ...
+    def run(self, arguments: dict[str, Any]) -> ToolResult: ...
 
 
 def object_schema(
@@ -136,10 +178,7 @@ def validate_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -> str
             continue
         expected_type = property_schema.get("type")
         if isinstance(expected_type, str) and not _matches_json_type(value, expected_type):
-            return (
-                f"Argument {key} must be {expected_type}; "
-                f"got {_type_name(value)}"
-            )
+            return f"Argument {key} must be {expected_type}; got {_type_name(value)}"
 
     return ""
 
@@ -179,6 +218,7 @@ class ToolRuntime:
                 ok=False,
                 content="",
                 error=f"Unknown tool: {call.name}",
+                status=ToolExecutionStatus.INVALID,
             )
 
         spec = tool.spec
@@ -188,6 +228,7 @@ class ToolRuntime:
                 ok=False,
                 content="",
                 error=f"Tool is disabled: {spec.name}",
+                status=ToolExecutionStatus.DENIED,
             )
 
         if SIDE_EFFECT_RANK[spec.side_effect] > SIDE_EFFECT_RANK[self.max_side_effect]:
@@ -199,6 +240,7 @@ class ToolRuntime:
                     f"Tool side effect {spec.side_effect.value} exceeds "
                     f"allowed level {self.max_side_effect.value}"
                 ),
+                status=ToolExecutionStatus.DENIED,
             )
 
         validation_error = validate_arguments(spec.input_schema, call.arguments)
@@ -208,14 +250,16 @@ class ToolRuntime:
                 ok=False,
                 content="",
                 error=validation_error,
+                status=ToolExecutionStatus.INVALID,
             )
 
         try:
             return tool.run(call.arguments)
-        except Exception as exc:
+        except ToolRuntimeError as exc:
             return ToolResult(
                 name=spec.name,
                 ok=False,
                 content="",
-                error=str(exc),
+                error=exc.code,
+                status=exc.status,
             )

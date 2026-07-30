@@ -1,0 +1,69 @@
+{
+  "terminal_status": "insufficient_evidence",
+  "error_code": "no_matching_observation",
+  "route": "controlled_workflow",
+  "goal_kind": "new_goal",
+  "required_sources": [
+    "knowledge"
+  ],
+  "planned_actions": 1,
+  "tool_calls": 1,
+  "model_calls": 2,
+  "structured_repairs": 0,
+  "public_updates": 1,
+  "executed_actions": 1,
+  "promise_without_action": 0,
+  "terminal_events": 1,
+  "evidence_ids": [],
+  "response": "",
+  "elapsed_ms": 2766.89070899738,
+  "goal_resolver_usage": {
+    "prompt_tokens": 161,
+    "completion_tokens": 100,
+    "ttft_ms": 1268.6879590037279,
+    "total_latency_ms": 1268.6879590037279,
+    "tokens_per_second": 78.82158831122489
+  },
+  "planner_prompt_manifest": {
+    "model_id": "google/gemini-3.5-flash-lite",
+    "context_window": null,
+    "token_counter": "engine",
+    "requested_output_tokens": 512,
+    "effective_output_tokens": 512,
+    "input_budget_tokens": null,
+    "prompt_tokens": 429,
+    "safety_margin_tokens": 128,
+    "prompt_hash": "d450b7031f420fd4b6d193e134d3bb9ac658057c7c9a0e32448a79daa84cd54d",
+    "components": [
+      {
+        "component_id": "planner_instructions",
+        "tokens": 124,
+        "included": true,
+        "required": true,
+        "priority": 0
+      },
+      {
+        "component_id": "planner_goal",
+        "tokens": 32,
+        "included": true,
+        "required": true,
+        "priority": 0
+      },
+      {
+        "component_id": "tool_catalog",
+        "tokens": 272,
+        "included": true,
+        "required": true,
+        "priority": 0
+      }
+    ],
+    "dropped_components": [],
+    "observed_prompt_tokens": 416,
+    "observed_prompt_token_source": "llm_result",
+    "provider_prompt_tokens": 416,
+    "prompt_token_delta": -13,
+    "provider_completion_tokens": 245
+  },
+  "planner_validation_error": "",
+  "planner_output": "{\n  \"steps\": [\n    {\n      \"action_id\": \"search_bayes_theorem\",\n      \"tool\": \"knowledge.search\",\n      \"capability\": \"knowledge_search\",\n      \"arguments\": {\n        \"query\": \"định lý Bayes\",\n        \"limit\": 5\n      },\n      \"purpose\": \"Tìm kiếm ghi chú liên quan đến định lý Bayes trong kho kiến thức của người dùng.\",\n      \"expected_observation\": \"Danh sách các đoạn văn bản hoặc ghi chú chứa từ khóa 'định lý Bayes'.\",\n      \"required\": true,\n      \"requires_authorization\": false\n    }\n  ],\n  \"public_update\": \"Đang tìm kiếm ghi chú về định lý Bayes trong cơ sở tri thức...\",\n  \"final_instruction\": \"Hãy tổng hợp thông tin tìm được từ ghi chú về định lý Bayes để trả lời người dùng.\",\n  \"rationale\": \"Mục tiêu yêu cầu tra cứu ghi chú của người dùng về định lý Bayes với nguồn bắt buộc là 'knowledge'. Công cụ phù hợp nhất là knowledge.search để tìm các ghi chú liên quan.\"\n}"
+}

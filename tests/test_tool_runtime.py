@@ -14,6 +14,7 @@ from soca.tools import (
     LocalTimeTool,
     SideEffectLevel,
     ToolCall,
+    ToolExecutionStatus,
     ToolResult,
     ToolRuntime,
     ToolSpec,
@@ -89,6 +90,7 @@ def test_tool_runtime_validates_required_and_types() -> None:
     wrong_type = runtime.call(ToolCall("echo", {"message": 123}))
 
     assert missing.ok is False
+    assert missing.status is ToolExecutionStatus.INVALID
     assert missing.error == "Missing required argument: message"
     assert wrong_type.ok is False
     assert wrong_type.error == "Argument message must be string; got integer"
@@ -105,9 +107,11 @@ def test_tool_runtime_rejects_disabled_and_excessive_side_effects() -> None:
     restricted = restricted_runtime.call(ToolCall("echo", {"message": "x"}))
 
     assert disabled.ok is False
+    assert disabled.status is ToolExecutionStatus.DENIED
     assert disabled.error == "Tool is disabled: echo"
     assert restricted.ok is False
     assert "exceeds allowed level" in restricted.error
+    assert restricted.status is ToolExecutionStatus.DENIED
 
 
 def test_local_time_tool_returns_current_time() -> None:
@@ -162,6 +166,8 @@ def test_knowledge_read_tool_path_errors_are_returned_by_runtime(tmp_path: Path)
     runtime = ToolRuntime([KnowledgeReadTool(source)])
 
     result = runtime.call(ToolCall("knowledge.read", {"path": "private/secret.md"}))
+
+    assert result.status is ToolExecutionStatus.INVALID
 
     assert result.ok is False
     assert "excluded" in result.error
