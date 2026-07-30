@@ -321,6 +321,19 @@ class VoicePipeline:
                 "memory_mode": getattr(trace, "memory_mode", "blob"),
                 "memory_degraded_reason": getattr(trace, "memory_degraded_reason", ""),
                 "evidence_status": getattr(trace, "evidence_status", "not_requested"),
+                "evidence_completion_status": getattr(
+                    trace,
+                    "evidence_completion_status",
+                    "not_run",
+                ),
+                "evidence_completion_reason": getattr(
+                    trace,
+                    "evidence_completion_reason",
+                    "",
+                ),
+                "evidence_completion_actions": int(
+                    getattr(trace, "evidence_completion_actions", 0)
+                ),
                 "answer_policy": getattr(trace, "answer_policy", "free_chat"),
                 "answer_policy_reason": getattr(
                     trace,

@@ -126,6 +126,8 @@ def _progress_phase_for_stage(stage: str) -> str:
         return "tool"
     if stage == "llm":
         return "synthesis"
+    if stage.startswith("evidence_completion:"):
+        return "validation"
     if stage in {
         "output_guardrail",
         "tool_input_guardrail",
@@ -140,6 +142,10 @@ def _terminal_status_for_result(result: Any) -> str:
     if route == "clarification":
         return "needs_clarification"
     trace = getattr(result, "trace", None)
+    if getattr(trace, "evidence_completion_status", "") == "budget_exhausted":
+        return "budget_exhausted"
+    if getattr(trace, "evidence_completion_status", "") == "insufficient":
+        return "insufficient_evidence"
     if getattr(trace, "evidence_status", "") == "insufficient":
         return "insufficient_evidence"
     if bool(getattr(result, "blocked", False)):
@@ -1582,6 +1588,9 @@ class SocaEngine:
                         "runner_up": trace.router_runner_up,
                         "margin": trace.router_margin,
                         "evidence_status": trace.evidence_status,
+                        "evidence_completion_status": trace.evidence_completion_status,
+                        "evidence_completion_reason": trace.evidence_completion_reason,
+                        "evidence_completion_actions": trace.evidence_completion_actions,
                         "answer_policy": trace.answer_policy,
                         "answer_policy_reason": trace.answer_policy_reason,
                         "grounding_policy_version": trace.grounding_policy_version,

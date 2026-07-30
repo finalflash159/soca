@@ -145,6 +145,130 @@ def test_knowledge_read_tool_reads_relative_markdown_path(tmp_path: Path) -> Non
     assert result.data["tags"] == ["dinh-duong"]
 
 
+def test_knowledge_read_tool_returns_bounded_line_receipt_and_continuation(
+    tmp_path: Path,
+) -> None:
+    source = make_vault(tmp_path)
+    note = tmp_path / "wiki" / "weekly.md"
+    note.write_text(
+        "\n".join(
+            [
+                "# Weekly review",
+                "",
+                "## Completed",
+                "done one",
+                "done two",
+                "",
+                "## Unfinished",
+                "open one",
+                "open two",
+                "",
+                "## Next",
+                "next one",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    tool = KnowledgeReadTool(source, max_lines=3)
+
+    first = tool.run(
+        {
+            "path": "wiki/weekly.md",
+            "start_line": 7,
+        }
+    )
+    second = tool.run(
+        {
+            "path": "wiki/weekly.md",
+            "start_line": first.data["next_start_line"],
+        }
+    )
+
+    assert "## Unfinished" in first.content
+    assert "open two" in first.content
+    assert "## Completed" not in first.content
+    assert first.data["line_start"] == 7
+    assert first.data["line_end"] == 9
+    assert first.data["total_lines"] == 12
+    assert first.data["next_start_line"] == 10
+    assert first.data["complete"] is False
+    assert first.data["truncated"] is True
+    assert second.data["line_start"] == 10
+    assert second.data["line_end"] == 12
+    assert second.data["next_start_line"] is None
+    assert second.data["complete"] is True
+
+
+@pytest.mark.parametrize(
+    ("arguments", "error"),
+    [
+        ({"path": "wiki/nutrition.md", "start_line": 0}, "invalid_start_line"),
+        ({"path": "wiki/nutrition.md", "end_line": 0}, "invalid_end_line"),
+        ({"path": "wiki/nutrition.md", "start_column": 0}, "invalid_start_column"),
+        (
+            {"path": "wiki/nutrition.md", "start_line": 2, "end_line": 1},
+            "invalid_line_range",
+        ),
+        ({"path": "wiki/nutrition.md", "start_line": 99}, "start_line_out_of_range"),
+    ],
+)
+def test_knowledge_read_tool_rejects_invalid_line_ranges(
+    tmp_path: Path,
+    arguments: dict[str, object],
+    error: str,
+) -> None:
+    source = make_vault(tmp_path)
+
+    result = ToolRuntime([KnowledgeReadTool(source)]).call(
+        ToolCall("knowledge.read", arguments)
+    )
+
+    assert result.status is ToolExecutionStatus.INVALID
+    assert result.error == error
+
+
+def test_knowledge_read_tool_continues_an_oversized_line_without_data_loss(
+    tmp_path: Path,
+) -> None:
+    source = make_vault(tmp_path)
+    payload = "".join(str(index % 10) for index in range(700))
+    (tmp_path / "wiki" / "long-line.md").write_text(
+        f"# Long line\n{payload}",
+        encoding="utf-8",
+    )
+    tool = KnowledgeReadTool(source, max_chars=256, max_lines=10)
+    arguments: dict[str, object] = {
+        "path": "wiki/long-line.md",
+        "start_line": 2,
+    }
+    recovered = ""
+    receipts = []
+
+    for _ in range(10):
+        result = tool.run(arguments)
+        receipts.append(result.data)
+        rendered_line = result.content.rsplit("\n", maxsplit=1)[-1]
+        segment = rendered_line.removeprefix("2: ")
+        if segment.endswith("..."):
+            segment = segment[:-3]
+        recovered += segment
+        if result.data["complete"]:
+            break
+        arguments = {
+            "path": "wiki/long-line.md",
+            "start_line": result.data["next_start_line"],
+            "start_column": result.data["next_start_column"],
+        }
+
+    assert recovered == payload
+    assert len(receipts) > 1
+    assert receipts[0]["line_truncated"] is True
+    assert receipts[0]["next_start_line"] == 2
+    assert receipts[0]["next_start_column"] > 1
+    assert receipts[-1]["complete"] is True
+    assert receipts[-1]["document_complete"] is True
+
+
 def test_knowledge_read_tool_path_errors_are_returned_by_runtime(tmp_path: Path) -> None:
     source = make_vault(tmp_path)
     runtime = ToolRuntime([KnowledgeReadTool(source)])

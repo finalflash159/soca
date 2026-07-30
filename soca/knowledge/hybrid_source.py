@@ -427,27 +427,22 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
                 dense_hit = dense_by_document.get(chunk_id)
                 sparse_document_hit = sparse_document_hits.get(chunk_id)
                 sparse_hit = sparse_by_id.get(chunk_id)
-                if dense_hit is not None:
-                    representative_chunk = vault_index.chunk_by_id(dense_hit.chunk_id)
-                    if representative_chunk is None:
-                        continue
-                    if _is_metadata_only_chunk(representative_chunk.text) and (
-                        sparse_document_hit is not None
-                    ):
-                        snippet = sparse_document_hit.snippet
-                        line_start = sparse_document_hit.line_start
-                        line_end = sparse_document_hit.line_end
-                    else:
-                        # Keep document-level metadata/body for relevance and
-                        # catalog provenance; the snippet remains the selected
-                        # chunk so the prompt does not receive the whole file.
-                        snippet = representative_chunk.text
-                        line_start = representative_chunk.line_start
-                        line_end = representative_chunk.line_end
-                elif sparse_document_hit is not None:
+                if sparse_document_hit is not None:
+                    # Document fusion decides which document wins. Passage
+                    # selection remains query-local: the lexical retriever has
+                    # already selected a snippet from that document for this
+                    # query, while the best dense chunk may represent a
+                    # different section entirely.
                     snippet = sparse_document_hit.snippet
                     line_start = sparse_document_hit.line_start
                     line_end = sparse_document_hit.line_end
+                elif dense_hit is not None:
+                    representative_chunk = vault_index.chunk_by_id(dense_hit.chunk_id)
+                    if representative_chunk is None:
+                        continue
+                    snippet = representative_chunk.text
+                    line_start = representative_chunk.line_start
+                    line_end = representative_chunk.line_end
                 elif sparse_hit is not None:
                     snippet = self._document_snippet(document)
                     line_start = None

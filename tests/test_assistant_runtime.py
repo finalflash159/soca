@@ -7,7 +7,8 @@ from typing import Any
 import pytest
 
 from soca.core import AssistantRuntime, RuntimeOptions, RuntimeRoute
-from soca.core.tool_routing import ToolRouterDecision
+from soca.core.tool_routing import EvidenceCompletionDecision, ToolRouterDecision
+from soca.core.workflow.legacy_adapter import terminal_from_runtime_result
 from soca.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
 from soca.llm import LLMResult
 from soca.memory import MemoryContextBuilder, MemoryProfileResult, RetrievedMemory, SessionMemory
@@ -270,6 +271,28 @@ class RefiningKnowledgeRouter(StaticToolRouter):
         del text, knowledge_limit
         self.observations.append(observation)
         return ToolCall("knowledge.search", {"query": self.refined_query})
+
+
+class CompletingKnowledgeRouter(StaticToolRouter):
+    def __init__(
+        self,
+        initial_call: ToolCall,
+        decisions: list[EvidenceCompletionDecision],
+    ) -> None:
+        super().__init__(initial_call)
+        self.decisions = list(decisions)
+        self.observations: list[str] = []
+
+    def assess_evidence(
+        self,
+        text: str,
+        *,
+        observation: str,
+        knowledge_limit: int,
+    ) -> EvidenceCompletionDecision:
+        del text, knowledge_limit
+        self.observations.append(observation)
+        return self.decisions.pop(0)
 
 
 class AmbiguousDeepLearningSource:
@@ -686,6 +709,207 @@ def test_markdown_path_uses_knowledge_read_tool() -> None:
     assert result.route == RuntimeRoute.KNOWLEDGE_DIRECT
     assert result.citations[0].path == "wiki/dinh-duong/chat-dam.md"
     assert source.read_calls == ["wiki/dinh-duong/chat-dam.md"]
+
+
+def test_exact_knowledge_read_is_not_retruncated_as_a_search_snippet() -> None:
+    marker = "UNFINISHED_SECTION_MUST_REACH_THE_MODEL"
+
+    class LongReadSource(FakeKnowledgeSource):
+        def __init__(self) -> None:
+            super().__init__()
+            self.document = KnowledgeDocument(
+                id="weekly",
+                path="wiki/life/weekly.md",
+                title="Weekly",
+                text=(
+                    "# Weekly\n\n"
+                    + ("completed context " * 80)
+                    + "\n\n## Unfinished\n"
+                    + marker
+                ),
+            )
+
+    source = LongReadSource()
+    llm = SpyLLM(text=f"Đã đọc mục chưa hoàn tất {marker} [K1].")
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeReadTool(source, max_chars=8_000)]),
+        tool_router=StaticToolRouter(
+            ToolCall("knowledge.read", {"path": "wiki/life/weekly.md"})
+        ),
+        knowledge_builder=KnowledgeContextBuilder(
+            source,
+            max_chars=4_000,
+            snippet_chars=80,
+        ),
+    )
+
+    result = runtime.run_text_turn("Những việc chưa hoàn tất là gì?")
+
+    assert result.route == RuntimeRoute.KNOWLEDGE_LLM
+    assert marker in llm.calls[0]["user_msg"]
+    assert result.trace is not None
+    assert result.trace.evidence_status == "supported"
+    assert result.citations[0].line_start == 1
+    assert result.citations[0].line_end == len(source.document.text.splitlines())
+
+
+def test_goal_completion_reads_the_matching_document_before_answering() -> None:
+    class WeeklySource(FakeKnowledgeSource):
+        def __init__(self) -> None:
+            super().__init__()
+            self.document = KnowledgeDocument(
+                id="weekly",
+                path="wiki/life/weekly.md",
+                title="Weekly",
+                text=(
+                    "# Weekly\n\n"
+                    "## Completed\n- measured latency\n\n"
+                    "## Unfinished\n- write failure analysis\n- verify input data\n"
+                ),
+            )
+
+        def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
+            self.search_calls.append((query, limit))
+            return [
+                KnowledgeHit(
+                    document=self.document,
+                    score=3.0,
+                    snippet="## Completed\n- measured latency",
+                    retrieval_backend="lexical_custom",
+                    sparse_score=3.0,
+                )
+            ]
+
+    source = WeeklySource()
+    router = CompletingKnowledgeRouter(
+        ToolCall("knowledge.search", {"query": "unfinished work", "limit": 3}),
+        [
+            EvidenceCompletionDecision(
+                status="continue",
+                call=ToolCall("knowledge.read", {"path": "wiki/life/weekly.md"}),
+                reason_code="partial_document_scope",
+            ),
+            EvidenceCompletionDecision(
+                status="complete",
+                reason_code="full_document_covered",
+            ),
+        ],
+    )
+    llm = SpyLLM(text="Còn hai việc chưa hoàn tất [K1].")
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime(
+            [KnowledgeSearchTool(source), KnowledgeReadTool(source, max_chars=8_000)]
+        ),
+        tool_router=router,
+        knowledge_builder=KnowledgeContextBuilder(source),
+    )
+
+    result = runtime.run_text_turn("Kiểm tra mọi việc tôi chưa hoàn tất")
+
+    assert [call.name for call in result.trace.tool_calls] == [
+        "knowledge.search",
+        "knowledge.read",
+    ]
+    assert "write failure analysis" in llm.calls[0]["user_msg"]
+    assert "measured latency" in llm.calls[0]["user_msg"]
+    assert result.trace.evidence_completion_status == "complete"
+    assert result.trace.evidence_completion_actions == 1
+    assert len(router.observations) == 2
+
+
+def test_goal_completion_budget_exhaustion_is_not_reported_as_achieved() -> None:
+    source = FakeKnowledgeSource()
+    router = CompletingKnowledgeRouter(
+        ToolCall("knowledge.search", {"query": "all relevant notes", "limit": 3}),
+        [
+            EvidenceCompletionDecision(
+                status="continue",
+                call=ToolCall(
+                    "knowledge.read",
+                    {"path": "wiki/dinh-duong/chat-dam.md"},
+                ),
+                reason_code="broader_scope_required",
+            )
+        ],
+    )
+    runtime = AssistantRuntime(
+        llm=SpyLLM(text="Đây là phần bằng chứng hiện có [K1]."),
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source), KnowledgeReadTool(source)]),
+        tool_router=router,
+        knowledge_builder=KnowledgeContextBuilder(source),
+        options=RuntimeOptions(max_evidence_completion_actions=0),
+    )
+
+    result = runtime.run_text_turn("Kiểm tra toàn bộ nội dung liên quan")
+    terminal = terminal_from_runtime_result(result)
+
+    assert result.trace is not None
+    assert result.trace.evidence_completion_status == "budget_exhausted"
+    assert terminal.status.value == "budget_exhausted"
+    assert terminal.goal_status.value == "failed"
+
+
+def test_goal_completion_preserves_all_pages_of_a_bounded_exact_read() -> None:
+    class LongDocumentSource(FakeKnowledgeSource):
+        def __init__(self) -> None:
+            super().__init__()
+            self.document = KnowledgeDocument(
+                id="long",
+                path="wiki/learning/long.md",
+                title="Long note",
+                text="\n".join(f"line payload {index}" for index in range(1, 241)),
+            )
+
+    source = LongDocumentSource()
+    router = CompletingKnowledgeRouter(
+        ToolCall("knowledge.read", {"path": "wiki/learning/long.md"}),
+        [
+            EvidenceCompletionDecision(
+                status="continue",
+                call=ToolCall(
+                    "knowledge.read",
+                    {"path": "wiki/learning/long.md", "start_line": 101},
+                ),
+                reason_code="read_has_continuation",
+            ),
+            EvidenceCompletionDecision(
+                status="continue",
+                call=ToolCall(
+                    "knowledge.read",
+                    {"path": "wiki/learning/long.md", "start_line": 201},
+                ),
+                reason_code="read_has_continuation",
+            ),
+            EvidenceCompletionDecision(
+                status="complete",
+                reason_code="document_end_reached",
+            ),
+        ],
+    )
+    llm = SpyLLM(text="Đã kiểm tra toàn bộ tài liệu [K1] [K2] [K3].")
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime(
+            [KnowledgeReadTool(source, max_chars=8_000, max_lines=100)]
+        ),
+        tool_router=router,
+        knowledge_builder=KnowledgeContextBuilder(source, max_chars=32_000),
+        options=RuntimeOptions(max_evidence_completion_actions=2),
+    )
+
+    result = runtime.run_text_turn("Kiểm tra toàn bộ tài liệu dài")
+    prompt = llm.calls[0]["user_msg"]
+
+    assert "1: line payload 1" in prompt
+    assert "101: line payload 101" in prompt
+    assert "240: line payload 240" in prompt
+    assert len(result.citations) == 3
+    assert result.trace is not None
+    assert result.trace.evidence_completion_status == "complete"
+    assert result.trace.evidence_completion_actions == 2
+    assert result.trace.evidence_status == "supported"
 
 
 @pytest.mark.parametrize(

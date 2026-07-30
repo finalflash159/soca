@@ -23,10 +23,21 @@ def terminal_from_runtime_result(result: RuntimeResult) -> TerminalOutcome:
         goal_status = GoalStatus.WAITING_FOR_USER
         recoverable = True
         unmet_criteria = ("clarification_required",)
-    elif result.trace is not None and result.trace.evidence_status == "insufficient":
+    elif result.trace is not None and (
+        result.trace.evidence_completion_status == "budget_exhausted"
+    ):
+        status = TerminalStatus.BUDGET_EXHAUSTED
+        goal_status = GoalStatus.FAILED
+        recoverable = True
+        error_code = result.trace.evidence_completion_reason or "evidence_budget_exhausted"
+        unmet_criteria = ("complete_goal_evidence",)
+    elif result.trace is not None and (
+        result.trace.evidence_completion_status == "insufficient"
+        or result.trace.evidence_status == "insufficient"
+    ):
         status = TerminalStatus.INSUFFICIENT_EVIDENCE
         goal_status = GoalStatus.FAILED
-        unmet_criteria = ("grounded_answer_or_abstention",)
+        unmet_criteria = ("complete_goal_evidence",)
     elif result.blocked:
         status = TerminalStatus.SAFE_FAILURE
         goal_status = GoalStatus.FAILED
@@ -48,7 +59,19 @@ def terminal_from_runtime_result(result: RuntimeResult) -> TerminalOutcome:
         recoverable=recoverable,
         route=result.route.value,
         error_code=error_code,
-        metadata={"adapter": "runtime_result"},
+        metadata={
+            "adapter": "runtime_result",
+            "evidence_completion_status": (
+                result.trace.evidence_completion_status
+                if result.trace is not None
+                else "not_run"
+            ),
+            "evidence_completion_reason": (
+                result.trace.evidence_completion_reason
+                if result.trace is not None
+                else ""
+            ),
+        },
     )
 
 

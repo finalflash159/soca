@@ -69,6 +69,9 @@ class RuntimeTrace:
     answer_repair_attempted: bool = False
     answer_repair_succeeded: bool = False
     retrieval_refinements: int = 0
+    evidence_completion_status: str = "not_run"
+    evidence_completion_reason: str = ""
+    evidence_completion_actions: int = 0
     prompt_manifest: dict[str, Any] | None = None
 
 

@@ -463,6 +463,40 @@ class MarkdownVaultKnowledgeSource:
 
     def _make_snippet(self, text: str, query_terms: set[str], max_chars: int = 500) -> str:
         lines = text.splitlines()
+        sections = self._markdown_sections(lines)
+        best_section: tuple[int, int] | None = None
+        best_section_score: tuple[int, int, int] = (0, 0, 0)
+
+        for heading_index, end_index in sections:
+            heading_terms = tokenize(lines[heading_index])
+            body_terms = tuple(
+                chain.from_iterable(
+                    tokenize_terms(line)
+                    for line in lines[heading_index + 1 : end_index]
+                    if not is_low_value_snippet_line(line)
+                )
+            )
+            section_counter = Counter((*heading_terms, *body_terms))
+            covered_terms = query_terms & section_counter.keys()
+            score = (
+                len(covered_terms),
+                sum(min(section_counter[term], 4) for term in covered_terms),
+                len(query_terms & heading_terms),
+            )
+            if score > best_section_score:
+                best_section = (heading_index, end_index)
+                best_section_score = score
+
+        if best_section is not None and best_section_score[0] > 0:
+            start, end = best_section
+            snippet = "\n".join(
+                candidate
+                for candidate in lines[start + 1 : end]
+                if not is_low_value_snippet_line(candidate)
+            ).strip()
+            if snippet:
+                return snippet if len(snippet) <= max_chars else snippet[:max_chars] + "..."
+
         best_index: int | None = None
         best_score = 0
 
@@ -492,6 +526,23 @@ class MarkdownVaultKnowledgeSource:
                 return snippet if len(snippet) <= max_chars else snippet[:max_chars] + "..."
 
         return ""
+
+    @staticmethod
+    def _markdown_sections(lines: list[str]) -> tuple[tuple[int, int], ...]:
+        heading_indexes = [
+            index
+            for index, line in enumerate(lines)
+            if re.match(r"^#{1,6}\s+\S", line.strip())
+        ]
+        return tuple(
+            (
+                heading_index,
+                heading_indexes[position + 1]
+                if position + 1 < len(heading_indexes)
+                else len(lines),
+            )
+            for position, heading_index in enumerate(heading_indexes)
+        )
 
 
 @dataclass(frozen=True)

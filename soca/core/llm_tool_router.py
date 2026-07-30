@@ -8,11 +8,14 @@ from typing import Any, cast
 
 from soca.core.route_catalog import source_profile
 from soca.core.tool_routing import (
+    EvidenceCompletionDecision,
     ParsedRouteDecision,
     RouterOutputError,
     ToolRouterConfig,
     ToolRouterDecision,
+    build_evidence_completion_schema,
     build_route_decision_schema,
+    parse_evidence_completion,
     parse_route_decision,
 )
 from soca.llm import LLMEngine, StructuredLLMEngine
@@ -138,6 +141,53 @@ def _build_refinement_prompt(
     )
 
 
+def _build_evidence_completion_prompt(
+    text: str,
+    observation: str,
+    catalog: tuple[dict[str, Any], ...],
+    *,
+    vault_manifest: str = "",
+    turn_context: str = "",
+) -> str:
+    retrieval_catalog = tuple(
+        item
+        for item in catalog
+        if item.get("name") in {"knowledge.search", "knowledge.read"}
+    )
+    return "\n".join(
+        (
+            "You are SoCa's evidence-completion controller.",
+            "Decide whether the typed retrieval receipt covers the user's full request.",
+            'Return exactly one JSON object: {"status":"complete|continue|insufficient",'
+            '"handler":null,"arguments":{},"reason_code":"short_machine_code"}.',
+            "Use complete only when the evidence itself covers every requested aspect; "
+            "a relevant document or one matching passage is not automatically complete.",
+            "For broad reviews, lists, comparisons, checks for omissions, or requests "
+            "about an entire document, verify that the observed range or passages cover "
+            "the relevant scope before completing.",
+            "Use continue with exactly one enabled read-only retrieval handler when one "
+            "different bounded operation can materially improve coverage.",
+            "Prefer an exact read of a clearly identified candidate document. Continue "
+            "an incomplete read from next_start_line and next_start_column when present, "
+            "and preserve its path.",
+            "Use a revised search only when no candidate path can be read directly.",
+            "Do not repeat a prior tool call. Do not answer the user. Do not infer facts "
+            "from the vault manifest because it is navigation metadata only.",
+            "Use insufficient when evidence cannot be improved with the enabled tools.",
+            "Enabled retrieval tools:",
+            json.dumps(retrieval_catalog, ensure_ascii=False, sort_keys=True),
+            "Vault navigation context (metadata only; never answer evidence):",
+            vault_manifest or "No vault manifest is available.",
+            "Conversation/goal context:",
+            turn_context or "No prior goal context is available.",
+            "Original user request:",
+            json.dumps(text.strip(), ensure_ascii=False),
+            "Typed retrieval receipt and bounded evidence:",
+            observation.strip()[:12_000],
+        )
+    )
+
+
 class LLMToolRouter:
     def __init__(
         self,
@@ -215,6 +265,71 @@ class LLMToolRouter:
         }:
             return None
         return call
+
+    def assess_evidence(
+        self,
+        text: str,
+        *,
+        observation: str,
+        knowledge_limit: int,
+    ) -> EvidenceCompletionDecision:
+        del knowledge_limit
+        catalog = _tool_catalog(self._tool_runtime)
+        prompt = _build_evidence_completion_prompt(
+            text,
+            observation,
+            catalog,
+            vault_manifest=self._read_vault_manifest(),
+            turn_context=self._turn_context,
+        )
+        try:
+            if self._config.response_mode == "json_schema":
+                if not isinstance(self._llm, StructuredLLMEngine):
+                    return EvidenceCompletionDecision(
+                        status="insufficient",
+                        reason_code="structured_output_unsupported",
+                    )
+                result = self._llm.generate_structured(
+                    prompt,
+                    schema_name="soca_evidence_completion",
+                    schema=build_evidence_completion_schema(
+                        self._tool_runtime.list_specs(include_disabled=False)
+                    ),
+                    max_tokens=self._config.max_tokens,
+                    temperature=0.0,
+                    top_p=1.0,
+                    inject_persona=False,
+                    zero_data_retention=self._config.zero_data_retention,
+                )
+            else:
+                result = self._llm.generate(
+                    prompt,
+                    max_tokens=self._config.max_tokens,
+                    temperature=0.0,
+                    top_p=1.0,
+                    inject_persona=False,
+                )
+        except Exception as exc:  # noqa: BLE001 - provider boundary becomes typed state
+            LOGGER.warning(
+                "Evidence completion generation failed (%s)",
+                type(exc).__name__,
+            )
+            return EvidenceCompletionDecision(
+                status="insufficient",
+                reason_code="completion_provider_failed",
+            )
+        try:
+            decision = parse_evidence_completion(
+                getattr(result, "text", ""),
+                max_chars=self._config.max_output_chars,
+            )
+            self._validate_completion_call(decision)
+        except RouterOutputError as exc:
+            return EvidenceCompletionDecision(
+                status="insufficient",
+                reason_code=f"invalid_completion:{exc.code}",
+            )
+        return decision
 
     def _finish(self, raw: str) -> ToolCall | None:
         try:
@@ -324,6 +439,22 @@ class LLMToolRouter:
         if validate_arguments(tool.spec.input_schema, decision.arguments):
             raise RouterOutputError("invalid_arguments")
         return decision
+
+    def _validate_completion_call(self, decision: EvidenceCompletionDecision) -> None:
+        if decision.call is None:
+            return
+        tool = self._tool_runtime.get(decision.call.name)
+        if tool is None:
+            raise RouterOutputError("unknown_completion_tool")
+        if not tool.spec.enabled:
+            raise RouterOutputError("disabled_completion_tool")
+        if decision.call.name not in {
+            "knowledge.search",
+            "knowledge.read",
+        }:
+            raise RouterOutputError("unsafe_completion_tool")
+        if validate_arguments(tool.spec.input_schema, decision.call.arguments):
+            raise RouterOutputError("invalid_completion_arguments")
 
     def _validated_call(self, raw: str) -> ToolCall | None:
         decision = self._validated_decision(raw)

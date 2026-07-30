@@ -4,7 +4,7 @@ import json
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from soca.tools import ToolCall, ToolSpec
 
@@ -19,6 +19,7 @@ TurnDisposition = Literal[
     "out_of_scope",
     "unresolved",
 ]
+EvidenceCompletionStatus = Literal["complete", "continue", "insufficient"]
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,13 @@ class ParsedToolDecision:
     arguments: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class EvidenceCompletionDecision:
+    status: EvidenceCompletionStatus
+    call: ToolCall | None = None
+    reason_code: str = ""
+
+
 class RouterOutputError(ValueError):
     def __init__(self, code: str) -> None:
         super().__init__(code)
@@ -121,6 +129,101 @@ class ParsedRouteDecision:
     handler: str | None
     arguments: dict[str, Any]
     sources: tuple[str, ...]
+
+
+def _parse_single_json_object(raw: str, *, max_chars: int) -> dict[str, Any]:
+    if not isinstance(raw, str):
+        raise RouterOutputError("output_not_string")
+    if max_chars < 1 or len(raw) > max_chars:
+        raise RouterOutputError("output_too_large")
+    decoder = json.JSONDecoder()
+    objects: list[dict[str, Any]] = []
+    cursor = 0
+    while cursor < len(raw):
+        offset = raw.find("{", cursor)
+        if offset < 0:
+            break
+        try:
+            candidate, consumed = decoder.raw_decode(raw[offset:])
+        except json.JSONDecodeError:
+            cursor = offset + 1
+            continue
+        cursor = offset + max(consumed, 1)
+        if isinstance(candidate, dict):
+            objects.append(candidate)
+    if len(objects) != 1:
+        raise RouterOutputError("no_json_object" if not objects else "multiple_json_objects")
+    return objects[0]
+
+
+def build_evidence_completion_schema(specs: tuple[ToolSpec, ...]) -> dict[str, Any]:
+    branches: list[dict[str, Any]] = []
+    for spec in specs:
+        if spec.name not in {"knowledge.search", "knowledge.read"}:
+            continue
+        branches.append(
+            {
+                "type": "object",
+                "properties": {
+                    "status": {"const": "continue"},
+                    "handler": {"const": spec.name},
+                    "arguments": dict(spec.input_schema),
+                    "reason_code": {"type": "string", "minLength": 1, "maxLength": 80},
+                },
+                "required": ["status", "handler", "arguments", "reason_code"],
+                "additionalProperties": False,
+            }
+        )
+    for status in ("complete", "insufficient"):
+        branches.append(
+            {
+                "type": "object",
+                "properties": {
+                    "status": {"const": status},
+                    "handler": {"type": "null"},
+                    "arguments": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                        "additionalProperties": False,
+                    },
+                    "reason_code": {"type": "string", "minLength": 1, "maxLength": 80},
+                },
+                "required": ["status", "handler", "arguments", "reason_code"],
+                "additionalProperties": False,
+            }
+        )
+    return {"oneOf": branches}
+
+
+def parse_evidence_completion(raw: str, *, max_chars: int) -> EvidenceCompletionDecision:
+    payload = _parse_single_json_object(raw, max_chars=max_chars)
+    if set(payload) != {"status", "handler", "arguments", "reason_code"}:
+        raise RouterOutputError("invalid_completion_fields")
+    status = payload["status"]
+    handler = payload["handler"]
+    arguments = payload["arguments"]
+    reason_code = payload["reason_code"]
+    if status not in {"complete", "continue", "insufficient"}:
+        raise RouterOutputError("invalid_completion_status")
+    if not isinstance(arguments, dict) or any(not isinstance(key, str) for key in arguments):
+        raise RouterOutputError("completion_arguments_not_object")
+    if not isinstance(reason_code, str) or not 1 <= len(reason_code) <= 80:
+        raise RouterOutputError("invalid_completion_reason")
+    if status == "continue":
+        if not isinstance(handler, str) or not handler:
+            raise RouterOutputError("invalid_completion_handler")
+        return EvidenceCompletionDecision(
+            status="continue",
+            call=ToolCall(handler, dict(arguments)),
+            reason_code=reason_code,
+        )
+    if handler is not None or arguments:
+        raise RouterOutputError("unexpected_completion_call")
+    return EvidenceCompletionDecision(
+        status=cast(EvidenceCompletionStatus, status),
+        reason_code=reason_code,
+    )
 
 
 def build_route_decision_schema(specs: tuple[ToolSpec, ...]) -> dict[str, Any]:
@@ -194,28 +297,7 @@ def build_route_decision_schema(specs: tuple[ToolSpec, ...]) -> dict[str, Any]:
 
 
 def parse_route_decision(raw: str, *, max_chars: int) -> ParsedRouteDecision:
-    if not isinstance(raw, str):
-        raise RouterOutputError("output_not_string")
-    if max_chars < 1 or len(raw) > max_chars:
-        raise RouterOutputError("output_too_large")
-    decoder = json.JSONDecoder()
-    objects: list[dict[str, Any]] = []
-    cursor = 0
-    while cursor < len(raw):
-        offset = raw.find("{", cursor)
-        if offset < 0:
-            break
-        try:
-            candidate, consumed = decoder.raw_decode(raw[offset:])
-        except json.JSONDecodeError:
-            cursor = offset + 1
-            continue
-        cursor = offset + max(consumed, 1)
-        if isinstance(candidate, dict):
-            objects.append(candidate)
-    if len(objects) != 1:
-        raise RouterOutputError("no_json_object" if not objects else "multiple_json_objects")
-    payload = objects[0]
+    payload = _parse_single_json_object(raw, max_chars=max_chars)
     if set(payload) != {"route", "handler", "arguments", "sources"}:
         raise RouterOutputError("invalid_root_fields")
     route = payload["route"]

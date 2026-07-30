@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import cast
 
 from soca.core.runtime import RuntimeToolRouter
-from soca.core.tool_routing import ToolRouterDecision
+from soca.core.tool_routing import EvidenceCompletionDecision, ToolRouterDecision
 from soca.tools import ToolCall
 
 
@@ -38,6 +38,23 @@ class CascadeToolRouter:
             return None
         typed_refiner = cast(Callable[..., ToolCall | None], refiner)
         return typed_refiner(
+            text,
+            observation=observation,
+            knowledge_limit=knowledge_limit,
+        )
+
+    def assess_evidence(
+        self,
+        text: str,
+        *,
+        observation: str,
+        knowledge_limit: int,
+    ) -> EvidenceCompletionDecision | None:
+        assessor = getattr(self._llm_router, "assess_evidence", None)
+        if not callable(assessor):
+            return None
+        typed_assessor = cast(Callable[..., EvidenceCompletionDecision], assessor)
+        return typed_assessor(
             text,
             observation=observation,
             knowledge_limit=knowledge_limit,
