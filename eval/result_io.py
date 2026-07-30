@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import platform
 import shutil
 import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+EvalRunType = Literal["benchmark", "smoke", "demo", "fake"]
+_EVAL_RUN_TYPES = frozenset({"benchmark", "smoke", "demo", "fake"})
 
 
 @dataclass(frozen=True)
@@ -22,15 +26,9 @@ class EvalRunPaths:
 
 @dataclass(frozen=True)
 class EvalArtifactMetadata:
-    """Reproducibility envelope shared by evaluation artifacts.
-
-    Quality decisions must carry the exact source revision and dataset digest.
-    The envelope deliberately contains no prompt content beyond file paths and
-    hashes, so it is safe to publish alongside a report.
-    """
-
     schema_version: str
     suite: str
+    run_type: EvalRunType
     git_commit: str
     generated_at_utc: str
     python_version: str
@@ -39,21 +37,26 @@ class EvalArtifactMetadata:
     source_state_digest: str
     data_files: tuple[dict[str, Any], ...]
     config: dict[str, Any]
+    hardware: dict[str, Any]
+    ignored_untracked_paths: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema_version": self.schema_version,
             "suite": self.suite,
+            "run_type": self.run_type,
             "git_commit": self.git_commit,
             "generated_at_utc": self.generated_at_utc,
             "environment": {
                 "python": self.python_version,
                 "platform": self.platform,
+                "hardware": dict(self.hardware),
             },
             "source": {
                 "commit": self.git_commit,
                 "dirty": self.source_dirty,
                 "state_digest": self.source_state_digest,
+                "ignored_untracked_paths": list(self.ignored_untracked_paths),
             },
             "data_files": list(self.data_files),
             "config": self.config,
@@ -79,7 +82,9 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _git_source_state() -> tuple[bool, str]:
+def _git_source_state(
+    ignored_untracked_paths: tuple[Path, ...] = (),
+) -> tuple[bool, str]:
     """Return dirty state and a digest of tracked/untracked source changes."""
 
     try:
@@ -87,38 +92,62 @@ def _git_source_state() -> tuple[bool, str]:
             ["git", "diff", "HEAD", "--binary"],
             stderr=subprocess.DEVNULL,
         )
-        status = subprocess.check_output(
-            ["git", "status", "--porcelain=v1", "--untracked-files=all"],
-            stderr=subprocess.DEVNULL,
-        )
         untracked = subprocess.check_output(
             ["git", "ls-files", "--others", "--exclude-standard", "-z"],
             stderr=subprocess.DEVNULL,
         )
+        ignored = {
+            path.as_posix().removeprefix("./")
+            for path in ignored_untracked_paths
+        }
         untracked_digests: list[bytes] = []
         for raw_path in untracked.split(b"\0"):
             if not raw_path:
                 continue
-            file_path = Path(raw_path.decode("utf-8", errors="surrogateescape"))
+            relative = raw_path.decode("utf-8", errors="surrogateescape")
+            if relative in ignored:
+                continue
+            file_path = Path(relative)
             if file_path.is_file():
                 untracked_digests.append(raw_path + b"\0" + bytes.fromhex(_sha256(file_path)))
-        state = b"\0".join((status, diff, *sorted(untracked_digests)))
+        state = b"\0".join((diff, *sorted(untracked_digests)))
         digest = hashlib.sha256(state).hexdigest()
-        return bool(status or diff or untracked_digests), digest
+        return bool(diff or untracked_digests), digest
     except (OSError, subprocess.CalledProcessError):
         return True, "unknown"
+
+
+def _hardware_metadata() -> dict[str, Any]:
+    memory_bytes: int | None = None
+    try:
+        page_size = int(os.sysconf("SC_PAGE_SIZE"))
+        physical_pages = int(os.sysconf("SC_PHYS_PAGES"))
+        if page_size > 0 and physical_pages > 0:
+            memory_bytes = page_size * physical_pages
+    except (AttributeError, OSError, TypeError, ValueError):
+        memory_bytes = None
+    return {
+        "machine": platform.machine(),
+        "processor": platform.processor(),
+        "cpu_count": os.cpu_count(),
+        "memory_bytes": memory_bytes,
+    }
 
 
 def make_eval_artifact_metadata(
     *,
     suite: str,
+    run_type: EvalRunType,
     data_files: tuple[Path, ...],
     config: dict[str, Any] | None = None,
-    schema_version: str = "soca-eval-artifact-v1",
+    schema_version: str = "soca-eval-artifact-v2",
+    ignored_untracked_paths: tuple[Path, ...] = (),
 ) -> EvalArtifactMetadata:
     """Capture provenance required for a reproducible quality result."""
 
-    source_dirty, source_state_digest = _git_source_state()
+    if run_type not in _EVAL_RUN_TYPES:
+        raise ValueError(f"unsupported eval run type: {run_type}")
+    source_dirty, source_state_digest = _git_source_state(ignored_untracked_paths)
     files = tuple(
         {
             "path": str(path),
@@ -130,6 +159,7 @@ def make_eval_artifact_metadata(
     return EvalArtifactMetadata(
         schema_version=schema_version,
         suite=suite,
+        run_type=run_type,
         git_commit=_git_commit(),
         generated_at_utc=datetime.now(UTC).isoformat(),
         python_version=platform.python_version(),
@@ -138,6 +168,11 @@ def make_eval_artifact_metadata(
         source_state_digest=source_state_digest,
         data_files=files,
         config=dict(config or {}),
+        hardware=_hardware_metadata(),
+        ignored_untracked_paths=tuple(
+            path.as_posix().removeprefix("./")
+            for path in ignored_untracked_paths
+        ),
     )
 
 

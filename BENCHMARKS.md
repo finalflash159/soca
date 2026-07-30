@@ -2092,3 +2092,66 @@ only and is not counted as equivalent quality. A natural-language unsupported
 query reached `free_chat` because the current semantic router returned
 `ambiguous_margin`; explicit `/k` exercised the retrieval/no-evidence contract.
 Router consolidation remains Phase 6 and is not hidden as a Phase 5 pass.
+
+## Phase 0 remediation baseline freeze (2026-07-30)
+
+### Runtime trajectories
+
+The executable baseline contains 14 independently authored/public cases: 10
+capability and 4 regression. It uses the tracked XQuAD Vietnamese corpus plus
+sanitized workflow trajectories; demo/smoke data is rejected. A family key
+prevents paraphrases from crossing dataset splits. The machine-readable audit
+inventory contains 53 current-system findings.
+
+| Run | Runtime | Cases passed | Provider calls | Prompt / completion tokens | Errors |
+| --- | --- | ---: | ---: | ---: | ---: |
+| blocking | OpenRouter `google/gemini-3.5-flash-lite` | 2/14 | 17 | 4,920 / 1,309 | 0 |
+| streaming | OpenRouter `google/gemini-3.5-flash-lite` | 2/14 | 17 | 4,471 / 1,269 | 0 |
+| blocking | no LLM, production hybrid wiring | 1/14 | 0 | 0 / 0 | 0 |
+
+Blocking and streaming produced the same route and terminal shape for every
+case. Both real remote runs exposed the same main baseline gap: natural-language
+XQuAD questions were classified as `free_chat`, so retrieval was not invoked.
+This is recorded as a failure for later router/workflow phases; the evaluator
+does not infer success from fluent model text and does not route to another
+model/backend.
+
+Raw artifacts and per-turn logs:
+
+- `eval/results/remediation_baseline/20260730-openrouter-gemini35-flash-lite`;
+- `eval/results/remediation_baseline/20260730-openrouter-gemini35-streaming`;
+- `eval/results/remediation_baseline/20260730-no-llm-hybrid`;
+- `eval/results/remediation_baseline/20260730-dataset-manifest.json`.
+
+All three runtime artifacts record a clean source digest. `session.txt` is a
+pre-existing user file and is listed explicitly as an ignored untracked path;
+tracked changes cannot be excluded.
+
+### Production ASR vs experimental BoH
+
+The paired run uses production `phowhisper_small`, CoreML with CPU provider,
+30 FLEURS `vi_vn` test utterances and 50 deterministic ESC-50/synthetic
+non-speech samples. Production `RobustASR` runs once; experimental BoH is
+applied to the identical output, avoiding decode variance and duplicate work.
+FLEURS is CC BY 4.0. ESC-50 is CC BY-NC; it is benchmark-only and not shipped
+as product data. Primary sources: [FLEURS dataset](https://huggingface.co/datasets/google/fleurs),
+[FLEURS paper](https://arxiv.org/abs/2205.12446), and
+[ESC-50 repository](https://github.com/karolpiczak/ESC-50).
+
+| Variant | WER | CER | False reject | Hallucination | Catch rate | p50 / p95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| production, no BoH | 16.39% | 7.34% | 0.0% | 10.0% | 90.0% | 31 / 9,292 ms |
+| production + experimental BoH | 16.39% | 7.34% | 0.0% | 10.0% | 90.0% | 31 / 9,292 ms |
+
+BoH matched 0/80 items and changed 0 predictions. All five leaked noise rows
+were `speech_like`; pure-noise hallucination was 0/45. The production decision
+remains no-BoH. The remaining speech-like errors must be handled by calibrated
+signal/ASR policies, not a hidden phrase-deletion fallback.
+
+This run exercises VAD → ASR and the optional research-only BoH stage. It does
+not claim to exercise AEC: AEC belongs to the duplex/barge-in signal boundary,
+and clean FLEURS/ESC-50 files contain no far-end reference. Real AEC-Challenge
+replay remains a separate device-path benchmark.
+
+Raw artifact:
+`eval/results/asr_boh_ablation/20260730-phowhisper-small-paired/report.json`.
