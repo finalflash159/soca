@@ -1,7 +1,4 @@
-"""Smoke tests for the cross-model size-sweep charts (P1.1 §6).
-
-Uses the Agg backend and hand-built rows — no benchmark run needed.
-"""
+"""Smoke tests for the research-only cross-model ASR charts."""
 
 from __future__ import annotations
 
@@ -11,7 +8,13 @@ from pathlib import Path
 from local.plot_model_sweep import load_sweep, render_sweep
 
 
-def _fake_report(wer: float, halluc_raw: float, halluc_full: float, dur_ms: float, lat_ms: float) -> dict:
+def _fake_report(
+    wer: float,
+    halluc_raw: float,
+    halluc_experimental: float,
+    dur_ms: float,
+    lat_ms: float,
+) -> dict:
     return {
         "results": {
             "raw": {
@@ -21,15 +24,31 @@ def _fake_report(wer: float, halluc_raw: float, halluc_full: float, dur_ms: floa
                 "latency_mean_ms": lat_ms,
                 "diagnostics": [{"speech_duration_ms": dur_ms}],
             },
-            "vad_deloop_boh": {"hallucination_rate": halluc_full},
+            "vad_deloop_boh": {"hallucination_rate": halluc_experimental},
         }
     }
 
 
 def test_render_sweep_writes_two_charts(tmp_path: Path) -> None:
     rows = [
-        {"name": "tiny", "params_m": 39, "wer_raw": 20.5, "cer_raw": 9.4, "halluc_raw": 100.0, "halluc_full": 3.3, "rtf": 0.12},
-        {"name": "large", "params_m": 1550, "wer_raw": 12.4, "cer_raw": 5.5, "halluc_raw": 100.0, "halluc_full": 10.0, "rtf": 2.86},
+        {
+            "name": "tiny",
+            "params_m": 39,
+            "wer_raw": 20.5,
+            "cer_raw": 9.4,
+            "halluc_raw": 100.0,
+            "halluc_experimental": 3.3,
+            "rtf": 0.12,
+        },
+        {
+            "name": "large",
+            "params_m": 1550,
+            "wer_raw": 12.4,
+            "cer_raw": 5.5,
+            "halluc_raw": 100.0,
+            "halluc_experimental": 10.0,
+            "rtf": 2.86,
+        },
     ]
     written = render_sweep(rows, tmp_path)
 

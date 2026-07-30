@@ -1,17 +1,4 @@
-"""Cross-model size-sweep charts for the Table VII replication (P1.1 §6).
-
-Unlike ``plot_table7`` (one model, six configs), this reads the focused
-``raw`` + ``vad_deloop_boh`` runs of several PhoWhisper sizes and plots how
-accuracy, compute, and hallucination move with model size.
-
-    uv run python -m local.plot_model_sweep
-
-Produces into eval/results/figs/:
-  - model_sweep_wer_rtf.png    WER(raw) vs RTF across sizes (accuracy saturates,
-                               compute explodes; real-time line at RTF = 1)
-  - model_sweep_halluc.png     hallucination raw vs full per size (size never
-                               fixes raw hallucination; the pipeline always does)
-"""
+"""Render cross-model charts from historical raw and experimental BoH runs."""
 
 from __future__ import annotations
 
@@ -42,7 +29,7 @@ DEFAULT_SWEEP = [
 WER_COLOR = "#e6a817"
 RTF_COLOR = "#5b8def"
 RAW_COLOR = "#d1495b"
-FULL_COLOR = "#2a9d8f"
+EXPERIMENTAL_COLOR = "#2a9d8f"
 
 
 def _rtf(raw_config: dict) -> float:
@@ -72,7 +59,7 @@ def load_sweep(results_dir: Path, sweep: list[tuple[str, int, str | tuple[str, .
             continue
         report = json.loads(path.read_text(encoding="utf-8"))
         raw = report["results"]["raw"]
-        full = report["results"]["vad_deloop_boh"]
+        experimental = report["results"]["vad_deloop_boh"]
         rows.append(
             {
                 "name": name,
@@ -80,7 +67,7 @@ def load_sweep(results_dir: Path, sweep: list[tuple[str, int, str | tuple[str, .
                 "wer_raw": raw["wer"] * 100,
                 "cer_raw": raw["cer"] * 100,
                 "halluc_raw": raw["hallucination_rate"] * 100,
-                "halluc_full": full["hallucination_rate"] * 100,
+                "halluc_experimental": experimental["hallucination_rate"] * 100,
                 "rtf": _rtf(raw),
             }
         )
@@ -124,22 +111,35 @@ def plot_wer_rtf(rows: list[dict], out: Path) -> None:
 
 
 def plot_halluc(rows: list[dict], out: Path) -> None:
-    """Raw vs full hallucination per size: flat 100% raw, pipeline closes it."""
+    """Compare raw output with the historical experimental BoH configuration."""
     x = range(len(rows))
     raw = [r["halluc_raw"] for r in rows]
-    full = [r["halluc_full"] for r in rows]
+    experimental = [r["halluc_experimental"] for r in rows]
     width = 0.38
 
     fig, ax = plt.subplots(figsize=(9, 5))
     ax.bar([i - width / 2 for i in x], raw, width, label="raw (no pipeline)", color=RAW_COLOR)
-    ax.bar([i + width / 2 for i in x], full, width, label="full (RobustASR)", color=FULL_COLOR)
-    for i, v in enumerate(full):
-        ax.text(i + width / 2, v + 1.5, f"{v:.1f}", ha="center", fontsize=8, color=FULL_COLOR)
+    ax.bar(
+        [i + width / 2 for i in x],
+        experimental,
+        width,
+        label="production + experimental BoH",
+        color=EXPERIMENTAL_COLOR,
+    )
+    for i, value in enumerate(experimental):
+        ax.text(
+            i + width / 2,
+            value + 1.5,
+            f"{value:.1f}",
+            ha="center",
+            fontsize=8,
+            color=EXPERIMENTAL_COLOR,
+        )
     ax.set_xticks(list(x))
     ax.set_xticklabels(_labels(rows))
     ax.set_ylabel("Hallucination %")
     ax.set_ylim(0, 108)
-    ax.set_title("Hallucination: size never fixes it, the pipeline always does")
+    ax.set_title("Historical hallucination ablation by PhoWhisper size")
     ax.legend()
     fig.tight_layout()
     fig.savefig(out, dpi=130)
@@ -172,7 +172,8 @@ def main(results_dir: str, outdir: str) -> None:
     if len(rows) < 2:
         raise click.ClickException(
             f"Need >=2 model result files in {results_dir} (found {len(rows)}). "
-            "Run local.eval_table7 --model <size> --configs raw,vad_deloop_boh first."
+            "Run local.eval_table7 --model <size> "
+            "--configs production_no_boh,production_with_boh first."
         )
     written = render_sweep(rows, Path(outdir))
     for path in written:

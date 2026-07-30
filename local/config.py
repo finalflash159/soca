@@ -24,7 +24,6 @@ NOISE_CONFIG_SNAPSHOT = NOISE_ROOT / "noise_collection_config.json"
 # BoH outputs.
 ASR_DATA_DIR = DATA_DIR / "asr"
 BOH_DIR = ASR_DATA_DIR / "boh"
-RUNTIME_BOH_PATH = ASR_DATA_DIR / "vi_boh_v1.json"
 THRESHOLD_CALIBRATION_PATH = ASR_DATA_DIR / "threshold_calibration.json"
 
 # Vietnamese speech eval set (FLEURS).

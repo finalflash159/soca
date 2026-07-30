@@ -1,23 +1,9 @@
-"""CLI: build Vietnamese Bag-of-Hallucinations from PhoWhisper outputs on noise.
-
-Equivalent of notebooks/02_build_vietnamese_boh.ipynb but runnable as:
-
-    uv run python -m local.build_boh
-    uv run python -m local.build_boh --model phowhisper_tiny --max-files 100
-    uv run python -m local.build_boh --providers cpu  # disable CoreML
-
-Output:
-    data/asr/boh/{model_key}_vi_boh_v1.json    — model-specific BoH
-    data/asr/vi_boh_v1.json                    — alias for runtime model
-    notebooks/outputs/{RUN_ID}/logs/boh_runs/{model_key}/phowhisper_noise_outputs.jsonl
-    notebooks/outputs/{RUN_ID}/config_snapshot.json
-"""
+"""Build research-only BoH artifacts from PhoWhisper outputs on noise."""
 
 from __future__ import annotations
 
 import json
 import re
-import shutil
 import time
 import unicodedata
 from collections import Counter
@@ -230,7 +216,7 @@ def build_boh(
             "hallucination_rate": halluc_rate,
             "selection_rule": f"count >= {cfg.MIN_COUNT} and len >= {cfg.MIN_CHARS} chars before manual review",
             "normalization": "NFC + lowercase + whitespace collapse + boundary punctuation strip",
-            "created_by": "local.build_boh",
+            "created_by": "eval.experimental.asr_boh.build",
             "created_at_utc": datetime.now(UTC).isoformat(),
             "raw_output_jsonl": str(raw_jsonl),
             "providers": providers,
@@ -265,11 +251,6 @@ def build_boh(
     help="Model(s) to process. Repeat flag for multi-model run.",
 )
 @click.option(
-    "--runtime-model", default="phowhisper_tiny",
-    type=click.Choice(list(cfg.MODEL_REGISTRY.keys())),
-    help="Which model's BoH is copied to data/asr/vi_boh_v1.json for runtime loading.",
-)
-@click.option(
     "--max-files", default=None, type=int,
     help="Limit to first N noise files (smoke run). Default: all.",
 )
@@ -284,17 +265,11 @@ def build_boh(
 )
 def main(
     model_keys: tuple[str, ...],
-    runtime_model: str,
     max_files: int | None,
     providers: str,
     max_new_tokens: int,
 ) -> None:
-    if runtime_model not in model_keys:
-        raise click.BadParameter(
-            f"--runtime-model '{runtime_model}' must be one of --model values {model_keys}"
-        )
-
-    run_id = "d2_5_build_vietnamese_boh_local_" + datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    run_id = "experimental_boh_local_" + datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     provider_list = resolve_providers(providers)
     items = load_manifest(max_files)
 
@@ -306,7 +281,6 @@ def main(
                 "run_id": run_id,
                 "execution_mode": "local",
                 "selected_model_keys": list(model_keys),
-                "runtime_model_key": runtime_model,
                 "max_files": max_files,
                 "max_new_tokens": max_new_tokens,
                 "providers_preference": providers,
@@ -321,19 +295,8 @@ def main(
         encoding="utf-8",
     )
 
-    runtime_boh_path: Path | None = None
     for model_key in model_keys:
-        result = build_boh(model_key, items, provider_list, max_new_tokens, run_id)
-        if model_key == runtime_model:
-            runtime_boh_path = result["boh_path"]
-
-    if runtime_boh_path is not None:
-        cfg.RUNTIME_BOH_PATH.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(runtime_boh_path, cfg.RUNTIME_BOH_PATH)
-        console.print(
-            f"\n[green]✓ Runtime alias copied:[/green] "
-            f"{runtime_boh_path.name} -> {cfg.RUNTIME_BOH_PATH}"
-        )
+        build_boh(model_key, items, provider_list, max_new_tokens, run_id)
 
 
 if __name__ == "__main__":
