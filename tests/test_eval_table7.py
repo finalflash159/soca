@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from local.eval_table7 import Item, run_config
+from local.eval_table7 import Item, derive_production_with_boh, run_config
 
 
 class FakeRobustASR:
@@ -75,3 +75,21 @@ def test_production_with_boh_applies_only_experimental_post_processing() -> None
     assert result["predictions"] == ["sạch"]
     assert boh.calls == 1
     assert result["diagnostics"][0]["boh_matches"] == ["nội dung"]
+
+
+def test_paired_boh_ablation_reuses_identical_production_output() -> None:
+    no_boh = run_config(
+        "production_no_boh",
+        [_item()],
+        asr=SimpleNamespace(),
+        vad=SimpleNamespace(),
+        boh=None,
+        robust_asr=FakeRobustASR(),
+    )
+    boh = RecordingBoH()
+
+    with_boh = derive_production_with_boh(no_boh, boh)
+
+    assert no_boh["diagnostics"][0]["raw_text"] == with_boh["diagnostics"][0]["raw_text"]
+    assert with_boh["predictions"] == ["sạch"]
+    assert with_boh["latencies_ms"][0] >= no_boh["latencies_ms"][0]

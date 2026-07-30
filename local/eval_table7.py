@@ -328,6 +328,48 @@ def run_config(
     }
 
 
+def derive_production_with_boh(
+    production_run: dict,
+    boh: VietnameseBoH,
+) -> dict:
+    predictions: list[str] = []
+    latencies_ms: list[float] = []
+    diagnostics: list[dict] = []
+    for prediction, latency_ms, diagnostic in zip(
+        production_run["predictions"],
+        production_run["latencies_ms"],
+        production_run["diagnostics"],
+        strict=True,
+    ):
+        cleaned = str(prediction).strip()
+        matches: tuple[str, ...] = ()
+        started = time.perf_counter()
+        if cleaned:
+            boh_result = boh.match_and_clean(cleaned)
+            cleaned = boh_result.cleaned_text.strip()
+            matches = boh_result.matched_phrases
+        boh_latency_ms = (time.perf_counter() - started) * 1000
+        rejection_reason = str(diagnostic.get("rejection_reason", ""))
+        if not cleaned and prediction and not rejection_reason:
+            rejection_reason = "empty_after_boh"
+        predictions.append(cleaned)
+        latencies_ms.append(float(latency_ms) + boh_latency_ms)
+        diagnostics.append(
+            {
+                **diagnostic,
+                "final_text": cleaned,
+                "rejection_reason": rejection_reason,
+                "boh_matches": list(matches),
+                "experimental_boh_latency_ms": boh_latency_ms,
+            }
+        )
+    return {
+        "predictions": predictions,
+        "latencies_ms": latencies_ms,
+        "diagnostics": diagnostics,
+    }
+
+
 def compute_metrics(items: list[Item], predictions: list[str], latencies_ms: list[float]) -> dict:
     speech_refs = [it.ground_truth.lower().strip() for it in items if it.kind == "speech"]
     speech_preds = [
@@ -428,7 +470,11 @@ def main(
         console.print(f"  ASR + VAD + BoH ({len(boh)} phrases) ready\n")
     except FileNotFoundError:
         boh = None
-        console.print("  [yellow]ASR + VAD ready; BoH artifact missing → BoH configs will skip stage 4[/yellow]\n")
+        console.print("  [yellow]ASR + VAD ready; experimental BoH artifact is missing[/yellow]\n")
+    if boh is None and any("boh" in code for code in config_list):
+        raise click.ClickException(
+            "Experimental BoH configuration requested but its model-specific artifact is missing."
+        )
     robust_asr = RobustASR(asr=asr, vad=vad)
     console.print(
         "  RobustASR thresholds: "
@@ -441,10 +487,23 @@ def main(
         asr.transcribe(items[0].audio)
 
     all_results: dict[str, dict] = {}
+    raw_runs: dict[str, dict] = {}
     reports: dict[str, RobustnessReport] = {}
     for code in config_list:
         console.print(f"[bold cyan]{CONFIG_LABELS[code]}[/bold cyan]")
-        run = run_config(code, items, asr, vad, boh, robust_asr)
+        if code == "production_with_boh":
+            production_run = raw_runs.get("production_no_boh")
+            if production_run is None:
+                raise click.ClickException(
+                    "production_with_boh requires production_no_boh earlier in --configs "
+                    "so both variants use identical ASR outputs."
+                )
+            if boh is None:
+                raise click.ClickException("Experimental BoH artifact is unavailable.")
+            run = derive_production_with_boh(production_run, boh)
+        else:
+            run = run_config(code, items, asr, vad, boh, robust_asr)
+        raw_runs[code] = run
         metrics = compute_metrics(items, run["predictions"], run["latencies_ms"])
         report = _robustness_report(run["diagnostics"])
         reports[code] = report
