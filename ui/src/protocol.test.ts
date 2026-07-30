@@ -43,6 +43,28 @@ describe("parseEngineEvent", () => {
     expect(event).toBeNull();
   });
 
+  it.each([
+    ["node", "bogus"],
+    ["status", "ok"],
+  ])("rejects a workflow envelope with invalid %s", (field, value) => {
+    const envelope: Record<string, unknown> = {
+      event: "turn_started",
+      protocol_version: 2,
+      session_id: "session-1",
+      run_id: "run-1",
+      goal_id: "goal-1",
+      sequence: 0,
+      surface: "chat",
+      timestamp: "2026-07-30T00:00:00Z",
+      node: "admit",
+      status: "started",
+      payload: {},
+    };
+    envelope[field] = value;
+
+    expect(parseEngineEvent(JSON.stringify(envelope))).toBeNull();
+  });
+
   it("adapts a v1 hello without changing its fields", () => {
     const event = adaptLegacyEvent({
       event: "hello",

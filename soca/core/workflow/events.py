@@ -68,6 +68,8 @@ class WorkflowEventStream:
         }.items():
             if not value.strip():
                 raise ValueError(f"{name} must not be empty")
+        if surface not in {"ask", "cli", "chat", "voice"}:
+            raise ValueError("surface must be ask, cli, chat, or voice")
         self.session_id: str = session_id
         self.run_id: str = run_id
         self.goal_id: str = goal_id

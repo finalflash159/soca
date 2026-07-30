@@ -183,6 +183,37 @@ export type WorkflowNode =
   | "ask_clarification"
   | "finalize";
 
+const WORKFLOW_NODES = new Set<WorkflowNode>([
+  "admit",
+  "resolve_goal",
+  "choose_capability",
+  "make_plan",
+  "authorize_action",
+  "execute_action",
+  "assess_observation",
+  "revise_query",
+  "synthesize",
+  "verify_answer",
+  "repair_answer",
+  "ask_clarification",
+  "finalize",
+]);
+
+type WorkflowEventStatus =
+  | "started"
+  | "active"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+const WORKFLOW_STATUSES = new Set<WorkflowEventStatus>([
+  "started",
+  "active",
+  "completed",
+  "failed",
+  "cancelled",
+]);
+
 export interface WorkflowEvent {
   event: WorkflowEventName;
   protocol_version: 2;
@@ -193,7 +224,7 @@ export interface WorkflowEvent {
   surface: "ask" | "cli" | "chat" | "voice";
   timestamp: string;
   node: WorkflowNode;
-  status: "started" | "active" | "completed" | "failed" | "cancelled";
+  status: WorkflowEventStatus;
   payload: Record<string, unknown>;
 }
 
@@ -215,7 +246,9 @@ function isWorkflowEvent(value: Record<string, unknown>): boolean {
     typeof value.timestamp === "string" &&
     !Number.isNaN(Date.parse(value.timestamp)) &&
     typeof value.node === "string" &&
+    WORKFLOW_NODES.has(value.node as WorkflowNode) &&
     typeof value.status === "string" &&
+    WORKFLOW_STATUSES.has(value.status as WorkflowEventStatus) &&
     typeof value.payload === "object" &&
     value.payload !== null &&
     !Array.isArray(value.payload)

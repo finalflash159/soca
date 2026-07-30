@@ -480,3 +480,45 @@ def test_runtime_facade_is_opt_in_and_uses_active_goal_store() -> None:
 
     assert result.terminal.status is TerminalStatus.ACHIEVED
     assert runtime.options.turn_workflow == "shadow"
+
+
+def test_follow_up_runs_get_unique_protocol_run_ids() -> None:
+    tool = ScriptedTool(
+        [knowledge_observation("Bayes"), knowledge_observation("Bayes chi tiết")]
+    )
+    runtime = AssistantRuntime(
+        tool_runtime=ToolRuntime([tool]),
+        options=RuntimeOptions(turn_workflow="shadow"),
+    )
+
+    first = runtime.run_controlled_workflow(
+        "Tìm ghi chú Bayes",
+        explicit_call=ToolCall("knowledge.search", {"query": "Bayes"}),
+    )
+    follow_up = runtime.run_controlled_workflow(
+        "giải thích rõ hơn",
+        explicit_call=ToolCall("knowledge.search", {"query": "Bayes chi tiết"}),
+        continues_active_goal=True,
+    )
+
+    assert first.events[0].goal_id == follow_up.events[0].goal_id
+    assert first.events[0].run_id != follow_up.events[0].run_id
+    assert first.events[0].sequence == follow_up.events[0].sequence == 0
+
+
+def test_output_guardrail_block_is_a_safe_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    from soca.core.guardrails import GuardrailStage, block
+
+    monkeypatch.setattr(
+        "soca.core.workflow.runner.check_final_output",
+        lambda *args, **kwargs: block(GuardrailStage.OUTPUT, "unsafe_output"),
+    )
+    tool = ScriptedTool([knowledge_observation("Bayes")])
+
+    result = ControlledWorkflowRunner(ToolRuntime([tool])).run(
+        make_goal(),
+        explicit_call=ToolCall("knowledge.search", {"query": "Bayes"}),
+    )
+
+    assert result.terminal.status is TerminalStatus.SAFE_FAILURE
+    assert result.terminal.error_code == "output_guardrail"

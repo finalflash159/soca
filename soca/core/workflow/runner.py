@@ -5,6 +5,7 @@ import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+from uuid import uuid4
 
 from soca.core.guardrails import (
     DEFAULT_POLICY,
@@ -22,6 +23,7 @@ from .contracts import (
     TerminalStatus,
     TurnBudget,
     TurnNode,
+    TurnSource,
 )
 from .errors import BudgetExceededError, WorkflowError, WorkflowErrorCode
 from .events import EventStatus, EventType, WorkflowEvent, WorkflowEventStream
@@ -154,17 +156,16 @@ class ControlledWorkflowRunner:
         cancelled: CancellationCheck | None = None,
         turn_id: str = "",
         session_id: str = "in-memory-session",
-        surface: str = "chat",
+        surface: TurnSource = "chat",
     ) -> WorkflowRun:
-        run_id = turn_id.strip() or f"run-{goal.goal_id}"
+        run_id = turn_id.strip() or f"run-{uuid4().hex}"
         ledger = BudgetLedger(self.budget)
         retries = RetryLedger()
-        normalized_surface = surface if surface in {"ask", "cli", "chat", "voice"} else "chat"
         stream = WorkflowEventStream(
             session_id=session_id,
             run_id=run_id,
             goal_id=goal.goal_id,
-            surface=normalized_surface,  # type: ignore[arg-type]
+            surface=surface,
         )
         observations: list[ToolResult] = []
         current = TurnNode.ADMIT
@@ -482,6 +483,7 @@ class ControlledWorkflowRunner:
             "authorization_denied",
             "duplicate_action",
             "guardrail_blocked",
+            "output_guardrail",
             "unknown_tool",
         }:
             terminal_status = TerminalStatus.SAFE_FAILURE

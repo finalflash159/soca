@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from soca.core.turn import RuntimeResult, RuntimeRoute, RuntimeStreamEvent
 
-from .contracts import GoalStatus, TerminalOutcome, TerminalStatus, TurnNode
+from .contracts import GoalStatus, TerminalOutcome, TerminalStatus, TurnNode, TurnSource
 from .errors import DuplicateTerminalError
 from .events import EventStatus, EventType, WorkflowEvent, WorkflowEventStream
 
@@ -57,16 +57,15 @@ def iter_runtime_events(
     *,
     turn_id: str = "",
     session_id: str = "legacy-session",
-    surface: str = "chat",
+    surface: TurnSource = "chat",
 ) -> Iterator[WorkflowEvent]:
     run_id = turn_id.strip() or uuid4().hex
     goal_id = f"legacy-{run_id}"
-    normalized_surface = surface if surface in {"ask", "cli", "chat", "voice"} else "chat"
     stream = WorkflowEventStream(
         session_id=session_id,
         run_id=run_id,
         goal_id=goal_id,
-        surface=normalized_surface,  # type: ignore[arg-type]
+        surface=surface,
     )
     yield stream.emit(
         EventType.TURN_STARTED,

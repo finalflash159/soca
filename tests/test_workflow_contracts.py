@@ -121,6 +121,16 @@ def test_event_stream_allows_exactly_one_terminal_event() -> None:
         events.emit_terminal(outcome(TerminalStatus.SYSTEM_FAILURE))
 
 
+def test_event_stream_rejects_an_invalid_surface_without_coercion() -> None:
+    with pytest.raises(ValueError, match="surface"):
+        WorkflowEventStream(
+            session_id="session-1",
+            run_id="run-1",
+            goal_id="goal-1",
+            surface="desktop",  # type: ignore[arg-type]
+        )
+
+
 def test_blocking_and_streaming_legacy_results_share_terminal_shape() -> None:
     result = RuntimeResult(response_text="ok", route=RuntimeRoute.FREE_CHAT)
     blocking = list(iter_workflow_events(result, turn_id="blocking"))

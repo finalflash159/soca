@@ -405,6 +405,7 @@ class AssistantRuntime:
             authorize=authorize,
             cancelled=cancelled,
             turn_id=turn_id,
+            surface="voice" if source == "voice" else "chat",
         )
 
     def run_text_turn(
