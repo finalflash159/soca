@@ -74,6 +74,33 @@ def test_dense_signal_can_admit_a_paraphrase_without_lexical_overlap() -> None:
     assert [hit.document.path for hit in assessment.accepted_hits] == ["wiki/bayes.md"]
 
 
+def test_dense_margin_keeps_near_tied_runner_up_below_admission_floor() -> None:
+    assessment = assess_relevance(
+        "tôi ghi chú gì trong deeplearning vậy",
+        (
+            _hit(
+                "wiki/life/journal.md",
+                "Nhật ký",
+                "Cách tôi muốn viết ghi chú học tập.",
+                backend="dense",
+                dense_score=0.5547,
+            ),
+            _hit(
+                "wiki/learning/deep-learning/attention.md",
+                "Attention và Transformer",
+                "Attention trộn thông tin giữa các token.",
+                backend="dense",
+                dense_score=0.5462,
+            ),
+        ),
+    )
+
+    assert assessment.status == "weak"
+    assert assessment.reason == "ambiguous_top_margin"
+    assert assessment.margin == pytest.approx(0.0085)
+    assert [hit.document.path for hit in assessment.accepted_hits] == ["wiki/life/journal.md"]
+
+
 def test_relevance_policy_is_calibratable_without_code_changes() -> None:
     policy = RelevancePolicy(min_lexical_coverage=0.9)
     assessment = assess_relevance(

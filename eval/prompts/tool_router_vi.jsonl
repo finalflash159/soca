@@ -32,12 +32,12 @@
 {"id":"nl-time-010","slice":"removed_time","query":"Có thể đọc giờ hiện tại cho tôi không","expected_tool":"none","expected_tier":"semantic"}
 {"id":"nl-time-011","slice":"removed_time","query":"Thời điểm này ở đây là mấy giờ","expected_tool":"none","expected_tier":"semantic"}
 {"id":"nl-time-012","slice":"removed_time","query":"Mình muốn xem ngày giờ hiện tại","expected_tool":"none","expected_tier":"semantic"}
-{"id":"nl-catalog-001","slice":"nl_catalog","query":"Kho ghi chú hiện có những mảng kiến thức nào?","expected_tool":"knowledge.catalog","expected_tier":"semantic"}
-{"id":"nl-catalog-002","slice":"nl_catalog","query":"Ngoài ghi chú Bayes thì tài liệu của tôi còn những gì?","expected_tool":"knowledge.catalog","expected_tier":"semantic"}
-{"id":"nl-catalog-003","slice":"nl_catalog","query":"Các note trong vault liên kết với nhau như thế nào?","expected_tool":"knowledge.catalog","expected_tier":"semantic"}
-{"id":"nl-catalog-004","slice":"nl_catalog","query":"Note nào đang trỏ tới ghi chú ONNX Runtime?","expected_tool":"knowledge.catalog","expected_tier":"semantic"}
-{"id":"nl-catalog-005","slice":"nl_catalog","query":"Cho tôi xem tổng quan cấu trúc kho kiến thức","expected_tool":"knowledge.catalog","expected_tier":"semantic"}
-{"id":"nl-catalog-006","slice":"nl_catalog","query":"Tôi đã lưu tài liệu ở những nhóm nào rồi?","expected_tool":"knowledge.catalog","expected_tier":"semantic"}
+{"id":"nl-catalog-001","slice":"nl_catalog","query":"Kho ghi chú hiện có những mảng kiến thức nào?","expected_tool":"knowledge.inspect","expected_tier":"semantic"}
+{"id":"nl-catalog-002","slice":"nl_catalog","query":"Ngoài ghi chú Bayes thì tài liệu của tôi còn những gì?","expected_tool":"knowledge.inspect","expected_tier":"semantic"}
+{"id":"nl-catalog-003","slice":"nl_catalog","query":"Các note trong vault liên kết với nhau như thế nào?","expected_tool":"knowledge.inspect","expected_tier":"semantic"}
+{"id":"nl-catalog-004","slice":"nl_catalog","query":"Note nào đang trỏ tới ghi chú ONNX Runtime?","expected_tool":"knowledge.inspect","expected_tier":"semantic"}
+{"id":"nl-catalog-005","slice":"nl_catalog","query":"Cho tôi xem tổng quan cấu trúc kho kiến thức","expected_tool":"knowledge.inspect","expected_tier":"semantic"}
+{"id":"nl-catalog-006","slice":"nl_catalog","query":"Tôi đã lưu tài liệu ở những nhóm nào rồi?","expected_tool":"knowledge.inspect","expected_tier":"semantic"}
 {"id":"nl-knowledge-001","slice":"nl_knowledge","query":"Ghi chú của tôi nói định lý Bayes thế nào?","expected_tool":"knowledge.search","expected_tier":"semantic"}
 {"id":"nl-knowledge-002","slice":"nl_knowledge","query":"Tuần trước tôi note gì về ONNX Runtime?","expected_tool":"knowledge.search","expected_tier":"semantic"}
 {"id":"nl-knowledge-003","slice":"nl_knowledge","query":"Trong tài liệu dự án, quyết định chọn TTS nào được ghi lại?","expected_tool":"knowledge.search","expected_tier":"semantic"}

@@ -163,7 +163,12 @@ def assess_relevance(
             dense_top_score,
         )
     top_score = float(explicit[0][1])
-    margin = _same_backend_margin(explicit)
+    margin = _same_backend_margin(
+        query,
+        hits,
+        explicit,
+        max_sparse_score=max_sparse_score,
+    )
 
     status = "supported"
     reason = "relevance_floor"
@@ -184,17 +189,38 @@ def assess_relevance(
 
 
 def _same_backend_margin(
-    scored: list[tuple[KnowledgeHit, float, _SignalSpace]],
+    query: str,
+    hits: tuple[KnowledgeHit, ...],
+    admitted: list[tuple[KnowledgeHit, float, _SignalSpace]],
+    *,
+    max_sparse_score: float | None,
 ) -> float | None:
-    """Compare adjacent signals only when they share a score space.
+    """Compare the leader with its raw runner-up in each admitted score space.
 
-    Retrieval order is already the backend's ranking. A lexical coverage score,
-    a normalized sparse score and a dense cosine are not interchangeable, so
-    cross-backend subtraction would invent a confidence margin.
+    Admission floors decide which hits may become evidence; they must not erase
+    a near-tied candidate before confidence is measured. A lexical coverage
+    score, normalized sparse score, and dense cosine remain separate because
+    cross-space subtraction would invent a confidence margin.
     """
+    admitted_spaces: set[_SignalSpace] = {space for _, _, space in admitted}
     by_space: dict[_SignalSpace, list[float]] = {}
-    for _, score, space in scored:
-        by_space.setdefault(space, []).append(float(score))
+    for space in admitted_spaces:
+        by_space[space] = []
+    for hit in hits:
+        if "explicit" in by_space and hit.retrieval_backend == "explicit_read":
+            by_space["explicit"].append(1.0)
+        if "lexical" in by_space:
+            by_space["lexical"].append(_lexical_coverage(query, hit))
+        if (
+            "sparse" in by_space
+            and max_sparse_score is not None
+            and max_sparse_score > 0
+            and hit.sparse_score is not None
+        ):
+            by_space["sparse"].append(float(hit.sparse_score) / max_sparse_score)
+        if "dense" in by_space and hit.dense_score is not None:
+            by_space["dense"].append(float(hit.dense_score))
+
     margins = [
         values[0] - values[1]
         for values in by_space.values()

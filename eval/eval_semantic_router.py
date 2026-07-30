@@ -37,7 +37,7 @@ def _catalog() -> ToolRuntime:
         [
             _CatalogTool(
                 ToolSpec(
-                    "knowledge.catalog",
+                    "knowledge.inspect",
                     "Inspect the current knowledge vault structure and links.",
                     object_schema(),
                 )

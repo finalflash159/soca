@@ -1050,6 +1050,10 @@ class AssistantRuntime:
         tool_call: ToolCall,
         draft: _TraceDraft,
     ) -> RuntimeResult:
+        knowledge_hit_count = len(draft.knowledge_hits)
+        memory_hit_count = len(draft.memory_hits)
+        citation_count = len(draft.citations)
+        evidence_decision_count = len(draft.evidence_decisions)
         prepared = self._prepare_tool_turn(frame, tool_call, draft)
         if isinstance(prepared, RuntimeResult):
             return prepared
@@ -1057,11 +1061,7 @@ class AssistantRuntime:
         if self._can_refine_retrieval(prepared, draft):
             refiner = getattr(self.tool_router, "refine", None)
             if callable(refiner):
-                observation = prepared.result.content or json.dumps(
-                    prepared.result.data,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                )
+                observation = self._retrieval_refinement_observation(prepared)
                 refined_call = refiner(
                     frame.text,
                     observation=observation,
@@ -1069,6 +1069,17 @@ class AssistantRuntime:
                 )
                 if refined_call is not None and refined_call != tool_call:
                     draft.retrieval_refinements += 1
+                    del draft.knowledge_hits[knowledge_hit_count:]
+                    del draft.memory_hits[memory_hit_count:]
+                    del draft.citations[citation_count:]
+                    del draft.evidence_decisions[evidence_decision_count:]
+                    draft.evidence_bundle = (
+                        EvidenceReconciler().reconcile(
+                            tuple(draft.evidence_decisions)
+                        )
+                        if draft.evidence_decisions
+                        else None
+                    )
                     if isinstance(refined_call, ToolCall):
                         return self._run_tool_turn(frame, refined_call, draft)
 
@@ -1101,6 +1112,35 @@ class AssistantRuntime:
         if context.evidence_status not in {"insufficient", "weak"}:
             return False
         return prepared.result.name in {"knowledge.search", "memory.search"}
+
+    @staticmethod
+    def _retrieval_refinement_observation(prepared: _PreparedToolTurn) -> str:
+        context = prepared.knowledge_context or prepared.memory_context
+        if context is None:
+            return "{}"
+
+        candidates: list[dict[str, str]] = []
+        raw_hits = prepared.result.data.get("hits", [])
+        if isinstance(raw_hits, list):
+            for raw_hit in raw_hits[:8]:
+                if not isinstance(raw_hit, dict):
+                    continue
+                path = str(raw_hit.get("path", "")).strip()
+                title = str(raw_hit.get("title", "")).strip()
+                if path or title:
+                    candidates.append({"path": path, "title": title})
+
+        return json.dumps(
+            {
+                "evidence_status": context.evidence_status,
+                "reason": context.evidence_reason,
+                "top_score": context.top_relevance,
+                "top_margin": context.relevance_margin,
+                "candidate_documents": candidates,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
 
     def _prepare_tool_turn(
         self,
@@ -2118,8 +2158,12 @@ class AssistantRuntime:
                 required=True,
             )
         ]
-        manifest_text = self._vault_manifest_text()
-        if manifest_text:
+        navigation_only = (
+            knowledge_context is not None
+            and knowledge_context.evidence_reason == "navigation_metadata_only"
+        )
+        manifest_text = self._vault_manifest_text() if navigation_only else ""
+        if navigation_only and manifest_text:
             components.append(
                 PromptComponent(
                     "vault_manifest",
@@ -2171,7 +2215,6 @@ class AssistantRuntime:
                 )
             )
         if knowledge_context is not None and knowledge_context.prompt_text.strip():
-            navigation_only = knowledge_context.evidence_reason == "navigation_metadata_only"
             if navigation_only:
                 knowledge_text = (
                     "Vault navigation metadata (not evidence; do not cite):\n"

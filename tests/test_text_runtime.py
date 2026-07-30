@@ -54,6 +54,7 @@ def test_text_runtime_default_llm_follows_default_runtime_profile() -> None:
     assert config.llm_model == "arcee_vylinh_3b_q4_k_m"
     assert config.knowledge_retrieval_mode == "hybrid"
     assert config.knowledge_dense_backend == "aiteamvn_v2"
+    assert config.tool_router_response_mode == "json_schema"
 
 
 def test_session_memory_enabled_without_vault(tmp_path: Path) -> None:

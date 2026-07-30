@@ -254,6 +254,90 @@ class StaticToolRouter:
         return self.call
 
 
+class RefiningKnowledgeRouter(StaticToolRouter):
+    def __init__(self, initial_query: str, refined_query: str) -> None:
+        super().__init__(ToolCall("knowledge.search", {"query": initial_query}))
+        self.refined_query = refined_query
+        self.observations: list[str] = []
+
+    def refine(
+        self,
+        text: str,
+        *,
+        observation: str,
+        knowledge_limit: int,
+    ) -> ToolCall:
+        del text, knowledge_limit
+        self.observations.append(observation)
+        return ToolCall("knowledge.search", {"query": self.refined_query})
+
+
+class AmbiguousDeepLearningSource:
+    def __init__(self) -> None:
+        self.search_calls: list[str] = []
+        self.journal = KnowledgeDocument(
+            "journal",
+            "wiki/life/journal/2026-07-27.md",
+            "Nhật ký ngày 27/07/2026",
+            "Tôi muốn ghi note học tập theo cách hiểu của mình.",
+        )
+        self.deep_learning = KnowledgeDocument(
+            "attention",
+            "wiki/learning/deep-learning/attention-and-transformers.md",
+            "DL: attention và Transformer",
+            "Attention cho mỗi token quyền chọn phần thông tin liên quan.",
+        )
+
+    def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
+        self.search_calls.append(query)
+        if query == "deep learning attention transformer":
+            hits = [
+                KnowledgeHit(
+                    document=self.deep_learning,
+                    score=0.81,
+                    snippet=self.deep_learning.text,
+                    retrieval_backend="dense",
+                    dense_score=0.81,
+                ),
+                KnowledgeHit(
+                    document=self.journal,
+                    score=0.31,
+                    snippet=self.journal.text,
+                    retrieval_backend="dense",
+                    dense_score=0.31,
+                ),
+            ]
+        else:
+            hits = [
+                KnowledgeHit(
+                    document=self.journal,
+                    score=0.5547,
+                    snippet=self.journal.text,
+                    retrieval_backend="dense",
+                    dense_score=0.5547,
+                ),
+                KnowledgeHit(
+                    document=self.deep_learning,
+                    score=0.5462,
+                    snippet=self.deep_learning.text,
+                    retrieval_backend="dense",
+                    dense_score=0.5462,
+                ),
+            ]
+        return hits[:limit]
+
+
+class _ManifestSnapshot:
+    def manifest_text(self, *, max_chars: int) -> str:
+        del max_chars
+        return "MANIFEST_TITLE_MUST_NOT_SUPPORT_CONTENT_ANSWERS"
+
+
+class _ManifestCatalog:
+    def snapshot(self) -> _ManifestSnapshot:
+        return _ManifestSnapshot()
+
+
 def test_blocks_private_path_before_tool_or_llm() -> None:
     llm = SpyLLM()
     runtime = AssistantRuntime(llm=llm)
@@ -304,6 +388,41 @@ def test_explicit_wiki_search_synthesizes_retrieved_context_with_llm() -> None:
     assert "Knowledge:" in llm.calls[0]["user_msg"]
     assert "Protein hỗ trợ" in llm.calls[0]["user_msg"]
     assert result.response_text.startswith("Theo [K1]")
+
+
+def test_ambiguous_dense_search_refines_before_answering_from_note_content() -> None:
+    source = AmbiguousDeepLearningSource()
+    router = RefiningKnowledgeRouter(
+        "tôi ghi chú gì trong deeplearning vậy",
+        "deep learning attention transformer",
+    )
+    llm = SpyLLM(text="Theo [K1], bạn hiểu attention là cách token chọn phần liên quan.")
+    builder = KnowledgeContextBuilder(source)
+    manifest_catalog: Any = _ManifestCatalog()
+    builder.catalog = manifest_catalog
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        tool_router=router,
+        knowledge_builder=builder,
+    )
+
+    result = runtime.run_text_turn("tôi ghi chú gì trong deeplearning vậy")
+
+    assert source.search_calls == [
+        "tôi ghi chú gì trong deeplearning vậy",
+        "deep learning attention transformer",
+    ]
+    assert result.trace is not None
+    assert result.trace.retrieval_refinements == 1
+    assert [citation.path for citation in result.citations] == [
+        "wiki/learning/deep-learning/attention-and-transformers.md"
+    ]
+    assert "Attention cho mỗi token" in llm.calls[0]["user_msg"]
+    assert "MANIFEST_TITLE_MUST_NOT_SUPPORT_CONTENT_ANSWERS" not in llm.calls[0]["user_msg"]
+    assert router.observations
+    assert "DL: attention và Transformer" in router.observations[0]
+    assert "Tôi muốn ghi note học tập" not in router.observations[0]
 
 
 def test_inspect_tool_is_navigation_context_without_evidence_citations() -> None:

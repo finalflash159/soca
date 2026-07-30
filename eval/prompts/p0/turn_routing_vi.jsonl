@@ -64,21 +64,21 @@
 {"id":"tr-064","family":"unresolved-ellipsis","split":"test","query":"Ừ, vậy cái kia thì sao?","disposition":"unresolved","sources":[]}
 {"id":"tr-065","family":"unresolved-ellipsis","split":"test","query":"Nói tiếp phần đó đi","disposition":"unresolved","sources":[]}
 {"id":"tr-066","family":"unresolved-ellipsis","split":"test","query":"Còn cái hôm qua tôi hỏi thì sao?","disposition":"unresolved","sources":[]}
-{"id":"tr-067","family":"knowledge-catalog-inventory-train","split":"train","query":"Kho ghi chú hiện có những mảng kiến thức nào?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
-{"id":"tr-068","family":"knowledge-catalog-inventory-train","split":"train","query":"Ngoài ghi chú Bayes thì trong tài liệu của tôi còn những gì?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
-{"id":"tr-069","family":"knowledge-catalog-relations-train","split":"train","query":"Các note trong knowledge liên kết với nhau như thế nào?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
-{"id":"tr-070","family":"knowledge-catalog-inventory-validation","split":"validation","query":"Cho tôi xem tổng quan cấu trúc kho kiến thức hiện tại","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
-{"id":"tr-071","family":"knowledge-catalog-relations-validation","split":"validation","query":"Note nào đang trỏ tới ghi chú về ONNX Runtime?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
-{"id":"tr-072","family":"knowledge-catalog-inventory-validation","split":"validation","query":"Tôi đã lưu tài liệu ở những nhóm nào rồi?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
-{"id":"tr-073","family":"knowledge-catalog-inventory-test","split":"test","query":"Liệt kê bản đồ tài liệu của tôi mà không tóm tắt nội dung từng note","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
-{"id":"tr-074","family":"knowledge-catalog-relations-test","split":"test","query":"Ghi chú về RAG có đường dẫn hay backlink tới tài liệu nào?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
-{"id":"tr-075","family":"knowledge-catalog-paraphrase","split":"test","query":"Ngoài nội dung vừa nhắc tới, tôi còn cất những chủ đề nào khác?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"tr-067","family":"knowledge-catalog-inventory-train","split":"train","query":"Kho ghi chú hiện có những mảng kiến thức nào?","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}
+{"id":"tr-068","family":"knowledge-catalog-inventory-train","split":"train","query":"Ngoài ghi chú Bayes thì trong tài liệu của tôi còn những gì?","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}
+{"id":"tr-069","family":"knowledge-catalog-relations-train","split":"train","query":"Các note trong knowledge liên kết với nhau như thế nào?","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}
+{"id":"tr-070","family":"knowledge-catalog-inventory-validation","split":"validation","query":"Cho tôi xem tổng quan cấu trúc kho kiến thức hiện tại","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}
+{"id":"tr-071","family":"knowledge-catalog-relations-validation","split":"validation","query":"Note nào đang trỏ tới ghi chú về ONNX Runtime?","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}
+{"id":"tr-072","family":"knowledge-catalog-inventory-validation","split":"validation","query":"Tôi đã lưu tài liệu ở những nhóm nào rồi?","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}
+{"id":"tr-073","family":"knowledge-catalog-inventory-test","split":"test","query":"Liệt kê bản đồ tài liệu của tôi mà không tóm tắt nội dung từng note","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}
+{"id":"tr-074","family":"knowledge-catalog-relations-test","split":"test","query":"Ghi chú về RAG có đường dẫn hay backlink tới tài liệu nào?","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}
+{"id":"tr-075","family":"knowledge-catalog-paraphrase","split":"test","query":"Ngoài nội dung vừa nhắc tới, tôi còn cất những chủ đề nào khác?","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}
 {"id":"tr-076","family":"catalog-keyword-hard-negative","split":"test","query":"Giải thích khái niệm cấu trúc dữ liệu graph trong ghi chú của tôi","disposition":"retrieval_request","sources":["knowledge"]}
 {"id":"tr-077","family":"catalog-keyword-hard-negative","split":"test","query":"Tìm đoạn note có từ backlink và wikilink","disposition":"retrieval_request","sources":["knowledge"]}
-{"id":"tr-078","family":"knowledge-catalog-contrast-train","split":"train","query":"Tài liệu nào liên kết trực tiếp tới note về embedding?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
-{"id":"tr-079","family":"knowledge-catalog-contrast-train","split":"train","query":"Cho tôi xem backlink và đường dẫn giữa các ghi chú","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
-{"id":"tr-080","family":"knowledge-catalog-contrast-train","split":"train","query":"Bản đồ tài liệu hiện có những nhánh và chủ đề nào?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
-{"id":"tr-081","family":"knowledge-catalog-contrast-train","split":"train","query":"Ngoài chủ đề vừa nói, kho kiến thức còn lưu mảng nào khác?","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}
+{"id":"tr-078","family":"knowledge-catalog-contrast-train","split":"train","query":"Tài liệu nào liên kết trực tiếp tới note về embedding?","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}
+{"id":"tr-079","family":"knowledge-catalog-contrast-train","split":"train","query":"Cho tôi xem backlink và đường dẫn giữa các ghi chú","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}
+{"id":"tr-080","family":"knowledge-catalog-contrast-train","split":"train","query":"Bản đồ tài liệu hiện có những nhánh và chủ đề nào?","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}
+{"id":"tr-081","family":"knowledge-catalog-contrast-train","split":"train","query":"Ngoài chủ đề vừa nói, kho kiến thức còn lưu mảng nào khác?","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}
 {"id":"tr-082","family":"knowledge-content-contrast-train","split":"train","query":"Tìm nội dung ghi chú giải thích graph và backlink","disposition":"retrieval_request","sources":["knowledge"]}
 {"id":"tr-083","family":"knowledge-content-contrast-train","split":"train","query":"Tra đoạn văn có nhắc đến wikilink trong tài liệu","disposition":"retrieval_request","sources":["knowledge"]}
 {"id":"tr-084","family":"knowledge-content-contrast-train","split":"train","query":"Ghi chú của tôi giải thích cấu trúc dữ liệu graph ra sao?","disposition":"retrieval_request","sources":["knowledge"]}
@@ -92,3 +92,5 @@
 {"id":"tr-092","family":"knowledge-content-contrast-test","split":"test","query":"Tìm trong ghi chú con số p95 của benchmark retrieval","disposition":"retrieval_request","sources":["knowledge"]}
 {"id":"tr-093","family":"both-content-contrast-test","split":"test","query":"Tra cả note lẫn memory về lựa chọn reranker của tôi","disposition":"retrieval_request","sources":["knowledge","memory"]}
 {"id":"tr-094","family":"concept-definition-contrast-test","split":"test","query":"Khái niệm kho tri thức nói chung là gì?","disposition":"out_of_scope","sources":[]}
+{"id":"tr-095","family":"knowledge-content-folder-subject-test","split":"test","query":"Tôi ghi chú gì trong phần học sâu vậy?","disposition":"retrieval_request","sources":["knowledge"]}
+{"id":"tr-096","family":"knowledge-inventory-folder-contents-test","split":"test","query":"Trong thư mục học sâu hiện có những file nào?","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}

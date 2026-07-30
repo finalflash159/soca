@@ -132,7 +132,7 @@ Invariants worth remembering:
 - **Text and voice use the same semantic contract.** The optional LLM-router
   tier remains independently gated off for voice; semantic capability routing
   itself is not ASR-specific.
-- **The executable catalog has four product tools only:** `knowledge.catalog`,
+- **The executable catalog has four product tools only:** `knowledge.inspect`,
   `knowledge.search`, `knowledge.read`, and `memory.search`. There are no
   realtime, weather, device-control, scheduling, or memory-write tools.
 - **Safety stays in guardrails.** Prompt injection, path traversal, schema,

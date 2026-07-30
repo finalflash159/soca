@@ -125,31 +125,72 @@ class ParsedRouteDecision:
 
 def build_route_decision_schema(specs: tuple[ToolSpec, ...]) -> dict[str, Any]:
     """Build the shared LLM-router contract: route first, handler second."""
-    handlers = [spec.name for spec in specs]
-    return {
-        "type": "object",
-        "properties": {
-            "route": {
-                "enum": [
-                    "direct_tool",
-                    "retrieval_request",
-                    "smalltalk",
-                    "out_of_scope",
-                    "unresolved",
-                ]
+    branches: list[dict[str, Any]] = []
+    for spec in specs:
+        branches.append(
+            {
+                "type": "object",
+                "properties": {
+                    "route": {"const": "direct_tool"},
+                    "handler": {"const": spec.name},
+                    "arguments": dict(spec.input_schema),
+                    "sources": {
+                        "type": "array",
+                        "maxItems": 0,
+                    },
+                },
+                "required": ["route", "handler", "arguments", "sources"],
+                "additionalProperties": False,
+            }
+        )
+
+    branches.append(
+        {
+            "type": "object",
+            "properties": {
+                "route": {"const": "retrieval_request"},
+                "handler": {"type": "null"},
+                "arguments": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                    "additionalProperties": False,
+                },
+                "sources": {
+                    "type": "array",
+                    "items": {"enum": ["knowledge", "memory"]},
+                    "uniqueItems": True,
+                    "minItems": 1,
+                    "maxItems": 2,
+                },
             },
-            "handler": {"anyOf": [{"type": "null"}, {"enum": handlers}]},
-            "arguments": {"type": "object"},
-            "sources": {
-                "type": "array",
-                "items": {"enum": ["knowledge", "memory"]},
-                "uniqueItems": True,
-                "maxItems": 2,
-            },
-        },
-        "required": ["route", "handler", "arguments", "sources"],
-        "additionalProperties": False,
-    }
+            "required": ["route", "handler", "arguments", "sources"],
+            "additionalProperties": False,
+        }
+    )
+    for route in ("smalltalk", "out_of_scope", "unresolved"):
+        branches.append(
+            {
+                "type": "object",
+                "properties": {
+                    "route": {"const": route},
+                    "handler": {"type": "null"},
+                    "arguments": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                        "additionalProperties": False,
+                    },
+                    "sources": {
+                        "type": "array",
+                        "maxItems": 0,
+                    },
+                },
+                "required": ["route", "handler", "arguments", "sources"],
+                "additionalProperties": False,
+            }
+        )
+    return {"oneOf": branches}
 
 
 def parse_route_decision(raw: str, *, max_chars: int) -> ParsedRouteDecision:
@@ -193,7 +234,9 @@ def parse_route_decision(raw: str, *, max_chars: int) -> ParsedRouteDecision:
         raise RouterOutputError("invalid_handler")
     if not isinstance(arguments, dict) or any(not isinstance(key, str) for key in arguments):
         raise RouterOutputError("arguments_not_object")
-    if not isinstance(sources, list) or not all(source in {"knowledge", "memory"} for source in sources):
+    if not isinstance(sources, list) or not all(
+        source in {"knowledge", "memory"} for source in sources
+    ):
         raise RouterOutputError("invalid_sources")
     if len(set(sources)) != len(sources):
         raise RouterOutputError("duplicate_sources")

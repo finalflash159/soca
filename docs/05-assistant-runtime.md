@@ -130,15 +130,17 @@ flowchart LR
   default; the versioned private checkpoint store is opt-in wiring.
 - **Archive memory**: never retrieved implicitly. It enters a prompt only after
   the semantic source decision selects `memory`; its citations use `[M#]`.
-- **Knowledge**: Markdown vault. Retrieved passages and a bounded structural
-  neighborhood of their explicit Markdown/Wikilink relations are inserted into
-  the dynamic prompt. `knowledge.catalog` supplies an immutable whole-vault
-  inventory for global and relationship questions. The LLM may only claim facts
-  supported by evidence, must preserve internal citation labels, and must state
-  that the vault lacks enough information when context is empty or insufficient.
-  The presentation layer removes internal labels after validation and renders
-  structured sources at the end; no answer text is assembled from snippets in
-  code.
+- **Knowledge**: Markdown vault. The capability router receives a bounded
+  manifest as navigation metadata. Content-answer prompts receive only selected
+  retrieved passages; the whole-vault manifest is deliberately excluded so a
+  title, heading, or path cannot masquerade as note-body evidence.
+  `knowledge.inspect` supplies bounded inventory/relationship metadata for
+  explicit navigation questions, while `knowledge.search` and `knowledge.read`
+  supply answer evidence. The LLM must preserve internal citation labels and
+  state that the vault lacks enough information when evidence is empty or
+  insufficient. The presentation layer removes internal labels after validation
+  and renders structured sources at the end; no answer text is assembled from
+  snippets in code.
 
 ## <a id="usage-telemetry"></a>Usage Telemetry
 

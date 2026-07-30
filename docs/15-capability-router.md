@@ -159,7 +159,7 @@ captures:
 | 51 NL rows (time/knowledge/memory/smalltalk) | 51 | 88.24% | 38.46% | 53.57% | 0/12 no-tool rows |
 
 The current focused live route checks with the configured OpenRouter model
-confirmed `knowledge.catalog` for inventory and relationship requests,
+confirmed `knowledge.inspect` for inventory and relationship requests,
 `knowledge,memory` retrieval for a mixed note/memory request, and
 `out_of_scope` for a general vault-definition question. These are
 characterization runs from the current dirty working tree; they are not yet a

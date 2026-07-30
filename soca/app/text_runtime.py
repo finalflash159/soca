@@ -57,13 +57,7 @@ def default_text_llm_model_key() -> str:
 
 
 def default_semantic_router_examples() -> Path:
-    return (
-        Path(__file__).resolve().parents[2]
-        / "eval"
-        / "prompts"
-        / "p0"
-        / "turn_routing_vi.jsonl"
-    )
+    return Path(__file__).resolve().parents[2] / "eval" / "prompts" / "p0" / "turn_routing_vi.jsonl"
 
 
 @dataclass(frozen=True)
@@ -91,7 +85,7 @@ class TextRuntimeConfig:
     llm_threads: int = 8
     llm_gpu_layers: int = -1
     tool_router_mode: str = "cascade"
-    tool_router_response_mode: str = "prompt_json"
+    tool_router_response_mode: str = "json_schema"
     semantic_router_enabled: bool = False
     semantic_router_threshold: float = 0.58
     semantic_router_margin: float = 0.0
@@ -127,7 +121,7 @@ def resolve_text_runtime_config(
     llm_threads: int = 8,
     llm_gpu_layers: int = -1,
     tool_router_mode: str = "cascade",
-    tool_router_response_mode: str = "prompt_json",
+    tool_router_response_mode: str = "json_schema",
     semantic_router_enabled: bool = False,
     semantic_router_threshold: float = 0.58,
     semantic_router_margin: float = 0.0,
@@ -273,8 +267,7 @@ def build_text_runtime(
         selected_settings = selected_settings.with_backend("local").with_model(config.llm_model)
     model_context_window = (
         LLM_MODEL_REGISTRY[selected_settings.model_id].context_window
-        if selected_settings.backend == "local"
-        and selected_settings.model_id in LLM_MODEL_REGISTRY
+        if selected_settings.backend == "local" and selected_settings.model_id in LLM_MODEL_REGISTRY
         else selected_settings.model_context_window
     )
     working_policy = WorkingMemoryPolicy.for_context_budget(
@@ -324,7 +317,9 @@ def build_text_runtime(
                 dense_backend=cast(DenseBackend, config.memory_dense_backend),
                 recency_weight=config.memory_recency_weight,
                 importance_weight=config.memory_importance_weight,
-                relevance_weight=1.0 - config.memory_recency_weight - config.memory_importance_weight,
+                relevance_weight=1.0
+                - config.memory_recency_weight
+                - config.memory_importance_weight,
                 recency_half_life_days=config.memory_recency_half_life_days,
             ),
         )
@@ -451,8 +446,7 @@ def render_text_result(
     reply = RichText()
     reply.append(f"{ICON.BIRD} ", style=st(f"bold {ACCENT}"))
     reply.append(
-        answer_text_without_citation_labels(result.response_text, result.citations)
-        or "<empty>",
+        answer_text_without_citation_labels(result.response_text, result.citations) or "<empty>",
         style=st(TEXT),
     )
     console.print(reply)

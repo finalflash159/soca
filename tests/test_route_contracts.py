@@ -5,7 +5,11 @@ import pytest
 from soca.core.llm_tool_router import LLMToolRouter, _build_prompt
 from soca.core.route_catalog import source_profile, validate_route_fields
 from soca.core.runtime import AssistantRuntime
-from soca.core.tool_routing import ToolRouterConfig, parse_route_decision
+from soca.core.tool_routing import (
+    ToolRouterConfig,
+    build_route_decision_schema,
+    parse_route_decision,
+)
 from soca.core.turn import RuntimeRoute
 from soca.llm.base import LLMResult
 from soca.tools import ToolRuntime
@@ -59,6 +63,27 @@ def test_llm_router_prompt_exposes_inspect_as_navigation_not_evidence() -> None:
     assert "navigation metadata" in prompt
     assert "not a general-knowledge answer tool" in prompt
     assert "Classify the user's intent, not isolated words" in prompt
+    assert "what the user wrote, noted, learned" in prompt
+    assert "even when the subject also names a folder" in prompt
+
+
+def test_route_schema_binds_each_handler_to_its_argument_contract() -> None:
+    tools = ToolRuntime([ReadOnlyInspectTool(), ReadOnlySearchTool()])
+    schema = build_route_decision_schema(tools.list_specs(include_disabled=False))
+    search_branch = next(
+        branch
+        for branch in schema["oneOf"]
+        if branch["properties"]["handler"].get("const") == "knowledge.search"
+    )
+    inspect_branch = next(
+        branch
+        for branch in schema["oneOf"]
+        if branch["properties"]["handler"].get("const") == "knowledge.inspect"
+    )
+
+    assert search_branch["properties"]["arguments"]["required"] == ["query"]
+    assert inspect_branch["properties"]["arguments"]["required"] == []
+    assert search_branch["properties"]["sources"]["maxItems"] == 0
 
 
 class _FakeRouterLLM:
@@ -114,9 +139,7 @@ def test_llm_router_uses_route_contract_for_direct_and_retrieval() -> None:
 
 def test_llm_unresolved_route_does_not_terminally_block_the_answer_model() -> None:
     router = LLMToolRouter(
-        _FakeRouterLLM(
-            '{"route":"unresolved","handler":null,"arguments":{},"sources":[]}'
-        ),
+        _FakeRouterLLM('{"route":"unresolved","handler":null,"arguments":{},"sources":[]}'),
         ToolRuntime([ReadOnlyInspectTool()]),
         config=ToolRouterConfig(mode="llm", repair_attempts=0),
     )
@@ -144,6 +167,24 @@ def test_llm_invalid_output_fails_closed_without_deterministic_fallback() -> Non
     assert router.last_decision.disposition == "unresolved"
 
 
+def test_json_schema_router_fails_closed_when_engine_lacks_structured_output() -> None:
+    router = LLMToolRouter(
+        _FakeRouterLLM(
+            '{"route":"direct_tool","handler":"knowledge.inspect","arguments":{},"sources":[]}'
+        ),
+        ToolRuntime([ReadOnlyInspectTool()]),
+        config=ToolRouterConfig(
+            mode="llm",
+            response_mode="json_schema",
+            repair_attempts=0,
+        ),
+    )
+
+    assert router.select("vault có gì", knowledge_limit=3) is None
+    assert router.last_decision.reason == "llm_invalid_output:structured_output_unsupported"
+    assert router.last_decision.disposition == "unresolved"
+
+
 def test_llm_provider_failure_fails_closed_with_observable_reason() -> None:
     router = LLMToolRouter(
         _FailingRouterLLM(),
@@ -168,7 +209,9 @@ def test_llm_router_receives_manifest_context_and_can_refine_once() -> None:
         llm,
         ToolRuntime([ReadOnlySearchTool()]),
         config=ToolRouterConfig(mode="llm", repair_attempts=0),
-        vault_manifest_provider=lambda: '{"tree":{"wiki/learning":["wiki/learning/transformer.md"]}}',
+        vault_manifest_provider=lambda: (
+            '{"tree":{"wiki/learning":["wiki/learning/transformer.md"]}}'
+        ),
     )
     router.set_context(turn_context="Active goal: identify a note")
 
@@ -185,3 +228,6 @@ def test_llm_router_receives_manifest_context_and_can_refine_once() -> None:
     assert refined is not None
     assert refined.name == "knowledge.search"
     assert refined.arguments == {"query": "transformer", "limit": 3}
+    assert llm.prompts[1].startswith("You are SoCa's bounded retrieval refiner.")
+    assert "Original user request:" in llm.prompts[1]
+    assert "User text:" not in llm.prompts[1]

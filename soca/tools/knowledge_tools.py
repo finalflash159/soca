@@ -59,10 +59,10 @@ class KnowledgeInspectTool:
         return ToolSpec(
             name="knowledge.inspect",
             description=(
-                "Inspect bounded local vault navigation metadata for inventory requests "
-                "such as what notes, documents, folders, headings, and links exist, or "
-                "for explicit document relationships. This returns structure, not content "
-                "evidence; use knowledge.search or knowledge.read for note contents."
+                "Inspect bounded local vault navigation metadata when the requested "
+                "answer is a list or map of documents, folders, headings, links, or "
+                "relationships. This returns structure, not what the user wrote inside "
+                "a subject; use knowledge.search or knowledge.read for note contents."
             ),
             input_schema=object_schema(
                 properties={
@@ -338,7 +338,12 @@ class KnowledgeReadTool:
     def spec(self) -> ToolSpec:
         return ToolSpec(
             name="knowledge.read",
-            description="Read one local wiki markdown note by relative path.",
+            description=(
+                "Read one known local wiki Markdown path as note-body evidence. Prefer "
+                "this for a broad summary when navigation metadata identifies one clear "
+                "document; use search when the path is unknown or a specific passage "
+                "must be located."
+            ),
             input_schema=object_schema(
                 properties={
                     "path": {

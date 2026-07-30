@@ -4,7 +4,7 @@ import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from soca.core.route_catalog import source_profile
 from soca.core.tool_routing import (
@@ -60,9 +60,17 @@ def _build_prompt(
             "smalltalk is friendly conversation; out_of_scope must not call an answer tool.",
             "Use unresolved when intent is unclear. Never invent a handler or argument.",
             "knowledge.inspect returns navigation metadata only; it is never answer evidence or a citation.",
-            "Use knowledge.inspect for inventory requests (what notes, documents, folders, headings, or links exist) and for explicit relationship/navigation questions.",
+            "Use knowledge.inspect only when the requested answer is itself a metadata "
+            "list or map of documents, folders, headings, links, or relationships.",
             "Do not use knowledge.search merely to enumerate files or describe vault structure.",
             "Use knowledge.search for content evidence requested from the local vault; it is not a general-knowledge answer tool.",
+            "A request asking what the user wrote, noted, learned, understood, decided, "
+            "or recorded about a subject requires note-body evidence through "
+            "knowledge.search/read, even when the subject also names a folder.",
+            "For a broad summary of what the user wrote about a subject, prefer "
+            "knowledge.read when the vault manifest identifies one clear document path. "
+            "Use knowledge.search to locate evidence when the document is unknown or the "
+            "request targets a specific fact or passage.",
             "Choose the next evidence operation, not the final prose answer: a request whose answer is a list of paths/folders/headings or a map of links must call knowledge.inspect; a request whose answer depends on note-body facts must retrieve with knowledge.search/read.",
             "A search hit that happens to mention a folder is not a substitute for an inventory or relationship inspection.",
             "If the user refers to notes, the vault, a journal, or a prior retrieval, prefer retrieval_request even when the wording is indirect.",
@@ -74,7 +82,7 @@ def _build_prompt(
             vault_manifest or "No vault manifest is available.",
             "Conversation/goal context:",
             turn_context or "No prior goal context is available.",
-            'User text: ' + json.dumps(text, ensure_ascii=False),
+            "User text: " + json.dumps(text, ensure_ascii=False),
         ]
     )
     if repair_code:
@@ -87,6 +95,47 @@ def _build_prompt(
             ]
         )
     return prompt
+
+
+def _build_refinement_prompt(
+    text: str,
+    observation: str,
+    catalog: tuple[dict[str, Any], ...],
+    *,
+    vault_manifest: str = "",
+    turn_context: str = "",
+) -> str:
+    retrieval_catalog = tuple(
+        item
+        for item in catalog
+        if item.get("name") in {"knowledge.search", "knowledge.read", "memory.search"}
+    )
+    return "\n".join(
+        (
+            "You are SoCa's bounded retrieval refiner.",
+            "The first retrieval attempt produced weak or insufficient evidence.",
+            'Return exactly one JSON object: {"route":"...","handler":null,"arguments":{},"sources":[]}.',
+            "Choose direct_tool with one enabled read-only retrieval handler, or "
+            "unresolved when no different operation can improve evidence.",
+            "Do not repeat the same tool arguments.",
+            "Candidate titles, paths, and vault metadata are navigation clues only; "
+            "they are never answer evidence.",
+            "If a candidate document clearly matches the requested subject, read that "
+            "document. Otherwise rewrite the request as a concise subject-focused "
+            "search query, dropping conversational filler while preserving meaning.",
+            "Never write the final prose answer.",
+            "Enabled retrieval tools:",
+            json.dumps(retrieval_catalog, ensure_ascii=False, sort_keys=True),
+            "Vault navigation context (metadata only; never evidence):",
+            vault_manifest or "No vault manifest is available.",
+            "Conversation/goal context:",
+            turn_context or "No prior goal context is available.",
+            "Original user request:",
+            json.dumps(text.strip(), ensure_ascii=False),
+            "Typed observation from the first retrieval attempt:",
+            observation.strip()[:4_000],
+        )
+    )
 
 
 class LLMToolRouter:
@@ -148,18 +197,14 @@ class LLMToolRouter:
         """
         del knowledge_limit
         catalog = _tool_catalog(self._tool_runtime)
-        refinement_text = "\n".join(
-            (
-                "Original user request:",
-                text.strip(),
-                "Observation from the first retrieval attempt:",
-                observation.strip()[:4_000],
-                "Choose one next read-only retrieval action if it can improve evidence. "
-                "Use direct_tool with knowledge.search/read or memory.search. "
-                "If no useful refinement exists, return unresolved.",
-            )
+        prompt = _build_refinement_prompt(
+            text,
+            observation,
+            catalog,
+            vault_manifest=self._read_vault_manifest(),
+            turn_context=self._turn_context,
         )
-        attempt = self._attempt(refinement_text, catalog)
+        attempt = self._run_prompt(prompt)
         if attempt.provider_failed or attempt.error_code:
             return None
         call = self._finish(attempt.raw)
@@ -207,26 +252,32 @@ class LLMToolRouter:
         repair_code: str = "",
         previous_output: str = "",
     ) -> RouterAttempt:
-        try:
-            vault_manifest = (
-                self._vault_manifest_provider() if self._vault_manifest_provider else ""
-            )
-        except (OSError, RuntimeError, ValueError, TypeError) as exc:
-            vault_manifest = f"Vault manifest unavailable ({type(exc).__name__})."
         prompt = _build_prompt(
             text,
             catalog,
             repair_code=repair_code,
             previous_output=previous_output,
-            vault_manifest=vault_manifest,
+            vault_manifest=self._read_vault_manifest(),
             turn_context=self._turn_context,
         )
+        return self._run_prompt(prompt)
+
+    def _read_vault_manifest(self) -> str:
         try:
-            if (
-                self._config.response_mode == "json_schema"
-                and isinstance(self._llm, StructuredLLMEngine)
-            ):
-                result = self._llm.generate_structured(
+            return self._vault_manifest_provider() if self._vault_manifest_provider else ""
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            return f"Vault manifest unavailable ({type(exc).__name__})."
+
+    def _run_prompt(self, prompt: str) -> RouterAttempt:
+        if self._config.response_mode == "json_schema" and not isinstance(
+            self._llm,
+            StructuredLLMEngine,
+        ):
+            return RouterAttempt(raw="", error_code="structured_output_unsupported")
+        try:
+            if self._config.response_mode == "json_schema":
+                structured_llm = cast(StructuredLLMEngine, self._llm)
+                result = structured_llm.generate_structured(
                     prompt,
                     schema_name="soca_route_decision",
                     schema=build_route_decision_schema(

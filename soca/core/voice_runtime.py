@@ -88,7 +88,7 @@ class ResolvedVoiceRuntimeConfig:
     knowledge_retrieval_mode: str = "hybrid"
     knowledge_dense_backend: str = "aiteamvn_v2"
     tool_router_mode: str = "cascade"
-    tool_router_response_mode: str = "prompt_json"
+    tool_router_response_mode: str = "json_schema"
     semantic_router_enabled: bool = False
     semantic_router_threshold: float = 0.58
     semantic_router_margin: float = 0.0
@@ -139,13 +139,7 @@ class VoiceRuntimeWarmupResult:
 
 
 def default_semantic_turn_examples() -> Path:
-    return (
-        Path(__file__).resolve().parents[2]
-        / "eval"
-        / "prompts"
-        / "p0"
-        / "turn_routing_vi.jsonl"
-    )
+    return Path(__file__).resolve().parents[2] / "eval" / "prompts" / "p0" / "turn_routing_vi.jsonl"
 
 
 def resolve_voice_runtime_config(
@@ -177,7 +171,7 @@ def resolve_voice_runtime_config(
     knowledge_retrieval_mode: str | None = None,
     knowledge_dense_backend: str | None = None,
     tool_router_mode: str = "cascade",
-    tool_router_response_mode: str = "prompt_json",
+    tool_router_response_mode: str = "json_schema",
     semantic_router_enabled: bool = False,
     semantic_router_threshold: float = 0.58,
     semantic_router_margin: float = 0.0,
@@ -297,11 +291,7 @@ def build_voice_runtime(
     selected_settings = llm_settings or load_settings()
     if config.llm_model_is_override:
         selected_settings = selected_settings.with_backend("local").with_model(config.llm_model)
-    if (
-        config.max_tokens_is_override
-        or config.temperature_is_override
-        or config.top_p_is_override
-    ):
+    if config.max_tokens_is_override or config.temperature_is_override or config.top_p_is_override:
         selected_settings = selected_settings.with_generation(
             max_tokens=(
                 config.max_tokens if config.max_tokens_is_override else selected_settings.max_tokens
@@ -346,8 +336,7 @@ def build_voice_runtime(
 
     model_context_window = (
         LLM_MODEL_REGISTRY[selected_settings.model_id].context_window
-        if selected_settings.backend == "local"
-        and selected_settings.model_id in LLM_MODEL_REGISTRY
+        if selected_settings.backend == "local" and selected_settings.model_id in LLM_MODEL_REGISTRY
         else selected_settings.model_context_window
     )
     effective_max_tokens = selected_settings.effective_max_tokens
@@ -421,7 +410,9 @@ def build_voice_runtime(
                 dense_backend=cast(DenseBackend, config.memory_dense_backend),
                 recency_weight=config.memory_recency_weight,
                 importance_weight=config.memory_importance_weight,
-                relevance_weight=1.0 - config.memory_recency_weight - config.memory_importance_weight,
+                relevance_weight=1.0
+                - config.memory_recency_weight
+                - config.memory_importance_weight,
                 recency_half_life_days=config.memory_recency_half_life_days,
             ),
         )

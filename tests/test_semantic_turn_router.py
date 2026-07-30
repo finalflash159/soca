@@ -11,7 +11,7 @@ from soca.core.semantic_turn_router import (
 )
 from soca.core.tool_routing import SemanticRouterConfig
 from soca.tools import ToolRuntime
-from tests.fake_tools import ReadOnlyCatalogTool
+from tests.fake_tools import ReadOnlyInspectTool
 
 
 class _Embedding:
@@ -35,21 +35,26 @@ class _Embedding:
         return self._vector(text)
 
 
-def test_semantic_policy_keeps_weather_out_of_scope_and_selects_both_sources(tmp_path: Path) -> None:
+def test_semantic_policy_keeps_weather_out_of_scope_and_selects_both_sources(
+    tmp_path: Path,
+) -> None:
     examples = tmp_path / "turns.jsonl"
     examples.write_text(
         "\n".join(
             [
-                '{"id":"catalog","text":"kho ghi chú có gì","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}',
+                '{"id":"catalog","text":"kho ghi chú có gì","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}',
                 '{"id":"both","text":"tôi đã ghi gì về ONNX","disposition":"retrieval_request","sources":["knowledge","memory"]}',
                 '{"id":"weather","text":"thời tiết hiện tại","disposition":"out_of_scope","sources":[]}',
             ]
-        ) + "\n",
+        )
+        + "\n",
         encoding="utf-8",
     )
     router = build_semantic_turn_router(
-        tool_runtime=ToolRuntime([ReadOnlyCatalogTool()]),
-        config=SemanticRouterConfig(enabled=True, threshold=0.7, margin=0.05, examples_path=examples),
+        tool_runtime=ToolRuntime([ReadOnlyInspectTool()]),
+        config=SemanticRouterConfig(
+            enabled=True, threshold=0.7, margin=0.05, examples_path=examples
+        ),
         embedding_model=_Embedding(),
     )
     assert router is not None
@@ -67,18 +72,20 @@ def test_semantic_policy_keeps_weather_out_of_scope_and_selects_both_sources(tmp
 def test_semantic_policy_uses_only_allowlisted_direct_tool(tmp_path: Path) -> None:
     examples = tmp_path / "turns.jsonl"
     examples.write_text(
-        '{"id":"catalog","text":"kho ghi chú có gì","disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}\n',
+        '{"id":"catalog","text":"kho ghi chú có gì","disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}\n',
         encoding="utf-8",
     )
     router = build_semantic_turn_router(
-        tool_runtime=ToolRuntime([ReadOnlyCatalogTool()]),
-        config=SemanticRouterConfig(enabled=True, threshold=0.7, margin=0.0, examples_path=examples),
+        tool_runtime=ToolRuntime([ReadOnlyInspectTool()]),
+        config=SemanticRouterConfig(
+            enabled=True, threshold=0.7, margin=0.0, examples_path=examples
+        ),
         embedding_model=_Embedding(),
     )
     assert router is not None
     call = router.select("Kho ghi chú hiện có gì?", knowledge_limit=3)
     assert call is not None
-    assert call.name == "knowledge.catalog"
+    assert call.name == "knowledge.inspect"
 
 
 def test_source_threshold_uses_raw_score_not_rounded_telemetry() -> None:
@@ -147,7 +154,7 @@ def test_semantic_router_delegates_uncertain_direct_tool_to_next_tier(tmp_path: 
         "\n".join(
             [
                 '{"id":"catalog","text":"kho ghi chú có gì",'
-                '"disposition":"direct_tool","sources":[],"tool":"knowledge.catalog"}',
+                '"disposition":"direct_tool","sources":[],"tool":"knowledge.inspect"}',
                 '{"id":"search","text":"tìm nội dung trong ghi chú",'
                 '"disposition":"retrieval_request","sources":["knowledge"]}',
             ]
@@ -155,6 +162,7 @@ def test_semantic_router_delegates_uncertain_direct_tool_to_next_tier(tmp_path: 
         + "\n",
         encoding="utf-8",
     )
+
     class _AmbiguousEmbedding:
         model_id = "fake:ambiguous"
 
@@ -167,7 +175,7 @@ def test_semantic_router_delegates_uncertain_direct_tool_to_next_tier(tmp_path: 
             return np.asarray([1.0, 0.0], dtype=np.float32)
 
     router = build_semantic_turn_router(
-        tool_runtime=ToolRuntime([ReadOnlyCatalogTool()]),
+        tool_runtime=ToolRuntime([ReadOnlyInspectTool()]),
         config=SemanticRouterConfig(
             enabled=True,
             threshold=0.0,
