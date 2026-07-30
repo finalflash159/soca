@@ -56,6 +56,16 @@ def test_display_text_removes_structured_source_footer() -> None:
     )
 
 
+def test_display_text_removes_empty_source_footer_when_citations_are_structured() -> None:
+    citations = (KnowledgeCitation("wiki/review.md", "Review tuần 30/2026"),)
+    text = "Các việc chưa hoàn thành được liệt kê ở trên.\n\nNguồn:\n\n"
+
+    assert (
+        answer_text_without_citation_labels(text, citations)
+        == "Các việc chưa hoàn thành được liệt kê ở trên."
+    )
+
+
 def test_display_text_preserves_uncited_source_heading() -> None:
     citations = (KnowledgeCitation("wiki/attention.md", "Attention"),)
     text = "Nguồn:\nĐây là phần nội dung người dùng yêu cầu, không phải citation footer."

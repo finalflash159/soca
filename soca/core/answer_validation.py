@@ -68,7 +68,7 @@ def answer_text_without_citation_labels(
             f"[{match.group('token').upper()}]"
             for match in _CITATION_LIKE_RE.finditer(footer_text)
         }
-        if footer_labels & allowed:
+        if not footer_text.strip() or footer_labels & allowed:
             text = text[: footer.start()]
 
     def replace(match: re.Match[str]) -> str:
