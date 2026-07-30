@@ -1,0 +1,38 @@
+{
+  "schema": "soca-workflow-protocol-real-flow-v1",
+  "run_type": "smoke",
+  "recorded_at": "2026-07-30T02:09:24Z",
+  "source_commit": "f19d60f",
+  "provider": "openrouter",
+  "model": "google/gemini-3.5-flash-lite",
+  "settings": {
+    "max_output_tokens": 4096,
+    "reasoning_enabled": true
+  },
+  "blocking": {
+    "provider_called": true,
+    "route": "free_chat",
+    "terminal_status": "achieved",
+    "terminal_sequence": 2,
+    "response_nonempty": true,
+    "prompt_tokens": 169,
+    "completion_tokens": 6,
+    "ttft_ms": 1267.6274169934914
+  },
+  "streaming": {
+    "provider_called": true,
+    "terminal_status": "achieved",
+    "terminal_sequence": 3,
+    "event_count": 4,
+    "answer_delta_count": 1,
+    "response_nonempty": true
+  },
+  "decision": {
+    "status": "pass",
+    "reason": "A real remote blocking turn and streaming turn both produced one protocol-v2 terminal with a non-empty provider response."
+  },
+  "notes": [
+    "This is an integration smoke artifact, not retrieval or semantic release evidence.",
+    "Response text and API credentials are not stored."
+  ]
+}

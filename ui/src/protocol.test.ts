@@ -2,6 +2,69 @@ import { describe, expect, it } from "vitest";
 import { adaptLegacyEvent, parseEngineEvent } from "./protocol.js";
 
 describe("parseEngineEvent", () => {
+  it("parses a workflow protocol v2 envelope", () => {
+    const event = parseEngineEvent(
+      JSON.stringify({
+        event: "turn_terminal",
+        protocol_version: 2,
+        session_id: "session-1",
+        run_id: "run-1",
+        goal_id: "goal-1",
+        sequence: 9,
+        surface: "chat",
+        timestamp: "2026-07-30T00:00:00Z",
+        node: "finalize",
+        status: "completed",
+        payload: {
+          terminal_status: "achieved",
+          final_text: "ok",
+        },
+      }),
+    );
+
+    expect(event?.event).toBe("turn_terminal");
+    if (event?.event === "turn_terminal") {
+      expect(event.run_id).toBe("run-1");
+      expect(event.sequence).toBe(9);
+      expect(event.payload.terminal_status).toBe("achieved");
+    }
+  });
+
+  it("rejects an incomplete workflow protocol envelope", () => {
+    const event = parseEngineEvent(
+      JSON.stringify({
+        event: "turn_started",
+        protocol_version: 2,
+        run_id: "run-1",
+        sequence: 0,
+      }),
+    );
+
+    expect(event).toBeNull();
+  });
+
+  it.each([
+    ["node", "bogus"],
+    ["status", "ok"],
+  ])("rejects a workflow envelope with invalid %s", (field, value) => {
+    const envelope: Record<string, unknown> = {
+      event: "turn_started",
+      protocol_version: 2,
+      session_id: "session-1",
+      run_id: "run-1",
+      goal_id: "goal-1",
+      sequence: 0,
+      surface: "chat",
+      timestamp: "2026-07-30T00:00:00Z",
+      node: "admit",
+      status: "started",
+      payload: {},
+    };
+    envelope[field] = value;
+
+    expect(parseEngineEvent(JSON.stringify(envelope))).toBeNull();
+  });
+
   it("adapts a v1 hello without changing its fields", () => {
     const event = adaptLegacyEvent({
       event: "hello",

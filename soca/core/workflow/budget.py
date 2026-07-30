@@ -36,7 +36,7 @@ class BudgetLedger:
             "transition": self.budget.max_transitions,
             "tool": self.budget.max_tool_calls,
             "model": self.budget.max_model_calls,
-            "retry": self.budget.max_retries,
+            "retry": self.budget.max_readonly_tool_retries,
         }[kind]
         next_value = self._counts[kind] + amount
         if next_value > limit:
@@ -44,8 +44,8 @@ class BudgetLedger:
         self._counts[kind] = next_value
         snapshot = self.snapshot()
         if (
-            self.budget.max_elapsed_ms is not None
-            and snapshot.elapsed_ms > self.budget.max_elapsed_ms
+            self.budget.hard_deadline_ms is not None
+            and snapshot.elapsed_ms > self.budget.hard_deadline_ms
         ):
             raise BudgetExceededError("elapsed_ms")
         return snapshot
