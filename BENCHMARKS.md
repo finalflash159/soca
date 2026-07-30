@@ -2156,3 +2156,21 @@ replay remains a separate device-path benchmark.
 
 Raw artifact:
 `eval/results/asr_boh_ablation/20260730-phowhisper-small-paired/report.json`.
+
+## Capability routing decision (2026-07-30)
+
+The production cascade now uses deterministic → shared semantic → bounded LLM
+routing. The semantic capability corpus contains 66 rows in 22 family-grouped
+train/validation/test splits; its SHA-256 is
+`4249290a397a303ec2ec2c9b76ddc2d9a408bfb0607477a14602b71df7f61f58`.
+Runtime examples load only train/validation rows. The held-out test run with
+FastEmbed `intfloat/multilingual-e5-small`, threshold `0.58`, and margin `0.00`
+measured 79.17% disposition accuracy, 83.33% source-set accuracy, 9/9 direct
+tool exact, and 0/15 unsupported-to-tool triggers. Margin `0.02` and `0.04`
+reduced held-out disposition accuracy to 45.83% and 41.67% respectively.
+
+Real OpenRouter blocking/streaming runs used `google/gemini-3.5-flash-lite`
+and produced 18/18 route/terminal parity with zero provider errors. Their
+goal-level pass rate was 1/14 because several answer/citation goals still fail;
+this is retained as a failure, not promoted to a retrieval-quality pass. Raw
+remote logs remain outside Git under `/tmp/soca-router-remote-20260730`.
