@@ -61,6 +61,14 @@ Documentation-only pull requests that change project or agent execution rules
 are exempt from the Qodo wait. After a local diff check, merge and close them
 without waiting for an automated review.
 
+Use capability or subsystem names in commit subjects, code identifiers,
+configuration values, comments, documentation headings, documentation prose,
+and artifact decision reasons. Do not copy ordinal plan labels such as
+`Phase 0`, `phase1`, or `phase_two` into those implementation artifacts. Phase
+numbering may remain in the active plan and its execution/audit matrix where it
+expresses dependency order; historical artifacts do not need retroactive
+rewrites.
+
 Do not implement multiple phases in one branch or pull request. Do not modify
 production code directly on `main`.
 
