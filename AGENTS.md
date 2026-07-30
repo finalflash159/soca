@@ -86,6 +86,18 @@ production code directly on `main`.
 ## Code-change discipline
 
 - Keep changes within scope and preserve unrelated user changes.
+- Transitional compatibility code may exist only while a replacement is being
+  implemented and validated. Once the replacement is selected, production
+  wired, and passes its unit, integration, and real-flow gates, remove the
+  superseded production implementation in the same phase. Do not leave current
+  and legacy business logic interleaved behind long-lived flags or hidden
+  branches.
+- Production must not silently switch models, retrieval backends, routers,
+  workflow implementations, index generations, or other logic after a failure.
+  Retries must be typed, bounded, and observable. When they are exhausted,
+  raise or return a typed failure and expose the failed readiness state.
+  Rollback is an explicit operator action to a known compatible version or
+  generation, never an automatic background fallback.
 - When touching a file with an oversized architecture-style module docstring,
   remove or shorten it within that file's active scope. Do not launch a broad
   cleanup of unrelated files.
