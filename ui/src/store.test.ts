@@ -186,6 +186,172 @@ describe("progress reducer", () => {
     expect(state.pendingAnswer).toBe("xin chào");
   });
 
+  it("tracks queued, playing, and completed speech chunks from playback events", () => {
+    let state = reduce(initialState, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "tts",
+        text: "Câu đầu tiên.",
+        latency_ms: 40,
+        metadata: { chunk_index: 0, delivery: "final" },
+        usage: null,
+      },
+    });
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "playback_started",
+        text: "Câu đầu tiên.",
+        latency_ms: null,
+        metadata: {
+          chunk_index: 0,
+          delivery: "final",
+          audio_duration_ms: 1200,
+          sync_granularity: "audio_chunk",
+        },
+        usage: null,
+      },
+    });
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "tts",
+        text: "Câu tiếp theo.",
+        latency_ms: 35,
+        metadata: { chunk_index: 1, delivery: "final" },
+        usage: null,
+      },
+    });
+
+    expect(state.voiceState).toBe("speaking");
+    expect(state.speechChunks).toEqual([
+      {
+        index: 0,
+        text: "Câu đầu tiên.",
+        durationMs: 1200,
+        status: "playing",
+      },
+      {
+        index: 1,
+        text: "Câu tiếp theo.",
+        durationMs: null,
+        status: "ready",
+      },
+    ]);
+
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "audio",
+        text: "Câu đầu tiên.",
+        latency_ms: 1200,
+        metadata: { chunk_index: 0, delivery: "final" },
+        usage: null,
+      },
+    });
+    expect(state.speechChunks[0]?.status).toBe("complete");
+
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "barge_in",
+        text: "Barge-in detected",
+        latency_ms: null,
+        metadata: { phase: "fired" },
+        usage: null,
+      },
+    });
+    expect(state.speechChunks).toEqual([]);
+  });
+
+  it("keeps the speaking state when tokens stream during playback", () => {
+    let state = reduce(initialState, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "playback_started",
+        text: "Câu đang phát.",
+        latency_ms: null,
+        metadata: { chunk_index: 0, audio_duration_ms: 900 },
+        usage: null,
+      },
+    });
+    expect(state.voiceState).toBe("speaking");
+
+    // The next sentence is still being generated while chunk 0 plays.
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "llm_token",
+        text: "tiếp ",
+        latency_ms: null,
+        metadata: {},
+        usage: null,
+      },
+    });
+    expect(state.voiceState).toBe("speaking");
+    expect(state.speechChunks).toHaveLength(1);
+
+    // Once nothing is playing, tokens mean the runtime is thinking again.
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "audio",
+        text: "Câu đang phát.",
+        latency_ms: 900,
+        metadata: { chunk_index: 0 },
+        usage: null,
+      },
+    });
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "llm_token",
+        text: "nữa ",
+        latency_ms: null,
+        metadata: {},
+        usage: null,
+      },
+    });
+    expect(state.voiceState).toBe("processing");
+  });
+
+  it("drops the speech caption when playback is interrupted", () => {
+    let state = reduce(initialState, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "tts",
+        text: "Câu bị cắt ngang.",
+        latency_ms: 40,
+        metadata: { chunk_index: 0, delivery: "final" },
+        usage: null,
+      },
+    });
+    expect(state.speechChunks).toHaveLength(1);
+
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "interrupted",
+        text: "",
+        latency_ms: null,
+        metadata: {},
+        usage: null,
+      },
+    });
+    expect(state.speechChunks).toEqual([]);
+  });
+
   it("keeps citations as protocol data and closes temporary info on a new turn", () => {
     let state = reduce(
       { ...initialState, activeInfo: "status" },

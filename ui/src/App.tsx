@@ -496,6 +496,7 @@ export function App({
           turnIndex={state.turnIndex}
           latencyMs={state.lastLatencyMs}
           caption={state.caption}
+          speechChunks={state.speechChunks}
           level={state.voiceLevel}
           bargeIn={state.bargeIn}
         />

@@ -23,6 +23,7 @@ from soca.core import (
     StreamingEvent,
     TurnUsage,
     VoiceRuntimeBundle,
+    audio_duration_ms,
     build_voice_runtime,
     record_until_silence,
     warm_up_voice_runtime,
@@ -528,6 +529,14 @@ class VoiceMonitorController:
             )
         )
 
+        playback_metadata: dict[str, Any] = {
+            **tts_metadata,
+            "sync_granularity": "audio_chunk",
+        }
+        duration_ms = audio_duration_ms(len(tts_result.audio), tts_result.sample_rate)
+        if duration_ms is not None:
+            playback_metadata["audio_duration_ms"] = duration_ms
+        queue.put(VoiceMonitorEvent("playback_started", speech_text, metadata=playback_metadata))
         playback = self.player.play(tts_result.audio, tts_result.sample_rate, blocking=True)
         queue.put(
             VoiceMonitorEvent(

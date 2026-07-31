@@ -95,6 +95,13 @@ export interface Caption {
   tentative: string;
 }
 
+export interface SpeechChunk {
+  index: number;
+  text: string;
+  durationMs: number | null;
+  status: "ready" | "playing" | "complete";
+}
+
 export interface AppState {
   mode: Mode;
   connected: boolean;
@@ -112,6 +119,7 @@ export interface AppState {
   profiles: StatusProfile[];
   notice: string;
   caption: Caption | null;
+  speechChunks: SpeechChunk[];
   voiceLevel: number;
   bargeIn: "off" | "armed" | "fired";
   routerTier: "deterministic" | "semantic" | "llm" | "none";
@@ -161,6 +169,7 @@ export const initialState: AppState = {
   profiles: [],
   notice: "",
   caption: null,
+  speechChunks: [],
   voiceLevel: 0,
   bargeIn: "off",
   routerTier: "none",
@@ -226,6 +235,41 @@ function citationRecords(value: unknown): CitationRecord[] {
   });
 }
 
+function speechChunkIndex(meta: Record<string, unknown>): number | null {
+  const value = meta["chunk_index"];
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
+function upsertSpeechChunk(
+  chunks: SpeechChunk[],
+  event: EngineEvent & { event: "voice" },
+  status: SpeechChunk["status"],
+): SpeechChunk[] {
+  const meta = event.metadata ?? {};
+  const index = speechChunkIndex(meta);
+  if (index === null || !event.text) return chunks;
+  const durationValue = meta["audio_duration_ms"];
+  const durationMs =
+    typeof durationValue === "number" && Number.isFinite(durationValue)
+      ? Math.max(0, durationValue)
+      : null;
+  const previous = chunks.find((chunk) => chunk.index === index);
+  const next: SpeechChunk = {
+    index,
+    text: event.text,
+    durationMs: durationMs ?? previous?.durationMs ?? null,
+    status:
+      status === "ready" && previous && previous.status !== "ready"
+        ? previous.status
+        : status,
+  };
+  return [...chunks.filter((chunk) => chunk.index !== index), next].sort(
+    (left, right) => left.index - right.index,
+  );
+}
+
 // Voice event type -> UI state, mirroring the Textual _VOICE_RENDERERS table.
 function reduceVoiceCore(
   state: AppState,
@@ -252,6 +296,7 @@ function reduceVoiceCore(
         ...state,
         bargeIn: meta["phase"] === "fired" ? "fired" : "armed",
         voiceState: meta["phase"] === "fired" ? "listening" : state.voiceState,
+        speechChunks: meta["phase"] === "fired" ? [] : state.speechChunks,
       };
     case "loading":
       return { ...state, voiceState: "loading", voiceNote: "tải ASR/LLM/TTS…" };
@@ -276,6 +321,7 @@ function reduceVoiceCore(
         voiceState: "listening",
         voiceNote: "",
         turnIndex: turn,
+        speechChunks: [],
       };
     }
     case "recording":
@@ -304,10 +350,34 @@ function reduceVoiceCore(
     case "llm_token":
       return {
         ...state,
-        voiceState: "processing",
+        // Tokens for the next sentence can arrive while a chunk is still
+        // playing; downgrading to "processing" there would hide the speaking
+        // row and its caption mid-playback.
+        voiceState: state.speechChunks.some(
+          (chunk) => chunk.status === "playing",
+        )
+          ? state.voiceState
+          : "processing",
       };
     case "tts":
-      return { ...state, voiceState: "speaking" };
+      return {
+        ...state,
+        voiceState: "speaking",
+        speechChunks: upsertSpeechChunk(state.speechChunks, event, "ready"),
+      };
+    case "playback_started":
+      return {
+        ...state,
+        voiceState: "speaking",
+        speechChunks: upsertSpeechChunk(state.speechChunks, event, "playing"),
+      };
+    case "audio":
+      return {
+        ...state,
+        speechChunks: upsertSpeechChunk(state.speechChunks, event, "complete"),
+      };
+    case "interrupted":
+      return { ...state, speechChunks: [] };
     case "done": {
       const rejected = Boolean(meta["rejected"]);
       const route = String(meta["runtime_route"] ?? state.lastRoute ?? "");
@@ -319,6 +389,7 @@ function reduceVoiceCore(
         lastRoute: route,
         lastLatencyMs: event.latency_ms,
         bargeIn: "armed",
+        speechChunks: [],
       };
       if (event.text && !rejected) {
         next.timeline = push(state.timeline, {
@@ -331,7 +402,7 @@ function reduceVoiceCore(
       return next;
     }
     case "turn_end":
-      return { ...state, voiceState: "idle" };
+      return { ...state, voiceState: "idle", speechChunks: [] };
     case "loop_stopped": {
       const turns = meta["turns"];
       return {
@@ -342,6 +413,7 @@ function reduceVoiceCore(
         progressQueue: [],
         voiceNote: `đã dừng (${typeof turns === "number" ? turns : 0} lượt)`,
         bargeIn: "off",
+        speechChunks: [],
       };
     }
     case "error":
@@ -352,6 +424,7 @@ function reduceVoiceCore(
         voiceRunning: false,
         turnProgress: null,
         progressQueue: [],
+        speechChunks: [],
         timeline: push(state.timeline, { kind: "error", text: event.text }),
       };
     default:
@@ -682,6 +755,7 @@ export function reduce(state: AppState, action: Action): AppState {
         ...state,
         voiceState: "loading",
         voiceNote: "khởi động voice loop…",
+        speechChunks: [],
       };
     case "show_info":
       return { ...state, activeInfo: action.view };

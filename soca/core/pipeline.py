@@ -32,7 +32,7 @@ from soca.core.repair import (
     RepairState,
     plan_repair,
 )
-from soca.core.streaming import StreamingEvent
+from soca.core.streaming import StreamingEvent, audio_duration_ms
 from soca.core.text_chunking import chunk_text_for_tts, normalize_text_for_tts
 from soca.tts import TTSResult
 
@@ -699,6 +699,29 @@ class _TTSPlaybackPump:
             metadata=metadata,
         )
 
+    @staticmethod
+    def _playback_started_event(
+        chunk: _PlaybackChunk,
+        *,
+        duration_ms: float | None,
+    ) -> StreamingEvent:
+        event = chunk.event
+        metadata = dict(event.metadata or {})
+        metadata["sync_granularity"] = "audio_chunk"
+        # An unusable sample rate leaves the duration unknown; the UI then shows
+        # the caption without a timed reveal instead of trusting a fake 0.0.
+        if duration_ms is None:
+            metadata.pop("audio_duration_ms", None)
+        else:
+            metadata["audio_duration_ms"] = duration_ms
+        return StreamingEvent(
+            type="playback_started",
+            text=event.text,
+            sample_rate=event.sample_rate,
+            tts=event.tts,
+            metadata=metadata,
+        )
+
     def _play_legacy(self, first: _PlaybackChunk) -> None:
         item: _PlaybackChunk | object = first
         while item is not self._DONE:
@@ -707,6 +730,12 @@ class _TTSPlaybackPump:
                 event = item.event
                 assert event.audio is not None
                 assert event.sample_rate is not None
+                self._event_queue.put(
+                    self._playback_started_event(
+                        item,
+                        duration_ms=audio_duration_ms(len(event.audio), event.sample_rate),
+                    )
+                )
                 playback = self._sink.play(
                     event.audio,
                     event.sample_rate,
@@ -780,6 +809,12 @@ class _TTSPlaybackPump:
                     _to_float32_mono(event.audio),
                     event.sample_rate,
                     session.sample_rate,
+                )
+                self._event_queue.put(
+                    self._playback_started_event(
+                        item,
+                        duration_ms=audio_duration_ms(len(prepared), session.sample_rate),
+                    )
                 )
 
                 slack_ms: float | None = None

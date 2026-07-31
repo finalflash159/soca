@@ -17,18 +17,33 @@ def test_answer_validation_accepts_knowledge_and_memory_provenance() -> None:
     assert decision.status == "valid"
 
 
-def test_presentation_removes_only_validated_labels_from_answer_text() -> None:
+def test_presentation_removes_citation_tags_from_answer_text() -> None:
     citations = (
         KnowledgeCitation("wiki/a.md", "A"),
         KnowledgeCitation("memory/b.md", "B", source="memory"),
     )
 
     text = answer_text_without_citation_labels(
-        "Bayes cập nhật xác suất [K1]. Sở thích đã lưu [M1]. Nhãn lạ [K9].",
+        (
+            "Bayes cập nhật xác suất [K1]. Sở thích đã lưu [M1]. "
+            "Nhãn lạ [K9], nguồn số [1], nhưng giữ [TODO] và array[0]."
+        ),
         citations,
     )
 
-    assert text == "Bayes cập nhật xác suất. Sở thích đã lưu. Nhãn lạ [K9]."
+    assert text == (
+        "Bayes cập nhật xác suất. Sở thích đã lưu. "
+        "Nhãn lạ, nguồn số, nhưng giữ [TODO] và array[0]."
+    )
+
+
+def test_presentation_keeps_bracketed_numbers_when_turn_has_no_citations() -> None:
+    text = answer_text_without_citation_labels(
+        "Giá là [100] nghìn đồng, vụ án số [2119], nhãn lạ [K9] thì bỏ.",
+        (),
+    )
+
+    assert text == "Giá là [100] nghìn đồng, vụ án số [2119], nhãn lạ thì bỏ."
 
 
 def test_expected_citation_labels_follow_each_source_sequence() -> None:
@@ -56,11 +71,34 @@ def test_display_text_removes_structured_source_footer() -> None:
     )
 
 
-def test_display_text_preserves_uncited_source_heading() -> None:
-    citations = (KnowledgeCitation("wiki/attention.md", "Attention"),)
+def test_display_text_removes_empty_source_footer_when_citations_are_structured() -> None:
+    citations = (KnowledgeCitation("wiki/review.md", "Review tuần 30/2026"),)
+    text = "Các việc chưa hoàn thành được liệt kê ở trên.\n\nNguồn:\n\n"
+
+    assert (
+        answer_text_without_citation_labels(text, citations)
+        == "Các việc chưa hoàn thành được liệt kê ở trên."
+    )
+
+
+def test_display_text_preserves_source_heading_without_structured_citations() -> None:
     text = "Nguồn:\nĐây là phần nội dung người dùng yêu cầu, không phải citation footer."
 
-    assert answer_text_without_citation_labels(text, citations) == text
+    assert answer_text_without_citation_labels(text, ()) == text
+
+
+def test_display_text_removes_source_footer_with_non_label_content() -> None:
+    citations = (KnowledgeCitation("wiki/attention.md", "Attention"),)
+    text = (
+        "Attention tập trung vào phần liên quan.\n\n"
+        "Nguồn:\n"
+        "\u200bK1 — Attention"
+    )
+
+    assert (
+        answer_text_without_citation_labels(text, citations)
+        == "Attention tập trung vào phần liên quan."
+    )
 
 
 def test_answer_validation_records_shadow_groundedness_against_selected_evidence() -> None:
