@@ -269,6 +269,34 @@ describe("progress reducer", () => {
     expect(state.speechChunks).toEqual([]);
   });
 
+  it("drops the speech caption when playback is interrupted", () => {
+    let state = reduce(initialState, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "tts",
+        text: "Câu bị cắt ngang.",
+        latency_ms: 40,
+        metadata: { chunk_index: 0, delivery: "final" },
+        usage: null,
+      },
+    });
+    expect(state.speechChunks).toHaveLength(1);
+
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "interrupted",
+        text: "",
+        latency_ms: null,
+        metadata: {},
+        usage: null,
+      },
+    });
+    expect(state.speechChunks).toEqual([]);
+  });
+
   it("keeps citations as protocol data and closes temporary info on a new turn", () => {
     let state = reduce(
       { ...initialState, activeInfo: "status" },

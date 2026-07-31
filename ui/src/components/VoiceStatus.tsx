@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Box, Text, useStdout } from "ink";
+import { Box, Text } from "ink";
 import { COLOR, ICON, MUSIC_FRAMES, ROLE, meterCells } from "../theme.js";
 import { animationsEnabled } from "../capabilities.js";
 import { graphemes } from "../imeInput.js";
@@ -7,6 +7,8 @@ import type { Caption, SpeechChunk, VoiceState } from "../store.js";
 
 const LOADING_FRAMES = ["◐", "◓", "◑", "◒"] as const;
 const SPEECH_FRAME_MS = 80;
+const CAPTION_HISTORY = 1;
+const CAPTION_LOOKAHEAD = 1;
 
 const STATE_VIEW: Record<VoiceState, { color: string; label: string }> = {
   loading: { color: ROLE.busy, label: "starting" },
@@ -37,17 +39,45 @@ function LevelMeter({
   );
 }
 
-export function splitSpeechText(
+/** Split spoken/pending text on grapheme boundaries, never UTF-16 code units. */
+export function splitSpeechAt(
   text: string,
-  progress: number,
+  revealed: number,
 ): { spoken: string; pending: string } {
   const parts = graphemes(text);
-  const clamped = Math.max(0, Math.min(1, progress));
-  const boundary = Math.floor(parts.length * clamped);
+  const boundary = Math.max(0, Math.min(parts.length, Math.floor(revealed)));
   return {
     spoken: parts.slice(0, boundary).join(""),
     pending: parts.slice(boundary).join(""),
   };
+}
+
+/**
+ * How much of a chunk has been spoken, paced by the chunk's own audio
+ * duration. This is chunk-level sync, not word-level forced alignment.
+ */
+export function revealedGraphemes(
+  total: number,
+  elapsedMs: number,
+  durationMs: number,
+): number {
+  if (total <= 0 || durationMs <= 0 || elapsedMs <= 0) return 0;
+  return Math.min(total, Math.floor((total * elapsedMs) / durationMs));
+}
+
+/**
+ * Rolling caption window: the chunk being spoken, a little already-spoken
+ * context, and the queued chunk. Keeps the live region a bounded height
+ * instead of growing one line per sentence for the whole turn.
+ */
+export function visibleSpeechChunks(
+  chunks: readonly SpeechChunk[],
+  { history = CAPTION_HISTORY, lookahead = CAPTION_LOOKAHEAD } = {},
+): SpeechChunk[] {
+  if (chunks.length === 0) return [];
+  const activeAt = chunks.findIndex((chunk) => chunk.status !== "complete");
+  const anchor = activeAt < 0 ? chunks.length - 1 : activeAt;
+  return chunks.slice(Math.max(0, anchor - history), anchor + lookahead + 1);
 }
 
 export function VoiceStatus({
@@ -70,7 +100,7 @@ export function VoiceStatus({
   bargeIn?: "off" | "armed" | "fired";
 }) {
   const [frame, setFrame] = useState(0);
-  const [speechProgress, setSpeechProgress] = useState(0);
+  const [revealed, setRevealed] = useState(0);
   const animated =
     animationsEnabled() &&
     (state === "speaking" || state === "loading" || state === "processing");
@@ -81,25 +111,38 @@ export function VoiceStatus({
     return () => clearInterval(timer);
   }, [animated]);
 
-  const playingChunk = speechChunks.find((chunk) => chunk.status === "playing");
+  const visibleChunks = visibleSpeechChunks(speechChunks);
+  const playingChunk = visibleChunks.find(
+    (chunk) => chunk.status === "playing",
+  );
+  const playingIndex = playingChunk?.index ?? null;
+  const playingText = playingChunk?.text ?? "";
+  const playingDurationMs = playingChunk?.durationMs ?? null;
   useEffect(() => {
-    setSpeechProgress(0);
+    setRevealed(0);
     if (
-      !playingChunk ||
-      playingChunk.durationMs === null ||
-      playingChunk.durationMs <= 0 ||
+      playingIndex === null ||
+      playingDurationMs === null ||
+      playingDurationMs <= 0 ||
       !animationsEnabled()
     ) {
       return;
     }
+    const total = graphemes(playingText).length;
+    if (total === 0) return;
     const startedAt = Date.now();
     const timer = setInterval(() => {
-      const elapsed = Date.now() - startedAt;
-      setSpeechProgress(Math.min(0.99, elapsed / playingChunk.durationMs!));
+      const next = revealedGraphemes(
+        total,
+        Date.now() - startedAt,
+        playingDurationMs,
+      );
+      setRevealed(next);
+      if (next >= total) clearInterval(timer);
     }, SPEECH_FRAME_MS);
     timer.unref?.();
     return () => clearInterval(timer);
-  }, [playingChunk?.index, playingChunk?.text, playingChunk?.durationMs]);
+  }, [playingIndex, playingText, playingDurationMs]);
 
   const view = STATE_VIEW[state];
   const dot =
@@ -115,7 +158,7 @@ export function VoiceStatus({
 
   const showCaption =
     caption !== null && (caption.committed !== "" || caption.tentative !== "");
-  const showSpeechCaption = state === "speaking" && speechChunks.length > 0;
+  const showSpeechCaption = state === "speaking" && visibleChunks.length > 0;
 
   return (
     <Box flexDirection="column">
@@ -163,7 +206,7 @@ export function VoiceStatus({
       {showSpeechCaption ? (
         <Box paddingX={1}>
           <Text>
-            {speechChunks.map((chunk, index) => {
+            {visibleChunks.map((chunk, index) => {
               const prefix = index === 0 ? "" : " ";
               if (chunk.status === "complete") {
                 return (
@@ -181,10 +224,7 @@ export function VoiceStatus({
                   </Text>
                 );
               }
-              const { spoken, pending } = splitSpeechText(
-                chunk.text,
-                speechProgress,
-              );
+              const { spoken, pending } = splitSpeechAt(chunk.text, revealed);
               return (
                 <Text key={chunk.index}>
                   <Text color={COLOR.text}>

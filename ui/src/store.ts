@@ -369,6 +369,8 @@ function reduceVoiceCore(
         ...state,
         speechChunks: upsertSpeechChunk(state.speechChunks, event, "complete"),
       };
+    case "interrupted":
+      return { ...state, speechChunks: [] };
     case "done": {
       const rejected = Boolean(meta["rejected"]);
       const route = String(meta["runtime_route"] ?? state.lastRoute ?? "");

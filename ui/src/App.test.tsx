@@ -131,6 +131,84 @@ vi.mock("./engine.js", () => {
             worker_state: "idle",
           },
         });
+      } else if (command["cmd"] === "voice_start") {
+        // Mid-turn: chunk 0 is being played, chunk 1 is already synthesized.
+        this.emit("event", {
+          event: "voice",
+          type: "turn_start",
+          text: "",
+          latency_ms: null,
+          metadata: { turn: 1 },
+          usage: null,
+        });
+        this.emit("event", {
+          event: "voice",
+          type: "tts",
+          text: "Bayes là quy tắc cập nhật niềm tin.",
+          latency_ms: 210,
+          metadata: { chunk_index: 0, delivery: "final" },
+          usage: null,
+        });
+        this.emit("event", {
+          event: "voice",
+          type: "playback_started",
+          text: "Bayes là quy tắc cập nhật niềm tin.",
+          latency_ms: null,
+          metadata: {
+            chunk_index: 0,
+            delivery: "final",
+            audio_duration_ms: 1500,
+            sync_granularity: "audio_chunk",
+          },
+          usage: null,
+        });
+        this.emit("event", {
+          event: "voice",
+          type: "tts",
+          text: "Bạn muốn mình ví dụ không?",
+          latency_ms: 180,
+          metadata: { chunk_index: 1, delivery: "final" },
+          usage: null,
+        });
+      } else if (command["cmd"] === "voice_stop") {
+        // Playback drains, then the turn closes.
+        this.emit("event", {
+          event: "voice",
+          type: "audio",
+          text: "Bayes là quy tắc cập nhật niềm tin.",
+          latency_ms: 1500,
+          metadata: { chunk_index: 0, delivery: "final" },
+          usage: null,
+        });
+        this.emit("event", {
+          event: "voice",
+          type: "playback_started",
+          text: "Bạn muốn mình ví dụ không?",
+          latency_ms: null,
+          metadata: {
+            chunk_index: 1,
+            delivery: "final",
+            audio_duration_ms: 900,
+            sync_granularity: "audio_chunk",
+          },
+          usage: null,
+        });
+        this.emit("event", {
+          event: "voice",
+          type: "audio",
+          text: "Bạn muốn mình ví dụ không?",
+          latency_ms: 900,
+          metadata: { chunk_index: 1, delivery: "final" },
+          usage: null,
+        });
+        this.emit("event", {
+          event: "voice",
+          type: "done",
+          text: "Bayes là quy tắc cập nhật niềm tin. Bạn muốn mình ví dụ không?",
+          latency_ms: 3200,
+          metadata: { runtime_route: "llm", citations: [] },
+          usage: null,
+        });
       } else if (command["cmd"] === "usage") {
         this.emit("event", {
           event: "usage",
@@ -324,6 +402,35 @@ describe("App slash command interaction", () => {
     view.stdin.write("\r");
     await tick();
     expect(view.lastFrame()).toContain("backend hybrid");
+    view.unmount();
+  });
+
+  it("captions the answer while speaking, then hands it to the timeline", async () => {
+    const view = render(<App target="status" />);
+    await tick();
+
+    view.stdin.write("/voice");
+    await tick();
+    view.stdin.write("\r");
+    await tick();
+
+    expect(harness.sent).toContainEqual({ cmd: "voice_start" });
+    const speaking = stripAnsi(view.lastFrame() ?? "");
+    // The existing status row survives; the caption is additive.
+    expect(speaking).toContain("speaking");
+    expect(speaking).toContain("Bayes là quy tắc cập nhật niềm tin.");
+    expect(speaking).toContain("Bạn muốn mình ví dụ không?");
+
+    view.stdin.write("/stop");
+    await tick();
+    view.stdin.write("\r");
+    await tick();
+
+    const finished = stripAnsi(view.lastFrame() ?? "");
+    expect(finished).not.toContain("speaking");
+    expect(finished).toContain(
+      "Bayes là quy tắc cập nhật niềm tin. Bạn muốn mình ví dụ không?",
+    );
     view.unmount();
   });
 
