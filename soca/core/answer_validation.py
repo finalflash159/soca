@@ -34,9 +34,11 @@ class _ShadowGroundedness:
 
 
 _CITATION_LIKE_RE = re.compile(r"\[(?P<token>[KMkm][A-Za-z0-9]*)\]")
-_PRESENTATION_CITATION_RE = re.compile(
-    r"(?<!\w)\[(?P<token>(?:[KMkm]\d+|\d+))\](?!\w)"
-)
+# Label-shaped tags ([K1], [M2]) are never legitimate prose, so they always go.
+_LABEL_CITATION_RE = re.compile(r"(?<!\w)\[(?P<token>[KMkm]\d+)\](?!\w)")
+# A bare [12] only reads as a citation when the turn actually cites something;
+# in free chat it is far more likely to be content ("[100] nghìn đồng").
+_NUMERIC_CITATION_RE = re.compile(r"(?<!\w)\[(?P<token>\d+)\](?!\w)")
 _SOURCE_FOOTER_RE = re.compile(
     r"(?im)^[ \t]*(?:#{1,6}[ \t]+)?(?:nguồn|sources?)[ \t]*:[ \t]*(?:\n|$)"
 )
@@ -67,7 +69,9 @@ def answer_text_without_citation_labels(
         if text[: footer.start()].strip():
             text = text[: footer.start()]
 
-    cleaned = _PRESENTATION_CITATION_RE.sub("", text)
+    cleaned = _LABEL_CITATION_RE.sub("", text)
+    if allowed:
+        cleaned = _NUMERIC_CITATION_RE.sub("", cleaned)
     cleaned = re.sub(r"[ \t]+([,.;:!?])", r"\1", cleaned)
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r"\n[ \t]+\n", "\n\n", cleaned)

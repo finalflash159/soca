@@ -37,6 +37,15 @@ def test_presentation_removes_citation_tags_from_answer_text() -> None:
     )
 
 
+def test_presentation_keeps_bracketed_numbers_when_turn_has_no_citations() -> None:
+    text = answer_text_without_citation_labels(
+        "Giá là [100] nghìn đồng, vụ án số [2119], nhãn lạ [K9] thì bỏ.",
+        (),
+    )
+
+    assert text == "Giá là [100] nghìn đồng, vụ án số [2119], nhãn lạ thì bỏ."
+
+
 def test_expected_citation_labels_follow_each_source_sequence() -> None:
     citations = (
         KnowledgeCitation("wiki/a.md", "A"),

@@ -82,12 +82,19 @@ def test_normalize_text_for_tts_keeps_link_label_and_code_text() -> None:
     assert normalize_text_for_tts(text) == "Xem ghi chú và protein."
 
 
-def test_normalize_text_for_tts_removes_citation_tags_only() -> None:
-    text = "Theo [K1] và [2], attention quan trọng; giữ [TODO] và array[0]."
+def test_normalize_text_for_tts_removes_label_tags_only() -> None:
+    text = "Theo [K1] và [M2], attention quan trọng; giữ [TODO] và array[0]."
 
     assert normalize_text_for_tts(text) == (
         "Theo và, attention quan trọng; giữ [TODO] và array[0]."
     )
+
+
+def test_normalize_text_for_tts_keeps_bare_numbers_in_brackets() -> None:
+    # No citation context here, so a bracketed number is treated as content.
+    text = "Giá là [100] nghìn đồng, vụ án số [2119]."
+
+    assert normalize_text_for_tts(text) == "Giá là [100] nghìn đồng, vụ án số [2119]."
 
 
 def test_first_clause_keeps_discourse_marker_whole() -> None:

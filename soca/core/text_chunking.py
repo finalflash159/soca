@@ -9,7 +9,10 @@ _MARKDOWN_CODE_RE = re.compile(r"`([^`]+)`")
 _MARKDOWN_HEADING_RE = re.compile(r"(?m)^\s{0,3}#{1,6}\s+")
 _MARKDOWN_LIST_BULLET_RE = re.compile(r"(?m)^\s*[-*+]\s+")
 _MARKDOWN_RULE_RE = re.compile(r"(?m)^\s*[-*_]{3,}\s*$")
-_CITATION_TAG_RE = re.compile(r"(?<!\w)\[(?:[KMkm]\d+|\d+)\](?!\w)")
+# Only label-shaped tags are stripped here. Bare [12] is left alone because this
+# helper has no citation context; answer_text_without_citation_labels removes
+# those when the turn actually cites sources.
+_CITATION_TAG_RE = re.compile(r"(?<!\w)\[[KMkm]\d+\](?!\w)")
 _MULTISPACE_RE = re.compile(r"[ \t]{2,}")
 _CLAUSE_BOUNDARY_RE = re.compile(r"(?P<punct>[,;:]|[—–])(?P<trailing>[ \t]+)")
 _WORD_RE = re.compile(r"[^\W_]+", flags=re.UNICODE)
