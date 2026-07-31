@@ -16,6 +16,17 @@ def _load_g2p() -> Any:
     degrade to letter spelling instead of raising."""
     if _NLTK_DATA.is_dir():
         os.environ.setdefault("NLTK_DATA", str(_NLTK_DATA))
+        try:
+            # g2p_en imports nltk internally, so by the time this module runs
+            # nltk.data.path may already be resolved from a bare NLTK_DATA env
+            # var read at import time by an unrelated earlier import. Append
+            # directly so our data dir is searched regardless of import order.
+            import nltk
+
+            if str(_NLTK_DATA) not in nltk.data.path:
+                nltk.data.path.append(str(_NLTK_DATA))
+        except Exception:
+            pass
     try:
         from g2p_en import G2p
     except Exception:

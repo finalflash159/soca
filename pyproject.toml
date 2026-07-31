@@ -53,6 +53,9 @@ valtec-build = [
     "onnx>=1.17,<2.0",
     "torch>=2.0",
 ]
+tts-en = [
+    "g2p-en>=2.1.0",  # OOV English G2P for Valtec foreign-token fallback
+]
 rag = [
     "bm25s>=0.3.10,<0.4",
     "sentencepiece>=0.2,<0.3",

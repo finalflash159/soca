@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from soca.tts.valtec.english_inventory import TRAINED_ENGLISH_IPA, is_trained_ipa
 from soca.tts.valtec.foreign_g2p_en import arpabet_to_ipa
 from soca.tts.valtec.g2p import PortableVietnameseG2P
@@ -74,3 +76,14 @@ def test_untrained_ipa_is_rejected_by_gate() -> None:
     assert is_trained_ipa("paɪtɔrʧ")
     assert not is_trained_ipa("paɪtɔɹʧ")  # ɹ untrained
     assert not is_trained_ipa("kʌp")  # ʌ untrained
+
+
+def test_real_g2p_en_pronounces_oov_terms() -> None:
+    pytest.importorskip("g2p_en")
+    from soca.tts.valtec.foreign_g2p_en import G2pEnBackend
+
+    backend = G2pEnBackend()
+    for token in ("pytorch", "embedding", "github", "tokenizer"):
+        ipa = backend.to_ipa(token)
+        assert ipa, f"{token} could not be transcribed"
+        assert all(c in TRAINED_ENGLISH_IPA for c in ipa)
