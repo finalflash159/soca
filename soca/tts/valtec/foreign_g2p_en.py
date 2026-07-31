@@ -64,6 +64,11 @@ class G2pEnBackend:
         self._cache: dict[str, str | None] = {}
 
     def to_ipa(self, token: str) -> str | None:
+        # An all-caps token is an acronym. Letter spelling is faithful; asking a
+        # spelling-based predictor to guess a word reading is not ("TTS" -> tiɛnis).
+        # Checked before lowercasing, which would erase the distinction.
+        if len(token) > 1 and token.isupper():
+            return None
         key = token.lower()
         if key in self._cache:
             return self._cache[key]

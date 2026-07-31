@@ -28,9 +28,9 @@ from soca.tts.valtec import (
     ValtecVietnameseFrontend,
     resolve_valtec_onnx_artifacts,
 )
-from soca.tts.valtec.english_lexicon import LexiconBackend
 from soca.tts.valtec.foreign_g2p import ChainedForeignG2P
 from soca.tts.valtec.foreign_g2p_en import G2pEnBackend, _load_g2p
+from soca.tts.valtec.lexicon import LexiconBackend
 from soca.tts.valtec.normalizer import ValtecTextNormalizer
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -74,13 +74,16 @@ class _NaiveTextbookIpaBackend:
         return ipa or None
 
 
-def _build_frontend(symbol_to_id: dict[str, int], artifacts: Any, foreign_g2p: Any) -> ValtecVietnameseFrontend:
+def _build_frontend(
+    symbol_to_id: dict[str, int], artifacts: Any, foreign_g2p: Any, overrides: dict[str, str]
+) -> ValtecVietnameseFrontend:
     g2p = PortableVietnameseG2P(
         symbol_to_id=symbol_to_id,
         language_id=artifacts.language_id_vi,
         tone_offset=artifacts.tone_offset_vi,
         add_blank=artifacts.add_blank,
         foreign_g2p=foreign_g2p,
+        pronunciation_overrides=overrides,
     )
     return ValtecVietnameseFrontend(ValtecTextNormalizer(), g2p)
 
@@ -107,17 +110,19 @@ def main() -> int:
     symbol_to_id = config["symbol_to_id"]
 
     # Same composition from_artifacts() builds for production.
+    from soca.tts.valtec.lexicon import CMU_OVERRIDE_LEXICON
+
     shipped_backend = ChainedForeignG2P((LexiconBackend(), G2pEnBackend()))
     naive_backend = _NaiveTextbookIpaBackend()
     variants = {
-        "A_current_spelling": (None, "letter-spelled (current production behaviour)"),
-        "B_trained_dialect": (shipped_backend, shipped_backend.to_ipa),
-        "C_naive_ipa": (naive_backend, naive_backend.to_ipa),
+        "A_current_spelling": (None, {}, "letter-spelled (current production behaviour)"),
+        "B_trained_dialect": (shipped_backend, CMU_OVERRIDE_LEXICON, shipped_backend.to_ipa),
+        "C_naive_ipa": (naive_backend, {}, naive_backend.to_ipa),
     }
 
     report: list[dict[str, Any]] = []
-    for suffix, (backend, ipa_source) in variants.items():
-        frontend = _build_frontend(symbol_to_id, artifacts, backend)
+    for suffix, (backend, overrides, ipa_source) in variants.items():
+        frontend = _build_frontend(symbol_to_id, artifacts, backend, overrides)
         engine = ValtecOnnxTTS(
             artifact_root=args.artifact_root,
             allow_reference=artifacts.role == "reference",

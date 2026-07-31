@@ -64,12 +64,53 @@ def test_backend_returning_none_falls_back_to_spelling() -> None:
     assert _g2p(sid, _StubBackend({})).convert("xyzzy").foreign_phone_count > 0
 
 
-def test_uppercase_acronym_never_reaches_backend() -> None:
-    class _Boom:
-        def to_ipa(self, token: str) -> str | None:
-            raise AssertionError("acronym must spell, never call the backend")
+def test_uppercase_acronym_falls_back_to_spelling_when_unclaimed() -> None:
+    """A backend may claim an acronym ("JSON"), but declining must still spell.
 
-    _g2p(_english_symbol_map(), _Boom()).convert("TTS")
+    The CMU path stays lowercase-only regardless, so "ID" is never read as the
+    English word "id".
+    """
+    sid = _english_symbol_map()
+    seen: list[str] = []
+
+    class _Declines:
+        def to_ipa(self, token: str) -> str | None:
+            seen.append(token)
+            return None
+
+    result = _g2p(sid, _Declines()).convert("TTS")
+
+    assert seen == ["TTS"], "backend must receive the original casing"
+    assert result.foreign_phone_count > 0  # spelled, not dropped
+    assert result.unknown_phoneme_count == 0
+
+
+def test_pronunciation_override_beats_the_cmu_dictionary() -> None:
+    """CMU has "cache" but reads it "ca-shay"; the override must win."""
+    sid = _english_symbol_map()
+    plain = _g2p(sid, None).convert("cache")
+
+    overridden = PortableVietnameseG2P(
+        symbol_to_id=sid, language_id=7, tone_offset=16, add_blank=False,
+        pronunciation_overrides={"cache": "kæʃ"},
+    ).convert("cache")
+
+    assert overridden.phone_ids != plain.phone_ids
+    assert sid["ʃ"] in overridden.phone_ids
+    assert sid["e"] not in overridden.phone_ids  # the spurious "-shay" diphthong
+    assert overridden.unknown_phoneme_count == 0
+
+
+def test_pronunciation_overrides_default_to_empty_and_change_nothing() -> None:
+    sid = _english_symbol_map()
+    assert _g2p(sid, None).pronunciation_overrides == {}
+    assert (
+        _g2p(sid, None).convert("cache").phone_ids
+        == PortableVietnameseG2P(
+            symbol_to_id=sid, language_id=7, tone_offset=16, add_blank=False,
+            pronunciation_overrides={},
+        ).convert("cache").phone_ids
+    )
 
 
 def test_untrained_ipa_is_rejected_by_gate() -> None:
