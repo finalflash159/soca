@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from .artifacts import ValtecOnnxArtifacts
+from .foreign_g2p import ForeignG2P
 from .frontend import ValtecModelInputs
 from .normalizer import ValtecTextNormalizer
 
@@ -78,6 +79,7 @@ class PortableVietnameseG2P:
         tone_offset: int,
         add_blank: bool,
         table_path: Path = TABLE_PATH,
+        foreign_g2p: ForeignG2P | None = None,
     ) -> None:
         if "_" not in symbol_to_id or "UNK" not in symbol_to_id:
             raise ValueError("Valtec symbol_to_id must contain '_' and 'UNK'")
@@ -88,6 +90,7 @@ class PortableVietnameseG2P:
         self.tone_offset = tone_offset
         self.add_blank = add_blank
         self.tables = _load_tables(table_path)
+        self.foreign_g2p = foreign_g2p
 
     def _transcribe(self, raw_word: str) -> _Syllable:
         word = raw_word.lower()
@@ -200,6 +203,15 @@ class PortableVietnameseG2P:
         ids, _ = self._tokenize_ipa(cleaned, drop_unknown=True)
         return [(ids, 0, 0, True)] if ids else None
 
+    def _foreign_segments(self, token: str) -> list[tuple[list[int], int, int, bool]] | None:
+        if self.foreign_g2p is None:
+            return None
+        ipa = self.foreign_g2p.to_ipa(token)
+        if not ipa:
+            return None
+        ids, _ = self._tokenize_ipa(ipa, drop_unknown=True)
+        return [(ids, 0, 0, True)] if ids else None
+
     def _word_segments(self, token: str) -> list[tuple[list[int], int, int, bool]]:
         """Return (ids, internal_tone, unknown_count, foreign) segments for a token."""
         direct = self._syllable_segment(token)
@@ -211,6 +223,9 @@ class PortableVietnameseG2P:
             english = self._english_segments(token)
             if english is not None:
                 return english
+            foreign = self._foreign_segments(token)
+            if foreign is not None:
+                return foreign
         spelled = " ".join(
             LETTER_NAMES.get(char, char) for char in token.lower()
         ).split()
@@ -296,6 +311,11 @@ class ValtecVietnameseFrontend:
         configured_language = config.get("language_id_map", {}).get("VI")
         if configured_language is not None and int(configured_language) != artifacts.language_id_vi:
             raise ValueError("Valtec manifest/config Vietnamese language id mismatch")
+        foreign: ForeignG2P | None = None
+        if config.get("foreign_g2p") == "g2p_en":
+            from .foreign_g2p_en import G2pEnBackend
+
+            foreign = G2pEnBackend()
         return cls(
             ValtecTextNormalizer(),
             PortableVietnameseG2P(
@@ -303,6 +323,7 @@ class ValtecVietnameseFrontend:
                 language_id=artifacts.language_id_vi,
                 tone_offset=artifacts.tone_offset_vi,
                 add_blank=artifacts.add_blank,
+                foreign_g2p=foreign,
             ),
         )
 
