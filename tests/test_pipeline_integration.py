@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import threading
 from dataclasses import dataclass
 
@@ -74,6 +75,14 @@ class SpyTTS:
             voice=voice or "NF",
             engine="fake",
         )
+
+
+class BrokenRateTTS(SpyTTS):
+    """TTS engine that reports an unusable sample rate."""
+
+    def synthesize(self, text: str, voice: str | None = None) -> TTSResult:
+        result = super().synthesize(text, voice)
+        return dataclasses.replace(result, sample_rate=0)
 
 
 class FailingTTS:
@@ -272,6 +281,33 @@ def test_voice_pipeline_streaming_yields_asr_tokens_sentences_audio_and_done():
         assert tts_index < playback_index < audio_index
         assert playback_started.metadata["audio_duration_ms"] == pytest.approx(100.0)
         assert playback_started.metadata["sync_granularity"] == "audio_chunk"
+
+
+def test_playback_started_omits_duration_when_sample_rate_is_unusable() -> None:
+    asr = FakeASR("xin chao")
+    runtime = FakeStreamingRuntime(["Xin chào bạn."])
+    pipeline = VoicePipeline(
+        asr=asr,
+        llm=SpyLLM(),
+        tts=BrokenRateTTS(),
+        assistant_runtime=runtime,
+    )
+
+    events = list(
+        pipeline.turn_streaming(
+            np.zeros(16000, dtype=np.float32),
+            audio_sink=NullAudioPlayer(),
+            min_sentence_chars=8,
+        )
+    )
+
+    playback_started = [event for event in events if event.type == "playback_started"]
+    assert playback_started, "playback still has to be announced"
+    for event in playback_started:
+        # Unknown duration is reported as absent, never as a fabricated 0.0.
+        assert "audio_duration_ms" not in event.metadata
+        assert event.metadata["sync_granularity"] == "audio_chunk"
+    assert [event.type for event in events][-1] == "done"
 
 
 def test_voice_pipeline_forwards_asr_alternatives_for_goal_repair() -> None:

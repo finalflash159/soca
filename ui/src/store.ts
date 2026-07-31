@@ -350,7 +350,14 @@ function reduceVoiceCore(
     case "llm_token":
       return {
         ...state,
-        voiceState: "processing",
+        // Tokens for the next sentence can arrive while a chunk is still
+        // playing; downgrading to "processing" there would hide the speaking
+        // row and its caption mid-playback.
+        voiceState: state.speechChunks.some(
+          (chunk) => chunk.status === "playing",
+        )
+          ? state.voiceState
+          : "processing",
       };
     case "tts":
       return {

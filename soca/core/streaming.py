@@ -38,6 +38,18 @@ class StreamingEvent:
     metadata: dict | None = None
 
 
+def audio_duration_ms(sample_count: int, sample_rate: int | None) -> float | None:
+    """Duration of a PCM buffer, or ``None`` when the sample rate is unusable.
+
+    A non-positive sample rate means the TTS engine or sink reported a broken
+    format. Returning ``None`` keeps the caller from publishing a fabricated
+    ``0.0`` duration that downstream consumers would read as "already spoken".
+    """
+    if sample_rate is None or sample_rate <= 0 or sample_count <= 0:
+        return None
+    return sample_count / sample_rate * 1000.0
+
+
 def pop_ready_sentence(buffer: str, min_chars: int = 24) -> tuple[str | None, str]:
     if len(buffer.strip()) < min_chars:
         return None, buffer

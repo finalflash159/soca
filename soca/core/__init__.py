@@ -54,7 +54,7 @@ from .route_catalog import (
     source_profile,
     validate_route_fields,
 )
-from .streaming import StreamingEvent, pop_ready_sentence
+from .streaming import StreamingEvent, audio_duration_ms, pop_ready_sentence
 from .text_chunking import chunk_text_for_tts, split_sentences
 from .tool_routing import (
     ParsedRouteDecision,
@@ -286,6 +286,7 @@ __all__ = [
     "split_sentences",
     "chunk_text_for_tts",
     "StreamingEvent",
+    "audio_duration_ms",
     "pop_ready_sentence",
     "DEFAULT_VOICE_RUNTIME_PROFILE_KEY",
     "VOICE_RUNTIME_PROFILES",

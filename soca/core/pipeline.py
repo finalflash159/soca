@@ -32,7 +32,7 @@ from soca.core.repair import (
     RepairState,
     plan_repair,
 )
-from soca.core.streaming import StreamingEvent
+from soca.core.streaming import StreamingEvent, audio_duration_ms
 from soca.core.text_chunking import chunk_text_for_tts, normalize_text_for_tts
 from soca.tts import TTSResult
 
@@ -703,16 +703,17 @@ class _TTSPlaybackPump:
     def _playback_started_event(
         chunk: _PlaybackChunk,
         *,
-        audio_duration_ms: float,
+        duration_ms: float | None,
     ) -> StreamingEvent:
         event = chunk.event
         metadata = dict(event.metadata or {})
-        metadata.update(
-            {
-                "audio_duration_ms": max(0.0, audio_duration_ms),
-                "sync_granularity": "audio_chunk",
-            }
-        )
+        metadata["sync_granularity"] = "audio_chunk"
+        # An unusable sample rate leaves the duration unknown; the UI then shows
+        # the caption without a timed reveal instead of trusting a fake 0.0.
+        if duration_ms is None:
+            metadata.pop("audio_duration_ms", None)
+        else:
+            metadata["audio_duration_ms"] = duration_ms
         return StreamingEvent(
             type="playback_started",
             text=event.text,
@@ -732,7 +733,7 @@ class _TTSPlaybackPump:
                 self._event_queue.put(
                     self._playback_started_event(
                         item,
-                        audio_duration_ms=len(event.audio) / event.sample_rate * 1000.0,
+                        duration_ms=audio_duration_ms(len(event.audio), event.sample_rate),
                     )
                 )
                 playback = self._sink.play(
@@ -812,7 +813,7 @@ class _TTSPlaybackPump:
                 self._event_queue.put(
                     self._playback_started_event(
                         item,
-                        audio_duration_ms=len(prepared) / session.sample_rate * 1000.0,
+                        duration_ms=audio_duration_ms(len(prepared), session.sample_rate),
                     )
                 )
 

@@ -269,6 +269,61 @@ describe("progress reducer", () => {
     expect(state.speechChunks).toEqual([]);
   });
 
+  it("keeps the speaking state when tokens stream during playback", () => {
+    let state = reduce(initialState, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "playback_started",
+        text: "Câu đang phát.",
+        latency_ms: null,
+        metadata: { chunk_index: 0, audio_duration_ms: 900 },
+        usage: null,
+      },
+    });
+    expect(state.voiceState).toBe("speaking");
+
+    // The next sentence is still being generated while chunk 0 plays.
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "llm_token",
+        text: "tiếp ",
+        latency_ms: null,
+        metadata: {},
+        usage: null,
+      },
+    });
+    expect(state.voiceState).toBe("speaking");
+    expect(state.speechChunks).toHaveLength(1);
+
+    // Once nothing is playing, tokens mean the runtime is thinking again.
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "audio",
+        text: "Câu đang phát.",
+        latency_ms: 900,
+        metadata: { chunk_index: 0 },
+        usage: null,
+      },
+    });
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "llm_token",
+        text: "nữa ",
+        latency_ms: null,
+        metadata: {},
+        usage: null,
+      },
+    });
+    expect(state.voiceState).toBe("processing");
+  });
+
   it("drops the speech caption when playback is interrupted", () => {
     let state = reduce(initialState, {
       type: "engine_event",
