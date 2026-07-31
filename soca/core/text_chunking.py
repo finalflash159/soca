@@ -69,6 +69,21 @@ def split_sentences(text: str) -> list[str]:
     return parts
 
 
+def _join_with_pause(fragment: str, addition: str) -> str:
+    """Join two merged sentence fragments, keeping list/line breaks audible.
+
+    split_sentences() also splits on bare newlines, which carry no terminal
+    punctuation of their own (unlike ".", "!", "?"). Joining those fragments
+    with a plain space erases the only signal a line break ever gave the TTS
+    engine, so a line-per-item list reads as one run-on phrase. A fragment
+    already ending in punctuation (":", ",", ".") already implies a pause;
+    only a bare alnum ending needs one inserted.
+    """
+    if fragment and fragment[-1].isalnum():
+        return f"{fragment}, {addition}"
+    return f"{fragment} {addition}".strip()
+
+
 def chunk_text_for_tts(text: str, min_chars: int = 24) -> list[str]:
     """Split text into TTS-friendly chunks without tiny leading fragments."""
     sentences = split_sentences(text)
@@ -79,7 +94,7 @@ def chunk_text_for_tts(text: str, min_chars: int = 24) -> list[str]:
     pending = ""
 
     for sentence in sentences:
-        candidate = f"{pending} {sentence}".strip() if pending else sentence
+        candidate = _join_with_pause(pending, sentence) if pending else sentence
         if len(candidate) < min_chars:
             pending = candidate
             continue
@@ -89,7 +104,7 @@ def chunk_text_for_tts(text: str, min_chars: int = 24) -> list[str]:
 
     if pending:
         if chunks:
-            chunks[-1] = f"{chunks[-1]} {pending}".strip()
+            chunks[-1] = _join_with_pause(chunks[-1], pending)
         else:
             chunks.append(pending)
 

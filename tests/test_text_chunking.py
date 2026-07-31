@@ -70,6 +70,25 @@ def test_chunk_text_for_tts_does_not_emit_bare_numbered_marker() -> None:
     assert "1. Ăn đủ đạm." in " ".join(chunks)
 
 
+def test_chunk_text_for_tts_pauses_between_merged_line_items() -> None:
+    # A one-item-per-line list (e.g. folder names) has no terminal punctuation
+    # of its own, so merging short lines with a bare space used to erase the
+    # only pause cue the line breaks ever carried.
+    text = "wiki\nwiki/learning\nwiki/learning/data\nwiki/life"
+
+    assert chunk_text_for_tts(text, min_chars=100) == [
+        "wiki, wiki/learning, wiki/learning/data, wiki/life",
+    ]
+
+
+def test_chunk_text_for_tts_does_not_double_punctuate_after_a_colon() -> None:
+    # A line already ending in punctuation (":") implies its own pause and
+    # must not gain a second one from the line-break handling above.
+    text = "Tình hình:\nĐã ổn."
+
+    assert chunk_text_for_tts(text, min_chars=100) == ["Tình hình: Đã ổn."]
+
+
 def test_normalize_text_for_tts_strips_markdown_emphasis() -> None:
     text = "**Tình hình:** cần ăn **đủ đạm** và _ngủ sớm_."
 
