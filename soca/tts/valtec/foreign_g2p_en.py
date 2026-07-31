@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -7,13 +8,20 @@ from typing import Any
 
 from .english_inventory import is_trained_ipa
 
+LOGGER = logging.getLogger(__name__)
+
 _NLTK_DATA = Path(__file__).resolve().parents[3] / "models" / "nltk_data"
 
 
 @lru_cache(maxsize=1)
 def _load_g2p() -> Any:
     """Load G2p once. Return None when the lib/data is missing so callers
-    degrade to letter spelling instead of raising."""
+    degrade to letter spelling instead of raising.
+
+    Logs once (lru_cache means this body runs at most once per process) so a
+    provisioning gap is diagnosable instead of silently freezing every OOV
+    token onto letter spelling with no signal. See scripts/bootstrap_g2p_en_data.py.
+    """
     if _NLTK_DATA.is_dir():
         os.environ.setdefault("NLTK_DATA", str(_NLTK_DATA))
         try:
@@ -25,15 +33,29 @@ def _load_g2p() -> Any:
 
             if str(_NLTK_DATA) not in nltk.data.path:
                 nltk.data.path.append(str(_NLTK_DATA))
-        except Exception:
-            pass
+        except Exception as exc:
+            LOGGER.warning(
+                "Could not register %s on nltk.data.path (%s); "
+                "g2p_en may fall back to letter spelling",
+                _NLTK_DATA,
+                type(exc).__name__,
+            )
     try:
         from g2p_en import G2p
-    except Exception:
+    except Exception as exc:
+        LOGGER.warning(
+            "g2p_en unavailable (%s); OOV English tokens will be letter-spelled",
+            type(exc).__name__,
+        )
         return None
     try:
         return G2p()
-    except Exception:
+    except Exception as exc:
+        LOGGER.warning(
+            "g2p_en failed to load (%s), likely missing NLTK data; "
+            "run scripts/bootstrap_g2p_en_data.py. OOV English tokens will be letter-spelled",
+            type(exc).__name__,
+        )
         return None
 
 

@@ -39,6 +39,12 @@ function LevelMeter({
   );
 }
 
+const WORD_CHAR_RE = /[\p{L}\p{N}]/u;
+
+function isWordChar(grapheme: string): boolean {
+  return WORD_CHAR_RE.test(grapheme);
+}
+
 /**
  * Pull a mid-word reveal boundary back to the end of the last whole word.
  *
@@ -47,6 +53,11 @@ function LevelMeter({
  * "ma" | "p"). Since spoken/pending render in different colors, a mid-word
  * cut is visible as a glitch rather than a typewriter effect, so the reveal
  * always holds back a partial word until it is fully spoken.
+ *
+ * Only snap when the cut lands ON a word character (letter/digit): that is
+ * the sole case where continuing the reveal would split a token. A cut
+ * landing on punctuation right after a finished word (e.g. "rồi.") must NOT
+ * snap back, or the already-spoken word disappears from the caption.
  */
 function snapToWordBoundary(
   parts: readonly string[],
@@ -55,12 +66,12 @@ function snapToWordBoundary(
   if (
     boundary <= 0 ||
     boundary >= parts.length ||
-    /\s/.test(parts[boundary] ?? "")
+    !isWordChar(parts[boundary] ?? "")
   ) {
     return boundary;
   }
   let wordStart = boundary;
-  while (wordStart > 0 && !/\s/.test(parts[wordStart - 1] ?? "")) {
+  while (wordStart > 0 && isWordChar(parts[wordStart - 1] ?? "")) {
     wordStart -= 1;
   }
   return wordStart;

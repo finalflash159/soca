@@ -41,6 +41,19 @@ describe("VoiceStatus speech caption", () => {
     });
   });
 
+  it("does not hide an already-finished word when the cut lands on trailing punctuation", () => {
+    // Qodo caught this: the first fix snapped back on ANY non-whitespace
+    // character, so a cut landing on "." after a complete word wrongly
+    // pulled the reveal back to the start of that word, making already
+    // -spoken text disappear from the caption.
+    const text = "Xin chào rồi.";
+    const boundary = text.length - 1; // lands exactly on the trailing "."
+    expect(splitSpeechAt(text, boundary)).toEqual({
+      spoken: "Xin chào rồi",
+      pending: ".",
+    });
+  });
+
   it("reveals a word in full once its own boundary is reached", () => {
     const text = "citation map và output";
     expect(splitSpeechAt(text, 12)).toEqual({
