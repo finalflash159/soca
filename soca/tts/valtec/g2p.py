@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
 
 from .artifacts import ValtecOnnxArtifacts
+from .foreign_g2p import ForeignG2P
 from .frontend import ValtecModelInputs
 from .normalizer import ValtecTextNormalizer
 
@@ -78,6 +80,8 @@ class PortableVietnameseG2P:
         tone_offset: int,
         add_blank: bool,
         table_path: Path = TABLE_PATH,
+        foreign_g2p: ForeignG2P | None = None,
+        pronunciation_overrides: Mapping[str, str] | None = None,
     ) -> None:
         if "_" not in symbol_to_id or "UNK" not in symbol_to_id:
             raise ValueError("Valtec symbol_to_id must contain '_' and 'UNK'")
@@ -88,6 +92,8 @@ class PortableVietnameseG2P:
         self.tone_offset = tone_offset
         self.add_blank = add_blank
         self.tables = _load_tables(table_path)
+        self.foreign_g2p = foreign_g2p
+        self.pronunciation_overrides = dict(pronunciation_overrides or {})
 
     def _transcribe(self, raw_word: str) -> _Syllable:
         word = raw_word.lower()
@@ -200,17 +206,45 @@ class PortableVietnameseG2P:
         ids, _ = self._tokenize_ipa(cleaned, drop_unknown=True)
         return [(ids, 0, 0, True)] if ids else None
 
+    def _override_segments(self, token: str) -> list[tuple[list[int], int, int, bool]] | None:
+        """Curated reading for a word CMU contains but pronounces wrongly."""
+        ipa = self.pronunciation_overrides.get(token.lower())
+        if not ipa:
+            return None
+        ids, _ = self._tokenize_ipa(ipa, drop_unknown=True)
+        return [(ids, 0, 0, True)] if ids else None
+
+    def _foreign_segments(self, token: str) -> list[tuple[list[int], int, int, bool]] | None:
+        if self.foreign_g2p is None:
+            return None
+        ipa = self.foreign_g2p.to_ipa(token)
+        if not ipa:
+            return None
+        ids, _ = self._tokenize_ipa(ipa, drop_unknown=True)
+        return [(ids, 0, 0, True)] if ids else None
+
     def _word_segments(self, token: str) -> list[tuple[list[int], int, int, bool]]:
         """Return (ids, internal_tone, unknown_count, foreign) segments for a token."""
         direct = self._syllable_segment(token)
         if direct is not None:
             return [(*direct, False)]
         # Upstream viphoneme reads lowercase OOV words through English G2P and
-        # spells all-caps acronyms/letters with Vietnamese letter names.
-        if len(token) > 1 and not token.isupper():
-            english = self._english_segments(token)
-            if english is not None:
-                return english
+        # spells all-caps acronyms/letters with Vietnamese letter names. The CMU
+        # path stays lowercase-only so "ID" is not read as the word "id", but a
+        # curated acronym reading ("JSON" -> jay-son) may still claim the token.
+        if len(token) > 1:
+            if not token.isupper():
+                # Checked before CMU: these exist in the dictionary but are
+                # pronounced wrongly there, so the dictionary must not win.
+                override = self._override_segments(token)
+                if override is not None:
+                    return override
+                english = self._english_segments(token)
+                if english is not None:
+                    return english
+            foreign = self._foreign_segments(token)
+            if foreign is not None:
+                return foreign
         spelled = " ".join(
             LETTER_NAMES.get(char, char) for char in token.lower()
         ).split()
@@ -296,6 +330,17 @@ class ValtecVietnameseFrontend:
         configured_language = config.get("language_id_map", {}).get("VI")
         if configured_language is not None and int(configured_language) != artifacts.language_id_vi:
             raise ValueError("Valtec manifest/config Vietnamese language id mismatch")
+        foreign: ForeignG2P | None = None
+        overrides: dict[str, str] = {}
+        if config.get("foreign_g2p") == "g2p_en":
+            from .foreign_g2p import ChainedForeignG2P
+            from .foreign_g2p_en import G2pEnBackend
+            from .lexicon import CMU_OVERRIDE_LEXICON, LexiconBackend
+
+            # Curated entries first: g2p_en cannot derive brand pronunciations
+            # from spelling, so its guess must never shadow a known reading.
+            foreign = ChainedForeignG2P((LexiconBackend(), G2pEnBackend()))
+            overrides = dict(CMU_OVERRIDE_LEXICON)
         return cls(
             ValtecTextNormalizer(),
             PortableVietnameseG2P(
@@ -303,6 +348,8 @@ class ValtecVietnameseFrontend:
                 language_id=artifacts.language_id_vi,
                 tone_offset=artifacts.tone_offset_vi,
                 add_blank=artifacts.add_blank,
+                foreign_g2p=foreign,
+                pronunciation_overrides=overrides,
             ),
         )
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -61,6 +62,11 @@ def answer_text_without_citation_labels(
     text: str,
     citations: tuple[KnowledgeCitation, ...],
 ) -> str:
+    # Some providers stream Vietnamese diacritics NFD-decomposed (o + combining
+    # circumflex + combining grave). _SOURCE_FOOTER_RE's "nguồn" literal is
+    # NFC, so an NFD response silently failed to match and the footer leaked
+    # into both the chat display and the spoken caption.
+    text = unicodedata.normalize("NFC", text)
     allowed = frozenset(expected_citation_labels(citations))
 
     footer_matches = tuple(_SOURCE_FOOTER_RE.finditer(text)) if allowed else ()

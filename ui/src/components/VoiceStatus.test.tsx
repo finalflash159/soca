@@ -31,6 +31,37 @@ describe("VoiceStatus speech caption", () => {
     expect(splitSpeechAt("chào", 99)).toEqual({ spoken: "chào", pending: "" });
   });
 
+  it("never splits a word in half — holds back to the last completed word", () => {
+    const text = "citation map và output";
+    // Index 11 lands inside "map" ("citation m|ap"); must pull back to the
+    // space before it instead of revealing "citation ma" + dim "p".
+    expect(splitSpeechAt(text, 11)).toEqual({
+      spoken: "citation ",
+      pending: "map và output",
+    });
+  });
+
+  it("does not hide an already-finished word when the cut lands on trailing punctuation", () => {
+    // Qodo caught this: the first fix snapped back on ANY non-whitespace
+    // character, so a cut landing on "." after a complete word wrongly
+    // pulled the reveal back to the start of that word, making already
+    // -spoken text disappear from the caption.
+    const text = "Xin chào rồi.";
+    const boundary = text.length - 1; // lands exactly on the trailing "."
+    expect(splitSpeechAt(text, boundary)).toEqual({
+      spoken: "Xin chào rồi",
+      pending: ".",
+    });
+  });
+
+  it("reveals a word in full once its own boundary is reached", () => {
+    const text = "citation map và output";
+    expect(splitSpeechAt(text, 12)).toEqual({
+      spoken: "citation map",
+      pending: " và output",
+    });
+  });
+
   it("paces the reveal by the chunk audio duration", () => {
     expect(revealedGraphemes(10, 0, 1000)).toBe(0);
     expect(revealedGraphemes(10, 500, 1000)).toBe(5);
