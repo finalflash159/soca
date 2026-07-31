@@ -5,8 +5,9 @@ zplan/tts_foreign_g2p_fix_plan.vi.md §6).
 
   A - current production behaviour (no foreign backend): OOV words are
       spelled out letter by letter.
-  B - the approach this plan ships: g2p_en ARPABET converted through
-      eng_to_ipa's own dialect table, gated to the trained inventory.
+  B - the approach this plan ships: curated lexicon first, then g2p_en
+      ARPABET converted through eng_to_ipa's own dialect table, gated to the
+      trained inventory. This is the exact chain from_artifacts() builds.
   C - contrast only: the same ARPABET mapped to "textbook" IPA symbols
       (r->r turned voiced uvular etc.) that measured as untrained on this
       checkpoint. Exists to make the untrained-embedding failure audible;
@@ -27,6 +28,8 @@ from soca.tts.valtec import (
     ValtecVietnameseFrontend,
     resolve_valtec_onnx_artifacts,
 )
+from soca.tts.valtec.english_lexicon import LexiconBackend
+from soca.tts.valtec.foreign_g2p import ChainedForeignG2P
 from soca.tts.valtec.foreign_g2p_en import G2pEnBackend, _load_g2p
 from soca.tts.valtec.normalizer import ValtecTextNormalizer
 
@@ -103,11 +106,12 @@ def main() -> int:
     config = json.loads(artifacts.config.read_text(encoding="utf-8"))
     symbol_to_id = config["symbol_to_id"]
 
-    g2p_en_backend = G2pEnBackend()
+    # Same composition from_artifacts() builds for production.
+    shipped_backend = ChainedForeignG2P((LexiconBackend(), G2pEnBackend()))
     naive_backend = _NaiveTextbookIpaBackend()
     variants = {
         "A_current_spelling": (None, "letter-spelled (current production behaviour)"),
-        "B_trained_dialect": (g2p_en_backend, g2p_en_backend.to_ipa),
+        "B_trained_dialect": (shipped_backend, shipped_backend.to_ipa),
         "C_naive_ipa": (naive_backend, naive_backend.to_ipa),
     }
 

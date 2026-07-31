@@ -313,9 +313,13 @@ class ValtecVietnameseFrontend:
             raise ValueError("Valtec manifest/config Vietnamese language id mismatch")
         foreign: ForeignG2P | None = None
         if config.get("foreign_g2p") == "g2p_en":
+            from .english_lexicon import LexiconBackend
+            from .foreign_g2p import ChainedForeignG2P
             from .foreign_g2p_en import G2pEnBackend
 
-            foreign = G2pEnBackend()
+            # Curated entries first: g2p_en cannot derive brand pronunciations
+            # from spelling, so its guess must never shadow a known reading.
+            foreign = ChainedForeignG2P((LexiconBackend(), G2pEnBackend()))
         return cls(
             ValtecTextNormalizer(),
             PortableVietnameseG2P(
