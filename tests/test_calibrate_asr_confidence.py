@@ -5,6 +5,7 @@ matching the plan's "no model needed, CI-safe" requirement."""
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import click
@@ -147,6 +148,40 @@ def test_calibrate_model_with_injected_factories_matches_hand_computed_threshold
     assert payload["runtime_identity"]["asr"]["backend"] == "fake"
     assert payload["dataset"]["n_speech_loaded"] == 3
     assert payload["dataset"]["n_noise_loaded"] == 2
+    # Reproducibility metadata (run_type, hardware, manifest fingerprints,
+    # raw_log): required for any persisted benchmark/release evidence.
+    assert payload["run_type"] == "benchmark"
+    assert payload["hardware"]["cpu_count"] == os.cpu_count()
+    assert payload["dataset"]["speech_manifest_sha256"] is not None
+    assert payload["dataset"]["noise_manifest_sha256"] is not None
+    assert payload["raw_log"].endswith("asr_confidence_calibration_fake_backend.json")
+
+
+def test_calibrate_model_records_smoke_run_type_when_requested(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    _write_manifests(tmp_path, n_speech=1, n_noise=0)
+    monkeypatch.setattr(cfg, "FLEURS_MANIFEST", tmp_path / "fleurs_manifest.jsonl")
+    monkeypatch.setattr(cfg, "FLEURS_WAV_DIR", tmp_path / "wav")
+    monkeypatch.setattr(cfg, "NOISE_MANIFEST", tmp_path / "noise_manifest.jsonl")
+    monkeypatch.setattr(cfg, "NOISE_ROOT", tmp_path / "wav")
+    monkeypatch.setattr(cfg, "THRESHOLD_CALIBRATION_PATH", tmp_path / "threshold_calibration.json")
+    monkeypatch.setattr(cfg, "EVAL_RESULTS_DIR", tmp_path / "eval_results")
+
+    payload = calibrate_model(
+        model_key="fake_backend",
+        n_speech=1,
+        n_noise=0,
+        provider_list=[],
+        max_new_tokens=64,
+        fallback_min_avg_logprob=-0.25,
+        fallback_max_compression_ratio=2.4,
+        run_type="smoke",
+        asr_factory=lambda: _ScriptedASR([-0.1]),
+        vad_factory=_AlwaysSpeechVAD,
+    )
+
+    assert payload["run_type"] == "smoke"
 
 
 def test_calibrate_model_excludes_unreliable_avg_logprob_from_the_threshold(
