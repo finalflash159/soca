@@ -391,7 +391,7 @@ def merge_threshold_file(
         payload["asr_confidence"] = asr_confidence_payload
 
     cfg.THRESHOLD_CALIBRATION_PATH.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
 
