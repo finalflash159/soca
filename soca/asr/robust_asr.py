@@ -170,14 +170,29 @@ class RobustASR:
         self.min_avg_logprob = min_avg_logprob
         self.max_compression_ratio = max_compression_ratio
         self.confidence_profile_model_key = confidence_profile_model_key
+
+        # Backend capability, duck-typed like the rest of the pipeline. Default
+        # True so VietnameseASR (and any fake without this attribute) keeps
+        # today's behavior unchanged.
+        backend_has_logprob = bool(getattr(self.asr, "supports_avg_logprob", True))
+
         if confidence_guard_skip_reason:
-            self.use_confidence_guard = False
+            self.use_logprob_guard = False
             self.confidence_guard_status = confidence_guard_skip_reason
+        elif not backend_has_logprob:
+            self.use_logprob_guard = False
+            self.confidence_guard_status = (
+                f"skipped:backend_has_no_logprob:{self.asr_model_key}"
+            )
         else:
             (
-                self.use_confidence_guard,
+                self.use_logprob_guard,
                 self.confidence_guard_status,
             ) = self._resolve_confidence_guard_status(confidence_profile_model_key)
+
+        # Compression is a text-only signal independent of model identity, so
+        # it must never be disabled just because the logprob guard is off.
+        self.use_compression_guard = True
 
     def _resolve_confidence_guard_status(
         self, profile_model_key: str | None
@@ -240,40 +255,39 @@ class RobustASR:
                 alternatives=alternatives,
             )
 
-        if self.use_confidence_guard:
-            if avg_logprob < self.min_avg_logprob:
-                return RobustASRResult(
-                    text="",
-                    raw_text=raw_text,
-                    text_after_deloop=raw_text,
-                    has_speech=True,
-                    was_looping=False,
-                    rejection_reason=f"low_confidence:{avg_logprob:.2f}",
-                    vad=vad_result,
-                    asr=asr_result,
-                    total_latency_ms=(time.perf_counter() - t0) * 1000,
-                    avg_logprob=avg_logprob,
-                    compression_ratio=raw_compression_ratio,
-                    confidence_guard_status=self.confidence_guard_status,
-                    alternatives=alternatives,
-                )
+        if self.use_logprob_guard and avg_logprob < self.min_avg_logprob:
+            return RobustASRResult(
+                text="",
+                raw_text=raw_text,
+                text_after_deloop=raw_text,
+                has_speech=True,
+                was_looping=False,
+                rejection_reason=f"low_confidence:{avg_logprob:.2f}",
+                vad=vad_result,
+                asr=asr_result,
+                total_latency_ms=(time.perf_counter() - t0) * 1000,
+                avg_logprob=avg_logprob,
+                compression_ratio=raw_compression_ratio,
+                confidence_guard_status=self.confidence_guard_status,
+                alternatives=alternatives,
+            )
 
-            if raw_compression_ratio > self.max_compression_ratio:
-                return RobustASRResult(
-                    text="",
-                    raw_text=raw_text,
-                    text_after_deloop=raw_text,
-                    has_speech=True,
-                    was_looping=False,
-                    rejection_reason=f"high_compression:{raw_compression_ratio:.2f}",
-                    vad=vad_result,
-                    asr=asr_result,
-                    total_latency_ms=(time.perf_counter() - t0) * 1000,
-                    avg_logprob=avg_logprob,
-                    compression_ratio=raw_compression_ratio,
-                    confidence_guard_status=self.confidence_guard_status,
-                    alternatives=alternatives,
-                )
+        if self.use_compression_guard and raw_compression_ratio > self.max_compression_ratio:
+            return RobustASRResult(
+                text="",
+                raw_text=raw_text,
+                text_after_deloop=raw_text,
+                has_speech=True,
+                was_looping=False,
+                rejection_reason=f"high_compression:{raw_compression_ratio:.2f}",
+                vad=vad_result,
+                asr=asr_result,
+                total_latency_ms=(time.perf_counter() - t0) * 1000,
+                avg_logprob=avg_logprob,
+                compression_ratio=raw_compression_ratio,
+                confidence_guard_status=self.confidence_guard_status,
+                alternatives=alternatives,
+            )
 
         # Stage 3: De-loop
         text_deloop, was_looping = remove_consecutive_repeats(raw_text)
