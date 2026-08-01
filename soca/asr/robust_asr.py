@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,8 @@ from .hallucination_heuristics import (
 from .registry import DEFAULT_ASR_MODEL_KEY
 from .vad import SpeechDetector, VADResult
 from .whisper_onnx import ASRResult, VietnameseASR
+
+LOGGER = logging.getLogger(__name__)
 
 ASR_DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "asr"
 CONFIDENCE_CALIBRATION_PATH = ASR_DATA_DIR / "threshold_calibration.json"
@@ -134,7 +137,11 @@ class RobustASRResult:
     total_latency_ms: float = 0.0
     avg_logprob: float = 0.0
     compression_ratio: float = 0.0
+    # Describes the logprob guard specifically (model-dependent). See
+    # `compression_guard_status` for the independent text-only guard — a
+    # rejection can come from either one regardless of this field's value.
     confidence_guard_status: str = ""
+    compression_guard_status: str = ""
     alternatives: tuple[str, ...] = ()
 
 
@@ -171,19 +178,31 @@ class RobustASR:
         self.max_compression_ratio = max_compression_ratio
         self.confidence_profile_model_key = confidence_profile_model_key
 
-        # Backend capability, duck-typed like the rest of the pipeline. Default
-        # True so VietnameseASR (and any fake without this attribute) keeps
-        # today's behavior unchanged.
-        backend_has_logprob = bool(getattr(self.asr, "supports_avg_logprob", True))
+        # Backend capability. Backends should declare `supports_avg_logprob`
+        # explicitly (VietnameseASR does); missing entirely is treated as
+        # capable for backward compatibility with pre-existing callers that
+        # predate this attribute, but that fallback is logged so a backend
+        # that genuinely can't produce a logprob and forgot to say so is
+        # observable instead of silently getting a meaningless threshold
+        # check applied to it.
+        if hasattr(self.asr, "supports_avg_logprob"):
+            backend_has_logprob = bool(self.asr.supports_avg_logprob)
+        else:
+            backend_has_logprob = True
+            LOGGER.warning(
+                "ASR backend %s does not declare supports_avg_logprob; "
+                "assuming logprob-capable for backward compatibility. "
+                "New backends should set this attribute explicitly.",
+                type(self.asr).__name__,
+            )
 
         if confidence_guard_skip_reason:
             self.use_logprob_guard = False
             self.confidence_guard_status = confidence_guard_skip_reason
         elif not backend_has_logprob:
             self.use_logprob_guard = False
-            self.confidence_guard_status = (
-                f"skipped:backend_has_no_logprob:{self.asr_model_key}"
-            )
+            reported_model_key = str(runtime_model_key) if runtime_model_key else "unknown_backend"
+            self.confidence_guard_status = f"skipped:backend_has_no_logprob:{reported_model_key}"
         else:
             (
                 self.use_logprob_guard,
@@ -192,7 +211,11 @@ class RobustASR:
 
         # Compression is a text-only signal independent of model identity, so
         # it must never be disabled just because the logprob guard is off.
+        # confidence_guard_status above only ever describes the logprob
+        # guard; expose this separately so a compression rejection is never
+        # misread as "all confidence checks were skipped".
         self.use_compression_guard = True
+        self.compression_guard_status = "enabled"
 
     def _resolve_confidence_guard_status(
         self, profile_model_key: str | None
@@ -226,6 +249,7 @@ class RobustASR:
                 asr=None,
                 total_latency_ms=(time.perf_counter() - t0) * 1000,
                 confidence_guard_status=self.confidence_guard_status,
+                compression_guard_status=self.compression_guard_status,
             )
 
         # Stage 2: ASR on speech-only audio (saves compute when VAD trimmed silence)
@@ -252,6 +276,7 @@ class RobustASR:
                 avg_logprob=avg_logprob,
                 compression_ratio=raw_compression_ratio,
                 confidence_guard_status=self.confidence_guard_status,
+                compression_guard_status=self.compression_guard_status,
                 alternatives=alternatives,
             )
 
@@ -269,6 +294,7 @@ class RobustASR:
                 avg_logprob=avg_logprob,
                 compression_ratio=raw_compression_ratio,
                 confidence_guard_status=self.confidence_guard_status,
+                compression_guard_status=self.compression_guard_status,
                 alternatives=alternatives,
             )
 
@@ -286,6 +312,7 @@ class RobustASR:
                 avg_logprob=avg_logprob,
                 compression_ratio=raw_compression_ratio,
                 confidence_guard_status=self.confidence_guard_status,
+                compression_guard_status=self.compression_guard_status,
                 alternatives=alternatives,
             )
 
@@ -319,6 +346,7 @@ class RobustASR:
             compression_ratio=raw_compression_ratio,
             total_latency_ms=(time.perf_counter() - t0) * 1000,
             confidence_guard_status=self.confidence_guard_status,
+            compression_guard_status=self.compression_guard_status,
             alternatives=alternatives,
         )
 

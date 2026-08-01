@@ -9,11 +9,14 @@ depend on the model at all.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
+import pytest
 
 from soca.asr.robust_asr import RobustASR
 from soca.asr.vad import VADResult
-from soca.asr.whisper_onnx import ASRResult
+from soca.asr.whisper_onnx import ASRResult, VietnameseASR
 
 DUMMY_AUDIO = np.zeros(16000, dtype=np.float32)
 
@@ -73,6 +76,73 @@ class _LogprobASR:
             rtf=0.0,
             avg_logprob=self.avg_logprob,
         )
+
+
+class _NoLogprobNoModelKeyASR:
+    """Backend that has neither `supports_avg_logprob=True` nor `model_key`,
+    e.g. a minimal custom backend. Used to check the no-logprob status string
+    does not misreport an unrelated fallback model key.
+    """
+
+    supports_avg_logprob = False
+
+    def __init__(self, text: str):
+        self.text = text
+
+    def transcribe(self, audio: np.ndarray) -> ASRResult:
+        return ASRResult(
+            text=self.text,
+            latency_ms=0.0,
+            audio_duration_ms=len(audio) / 16_000 * 1000,
+            rtf=0.0,
+            avg_logprob=0.0,
+        )
+
+
+def test_vietnamese_asr_declares_logprob_capability_explicitly():
+    # No instance needed (that would load ONNX models); the whole point is
+    # this is a class-level declaration, not an inferred default.
+    assert VietnameseASR.supports_avg_logprob is True
+
+
+def test_missing_capability_attribute_is_logged_not_silent(caplog: pytest.LogCaptureFixture):
+    with caplog.at_level(logging.WARNING, logger="soca.asr.robust_asr"):
+        RobustASR(
+            asr=_LogprobASR("xin chào thế giới", avg_logprob=0.0),
+            vad=_FakeVAD(),
+        )
+
+    assert any("supports_avg_logprob" in record.message for record in caplog.records)
+
+
+def test_no_logprob_status_does_not_report_unrelated_default_model_key():
+    pipeline = RobustASR(asr=_NoLogprobNoModelKeyASR("xin chào thế giới"), vad=_FakeVAD())
+
+    assert "unknown_backend" in pipeline.confidence_guard_status
+    # Must not silently claim this unrelated backend is phowhisper_tiny.
+    assert "phowhisper_tiny" not in pipeline.confidence_guard_status
+
+
+def test_compression_guard_status_stays_observable_when_logprob_guard_is_skipped():
+    """The bug the split fixed: before this PR, a skipped logprob guard made
+    `confidence_guard_status` read 'skipped:...' even on a run that was
+    actually rejected by the (still-active) compression guard, making the
+    status misleading. `compression_guard_status` must independently say the
+    compression guard was enabled.
+    """
+    repeated = "xin chào " * 80
+    pipeline = RobustASR(
+        asr=_LogprobASR(repeated, avg_logprob=0.0, model_key="phowhisper_base"),
+        vad=_FakeVAD(),
+        max_compression_ratio=0.5,
+        confidence_guard_skip_reason="skipped:missing_for_model:phowhisper_base",
+    )
+
+    result = pipeline.transcribe(DUMMY_AUDIO)
+
+    assert result.rejection_reason.startswith("high_compression:")
+    assert result.confidence_guard_status == "skipped:missing_for_model:phowhisper_base"
+    assert result.compression_guard_status == "enabled"
 
 
 def test_backend_without_logprob_still_rejects_high_compression():
