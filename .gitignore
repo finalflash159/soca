@@ -34,6 +34,9 @@ data/asr/*
 data/asr/boh/*
 !data/asr/boh/phowhisper_base_vi_boh_v1.json
 !data/asr/boh/phowhisper_small_vi_boh_v1.json
+!data/asr_codeswitch/
+data/asr_codeswitch/*
+!data/asr_codeswitch/sentences.txt
 !data/benchmarks/
 data/benchmarks/*
 !data/benchmarks/retrieval/
