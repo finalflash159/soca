@@ -633,6 +633,12 @@
     },
     "Qwen/Qwen3-ASR-1.7B": {
       "model_key": "Qwen/Qwen3-ASR-1.7B",
+      "run_type": "benchmark",
+      "hardware": {
+        "platform": "macOS-15.7.4-arm64-arm-64bit",
+        "processor": "arm",
+        "cpu_count": 12
+      },
       "dataset": {
         "speech": "google/fleurs:vi_vn:test",
         "noise": "data/noise_for_boh manifest",
@@ -641,7 +647,9 @@
         "n_speech_loaded": 200,
         "n_noise_loaded": 1000,
         "n_speech_avg_logprob_unreliable": 0,
-        "n_noise_avg_logprob_unreliable": 0
+        "n_noise_avg_logprob_unreliable": 0,
+        "speech_manifest_sha256": "81de44e064d2925ca31ea5e911d560157e3b8e83319bdee66a750e3bab00978c",
+        "noise_manifest_sha256": "48b01f480e0020e2041a0f845011b90af4af035da1517c83664e1848882543b6"
       },
       "runtime_identity": {
         "asr": {
@@ -738,6 +746,7 @@
       },
       "created_by": "local.calibrate_asr_confidence",
       "created_at_utc": "2026-08-01T21:23:10.798921+00:00",
+      "raw_log": "eval/results/asr_confidence_calibration_Qwen__Qwen3-ASR-1.7B.json",
       "usage_note": "Use recommended_thresholds as RobustASR(min_avg_logprob=..., max_compression_ratio=...). Re-run after changing model, decoder, provider, max_new_tokens, or VAD parameters."
     }
   }
