@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 import random
 import threading
 import time
@@ -14,6 +15,7 @@ from typing import Any
 
 import numpy as np
 
+from soca.asr import looks_like_context_echo
 from soca.core import (
     AudioSink,
     EndpointConfig,
@@ -52,6 +54,8 @@ class VoiceMonitorEvent:
 VoiceRuntimeBuilder = Callable[..., VoiceRuntimeBundle]
 VoiceRecorder = Callable[..., np.ndarray]
 VoiceEventQueue = Queue[VoiceMonitorEvent | None]
+
+LOGGER = logging.getLogger(__name__)
 
 # How often SoCa playfully calls out while nobody is speaking (ms of silence
 # between greetings). Spaced so it feels like a gentle "alo?", not a nag.
@@ -337,14 +341,46 @@ class VoiceMonitorController:
 
     @staticmethod
     def _build_partial_transcriber(bundle):
-        """RobustASR wraps VietnameseASR at .asr — partial uses the RAW one (cheap, no guards)."""
+        """RobustASR wraps the raw ASR backend at .asr — partial uses the RAW one (cheap, no guards)."""
         inner = getattr(bundle.asr, "asr", None) or bundle.asr
         if not hasattr(inner, "transcribe"):
             return None
 
+        try:
+            params = inspect.signature(inner.transcribe).parameters
+        except (TypeError, ValueError):
+            # Can't confirm context support either way. Defaulting to False
+            # is the observably-wrong-not-silently-wrong choice: worst case
+            # this ASR object DOES accept context and skips it here, in
+            # which case it falls back to its OWN default in transcribe()
+            # (documented per-backend) rather than crashing — but that must
+            # never happen unnoticed, so it's logged.
+            params = {}
+            LOGGER.warning(
+                "Could not inspect %s.transcribe signature; assuming no "
+                "context support for the partial-caption path.",
+                type(inner).__name__,
+            )
+        accepts_context = "context" in params or any(
+            p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()
+        )
+
         def transcribe(audio):
-            result = inner.transcribe(audio)
-            return getattr(result, "text", "") or ""
+            # context="" is DELIBERATE, not a missing value: partial exists
+            # only to render the caption, so it stays cheap and never risks
+            # the context-echo failure mode (§Q1b.3) leaking onto it. The
+            # final transcript that reaches the LLM uses the real context.
+            active_context = ""
+            kwargs = {"context": active_context} if accepts_context else {}
+            result = inner.transcribe(audio, **kwargs)
+            text = getattr(result, "text", "") or ""
+            # Belt-and-suspenders: partial has no RobustASR in front of it,
+            # so if a future change ever starts passing a real context here
+            # and someone forgets this comment, the echo would otherwise go
+            # straight to the caption with zero protection.
+            if looks_like_context_echo(text, active_context):
+                return ""
+            return text
 
         return transcribe
 

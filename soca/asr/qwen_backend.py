@@ -117,24 +117,35 @@ class QwenASRBackend:
         # give me scores", not an assumption (§5.3.3).
         probe = np.zeros(int(0.2 * SAMPLING_RATE), dtype=np.float32)
         try:
-            self._transcribe_with_scores(probe, max_new_tokens)
+            self._transcribe_with_scores(probe, max_new_tokens, context)
             self.supports_avg_logprob = True
         except QwenLogprobUnavailable:
             if require_logprob:
                 raise
             self.supports_avg_logprob = False
 
-    def transcribe(self, audio: np.ndarray, max_new_tokens: int = 128) -> ASRResult:
+    def transcribe(
+        self,
+        audio: np.ndarray,
+        max_new_tokens: int = 128,
+        *,
+        context: str | None = None,
+    ) -> ASRResult:
+        """`context=""` is for the cheap partial-caption path (§5.6.3): it
+        avoids the context-echo failure mode (§Q1b.3) leaking onto the
+        caption. `context=None` (default) uses `self.context` — the final
+        transcript that actually goes to the LLM."""
         if audio.ndim != 1:
             raise ValueError(f"Audio must be 1D mono, got shape {audio.shape}")
 
+        active_context = self.context if context is None else context
         audio = audio.astype(np.float32, copy=False)
         audio_duration_ms = len(audio) / SAMPLING_RATE * 1000
         start = time.perf_counter()
 
         if self.supports_avg_logprob:
             text, avg_logprob, avg_logprob_reliable = self._transcribe_with_scores(
-                audio, max_new_tokens
+                audio, max_new_tokens, active_context
             )
         else:
             # Only reachable when the caller explicitly accepted
@@ -143,7 +154,7 @@ class QwenASRBackend:
             # still runs.
             results = self._engine.transcribe(
                 audio=(audio, SAMPLING_RATE),
-                context=self.context,
+                context=active_context,
                 language=self.language,
             )
             text = results[0].text.strip() if results else ""
@@ -182,7 +193,7 @@ class QwenASRBackend:
         }
 
     def _transcribe_with_scores(
-        self, audio: np.ndarray, max_new_tokens: int
+        self, audio: np.ndarray, max_new_tokens: int, context: str
     ) -> tuple[str, float, bool]:
         """Inference path that keeps the generation scores.
 
@@ -196,7 +207,7 @@ class QwenASRBackend:
         model = engine.model
         processor = engine.processor
 
-        prompt = engine._build_text_prompt(context=self.context, force_language=self.language)
+        prompt = engine._build_text_prompt(context=context, force_language=self.language)
         inputs = processor(text=[prompt], audio=[audio], return_tensors="pt", padding=True)
         inputs = inputs.to(model.device).to(model.dtype)
 

@@ -6,6 +6,7 @@ from soca.asr.hallucination_heuristics import (
     check_heuristics,
     compression_ratio,
     is_filler_only,
+    looks_like_context_echo,
     n_gram_repetition,
     repetition_ratio,
 )
@@ -113,3 +114,30 @@ class TestCheckHeuristics:
         repeated = "xin chào " * 80
         normal = "bật đèn phòng khách rồi đặt hẹn giờ năm phút"
         assert compression_ratio(repeated) > compression_ratio(normal)
+
+
+class TestLooksLikeContextEcho:
+    CONTEXT = (
+        "Cuộc hội thoại về lập trình. Giữ nguyên cách viết các thuật ngữ tiếng Anh: "
+        "GitHub, PyTorch, TensorFlow, PostgreSQL, Docker, Kubernetes."
+    )
+
+    def test_verbatim_context_is_flagged(self):
+        assert looks_like_context_echo(self.CONTEXT, self.CONTEXT) is True
+
+    def test_case_changed_partial_echo_is_flagged(self):
+        echoed = "cuộc hội thoại về lập trình github pytorch tensorflow postgresql docker kubernetes"
+        assert looks_like_context_echo(echoed, self.CONTEXT) is True
+
+    def test_normal_transcript_is_not_flagged(self):
+        text = "mở cái repo trên github ra xem giúp tôi"
+        assert looks_like_context_echo(text, self.CONTEXT) is False
+
+    def test_short_sentence_sharing_a_couple_of_terms_is_not_flagged(self):
+        # Must not punish legitimate short sentences just for using terms
+        # that also appear in the context.
+        assert looks_like_context_echo("mở github", self.CONTEXT) is False
+
+    def test_empty_context_never_flags_anything(self):
+        assert looks_like_context_echo(self.CONTEXT, "") is False
+        assert looks_like_context_echo(self.CONTEXT, "   ") is False

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import inspect
+import logging
 import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 
@@ -52,6 +54,8 @@ from soca.memory import (
 )
 from soca.tools import MemorySearchTool, Tool, ToolRuntime
 from soca.tts import VALTEC_TTS_CONFIG, TTSEngine, create_tts_engine
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -535,18 +539,49 @@ def _smart_turn_model_dir() -> Path:
 def _warm_up_asr(bundle: VoiceRuntimeBundle, *, seconds: float) -> VoiceRuntimeWarmupResult:
     t0 = time.perf_counter()
     try:
-        sample_rate = getattr(bundle.asr.asr, "SAMPLING_RATE", 16000)
+        # cast: RobustASR.asr is typed VietnameseASR, but at runtime it can be
+        # any duck-typed backend (e.g. QwenASRBackend, which accepts a
+        # context kwarg VietnameseASR doesn't declare) — checked below via
+        # inspect.signature, not assumed.
+        inner = cast(Any, bundle.asr.asr)
+        sample_rate = getattr(inner, "SAMPLING_RATE", 16000)
+        try:
+            params = inspect.signature(inner.transcribe).parameters
+        except (TypeError, ValueError):
+            params = {}
+            LOGGER.warning(
+                "Could not inspect %s.transcribe signature; assuming no "
+                "context support for ASR warmup.",
+                type(inner).__name__,
+            )
+        accepts_context = "context" in params or any(
+            p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()
+        )
+        partial_kwargs = {"context": ""} if accepts_context else {}
+
         audio = np.zeros(max(int(sample_rate * seconds), 1), dtype=np.float32)
-        bundle.asr.asr.transcribe(audio, max_new_tokens=1)  # kernel warm
+        inner.transcribe(audio, max_new_tokens=1, **partial_kwargs)  # kernel warm
         # --- calibrate partial cadence: one REPRESENTATIVE decode (NOT max_new_tokens=1,
-        #     since 1 token does not measure decoder cost) ---
+        #     since 1 token does not measure decoder cost). Uses context="" —
+        #     the same context the live partial path actually calls with
+        #     (§5.6.3) — since a different context shifts decode cost (§Q1c.3).
         probe = (np.random.randn(sample_rate * 3) * 0.01).astype(np.float32)
         c0 = time.perf_counter()
-        bundle.asr.asr.transcribe(probe)  # real decode
+        inner.transcribe(probe, **partial_kwargs)  # real decode
         per_call_ms = (time.perf_counter() - c0) * 1000
         interval, enabled = partial_interval_from_cost(per_call_ms, os.cpu_count())
         bundle.partial_interval_ms = interval
         bundle.partial_enabled = enabled
+
+        # Also warm the FINAL path (the real context, if any): the first
+        # true call after a cold context switch pays an extra prefill cost
+        # (§Q1c.3), which must not land on the user's actual first turn.
+        # max_new_tokens=1: this call only needs to pay the context-prefill
+        # cost, not repeat the representative decode already measured above.
+        real_context = getattr(inner, "context", "") if accepts_context else ""
+        if real_context:
+            inner.transcribe(probe, max_new_tokens=1, context=real_context)
+
         detail = f"{bundle.config.asr_model} · partial={interval}ms{'' if enabled else ' (off)'}"
         return VoiceRuntimeWarmupResult(
             component="asr",

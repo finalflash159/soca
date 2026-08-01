@@ -140,8 +140,10 @@ class _FakeEngine:
         )
         self.processor = _FakeProcessor(decoded_text)
         self._fallback_text = fallback_text
+        self.last_context: str | None = None
 
     def _build_text_prompt(self, *, context, force_language):
+        self.last_context = context
         return f"[{context}][{force_language}]"
 
     def transcribe(self, *, audio, context, language):
@@ -195,6 +197,43 @@ def test_backend_uses_real_scores_when_generate_supports_output_scores(monkeypat
     )
     assert result.avg_logprob == pytest.approx(expected_logprob, abs=1e-6)
     assert result.avg_logprob_reliable is True
+
+
+def test_backend_uses_instance_context_by_default(monkeypatch):
+    engine = _FakeEngine(
+        eos_token_id=[999],
+        scores_factory=_one_confident_step_scores,
+        decoded_text="x",
+        generated_token_ids=[5],
+    )
+    _install_fake_qwen_asr(monkeypatch, engine)
+
+    backend = QwenASRBackend(context="tech context")
+    backend.transcribe(np.zeros(1600, dtype=np.float32))
+
+    assert engine.last_context == "tech context"
+
+
+def test_backend_overrides_context_per_call_for_the_cheap_partial_path(monkeypatch):
+    """context="" on a single call must not leak the instance's real context
+    onto that call — this is what keeps the partial-caption path (§5.6.3)
+    from ever showing the context-echo failure mode (§Q1b.3)."""
+    engine = _FakeEngine(
+        eos_token_id=[999],
+        scores_factory=_one_confident_step_scores,
+        decoded_text="x",
+        generated_token_ids=[5],
+    )
+    _install_fake_qwen_asr(monkeypatch, engine)
+
+    backend = QwenASRBackend(context="tech context")
+    backend.transcribe(np.zeros(1600, dtype=np.float32), context="")
+
+    assert engine.last_context == ""
+
+    # The instance's own context is untouched for the next (final) call.
+    backend.transcribe(np.zeros(1600, dtype=np.float32))
+    assert engine.last_context == "tech context"
 
 
 def test_backend_honors_per_call_max_new_tokens_not_just_the_constructor_default(monkeypatch):

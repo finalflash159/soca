@@ -25,11 +25,13 @@ class MockASR:
         avg_logprob: float = 0.0,
         model_key: str = "phowhisper_tiny",
         alternatives: tuple[str, ...] = (),
+        context: str = "",
     ):
         self.text = text
         self.avg_logprob = avg_logprob
         self.model_key = model_key
         self.alternatives = alternatives
+        self.context = context
         self.calls = 0
 
     def transcribe(self, audio: np.ndarray) -> ASRResult:
@@ -103,6 +105,57 @@ def test_high_compression_rejected():
     assert result.text == ""
     assert result.rejection_reason.startswith("high_compression:")
     assert result.compression_ratio > 0.5
+
+
+def test_context_echo_rejected():
+    """§Q1b.3: a context-aware backend can return its system prompt verbatim
+    instead of transcribing the audio. That text passes every other check
+    (clean grammar, no repetition, normal compression), so it needs its own
+    dedicated rejection reason."""
+    context = (
+        "Cuộc hội thoại về lập trình. GitHub, PyTorch, TensorFlow, "
+        "PostgreSQL, Docker, Kubernetes."
+    )
+    pipeline = RobustASR(
+        asr=MockASR(context, avg_logprob=0.0, context=context),
+        vad=MockVAD(),
+    )
+
+    result = pipeline.transcribe(DUMMY_AUDIO)
+
+    assert result.text == ""
+    assert result.rejection_reason == "context_echo"
+
+
+def test_short_sentence_sharing_context_vocabulary_is_not_rejected():
+    context = (
+        "Cuộc hội thoại về lập trình. GitHub, PyTorch, TensorFlow, "
+        "PostgreSQL, Docker, Kubernetes."
+    )
+    phrase = "mở repo trên github"
+    pipeline = RobustASR(
+        asr=MockASR(phrase, avg_logprob=0.0, context=context),
+        vad=MockVAD(),
+    )
+
+    result = pipeline.transcribe(DUMMY_AUDIO)
+
+    assert result.text == phrase
+    assert result.rejection_reason == ""
+
+
+def test_context_echo_check_is_skipped_when_backend_has_no_context():
+    """A backend without a .context attribute (VietnameseASR) must not be
+    affected by this guard at all — duck-typed default, not an error."""
+    pipeline = RobustASR(
+        asr=MockASR("xin chào thế giới", avg_logprob=0.0),
+        vad=MockVAD(),
+    )
+
+    result = pipeline.transcribe(DUMMY_AUDIO)
+
+    assert result.text == "xin chào thế giới"
+    assert result.rejection_reason == ""
 
 
 def test_deloop_then_clean_passes():
