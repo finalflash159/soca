@@ -10,7 +10,7 @@ import numpy as np
 import onnxruntime as ort
 from transformers import WhisperProcessor
 
-from .registry import DEFAULT_ASR_MODEL_KEY, get_asr_model_config
+from .registry import DEFAULT_ASR_MODEL_KEY, REPO_ROOT, get_asr_model_config
 
 
 @dataclass
@@ -105,8 +105,11 @@ class VietnameseASR:
             "model_key": self.model_key,
             "hf_repo": self.model_config.hf_repo,
             "params_m": self.model_config.params_m,
-            "model_dir": str(self.model_dir),
-            "onnx_dir": str(self.onnx_dir),
+            # Repo-relative, not the workstation's absolute path: this file
+            # is committed, and the absolute path is both non-portable and
+            # leaks the local username.
+            "model_dir": str(self.model_dir.relative_to(REPO_ROOT)),
+            "onnx_dir": str(self.onnx_dir.relative_to(REPO_ROOT)),
             "encoder_filename": self.ENCODER_FILENAME,
             "decoder_filename": self.DECODER_FILENAME,
             "decoder_variant": self.DECODER_VARIANT,
