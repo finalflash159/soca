@@ -23,7 +23,10 @@ Usage:
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import platform
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -79,6 +82,14 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
             if line:
                 rows.append(json.loads(line))
     return rows
+
+
+def _file_sha256(path: Path) -> str | None:
+    """Data revision for the calibration manifest, so a stored threshold can
+    be traced back to the exact speech/noise set that produced it."""
+    if not path.exists():
+        return None
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def load_speech_items(n: int) -> list[CalibrationItem]:
@@ -394,6 +405,7 @@ def calibrate_model(
     max_new_tokens: int,
     fallback_min_avg_logprob: float,
     fallback_max_compression_ratio: float,
+    run_type: str = "benchmark",
     asr_factory: Callable[[], CalibratableASR] | None = None,
     vad_factory: Callable[[], SpeechDetector] | None = None,
 ) -> dict[str, Any]:
@@ -499,12 +511,33 @@ def calibrate_model(
     )
     console.print(threshold_table)
 
+    cfg.EVAL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    # model_key may be a HF repo id containing "/" (e.g. "Qwen/Qwen3-ASR-0.6B"),
+    # which is not a valid filename component.
+    safe_model_key = model_key.replace("/", "__")
+    out_path = cfg.EVAL_RESULTS_DIR / f"asr_confidence_calibration_{safe_model_key}.json"
+    try:
+        raw_log = str(out_path.relative_to(cfg.REPO_ROOT))
+    except ValueError:
+        # EVAL_RESULTS_DIR isn't under REPO_ROOT (e.g. redirected to a tmp
+        # dir by a hermetic test) — an absolute path is still a valid,
+        # honest reference, just not the usual repo-relative shorthand.
+        raw_log = str(out_path)
+
     created_at = datetime.now(UTC).isoformat()
     calibration_payload = {
         "model_key": model_key,
+        "run_type": run_type,
+        "hardware": {
+            "platform": platform.platform(),
+            "processor": platform.processor(),
+            "cpu_count": os.cpu_count(),
+        },
         "dataset": {
             "speech": f"{cfg.FLEURS_REPO}:{cfg.FLEURS_LANG}:{cfg.FLEURS_SPLIT}",
+            "speech_manifest_sha256": _file_sha256(cfg.FLEURS_MANIFEST),
             "noise": "data/noise_for_boh manifest",
+            "noise_manifest_sha256": _file_sha256(cfg.NOISE_MANIFEST),
             "n_speech_requested": n_speech,
             "n_noise_requested": n_noise,
             "n_speech_loaded": len(speech_items),
@@ -521,18 +554,13 @@ def calibrate_model(
         },
         "created_by": "local.calibrate_asr_confidence",
         "created_at_utc": created_at,
+        "raw_log": raw_log,
         "usage_note": (
             "Use recommended_thresholds as RobustASR(min_avg_logprob=..., "
             "max_compression_ratio=...). Re-run after changing model, decoder, "
             "provider, max_new_tokens, or VAD parameters."
         ),
     }
-
-    cfg.EVAL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    # model_key may be a HF repo id containing "/" (e.g. "Qwen/Qwen3-ASR-0.6B"),
-    # which is not a valid filename component.
-    safe_model_key = model_key.replace("/", "__")
-    out_path = cfg.EVAL_RESULTS_DIR / f"asr_confidence_calibration_{safe_model_key}.json"
     out_payload = {
         "metadata": calibration_payload,
         "rows": rows,
@@ -625,6 +653,12 @@ def build_qwen_factory(
     type=float,
     help="Fallback Whisper-style compression ratio threshold.",
 )
+@click.option(
+    "--run-type",
+    default="benchmark",
+    type=click.Choice(["benchmark", "smoke"]),
+    help="'smoke' marks a partial/test run so it is never mistaken for release evidence.",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -639,6 +673,7 @@ def main(
     qwen_context: str,
     fallback_min_avg_logprob: float,
     fallback_max_compression_ratio: float,
+    run_type: str,
 ) -> None:
     selected_model_keys = list(dict.fromkeys(model_keys))
 
@@ -680,6 +715,7 @@ def main(
             max_new_tokens=max_new_tokens,
             fallback_min_avg_logprob=fallback_min_avg_logprob,
             fallback_max_compression_ratio=fallback_max_compression_ratio,
+            run_type=run_type,
             asr_factory=asr_factory,
         )
 
