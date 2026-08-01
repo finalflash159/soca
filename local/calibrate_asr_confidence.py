@@ -1,45 +1,30 @@
 """CLI: calibrate ASR confidence thresholds from speech + non-speech audio.
 
-= notebooks/05_asr_confidence_calibration.ipynb (Mac CLI version).
-
-This script calibrates the model-confidence guard used by `RobustASR`:
-
-    VAD -> PhoWhisper -> avg_logprob / compression_ratio guard
-
-Why this exists:
-    `local/calibrate_thresholds.py` calibrates text-only heuristics from
-    ground-truth transcripts. This script calibrates ASR-runtime confidence
-    signals from actual model outputs:
-
-    - avg_logprob: lower means the decoder was less confident
-    - compression_ratio: higher often means repetitive loop text
-
-The calibration must be tied to the exact ASR runtime identity:
-ONNX files, decoder variant, greedy decode, max_new_tokens, providers, and
-VAD parameters. Changing any of those can shift the metric distribution.
+Calibrates RobustASR's confidence guard (avg_logprob / compression_ratio)
+against real model output on FLEURS speech + noise samples. Must be re-run
+after changing model, decoder, provider, max_new_tokens, VAD params, or
+(for LLM-decoder backends like Qwen) context — any of those can shift the
+metric distribution.
 
 Outputs:
-    - eval/results/asr_confidence_calibration_{model_key}.json
-      Full per-sample audit log + recommended thresholds for each model.
-
-    - data/asr/threshold_calibration.json
-      Merged calibration payload under `asr_confidence_by_model`.
+    eval/results/asr_confidence_calibration_{model_key}.json  (full audit log)
+    data/asr/threshold_calibration.json  (merged, read by RobustASR at runtime)
 
 Usage:
-    # one-time prerequisites
     uv run python -m local.download_fleurs --target 200
     uv run python -m local.collect_noise
 
-    # smoke run
-    uv run python -m local.calibrate_asr_confidence --model phowhisper_base --n-speech 5 --n-noise 5 --providers cpu
+    uv run python -m local.calibrate_asr_confidence --model phowhisper_small --n-speech 200 --n-noise 1000
 
-    # main local run on Mac
-    uv run python -m local.calibrate_asr_confidence --model phowhisper_base --model phowhisper_small --n-speech 200 --n-noise 50
+    .venv-qwen/bin/python -m local.calibrate_asr_confidence \\
+        --backend qwen --model Qwen/Qwen3-ASR-1.7B --qwen-context tech \\
+        --n-speech 200 --n-noise 1000
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -55,8 +40,10 @@ from rich.progress import track
 from rich.table import Table
 
 from local import config as cfg
+from local.predict_qwen import CONTEXTS as QWEN_CONTEXTS
 from soca.asr import SpeechDetector, VietnameseASR
 from soca.asr.hallucination_heuristics import compression_ratio
+from soca.asr.protocols import CalibratableASR
 from soca.asr.registry import DEFAULT_ASR_MODEL_KEY
 
 console = Console()
@@ -191,7 +178,7 @@ def fmt_optional(value: float | None, digits: int = 3) -> str:
 
 def run_item(
     item: CalibrationItem,
-    asr: VietnameseASR,
+    asr: CalibratableASR,
     vad: SpeechDetector,
     max_new_tokens: int,
 ) -> dict[str, Any]:
@@ -405,7 +392,11 @@ def calibrate_model(
     max_new_tokens: int,
     fallback_min_avg_logprob: float,
     fallback_max_compression_ratio: float,
+    asr_factory: Callable[[], CalibratableASR] | None = None,
+    vad_factory: Callable[[], SpeechDetector] | None = None,
 ) -> dict[str, Any]:
+    # Manifest validation must happen before loading any model (fail fast) —
+    # keep this ordering when adding new call sites.
     speech_items = load_speech_items(n_speech)
     noise_items = load_noise_items(n_noise)
     items = speech_items + noise_items
@@ -416,12 +407,16 @@ def calibrate_model(
     )
 
     console.print(f"[bold]Loading ASR + VAD...[/bold] model={model_key}")
-    asr = VietnameseASR(
-        model_key=model_key,
-        num_threads=cfg.NUM_THREADS,
-        providers=provider_list,
+    asr: CalibratableASR = (
+        asr_factory()
+        if asr_factory is not None
+        else VietnameseASR(
+            model_key=model_key,
+            num_threads=cfg.NUM_THREADS,
+            providers=provider_list,
+        )
     )
-    vad = SpeechDetector()
+    vad = vad_factory() if vad_factory is not None else SpeechDetector()
     runtime_identity = {
         "asr": asr.runtime_metadata(max_new_tokens=max_new_tokens),
         "vad": {
@@ -512,7 +507,10 @@ def calibrate_model(
     }
 
     cfg.EVAL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = cfg.EVAL_RESULTS_DIR / f"asr_confidence_calibration_{model_key}.json"
+    # model_key may be a HF repo id containing "/" (e.g. "Qwen/Qwen3-ASR-0.6B"),
+    # which is not a valid filename component.
+    safe_model_key = model_key.replace("/", "__")
+    out_path = cfg.EVAL_RESULTS_DIR / f"asr_confidence_calibration_{safe_model_key}.json"
     out_payload = {
         "metadata": calibration_payload,
         "rows": rows,
@@ -529,14 +527,42 @@ def calibrate_model(
     return calibration_payload
 
 
+def build_qwen_factory(
+    model_id: str, *, context: str, device: str, dtype: str
+) -> Callable[[], CalibratableASR]:
+    def factory() -> CalibratableASR:
+        from soca.asr.qwen_backend import QwenASRBackend
+
+        # require_logprob=True is deliberate: calibrating a backend that
+        # can't produce a real logprob would just bake a meaningless
+        # threshold into the shared file.
+        return QwenASRBackend(
+            model_id=model_id,
+            context=context,
+            device=device,
+            dtype=dtype,
+            require_logprob=True,
+        )
+
+    return factory
+
+
 @click.command()
+@click.option(
+    "--backend",
+    default="whisper-onnx",
+    type=click.Choice(["whisper-onnx", "qwen"]),
+    help="ASR backend to calibrate.",
+)
 @click.option(
     "--model",
     "model_keys",
     multiple=True,
-    default=(DEFAULT_ASR_MODEL_KEY,),
-    type=click.Choice(list(cfg.MODEL_REGISTRY.keys())),
-    help="ASR model(s) to calibrate. Repeat flag for multi-model run.",
+    help=(
+        "whisper-onnx: registry key, e.g. phowhisper_small (default: "
+        f"{DEFAULT_ASR_MODEL_KEY}). qwen: HF model id, e.g. "
+        "Qwen/Qwen3-ASR-0.6B (required). Repeat for multiple models."
+    ),
 )
 @click.option("--n-speech", default=200, type=int, help="Number of FLEURS speech samples.")
 @click.option("--n-noise", default=50, type=int, help="Number of non-speech samples.")
@@ -544,13 +570,26 @@ def calibrate_model(
     "--providers",
     default="auto",
     type=click.Choice(["auto", "cpu"]),
-    help="auto = CoreML + CPU fallback on Mac; cpu = force CPU.",
+    help="whisper-onnx only: auto = CoreML + CPU fallback on Mac; cpu = force CPU.",
 )
 @click.option(
     "--max-new-tokens",
     default=cfg.MAX_NEW_TOKENS,
     type=int,
-    help="PhoWhisper greedy decode cap. Must match runtime/eval settings.",
+    help="Decode token cap. Must match runtime/eval settings.",
+)
+@click.option("--device", default="cpu", type=click.Choice(["cpu", "mps"]), help="qwen only.")
+@click.option(
+    "--dtype", default="float32", type=click.Choice(["float32", "bfloat16"]), help="qwen only."
+)
+@click.option(
+    "--qwen-context",
+    default="none",
+    type=click.Choice(sorted(QWEN_CONTEXTS)),
+    help=(
+        "qwen only: must match the context used in production, since "
+        "context shifts the logprob distribution (§5.5.3)."
+    ),
 )
 @click.option(
     "--fallback-min-avg-logprob",
@@ -564,21 +603,53 @@ def calibrate_model(
     type=float,
     help="Fallback Whisper-style compression ratio threshold.",
 )
+@click.pass_context
 def main(
+    ctx: click.Context,
+    backend: str,
     model_keys: tuple[str, ...],
     n_speech: int,
     n_noise: int,
     providers: str,
     max_new_tokens: int,
+    device: str,
+    dtype: str,
+    qwen_context: str,
     fallback_min_avg_logprob: float,
     fallback_max_compression_ratio: float,
 ) -> None:
-    provider_list = resolve_providers(providers)
-    console.print(f"ONNX providers: {provider_list}")
+    selected_model_keys = list(dict.fromkeys(model_keys))
 
-    seen: set[str] = set()
-    selected_model_keys = [key for key in model_keys if not (key in seen or seen.add(key))]
+    if backend == "whisper-onnx":
+        if not selected_model_keys:
+            selected_model_keys = [DEFAULT_ASR_MODEL_KEY]
+        unknown = [key for key in selected_model_keys if key not in cfg.MODEL_REGISTRY]
+        if unknown:
+            raise click.BadParameter(
+                f"Model not in registry: {unknown}. "
+                f"Valid: {sorted(cfg.MODEL_REGISTRY)}. "
+                "Use --backend qwen for models outside the registry."
+            )
+        provider_list = resolve_providers(providers)
+        console.print(f"ONNX providers: {provider_list}")
+    else:
+        if not selected_model_keys:
+            raise click.BadParameter(
+                "--model is required for --backend qwen, e.g. Qwen/Qwen3-ASR-0.6B."
+            )
+        if ctx.get_parameter_source("providers") != click.core.ParameterSource.DEFAULT:
+            console.print(
+                "[yellow]--providers is ignored for --backend qwen; "
+                "use --device/--dtype instead.[/yellow]"
+            )
+        provider_list = []
+
     for model_key in selected_model_keys:
+        asr_factory = (
+            build_qwen_factory(model_key, context=QWEN_CONTEXTS[qwen_context], device=device, dtype=dtype)
+            if backend == "qwen"
+            else None
+        )
         calibrate_model(
             model_key=model_key,
             n_speech=n_speech,
@@ -587,6 +658,7 @@ def main(
             max_new_tokens=max_new_tokens,
             fallback_min_avg_logprob=fallback_min_avg_logprob,
             fallback_max_compression_ratio=fallback_max_compression_ratio,
+            asr_factory=asr_factory,
         )
 
 
