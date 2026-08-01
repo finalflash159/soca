@@ -17,22 +17,13 @@ import numpy as np
 import torch
 
 from local.codeswitch_text import manifest_fingerprint
+from local.qwen_contexts import CONTEXTS
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = REPO_ROOT / "data" / "asr_codeswitch" / "manifest.jsonl"
 PRED_DIR = REPO_ROOT / "data" / "asr_codeswitch" / "preds"
 
 MODEL_ID = "Qwen/Qwen3-ASR-0.6B"
-
-CONTEXTS = {
-    "none": "",
-    "tech": (
-        "Cuộc hội thoại về lập trình. Giữ nguyên cách viết các thuật ngữ tiếng Anh: "
-        "GitHub, PyTorch, TensorFlow, TypeScript, PostgreSQL, Docker, Kubernetes, "
-        "ONNX Runtime, Redis, Kafka, Nginx, FastAPI, Flask, FAISS, llama.cpp, "
-        "API, JSON, GGUF, embedding, transformer, inference, latency, quantize."
-    ),
-}
 
 
 def main() -> None:

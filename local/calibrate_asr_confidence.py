@@ -40,7 +40,7 @@ from rich.progress import track
 from rich.table import Table
 
 from local import config as cfg
-from local.predict_qwen import CONTEXTS as QWEN_CONTEXTS
+from local.qwen_contexts import CONTEXTS as QWEN_CONTEXTS
 from soca.asr import SpeechDetector, VietnameseASR
 from soca.asr.hallucination_heuristics import compression_ratio
 from soca.asr.protocols import CalibratableASR
@@ -203,6 +203,7 @@ def run_item(
         "asr_ran": False,
         "raw_text": "",
         "avg_logprob": None,
+        "avg_logprob_reliable": False,
         "compression_ratio": 0.0,
         "asr_latency_ms": 0.0,
         "rtf": 0.0,
@@ -217,6 +218,7 @@ def run_item(
             "asr_ran": True,
             "raw_text": asr_result.text,
             "avg_logprob": asr_result.avg_logprob,
+            "avg_logprob_reliable": asr_result.avg_logprob_reliable,
             "compression_ratio": compression_ratio(asr_result.text),
             "asr_latency_ms": asr_result.latency_ms,
             "rtf": asr_result.rtf,
@@ -433,8 +435,26 @@ def calibrate_model(
 
     speech_asr = [r for r in rows if r["kind"] == "speech" and r["asr_ran"]]
     noise_asr = [r for r in rows if r["kind"] == "noise" and r["asr_ran"]]
-    speech_avg_logprob = [float(r["avg_logprob"]) for r in speech_asr if r["avg_logprob"] is not None]
-    noise_avg_logprob = [float(r["avg_logprob"]) for r in noise_asr if r["avg_logprob"] is not None]
+    # A backend can flag avg_logprob as unreliable (e.g. Qwen returns a
+    # placeholder 0.0 when every generated token was a skip-id, §5.3.2) —
+    # 0.0 reads as maximum confidence, so an unreliable row must never feed
+    # the threshold calculation, not even as an outlier.
+    speech_avg_logprob = [
+        float(r["avg_logprob"])
+        for r in speech_asr
+        if r["avg_logprob"] is not None and r["avg_logprob_reliable"]
+    ]
+    noise_avg_logprob = [
+        float(r["avg_logprob"])
+        for r in noise_asr
+        if r["avg_logprob"] is not None and r["avg_logprob_reliable"]
+    ]
+    speech_avg_logprob_unreliable = sum(
+        1 for r in speech_asr if r["avg_logprob"] is not None and not r["avg_logprob_reliable"]
+    )
+    noise_avg_logprob_unreliable = sum(
+        1 for r in noise_asr if r["avg_logprob"] is not None and not r["avg_logprob_reliable"]
+    )
     speech_compression = [float(r["compression_ratio"]) for r in speech_asr]
     noise_compression = [float(r["compression_ratio"]) for r in noise_asr]
 
@@ -489,6 +509,8 @@ def calibrate_model(
             "n_noise_requested": n_noise,
             "n_speech_loaded": len(speech_items),
             "n_noise_loaded": len(noise_items),
+            "n_speech_avg_logprob_unreliable": speech_avg_logprob_unreliable,
+            "n_noise_avg_logprob_unreliable": noise_avg_logprob_unreliable,
         },
         "runtime_identity": runtime_identity,
         "stats": stats,

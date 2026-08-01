@@ -51,8 +51,9 @@ class _ScriptedASR:
 
     model_key = "fake_backend"
 
-    def __init__(self, avg_logprobs: list[float]):
+    def __init__(self, avg_logprobs: list[float], reliable: list[bool] | None = None):
         self._avg_logprobs = iter(avg_logprobs)
+        self._reliable = iter(reliable if reliable is not None else [True] * len(avg_logprobs))
 
     def transcribe(self, audio: np.ndarray, max_new_tokens: int = 128) -> ASRResult:
         return ASRResult(
@@ -61,6 +62,7 @@ class _ScriptedASR:
             audio_duration_ms=len(audio) / SAMPLE_RATE * 1000,
             rtf=0.1,
             avg_logprob=next(self._avg_logprobs),
+            avg_logprob_reliable=next(self._reliable),
         )
 
     def runtime_metadata(self, max_new_tokens: int = 128) -> dict:
@@ -145,6 +147,44 @@ def test_calibrate_model_with_injected_factories_matches_hand_computed_threshold
     assert payload["runtime_identity"]["asr"]["backend"] == "fake"
     assert payload["dataset"]["n_speech_loaded"] == 3
     assert payload["dataset"]["n_noise_loaded"] == 2
+
+
+def test_calibrate_model_excludes_unreliable_avg_logprob_from_the_threshold(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """A backend can flag avg_logprob as unreliable (e.g. Qwen's placeholder
+    0.0 when every generated token is a skip-id — the most 'confident' value
+    possible). That must never reach the percentile/threshold computation,
+    not even as a data point."""
+    _write_manifests(tmp_path, n_speech=3, n_noise=0)
+    monkeypatch.setattr(cfg, "FLEURS_MANIFEST", tmp_path / "fleurs_manifest.jsonl")
+    monkeypatch.setattr(cfg, "FLEURS_WAV_DIR", tmp_path / "wav")
+    monkeypatch.setattr(cfg, "NOISE_MANIFEST", tmp_path / "noise_manifest.jsonl")
+    monkeypatch.setattr(cfg, "NOISE_ROOT", tmp_path / "wav")
+    monkeypatch.setattr(cfg, "THRESHOLD_CALIBRATION_PATH", tmp_path / "threshold_calibration.json")
+    monkeypatch.setattr(cfg, "EVAL_RESULTS_DIR", tmp_path / "eval_results")
+
+    # 0.0 is deliberately the "best" value in the list, but flagged
+    # unreliable — if it leaked into the stats it would dominate p01/percentile
+    # results and the test would catch that as a wrong threshold.
+    reliable_logprobs = [-0.30, -0.20]
+    payload = calibrate_model(
+        model_key="fake_backend",
+        n_speech=3,
+        n_noise=0,
+        provider_list=[],
+        max_new_tokens=64,
+        fallback_min_avg_logprob=-0.25,
+        fallback_max_compression_ratio=2.4,
+        asr_factory=lambda: _ScriptedASR(
+            [*reliable_logprobs, 0.0], reliable=[True, True, False]
+        ),
+        vad_factory=_AlwaysSpeechVAD,
+    )
+
+    expected_p01 = float(np.percentile(np.array(reliable_logprobs), 1))
+    assert payload["recommended_thresholds"]["min_avg_logprob"] == pytest.approx(expected_p01)
+    assert payload["dataset"]["n_speech_avg_logprob_unreliable"] == 1
 
 
 def test_calibrate_model_sanitizes_slash_in_model_key_for_the_output_filename(
