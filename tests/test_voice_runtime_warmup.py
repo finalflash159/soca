@@ -176,6 +176,10 @@ def test_warm_up_voice_runtime_warms_both_partial_and_final_context_paths() -> N
     warm_up_voice_runtime(bundle, asr_seconds=0.5)
 
     assert [call["context"] for call in inner.calls] == ["", "", "tech context"]
+    # The final-context warm call only needs to pay the prefill cost, not
+    # repeat a full representative decode (already measured by the second
+    # call above) — must stay cheap (max_new_tokens=1).
+    assert inner.calls[-1]["max_new_tokens"] == 1
 
 
 def test_warm_up_voice_runtime_skips_final_context_warm_when_context_is_empty() -> None:

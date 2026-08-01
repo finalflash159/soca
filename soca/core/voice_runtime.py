@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 import os
 import time
 from collections.abc import Callable
@@ -53,6 +54,8 @@ from soca.memory import (
 )
 from soca.tools import MemorySearchTool, Tool, ToolRuntime
 from soca.tts import VALTEC_TTS_CONFIG, TTSEngine, create_tts_engine
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -546,6 +549,11 @@ def _warm_up_asr(bundle: VoiceRuntimeBundle, *, seconds: float) -> VoiceRuntimeW
             params = inspect.signature(inner.transcribe).parameters
         except (TypeError, ValueError):
             params = {}
+            LOGGER.warning(
+                "Could not inspect %s.transcribe signature; assuming no "
+                "context support for ASR warmup.",
+                type(inner).__name__,
+            )
         accepts_context = "context" in params or any(
             p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()
         )
@@ -568,9 +576,11 @@ def _warm_up_asr(bundle: VoiceRuntimeBundle, *, seconds: float) -> VoiceRuntimeW
         # Also warm the FINAL path (the real context, if any): the first
         # true call after a cold context switch pays an extra prefill cost
         # (§Q1c.3), which must not land on the user's actual first turn.
+        # max_new_tokens=1: this call only needs to pay the context-prefill
+        # cost, not repeat the representative decode already measured above.
         real_context = getattr(inner, "context", "") if accepts_context else ""
         if real_context:
-            inner.transcribe(probe, context=real_context)
+            inner.transcribe(probe, max_new_tokens=1, context=real_context)
 
         detail = f"{bundle.config.asr_model} · partial={interval}ms{'' if enabled else ' (off)'}"
         return VoiceRuntimeWarmupResult(

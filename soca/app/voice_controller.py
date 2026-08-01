@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 import random
 import threading
 import time
@@ -53,6 +54,8 @@ class VoiceMonitorEvent:
 VoiceRuntimeBuilder = Callable[..., VoiceRuntimeBundle]
 VoiceRecorder = Callable[..., np.ndarray]
 VoiceEventQueue = Queue[VoiceMonitorEvent | None]
+
+LOGGER = logging.getLogger(__name__)
 
 # How often SoCa playfully calls out while nobody is speaking (ms of silence
 # between greetings). Spaced so it feels like a gentle "alo?", not a nag.
@@ -346,7 +349,18 @@ class VoiceMonitorController:
         try:
             params = inspect.signature(inner.transcribe).parameters
         except (TypeError, ValueError):
+            # Can't confirm context support either way. Defaulting to False
+            # is the observably-wrong-not-silently-wrong choice: worst case
+            # this ASR object DOES accept context and skips it here, in
+            # which case it falls back to its OWN default in transcribe()
+            # (documented per-backend) rather than crashing — but that must
+            # never happen unnoticed, so it's logged.
             params = {}
+            LOGGER.warning(
+                "Could not inspect %s.transcribe signature; assuming no "
+                "context support for the partial-caption path.",
+                type(inner).__name__,
+            )
         accepts_context = "context" in params or any(
             p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()
         )
