@@ -51,18 +51,22 @@
   "created_at_utc": "2026-05-20T18:28:52.682980+00:00",
   "usage_note": "Recommended values are p99 + margin. Copy these into the defaults of shrike7.asr.hallucination_heuristics.check_heuristics, or pass them via kwargs at call site.",
   "asr_confidence": {
+    "model_key": "phowhisper_tiny",
     "dataset": {
       "speech": "google/fleurs:vi_vn:test",
       "noise": "data/noise_for_boh manifest",
       "n_speech_requested": 200,
-      "n_noise_requested": 50,
+      "n_noise_requested": 1000,
       "n_speech_loaded": 200,
-      "n_noise_loaded": 50
+      "n_noise_loaded": 1000
     },
     "runtime_identity": {
       "asr": {
         "backend": "onnxruntime",
-        "asr_class": "shrike7.asr.whisper_onnx.VietnameseASR",
+        "asr_class": "soca.asr.whisper_onnx.VietnameseASR",
+        "model_key": "phowhisper_tiny",
+        "hf_repo": "huuquyet/PhoWhisper-tiny",
+        "params_m": 39,
         "model_dir": "/Users/vominhthinh/Workspace/shrike-7/models/phowhisper-tiny-onnx",
         "onnx_dir": "/Users/vominhthinh/Workspace/shrike-7/models/phowhisper-tiny-onnx/onnx",
         "encoder_filename": "encoder_model.onnx",
@@ -72,7 +76,10 @@
         "uses_kv_cache": false,
         "uses_beam_search": false,
         "max_new_tokens": 128,
-        "providers": ["CoreMLExecutionProvider", "CPUExecutionProvider"],
+        "providers": [
+          "CoreMLExecutionProvider",
+          "CPUExecutionProvider"
+        ],
         "sampling_rate": 16000,
         "suppression_tokens_enabled": true
       },
@@ -100,15 +107,15 @@
       {
         "metric": "avg_logprob",
         "cohort": "noise",
-        "n": 1,
-        "mean": -1.200074831644694,
-        "min": -1.200074831644694,
-        "p01": -1.200074831644694,
-        "p05": -1.200074831644694,
-        "p50": -1.200074831644694,
-        "p95": -1.200074831644694,
-        "p99": -1.200074831644694,
-        "max": -1.200074831644694
+        "n": 216,
+        "mean": -0.6788703950643246,
+        "min": -1.770889123280843,
+        "p01": -1.5403131643931072,
+        "p05": -1.2163371834158898,
+        "p50": -0.6871735929821046,
+        "p95": -0.15145671064965427,
+        "p99": -0.05643071876838804,
+        "max": -0.04733647749974178
       },
       {
         "metric": "compression_ratio",
@@ -126,28 +133,28 @@
       {
         "metric": "compression_ratio",
         "cohort": "noise",
-        "n": 1,
-        "mean": 0.42857142857142855,
-        "min": 0.42857142857142855,
-        "p01": 0.42857142857142855,
-        "p05": 0.42857142857142855,
-        "p50": 0.42857142857142855,
-        "p95": 0.42857142857142855,
-        "p99": 0.42857142857142855,
-        "max": 0.42857142857142855
+        "n": 216,
+        "mean": 2.049594323362643,
+        "min": 0.3333333333333333,
+        "p01": 0.3333333333333333,
+        "p05": 0.45714285714285713,
+        "p50": 1.0299253731343283,
+        "p95": 7.926934398654332,
+        "p99": 19.412280701754373,
+        "max": 36.23809523809524
       }
     ],
     "recommended_thresholds": {
-      "min_avg_logprob": -0.7251664943915855,
+      "min_avg_logprob": -0.250258157138477,
       "max_compression_ratio": 2.4
     },
     "threshold_selection": {
       "avg_logprob": {
-        "value": -0.7251664943915855,
-        "rule": "midpoint_between_noise_max_and_speech_p01",
+        "value": -0.250258157138477,
+        "rule": "speech_p01_distribution_overlap",
         "speech_p01": -0.250258157138477,
-        "noise_max": -1.200074831644694,
-        "clean_separation": true
+        "noise_max": -0.04733647749974178,
+        "clean_separation": false
       },
       "compression_ratio": {
         "value": 2.4,
@@ -156,7 +163,7 @@
       }
     },
     "created_by": "local.calibrate_asr_confidence",
-    "created_at_utc": "2026-05-21T10:12:35.161377+00:00",
+    "created_at_utc": "2026-08-01T15:49:29.405015+00:00",
     "usage_note": "Use recommended_thresholds as RobustASR(min_avg_logprob=..., max_compression_ratio=...). Re-run after changing model, decoder, provider, max_new_tokens, or VAD parameters."
   },
   "asr_confidence_by_model": {
@@ -166,9 +173,9 @@
         "speech": "google/fleurs:vi_vn:test",
         "noise": "data/noise_for_boh manifest",
         "n_speech_requested": 200,
-        "n_noise_requested": 50,
+        "n_noise_requested": 1000,
         "n_speech_loaded": 200,
-        "n_noise_loaded": 50
+        "n_noise_loaded": 1000
       },
       "runtime_identity": {
         "asr": {
@@ -186,7 +193,10 @@
           "uses_kv_cache": false,
           "uses_beam_search": false,
           "max_new_tokens": 128,
-          "providers": ["CoreMLExecutionProvider", "CPUExecutionProvider"],
+          "providers": [
+            "CoreMLExecutionProvider",
+            "CPUExecutionProvider"
+          ],
           "sampling_rate": 16000,
           "suppression_tokens_enabled": true
         },
@@ -214,15 +224,15 @@
         {
           "metric": "avg_logprob",
           "cohort": "noise",
-          "n": 1,
-          "mean": -0.9254755020141602,
-          "min": -0.9254755020141602,
-          "p01": -0.9254755020141602,
-          "p05": -0.9254755020141602,
-          "p50": -0.9254755020141602,
-          "p95": -0.9254755020141602,
-          "p99": -0.9254755020141602,
-          "max": -0.9254755020141602
+          "n": 216,
+          "mean": -0.5212788693276751,
+          "min": -1.5822715759277344,
+          "p01": -1.286303347349167,
+          "p05": -0.9791418167582729,
+          "p50": -0.5158680854959691,
+          "p95": -0.1647283713604526,
+          "p99": -0.05305217542955958,
+          "max": -0.031013389803328604
         },
         {
           "metric": "compression_ratio",
@@ -240,28 +250,28 @@
         {
           "metric": "compression_ratio",
           "cohort": "noise",
-          "n": 1,
-          "mean": 0.5,
-          "min": 0.5,
-          "p01": 0.5,
-          "p05": 0.5,
-          "p50": 0.5,
-          "p95": 0.5,
-          "p99": 0.5,
-          "max": 0.5
+          "n": 216,
+          "mean": 0.9762604543576239,
+          "min": 0.3333333333333333,
+          "p01": 0.34102564102564104,
+          "p05": 0.6979166666666667,
+          "p50": 1.0,
+          "p95": 1.1860587002096437,
+          "p99": 1.256277186140693,
+          "max": 1.293103448275862
         }
       ],
       "recommended_thresholds": {
-        "min_avg_logprob": -0.597513338559866,
+        "min_avg_logprob": -0.26955117510557175,
         "max_compression_ratio": 2.4
       },
       "threshold_selection": {
         "avg_logprob": {
-          "value": -0.597513338559866,
-          "rule": "midpoint_between_noise_max_and_speech_p01",
+          "value": -0.26955117510557175,
+          "rule": "speech_p01_distribution_overlap",
           "speech_p01": -0.26955117510557175,
-          "noise_max": -0.9254755020141602,
-          "clean_separation": true
+          "noise_max": -0.031013389803328604,
+          "clean_separation": false
         },
         "compression_ratio": {
           "value": 2.4,
@@ -270,7 +280,7 @@
         }
       },
       "created_by": "local.calibrate_asr_confidence",
-      "created_at_utc": "2026-06-03T14:14:43.164169+00:00",
+      "created_at_utc": "2026-08-01T16:02:58.614794+00:00",
       "usage_note": "Use recommended_thresholds as RobustASR(min_avg_logprob=..., max_compression_ratio=...). Re-run after changing model, decoder, provider, max_new_tokens, or VAD parameters."
     },
     "phowhisper_small": {
@@ -279,9 +289,9 @@
         "speech": "google/fleurs:vi_vn:test",
         "noise": "data/noise_for_boh manifest",
         "n_speech_requested": 200,
-        "n_noise_requested": 50,
+        "n_noise_requested": 1000,
         "n_speech_loaded": 200,
-        "n_noise_loaded": 50
+        "n_noise_loaded": 1000
       },
       "runtime_identity": {
         "asr": {
@@ -299,7 +309,10 @@
           "uses_kv_cache": false,
           "uses_beam_search": false,
           "max_new_tokens": 128,
-          "providers": ["CoreMLExecutionProvider", "CPUExecutionProvider"],
+          "providers": [
+            "CoreMLExecutionProvider",
+            "CPUExecutionProvider"
+          ],
           "sampling_rate": 16000,
           "suppression_tokens_enabled": true
         },
@@ -321,21 +334,21 @@
           "p05": -0.14556770302513813,
           "p50": -0.021390112434945457,
           "p95": -0.00035708654685323837,
-          "p99": -8.834762708635197e-5,
-          "max": -5.274805529364224e-5
+          "p99": -8.834762708635197e-05,
+          "max": -5.274805529364224e-05
         },
         {
           "metric": "avg_logprob",
           "cohort": "noise",
-          "n": 1,
-          "mean": -0.35026121139526367,
-          "min": -0.35026121139526367,
-          "p01": -0.35026121139526367,
-          "p05": -0.35026121139526367,
-          "p50": -0.35026121139526367,
-          "p95": -0.35026121139526367,
-          "p99": -0.35026121139526367,
-          "max": -0.35026121139526367
+          "n": 216,
+          "mean": -0.3397073094275612,
+          "min": -1.1828309694925945,
+          "p01": -1.0156434794267017,
+          "p05": -0.6962435613978993,
+          "p50": -0.32609176268944373,
+          "p95": -0.06579245353231625,
+          "p99": -0.027099183862859567,
+          "max": -0.0035418597134676847
         },
         {
           "metric": "compression_ratio",
@@ -353,28 +366,28 @@
         {
           "metric": "compression_ratio",
           "cohort": "noise",
-          "n": 1,
-          "mean": 0.2,
+          "n": 216,
+          "mean": 0.957852676731065,
           "min": 0.2,
-          "p01": 0.2,
-          "p05": 0.2,
-          "p50": 0.2,
-          "p95": 0.2,
-          "p99": 0.2,
-          "max": 0.2
+          "p01": 0.2727272727272727,
+          "p05": 0.5,
+          "p50": 0.9720266040688577,
+          "p95": 1.184546165884194,
+          "p99": 1.2532220496894408,
+          "max": 1.4705882352941178
         }
       ],
       "recommended_thresholds": {
-        "min_avg_logprob": -0.2597651798725128,
+        "min_avg_logprob": -0.16926914834976195,
         "max_compression_ratio": 2.4
       },
       "threshold_selection": {
         "avg_logprob": {
-          "value": -0.2597651798725128,
-          "rule": "midpoint_between_noise_max_and_speech_p01",
+          "value": -0.16926914834976195,
+          "rule": "speech_p01_distribution_overlap",
           "speech_p01": -0.16926914834976195,
-          "noise_max": -0.35026121139526367,
-          "clean_separation": true
+          "noise_max": -0.0035418597134676847,
+          "clean_separation": false
         },
         "compression_ratio": {
           "value": 2.4,
@@ -383,7 +396,239 @@
         }
       },
       "created_by": "local.calibrate_asr_confidence",
-      "created_at_utc": "2026-06-03T14:40:25.810144+00:00",
+      "created_at_utc": "2026-08-01T16:39:09.633662+00:00",
+      "usage_note": "Use recommended_thresholds as RobustASR(min_avg_logprob=..., max_compression_ratio=...). Re-run after changing model, decoder, provider, max_new_tokens, or VAD parameters."
+    },
+    "phowhisper_tiny": {
+      "model_key": "phowhisper_tiny",
+      "dataset": {
+        "speech": "google/fleurs:vi_vn:test",
+        "noise": "data/noise_for_boh manifest",
+        "n_speech_requested": 200,
+        "n_noise_requested": 1000,
+        "n_speech_loaded": 200,
+        "n_noise_loaded": 1000
+      },
+      "runtime_identity": {
+        "asr": {
+          "backend": "onnxruntime",
+          "asr_class": "soca.asr.whisper_onnx.VietnameseASR",
+          "model_key": "phowhisper_tiny",
+          "hf_repo": "huuquyet/PhoWhisper-tiny",
+          "params_m": 39,
+          "model_dir": "/Users/vominhthinh/Workspace/shrike-7/models/phowhisper-tiny-onnx",
+          "onnx_dir": "/Users/vominhthinh/Workspace/shrike-7/models/phowhisper-tiny-onnx/onnx",
+          "encoder_filename": "encoder_model.onnx",
+          "decoder_filename": "decoder_model.onnx",
+          "decoder_variant": "decoder_model_no_kv_cache",
+          "decode_strategy": "greedy",
+          "uses_kv_cache": false,
+          "uses_beam_search": false,
+          "max_new_tokens": 128,
+          "providers": [
+            "CoreMLExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "sampling_rate": 16000,
+          "suppression_tokens_enabled": true
+        },
+        "vad": {
+          "threshold": 0.5,
+          "min_speech_ms": 250,
+          "min_silence_ms": 500,
+          "speech_pad_ms": 200
+        }
+      },
+      "stats": [
+        {
+          "metric": "avg_logprob",
+          "cohort": "speech",
+          "n": 200,
+          "mean": -0.0804841145679,
+          "min": -0.3136236568291982,
+          "p01": -0.250258157138477,
+          "p05": -0.19139410446816277,
+          "p50": -0.0667912136940729,
+          "p95": -0.016610837786141225,
+          "p99": -0.006224856420331216,
+          "max": -0.003978360493977865
+        },
+        {
+          "metric": "avg_logprob",
+          "cohort": "noise",
+          "n": 216,
+          "mean": -0.6788703950643246,
+          "min": -1.770889123280843,
+          "p01": -1.5403131643931072,
+          "p05": -1.2163371834158898,
+          "p50": -0.6871735929821046,
+          "p95": -0.15145671064965427,
+          "p99": -0.05643071876838804,
+          "max": -0.04733647749974178
+        },
+        {
+          "metric": "compression_ratio",
+          "cohort": "speech",
+          "n": 200,
+          "mean": 1.2040132793487532,
+          "min": 0.9339622641509434,
+          "p01": 0.9404385171790235,
+          "p05": 0.9799130434782608,
+          "p50": 1.1903947368421053,
+          "p95": 1.4485601568772775,
+          "p99": 1.5426587907347182,
+          "max": 1.586046511627907
+        },
+        {
+          "metric": "compression_ratio",
+          "cohort": "noise",
+          "n": 216,
+          "mean": 2.049594323362643,
+          "min": 0.3333333333333333,
+          "p01": 0.3333333333333333,
+          "p05": 0.45714285714285713,
+          "p50": 1.0299253731343283,
+          "p95": 7.926934398654332,
+          "p99": 19.412280701754373,
+          "max": 36.23809523809524
+        }
+      ],
+      "recommended_thresholds": {
+        "min_avg_logprob": -0.250258157138477,
+        "max_compression_ratio": 2.4
+      },
+      "threshold_selection": {
+        "avg_logprob": {
+          "value": -0.250258157138477,
+          "rule": "speech_p01_distribution_overlap",
+          "speech_p01": -0.250258157138477,
+          "noise_max": -0.04733647749974178,
+          "clean_separation": false
+        },
+        "compression_ratio": {
+          "value": 2.4,
+          "rule": "whisper_default_above_speech_p99",
+          "speech_p99": 1.5426587907347182
+        }
+      },
+      "created_by": "local.calibrate_asr_confidence",
+      "created_at_utc": "2026-08-01T15:49:29.405015+00:00",
+      "usage_note": "Use recommended_thresholds as RobustASR(min_avg_logprob=..., max_compression_ratio=...). Re-run after changing model, decoder, provider, max_new_tokens, or VAD parameters."
+    },
+    "phowhisper_medium": {
+      "model_key": "phowhisper_medium",
+      "dataset": {
+        "speech": "google/fleurs:vi_vn:test",
+        "noise": "data/noise_for_boh manifest",
+        "n_speech_requested": 200,
+        "n_noise_requested": 1000,
+        "n_speech_loaded": 200,
+        "n_noise_loaded": 1000
+      },
+      "runtime_identity": {
+        "asr": {
+          "backend": "onnxruntime",
+          "asr_class": "soca.asr.whisper_onnx.VietnameseASR",
+          "model_key": "phowhisper_medium",
+          "hf_repo": "huuquyet/PhoWhisper-medium",
+          "params_m": 769,
+          "model_dir": "/Users/vominhthinh/Workspace/shrike-7/models/phowhisper-medium-onnx",
+          "onnx_dir": "/Users/vominhthinh/Workspace/shrike-7/models/phowhisper-medium-onnx/onnx",
+          "encoder_filename": "encoder_model.onnx",
+          "decoder_filename": "decoder_model.onnx",
+          "decoder_variant": "decoder_model_no_kv_cache",
+          "decode_strategy": "greedy",
+          "uses_kv_cache": false,
+          "uses_beam_search": false,
+          "max_new_tokens": 128,
+          "providers": [
+            "CoreMLExecutionProvider",
+            "CPUExecutionProvider"
+          ],
+          "sampling_rate": 16000,
+          "suppression_tokens_enabled": true
+        },
+        "vad": {
+          "threshold": 0.5,
+          "min_speech_ms": 250,
+          "min_silence_ms": 500,
+          "speech_pad_ms": 200
+        }
+      },
+      "stats": [
+        {
+          "metric": "avg_logprob",
+          "cohort": "speech",
+          "n": 200,
+          "mean": -0.03608943009185262,
+          "min": -0.39913304646809894,
+          "p01": -0.2897948847361973,
+          "p05": -0.12079626058423241,
+          "p50": -0.01562865435422122,
+          "p95": -0.000306231003733413,
+          "p99": -5.8115978206350694e-05,
+          "max": -5.317869640531994e-05
+        },
+        {
+          "metric": "avg_logprob",
+          "cohort": "noise",
+          "n": 216,
+          "mean": -0.3313234179504667,
+          "min": -1.0407586097717285,
+          "p01": -0.8479472879568736,
+          "p05": -0.6955340965556712,
+          "p50": -0.32069704851364705,
+          "p95": -0.033789413909975474,
+          "p99": -0.004220143486471773,
+          "max": -0.0009565353393554688
+        },
+        {
+          "metric": "compression_ratio",
+          "cohort": "speech",
+          "n": 200,
+          "mean": 1.2005707835140507,
+          "min": 0.9259259259259259,
+          "p01": 0.9368744982606368,
+          "p05": 0.9883918617614269,
+          "p50": 1.1819083746717247,
+          "p95": 1.4701712381244254,
+          "p99": 1.5370609177838341,
+          "max": 1.6273584905660377
+        },
+        {
+          "metric": "compression_ratio",
+          "cohort": "noise",
+          "n": 216,
+          "mean": 0.9643177564337984,
+          "min": 0.2,
+          "p01": 0.2109090909090909,
+          "p05": 0.5,
+          "p50": 0.9728490185287103,
+          "p95": 1.212549586499025,
+          "p99": 1.3076518218623479,
+          "max": 1.6666666666666667
+        }
+      ],
+      "recommended_thresholds": {
+        "min_avg_logprob": -0.2897948847361973,
+        "max_compression_ratio": 2.4
+      },
+      "threshold_selection": {
+        "avg_logprob": {
+          "value": -0.2897948847361973,
+          "rule": "speech_p01_distribution_overlap",
+          "speech_p01": -0.2897948847361973,
+          "noise_max": -0.0009565353393554688,
+          "clean_separation": false
+        },
+        "compression_ratio": {
+          "value": 2.4,
+          "rule": "whisper_default_above_speech_p99",
+          "speech_p99": 1.5370609177838341
+        }
+      },
+      "created_by": "local.calibrate_asr_confidence",
+      "created_at_utc": "2026-08-01T18:19:10.821118+00:00",
       "usage_note": "Use recommended_thresholds as RobustASR(min_avg_logprob=..., max_compression_ratio=...). Re-run after changing model, decoder, provider, max_new_tokens, or VAD parameters."
     }
   }
