@@ -28,13 +28,14 @@ def test_mean_selected_logprob_averages_log_softmax_at_generated_tokens():
     scores = (step0, step1)
     token_ids = torch.tensor([2, 3])
 
-    result = _mean_selected_logprob(scores, token_ids, skip_ids=frozenset())
+    result, reliable = _mean_selected_logprob(scores, token_ids, skip_ids=frozenset())
 
     expected = (
         float(torch.log_softmax(step0[0], dim=-1)[2])
         + float(torch.log_softmax(step1[0], dim=-1)[3])
     ) / 2
     assert result == pytest.approx(expected, abs=1e-6)
+    assert reliable is True
 
 
 def test_mean_selected_logprob_excludes_skip_ids_from_the_average():
@@ -43,20 +44,21 @@ def test_mean_selected_logprob_excludes_skip_ids_from_the_average():
     step1 = torch.zeros((1, 5))  # uniform, would drag the average down if kept
     token_ids = torch.tensor([1, 99])  # 99 stands in for an EOS id
 
-    result = _mean_selected_logprob((step0, step1), token_ids, skip_ids=frozenset({99}))
+    result, reliable = _mean_selected_logprob((step0, step1), token_ids, skip_ids=frozenset({99}))
 
     only_step0 = float(torch.log_softmax(step0[0], dim=-1)[1])
     assert result == pytest.approx(only_step0, abs=1e-6)
+    assert reliable is True
 
 
-def test_mean_selected_logprob_returns_zero_when_every_token_is_skipped():
-    """The dangerous edge case flagged in the plan: counted==0 -> 0.0, which
-    is the MOST confident value possible. RobustASR's empty_asr check must
-    run before the confidence guard to keep this from ever being read as
-    real confidence — see robust_asr.py's stage ordering."""
+def test_mean_selected_logprob_flags_unreliable_when_every_token_is_skipped():
+    """The dangerous edge case flagged in the plan: counted==0 would give
+    0.0, the MOST confident value possible, if not flagged. `reliable=False`
+    lets callers tell this apart from a real high-confidence score."""
     step0 = torch.zeros((1, 3))
-    result = _mean_selected_logprob((step0,), torch.tensor([7]), skip_ids=frozenset({7}))
+    result, reliable = _mean_selected_logprob((step0,), torch.tensor([7]), skip_ids=frozenset({7}))
     assert result == 0.0
+    assert reliable is False
 
 
 # --- QwenASRBackend: stub qwen_asr via sys.modules --------------------------
@@ -87,31 +89,54 @@ class _FakeProcessor:
 
 
 class _FakeModel:
-    def __init__(self, *, eos_token_id, scores_factory, generated_token_ids=None):
+    def __init__(
+        self,
+        *,
+        eos_token_id,
+        scores_factory,
+        generated_token_ids=None,
+        return_plain_tensor=False,
+    ):
         self.device = "cpu"
         self.dtype = torch.float32
         self.generation_config = SimpleNamespace(eos_token_id=eos_token_id)
         self._scores_factory = scores_factory
         self._generated_token_ids = generated_token_ids
+        self._return_plain_tensor = return_plain_tensor
+        self.last_generate_kwargs: dict | None = None
 
     def generate(self, **kwargs):
+        self.last_generate_kwargs = kwargs
         prompt_len = int(kwargs["input_ids"].shape[1])
         scores = self._scores_factory()
         n_steps = len(scores) if scores is not None else 1
         tail = self._generated_token_ids or [0] * n_steps
         sequences = torch.zeros((1, prompt_len + n_steps), dtype=torch.long)
         sequences[0, prompt_len:] = torch.tensor(tail, dtype=torch.long)
+        if self._return_plain_tensor:
+            # Some runtimes return a bare tensor instead of a structured
+            # object when return_dict_in_generate isn't honored — must not
+            # crash with AttributeError, just fail the typed way.
+            return sequences
         return _FakeGenerateOutput(sequences=sequences, scores=scores)
 
 
 class _FakeEngine:
     def __init__(
-        self, *, eos_token_id, scores_factory, decoded_text, fallback_text="", generated_token_ids=None
+        self,
+        *,
+        eos_token_id,
+        scores_factory,
+        decoded_text,
+        fallback_text="",
+        generated_token_ids=None,
+        return_plain_tensor=False,
     ):
         self.model = _FakeModel(
             eos_token_id=eos_token_id,
             scores_factory=scores_factory,
             generated_token_ids=generated_token_ids,
+            return_plain_tensor=return_plain_tensor,
         )
         self.processor = _FakeProcessor(decoded_text)
         self._fallback_text = fallback_text
@@ -169,10 +194,42 @@ def test_backend_uses_real_scores_when_generate_supports_output_scores(monkeypat
         torch.log_softmax(_one_confident_step_scores()[0][0], dim=-1)[5]
     )
     assert result.avg_logprob == pytest.approx(expected_logprob, abs=1e-6)
+    assert result.avg_logprob_reliable is True
+
+
+def test_backend_honors_per_call_max_new_tokens_not_just_the_constructor_default(monkeypatch):
+    engine = _FakeEngine(
+        eos_token_id=[999],
+        scores_factory=_one_confident_step_scores,
+        decoded_text="xin chào",
+        generated_token_ids=[5],
+    )
+    _install_fake_qwen_asr(monkeypatch, engine)
+
+    backend = QwenASRBackend(max_new_tokens=256)
+    backend.transcribe(np.zeros(1600, dtype=np.float32), max_new_tokens=64)
+
+    assert engine.model.last_generate_kwargs["max_new_tokens"] == 64
 
 
 def test_backend_raises_at_init_when_scores_unavailable_and_logprob_required(monkeypatch):
     engine = _FakeEngine(eos_token_id=[999], scores_factory=lambda: None, decoded_text="x")
+    _install_fake_qwen_asr(monkeypatch, engine)
+
+    with pytest.raises(QwenLogprobUnavailable):
+        QwenASRBackend(require_logprob=True)
+
+
+def test_backend_raises_when_generate_returns_a_plain_tensor_instead_of_scores(monkeypatch):
+    """Some runtimes silently ignore return_dict_in_generate and hand back a
+    bare tensor. Must fail the typed way (QwenLogprobUnavailable), not crash
+    with an unrelated AttributeError."""
+    engine = _FakeEngine(
+        eos_token_id=[999],
+        scores_factory=_one_confident_step_scores,
+        decoded_text="x",
+        return_plain_tensor=True,
+    )
     _install_fake_qwen_asr(monkeypatch, engine)
 
     with pytest.raises(QwenLogprobUnavailable):
@@ -196,6 +253,7 @@ def test_backend_falls_back_when_scores_unavailable_and_logprob_not_required(mon
 
     assert result.text == "fallback transcript"
     assert result.avg_logprob == 0.0
+    assert result.avg_logprob_reliable is False
 
 
 def test_runtime_metadata_records_context_and_language(monkeypatch):

@@ -26,8 +26,9 @@ class QwenLogprobUnavailable(RuntimeError):
 
 def _mean_selected_logprob(
     scores: Sequence[Any], token_ids: Any, skip_ids: frozenset[int]
-) -> float:
-    """Mean log P of the tokens the model actually generated.
+) -> tuple[float, bool]:
+    """Mean log P of the tokens the model actually generated, plus whether
+    that mean is meaningful.
 
     Same quantity as VietnameseASR's selected-token logprob: log-softmax over
     each step's logits, read at the generated token. Special tokens
@@ -51,12 +52,12 @@ def _mean_selected_logprob(
         logprobs = torch.log_softmax(step_scores[0].float(), dim=-1)
         total += float(logprobs[token])
         counted += 1
-    # If every generated token was a skip_id, counted==0 and this returns
-    # 0.0 — the most "confident" value possible. RobustASR's empty_asr check
-    # runs before the confidence guard and normally catches this case first,
-    # but that ordering is not something this function can enforce; the
-    # empty-text path must stay ahead of the guard (see tests).
-    return total / counted if counted else 0.0
+    if counted == 0:
+        # Every generated token was a skip_id: there is nothing to average.
+        # 0.0 would read as maximum confidence to a naive consumer, so this
+        # is flagged unreliable rather than left to look like a real score.
+        return 0.0, False
+    return total / counted, True
 
 
 class QwenASRBackend:
@@ -107,7 +108,8 @@ class QwenASRBackend:
         )
 
         eos = getattr(self._engine.model.generation_config, "eos_token_id", None)
-        eos = eos or list(DEFAULT_EOS_TOKEN_IDS)
+        if eos is None:
+            eos = list(DEFAULT_EOS_TOKEN_IDS)
         self._skip_ids = frozenset(eos if isinstance(eos, (list, tuple)) else [eos])
 
         # Measure capability with 200ms of silence rather than trusting
@@ -115,7 +117,7 @@ class QwenASRBackend:
         # give me scores", not an assumption (§5.3.3).
         probe = np.zeros(int(0.2 * SAMPLING_RATE), dtype=np.float32)
         try:
-            self._transcribe_with_scores(probe)
+            self._transcribe_with_scores(probe, max_new_tokens)
             self.supports_avg_logprob = True
         except QwenLogprobUnavailable:
             if require_logprob:
@@ -131,7 +133,9 @@ class QwenASRBackend:
         start = time.perf_counter()
 
         if self.supports_avg_logprob:
-            text, avg_logprob = self._transcribe_with_scores(audio)
+            text, avg_logprob, avg_logprob_reliable = self._transcribe_with_scores(
+                audio, max_new_tokens
+            )
         else:
             # Only reachable when the caller explicitly accepted
             # require_logprob=False. RobustASR reads supports_avg_logprob to
@@ -144,6 +148,7 @@ class QwenASRBackend:
             )
             text = results[0].text.strip() if results else ""
             avg_logprob = 0.0
+            avg_logprob_reliable = False
 
         latency_ms = (time.perf_counter() - start) * 1000
         return ASRResult(
@@ -152,6 +157,7 @@ class QwenASRBackend:
             audio_duration_ms=audio_duration_ms,
             rtf=latency_ms / max(audio_duration_ms, 1.0),
             avg_logprob=avg_logprob,
+            avg_logprob_reliable=avg_logprob_reliable,
         )
 
     def runtime_metadata(self, max_new_tokens: int = 128) -> dict[str, Any]:
@@ -175,7 +181,9 @@ class QwenASRBackend:
             "supports_avg_logprob": self.supports_avg_logprob,
         }
 
-    def _transcribe_with_scores(self, audio: np.ndarray) -> tuple[str, float]:
+    def _transcribe_with_scores(
+        self, audio: np.ndarray, max_new_tokens: int
+    ) -> tuple[str, float, bool]:
         """Inference path that keeps the generation scores.
 
         Mirrors what Qwen3ASRModel._infer_asr_transformers does for batch=1,
@@ -192,9 +200,16 @@ class QwenASRBackend:
         inputs = processor(text=[prompt], audio=[audio], return_tensors="pt", padding=True)
         inputs = inputs.to(model.device).to(model.dtype)
 
+        # NOT passing return_dict_in_generate=True here: verified against the
+        # real package that Qwen3ASRForConditionalGeneration.generate()
+        # already hardcodes it internally before forwarding to
+        # self.thinker.generate() — passing it again raises "got multiple
+        # values for keyword argument 'return_dict_in_generate'" (§5.3.2).
+        # The `output.scores is None` check below is the actual defense if
+        # a future qwen-asr version stops forcing this.
         output = model.generate(
             **inputs,
-            max_new_tokens=self._max_new_tokens,
+            max_new_tokens=max_new_tokens,
             output_scores=True,
         )
         if getattr(output, "scores", None) is None:
@@ -211,5 +226,7 @@ class QwenASRBackend:
             [generated], skip_special_tokens=True, clean_up_tokenization_spaces=False
         )[0]
         _language, text = parse_asr_output(raw, user_language=self.language)
-        avg_logprob = _mean_selected_logprob(output.scores, generated, self._skip_ids)
-        return text.strip(), avg_logprob
+        avg_logprob, avg_logprob_reliable = _mean_selected_logprob(
+            output.scores, generated, self._skip_ids
+        )
+        return text.strip(), avg_logprob, avg_logprob_reliable
