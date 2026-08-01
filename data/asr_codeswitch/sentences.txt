@@ -1,0 +1,40 @@
+mở cái repo trên github ra xem giúp tôi
+cái model này train bằng pytorch hay tensorflow vậy
+chạy docker compose up rồi check log giúp tôi
+query này chạy trên postgresql bị chậm quá
+cài onnxruntime vào rồi convert model sang onnx
+viết lại cái component này bằng typescript đi
+cái api này trả về json hay xml
+đọc file readme trong thư mục root
+deploy lên kubernetes hay chạy local thôi
+cache kết quả vào redis cho nhanh
+thằng nginx đang proxy sang port mấy
+merge cái pull request đó vào branch main đi
+chạy pytest xem có test nào fail không
+cái embedding này dùng model nào vậy
+tăng batch size lên rồi chạy inference lại
+cái transformer này có bao nhiêu layer
+build lại image rồi push lên registry
+config file nằm trong thư mục config hay root
+thêm index vào database cho query nhanh hơn
+cái function này bị memory leak
+xem cái commit history của branch này
+setup ci cd bằng github actions
+cái latency của model này bao nhiêu millisecond
+load model lên gpu hay chạy cpu thôi
+parse cái response json này ra
+viết unit test cho cái class này
+refactor lại cái module authentication
+token này hết hạn rồi phải refresh
+cái websocket này bị disconnect liên tục
+optimize lại cái query bằng cách thêm cache
+dùng fastapi hay flask cho backend
+cái docker image này nặng mấy gigabyte
+chạy migration cho database trước đã
+log level đang để debug hay info
+cái dependency này bị conflict version
+export model sang định dạng gguf
+thằng llama chạy bằng llama cpp python
+quantize model xuống int tám cho nhẹ
+cái vector database này dùng faiss à
+stream cái response về client theo từng chunk
