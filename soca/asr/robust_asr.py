@@ -16,6 +16,7 @@ from .hallucination_heuristics import (
     HeuristicCheck,
     check_heuristics,
     compression_ratio,
+    looks_like_context_echo,
 )
 from .registry import DEFAULT_ASR_MODEL_KEY
 from .vad import SpeechDetector, VADResult
@@ -306,6 +307,30 @@ class RobustASR:
                 has_speech=True,
                 was_looping=False,
                 rejection_reason=f"high_compression:{raw_compression_ratio:.2f}",
+                vad=vad_result,
+                asr=asr_result,
+                total_latency_ms=(time.perf_counter() - t0) * 1000,
+                avg_logprob=avg_logprob,
+                compression_ratio=raw_compression_ratio,
+                confidence_guard_status=self.confidence_guard_status,
+                compression_guard_status=self.compression_guard_status,
+                alternatives=alternatives,
+            )
+
+        # Context-echo guard: a context-aware backend can occasionally
+        # return its system prompt verbatim instead of transcribing the
+        # audio (§Q1b.3). That output passes every check above (clean text,
+        # normal compression), so it needs its own dedicated check, run
+        # before de-loop/heuristics touch the text.
+        backend_context = getattr(self.asr, "context", "")
+        if backend_context and looks_like_context_echo(raw_text, backend_context):
+            return RobustASRResult(
+                text="",
+                raw_text=raw_text,
+                text_after_deloop=raw_text,
+                has_speech=True,
+                was_looping=False,
+                rejection_reason="context_echo",
                 vad=vad_result,
                 asr=asr_result,
                 total_latency_ms=(time.perf_counter() - t0) * 1000,

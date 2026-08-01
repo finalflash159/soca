@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 
+from soca.asr import looks_like_context_echo
 from soca.core import (
     AudioSink,
     EndpointConfig,
@@ -337,14 +338,35 @@ class VoiceMonitorController:
 
     @staticmethod
     def _build_partial_transcriber(bundle):
-        """RobustASR wraps VietnameseASR at .asr — partial uses the RAW one (cheap, no guards)."""
+        """RobustASR wraps the raw ASR backend at .asr — partial uses the RAW one (cheap, no guards)."""
         inner = getattr(bundle.asr, "asr", None) or bundle.asr
         if not hasattr(inner, "transcribe"):
             return None
 
+        try:
+            params = inspect.signature(inner.transcribe).parameters
+        except (TypeError, ValueError):
+            params = {}
+        accepts_context = "context" in params or any(
+            p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()
+        )
+
         def transcribe(audio):
-            result = inner.transcribe(audio)
-            return getattr(result, "text", "") or ""
+            # context="" is DELIBERATE, not a missing value: partial exists
+            # only to render the caption, so it stays cheap and never risks
+            # the context-echo failure mode (§Q1b.3) leaking onto it. The
+            # final transcript that reaches the LLM uses the real context.
+            active_context = ""
+            kwargs = {"context": active_context} if accepts_context else {}
+            result = inner.transcribe(audio, **kwargs)
+            text = getattr(result, "text", "") or ""
+            # Belt-and-suspenders: partial has no RobustASR in front of it,
+            # so if a future change ever starts passing a real context here
+            # and someone forgets this comment, the echo would otherwise go
+            # straight to the caption with zero protection.
+            if looks_like_context_echo(text, active_context):
+                return ""
+            return text
 
         return transcribe
 

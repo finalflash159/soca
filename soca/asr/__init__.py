@@ -5,6 +5,7 @@ from .hallucination_heuristics import (
     HeuristicCheck,
     check_heuristics,
     is_filler_only,
+    looks_like_context_echo,
     n_gram_repetition,
     repetition_ratio,
 )
@@ -39,6 +40,7 @@ __all__ = [
     "get_asr_profile_model_keys",
     "has_excessive_repetition",
     "is_filler_only",
+    "looks_like_context_echo",
     "n_gram_repetition",
     "remove_consecutive_repeats",
     "repetition_ratio",

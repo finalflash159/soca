@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from queue import Queue
 from threading import Event
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -262,3 +263,70 @@ def test_voice_monitor_reports_runtime_error_and_traceback() -> None:
     error = [event for event in events if event.type == "error"][0]
     assert "Valtec runtime failed to load weights" in error.text
     assert "Traceback" in error.metadata["traceback"]
+
+
+class FakeContextAwareASR:
+    """Mirrors QwenASRBackend: transcribe() accepts a context kwarg."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def transcribe(self, audio: np.ndarray, context: str | None = None):
+        self.calls.append({"audio_len": len(audio), "context": context})
+        return SimpleNamespace(text="hypothesis")
+
+
+class FakeContextlessASR:
+    """Mirrors VietnameseASR: no context kwarg at all."""
+
+    def __init__(self) -> None:
+        self.calls: list[int] = []
+
+    def transcribe(self, audio: np.ndarray):
+        self.calls.append(len(audio))
+        return SimpleNamespace(text="hypothesis")
+
+
+def _bundle_with_raw_asr(config: ResolvedVoiceRuntimeConfig, inner_asr: object) -> VoiceRuntimeBundle:
+    return VoiceRuntimeBundle(
+        config=config,
+        detector=object(),
+        asr=inner_asr,  # type: ignore[arg-type]
+        llm=object(),  # type: ignore[arg-type]
+        tts=object(),
+        assistant_runtime=object(),  # type: ignore[arg-type]
+        pipeline=object(),  # type: ignore[arg-type]
+        memory_status="disabled:test",
+        knowledge_status="enabled:test",
+    )
+
+
+def test_build_partial_transcriber_passes_empty_context_for_a_context_aware_backend() -> None:
+    """§5.6.5: partial must call with context="" — never leak the real
+    context onto the caption (the context-echo failure mode, §Q1b.3), since
+    partial uses the raw backend directly with no guard in front of it."""
+    config = make_config()
+    inner = FakeContextAwareASR()
+    bundle = _bundle_with_raw_asr(config, inner)
+
+    transcribe = VoiceMonitorController._build_partial_transcriber(bundle)
+    assert transcribe is not None
+
+    text = transcribe(np.zeros(160, dtype=np.float32))
+
+    assert text == "hypothesis"
+    assert inner.calls == [{"audio_len": 160, "context": ""}]
+
+
+def test_build_partial_transcriber_works_with_a_backend_that_has_no_context_param() -> None:
+    config = make_config()
+    inner = FakeContextlessASR()
+    bundle = _bundle_with_raw_asr(config, inner)
+
+    transcribe = VoiceMonitorController._build_partial_transcriber(bundle)
+    assert transcribe is not None
+
+    text = transcribe(np.zeros(160, dtype=np.float32))
+
+    assert text == "hypothesis"
+    assert inner.calls == [160]

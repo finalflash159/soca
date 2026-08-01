@@ -32,6 +32,29 @@ class FakeRobustASR:
         self.asr = FakeInnerASR()
 
 
+class FakeContextAwareInnerASR:
+    """Mirrors QwenASRBackend: accepts a context kwarg and exposes .context."""
+
+    SAMPLING_RATE = 16000
+
+    def __init__(self, context: str) -> None:
+        self.context = context
+        self.calls: list[dict] = []
+
+    def transcribe(self, audio: np.ndarray, max_new_tokens: int = 128, *, context: str | None = None):
+        self.calls.append(
+            {"audio_len": len(audio), "max_new_tokens": max_new_tokens, "context": context}
+        )
+        return object()
+
+
+class FakeRobustASRWithContext:
+    confidence_guard_status = "disabled:test"
+
+    def __init__(self, inner: FakeContextAwareInnerASR) -> None:
+        self.asr = inner
+
+
 class FakeLLM:
     def __init__(self) -> None:
         self.calls: list[dict] = []
@@ -130,6 +153,48 @@ def test_warm_up_voice_runtime_triggers_asr_llm_and_tts_first_call_paths() -> No
         }
     ]
     assert tts.calls == ["Xin chào, tôi là SoCa."]
+
+
+def test_warm_up_voice_runtime_warms_both_partial_and_final_context_paths() -> None:
+    """§5.6-c: a context-aware backend must warm BOTH the partial path
+    (context="", cheap and used for every caption update) and the final
+    path (the real context) — a cold context switch pays an extra prefill
+    cost (§Q1c.3) that must not land on the user's actual first turn."""
+    inner = FakeContextAwareInnerASR(context="tech context")
+    bundle = VoiceRuntimeBundle(
+        config=make_config(),
+        detector=object(),
+        asr=FakeRobustASRWithContext(inner),
+        llm=FakeLLM(),
+        tts=FakeTTS(),
+        assistant_runtime=object(),
+        pipeline=object(),
+        memory_status="disabled:test",
+        knowledge_status="disabled:test",
+    )
+
+    warm_up_voice_runtime(bundle, asr_seconds=0.5)
+
+    assert [call["context"] for call in inner.calls] == ["", "", "tech context"]
+
+
+def test_warm_up_voice_runtime_skips_final_context_warm_when_context_is_empty() -> None:
+    inner = FakeContextAwareInnerASR(context="")
+    bundle = VoiceRuntimeBundle(
+        config=make_config(),
+        detector=object(),
+        asr=FakeRobustASRWithContext(inner),
+        llm=FakeLLM(),
+        tts=FakeTTS(),
+        assistant_runtime=object(),
+        pipeline=object(),
+        memory_status="disabled:test",
+        knowledge_status="disabled:test",
+    )
+
+    warm_up_voice_runtime(bundle, asr_seconds=0.5)
+
+    assert [call["context"] for call in inner.calls] == ["", ""]
 
 
 def test_warm_up_voice_runtime_includes_smart_turn_when_detector_exists() -> None:

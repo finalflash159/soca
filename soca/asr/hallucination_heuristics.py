@@ -81,6 +81,30 @@ def compression_ratio(text: str) -> float:
     return len(raw) / len(zlib.compress(raw))
 
 
+def looks_like_context_echo(text: str, context: str, *, threshold: float = 0.6) -> bool:
+    """True if `text` looks copied from `context` rather than transcribed
+    from audio.
+
+    A context-aware backend (e.g. Qwen3-ASR with context injection) can
+    occasionally return the system prompt verbatim instead of transcribing
+    the audio. That output looks "clean" — correct grammar, no repeated
+    tokens — so it passes every other check in this module; only comparing
+    against the prompt catches it.
+
+    Token-set overlap, not substring match: the model may echo only part of
+    the context, or change case. `len(hyp) < 4` guards short, legitimate
+    sentences that happen to contain a couple of context terms (e.g. "mở
+    repo trên github") from being flagged just for sharing vocabulary.
+    """
+    if not context.strip():
+        return False
+    hyp = set(re.findall(r"\w+", text.lower()))
+    if len(hyp) < 4:
+        return False
+    ctx = set(re.findall(r"\w+", context.lower()))
+    return len(hyp & ctx) / len(hyp) >= threshold
+
+
 def check_heuristics(
     text: str,
     speech_duration_ms: float,
