@@ -20,6 +20,10 @@ class ASRResult:
     audio_duration_ms: float
     rtf: float  # Real-Time Factor: latency / audio_duration
     avg_logprob: float = 0.0
+    # False marks avg_logprob as a placeholder (e.g. no tokens were scored),
+    # not a real confidence reading — 0.0 alone would otherwise read as
+    # maximum confidence to a naive consumer.
+    avg_logprob_reliable: bool = True
     # Backends that can decode N-best hypotheses may populate this.  The
     # current greedy Whisper decoder intentionally leaves it empty.
     alternatives: tuple[str, ...] = ()
