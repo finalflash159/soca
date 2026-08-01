@@ -35,6 +35,10 @@ class VietnameseASR:
     DECODER_VARIANT = "decoder_model_no_kv_cache"
     DECODE_STRATEGY = "greedy"
     SAMPLING_RATE = 16000
+    # Declared explicitly (rather than left for RobustASR to assume) so the
+    # confidence guard's capability check is never a silent default for the
+    # backend actually running in production.
+    supports_avg_logprob = True
 
     def __init__(
         self,
