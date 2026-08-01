@@ -17,13 +17,14 @@ from __future__ import annotations
 import argparse
 import json
 from collections import defaultdict
+from datetime import UTC, datetime
 from pathlib import Path
 
 from jiwer import process_words
 from rich.console import Console
 from rich.table import Table
 
-from local.codeswitch_text import normalize
+from local.codeswitch_text import english_indices, manifest_fingerprint, normalize
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = REPO_ROOT / "data" / "asr_codeswitch" / "manifest.jsonl"
@@ -55,14 +56,26 @@ def score_system(rows: list[dict], predictions: dict[str, str]) -> dict:
         hypothesis = normalize(predictions.get(row["id"], ""))
         ref_tokens = reference.split()
 
+        # Recompute from EN_TERMS rather than trusting the manifest's stored
+        # english_indices: EN_TERMS can change after a manifest was recorded
+        # (it has before — "repo" was added later), and a stale manifest must
+        # fail loudly, not silently shrink en_total and inflate en_recall.
+        expected_indices = english_indices(row["reference"])
+        if row["english_indices"] != expected_indices:
+            raise ValueError(
+                f"english_indices mismatch for {row['id']!r}: manifest has "
+                f"{row['english_indices']}, recomputing from the current "
+                f"EN_TERMS gives {expected_indices}. The manifest was likely "
+                "recorded before EN_TERMS changed; re-run "
+                "`local/record_codeswitch.py --redo` to regenerate it."
+            )
+
         output = process_words(reference, hypothesis)
         total_errors += output.substitutions + output.deletions + output.insertions
         total_words += len(ref_tokens)
 
         correct = correct_reference_indices(reference, hypothesis)
-        for idx in row["english_indices"]:
-            if idx >= len(ref_tokens):
-                continue
+        for idx in expected_indices:
             en_total += 1
             if idx in correct:
                 en_correct += 1
@@ -103,6 +116,10 @@ def main() -> None:
         system = payload["system"]
         report[system] = score_system(rows, payload["predictions"])
         report[system]["source"] = str(path)
+        # Carry the predictor's run_metadata (run_type, model identity,
+        # manifest fingerprint) forward so the scored artifact is itself
+        # auditable, not just the raw predictions file.
+        report[system]["run_metadata"] = payload.get("run_metadata")
 
     table = Table(title=f"Code-switch bake-off ({len(rows)} sentences)")
     table.add_column("system")
@@ -125,8 +142,17 @@ def main() -> None:
                 + ", ".join(f"{w}x{n}" for w, n in stats["top_misses"])
             )
 
+    output_payload = {
+        "scoring_metadata": {
+            "scored_at_utc": datetime.now(UTC).isoformat(),
+            "manifest_path": str(MANIFEST.relative_to(REPO_ROOT)),
+            "manifest_sha256": manifest_fingerprint(MANIFEST),
+            "n_utterances": len(rows),
+        },
+        "systems": report,
+    }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    args.out.write_text(json.dumps(output_payload, ensure_ascii=False, indent=2), encoding="utf-8")
     console.print(f"\nwrote {args.out}")
 
 

@@ -10,10 +10,13 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
 import torch
+
+from local.codeswitch_text import manifest_fingerprint
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = REPO_ROOT / "data" / "asr_codeswitch" / "manifest.jsonl"
@@ -43,9 +46,19 @@ def main() -> None:
         help="'auto' lets the model detect language; forcing Vietnamese is more stable",
     )
     parser.add_argument("--model-id", default=MODEL_ID)
+    parser.add_argument(
+        "--run-type",
+        default="benchmark",
+        choices=["benchmark", "smoke"],
+        help="'smoke' marks a partial/test run so it is never mistaken for bake-off evidence",
+    )
     args = parser.parse_args()
 
+    import importlib.metadata
+
     from qwen_asr import Qwen3ASRModel
+
+    qwen_asr_version = importlib.metadata.version("qwen-asr")
 
     rows = [
         json.loads(line)
@@ -77,6 +90,24 @@ def main() -> None:
 
     model_size = "1.7b" if "1.7B" in args.model_id else "0.6b"
     system = f"qwen3_asr_{model_size}_ctx_{args.context}"
+    run_metadata = {
+        "run_type": args.run_type,
+        "created_at_utc": datetime.now(UTC).isoformat(),
+        "manifest_path": str(MANIFEST.relative_to(REPO_ROOT)),
+        "manifest_sha256": manifest_fingerprint(MANIFEST),
+        "n_utterances": len(rows),
+        "asr_runtime": {
+            "backend": "qwen3_asr",
+            "qwen_asr_package_version": qwen_asr_version,
+            "model_id": args.model_id,
+            "context_variant": args.context,
+            "context": context,
+            "language": language,
+            "max_new_tokens": 256,
+            "device": args.device,
+            "dtype": args.dtype,
+        },
+    }
     PRED_DIR.mkdir(parents=True, exist_ok=True)
     out = PRED_DIR / f"{system}.json"
     out.write_text(
@@ -86,6 +117,7 @@ def main() -> None:
                 "median_rtf": float(np.median(rtfs)),
                 "device": args.device,
                 "dtype": args.dtype,
+                "run_metadata": run_metadata,
                 "predictions": predictions,
             },
             ensure_ascii=False,

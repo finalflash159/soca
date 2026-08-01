@@ -11,11 +11,13 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import librosa
 import numpy as np
 
+from local.codeswitch_text import manifest_fingerprint
 from soca.asr.robust_asr import RobustASR
 from soca.asr.whisper_onnx import VietnameseASR
 
@@ -31,6 +33,12 @@ def main() -> None:
         "--raw",
         action="store_true",
         help="bypass RobustASR and use VietnameseASR directly, to isolate guard effects",
+    )
+    parser.add_argument(
+        "--run-type",
+        default="benchmark",
+        choices=["benchmark", "smoke"],
+        help="'smoke' marks a partial/test run so it is never mistaken for bake-off evidence",
     )
     args = parser.parse_args()
 
@@ -68,6 +76,16 @@ def main() -> None:
         predictions[row["id"]] = text
 
     system = f"{args.model_key}{'_raw' if args.raw else ''}"
+    run_metadata = {
+        "run_type": args.run_type,
+        "created_at_utc": datetime.now(UTC).isoformat(),
+        "manifest_path": str(MANIFEST.relative_to(REPO_ROOT)),
+        "manifest_sha256": manifest_fingerprint(MANIFEST),
+        "n_utterances": len(rows),
+        "used_robust_asr": engine is not None,
+        "confidence_guard_status": engine.confidence_guard_status if engine else None,
+        "asr_runtime": inner.runtime_metadata(),
+    }
     PRED_DIR.mkdir(parents=True, exist_ok=True)
     out = PRED_DIR / f"{system}.json"
     out.write_text(
@@ -75,6 +93,7 @@ def main() -> None:
             {
                 "system": system,
                 "median_rtf": float(np.median(rtfs)),
+                "run_metadata": run_metadata,
                 "predictions": predictions,
             },
             ensure_ascii=False,

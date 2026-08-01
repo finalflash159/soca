@@ -7,7 +7,9 @@ at the wrong token and silently corrupt CS-WER.
 
 from __future__ import annotations
 
+import hashlib
 import unicodedata
+from pathlib import Path
 
 # English terms to score separately. Matched by normalized token, case-insensitive.
 EN_TERMS: frozenset[str] = frozenset(
@@ -48,3 +50,9 @@ def tokens(text: str) -> list[str]:
 def english_indices(reference: str) -> list[int]:
     """Token positions of English words in the reference sentence."""
     return [i for i, word in enumerate(tokens(reference)) if word in EN_TERMS]
+
+
+def manifest_fingerprint(path: Path) -> str:
+    """SHA-256 of the manifest file, so prediction/score artifacts can record
+    exactly which recording session they were run against."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
