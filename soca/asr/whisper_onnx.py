@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import cast
 
@@ -11,25 +10,7 @@ import onnxruntime as ort
 from transformers import WhisperProcessor
 
 from .registry import DEFAULT_ASR_MODEL_KEY, REPO_ROOT, get_asr_model_config
-
-
-@dataclass
-class ASRResult:
-    text: str
-    latency_ms: float
-    audio_duration_ms: float
-    rtf: float  # Real-Time Factor: latency / audio_duration
-    avg_logprob: float = 0.0
-    # False marks avg_logprob as a placeholder (e.g. no tokens were scored),
-    # not a real confidence reading — 0.0 alone would otherwise read as
-    # maximum confidence to a naive consumer.
-    avg_logprob_reliable: bool = True
-    # Backends that can decode N-best hypotheses may populate this.  The
-    # current greedy Whisper decoder intentionally leaves it empty.
-    alternatives: tuple[str, ...] = ()
-
-    def to_dict(self) -> dict:
-        return asdict(self)
+from .result import ASRResult
 
 
 class VietnameseASR:

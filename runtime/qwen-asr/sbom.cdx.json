@@ -1,0 +1,986 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "version": 1,
+  "metadata": {
+    "tools": [
+      {
+        "vendor": "Astral Software Inc.",
+        "name": "uv",
+        "version": "0.11.16"
+      }
+    ],
+    "component": {
+      "type": "library",
+      "bom-ref": "soca-qwen-asr-runtime-1@0.1.0",
+      "name": "soca-qwen-asr-runtime",
+      "version": "0.1.0",
+      "properties": [
+        {
+          "name": "uv:package:is_project_root",
+          "value": "true"
+        }
+      ]
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "accelerate-2@1.12.0",
+      "name": "accelerate",
+      "version": "1.12.0",
+      "purl": "pkg:pypi/accelerate@1.12.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "audioread-3@3.1.0",
+      "name": "audioread",
+      "version": "3.1.0",
+      "purl": "pkg:pypi/audioread@3.1.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "certifi-4@2026.7.22",
+      "name": "certifi",
+      "version": "2026.7.22",
+      "purl": "pkg:pypi/certifi@2026.7.22",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "cffi-5@2.1.0",
+      "name": "cffi",
+      "version": "2.1.0",
+      "purl": "pkg:pypi/cffi@2.1.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "charset-normalizer-6@3.4.9",
+      "name": "charset-normalizer",
+      "version": "3.4.9",
+      "purl": "pkg:pypi/charset-normalizer@3.4.9",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "cython-7@3.2.9",
+      "name": "cython",
+      "version": "3.2.9",
+      "purl": "pkg:pypi/cython@3.2.9",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "decorator-8@5.3.1",
+      "name": "decorator",
+      "version": "5.3.1",
+      "purl": "pkg:pypi/decorator@5.3.1",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "dynet38-9@2.2",
+      "name": "dynet38",
+      "version": "2.2",
+      "purl": "pkg:pypi/dynet38@2.2",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "filelock-10@3.32.2",
+      "name": "filelock",
+      "version": "3.32.2",
+      "purl": "pkg:pypi/filelock@3.32.2",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "fsspec-11@2026.7.0",
+      "name": "fsspec",
+      "version": "2026.7.0",
+      "purl": "pkg:pypi/fsspec@2026.7.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "hf-xet-12@1.5.2",
+      "name": "hf-xet",
+      "version": "1.5.2",
+      "purl": "pkg:pypi/hf-xet@1.5.2",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "huggingface-hub-13@0.36.2",
+      "name": "huggingface-hub",
+      "version": "0.36.2",
+      "purl": "pkg:pypi/huggingface-hub@0.36.2",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "idna-14@3.18",
+      "name": "idna",
+      "version": "3.18",
+      "purl": "pkg:pypi/idna@3.18",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "jinja2-15@3.1.6",
+      "name": "jinja2",
+      "version": "3.1.6",
+      "purl": "pkg:pypi/jinja2@3.1.6",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "joblib-16@1.5.3",
+      "name": "joblib",
+      "version": "1.5.3",
+      "purl": "pkg:pypi/joblib@1.5.3",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "lazy-loader-17@0.5",
+      "name": "lazy-loader",
+      "version": "0.5",
+      "purl": "pkg:pypi/lazy-loader@0.5",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "librosa-18@0.11.0",
+      "name": "librosa",
+      "version": "0.11.0",
+      "purl": "pkg:pypi/librosa@0.11.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "llvmlite-19@0.48.0",
+      "name": "llvmlite",
+      "version": "0.48.0",
+      "purl": "pkg:pypi/llvmlite@0.48.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "markupsafe-20@3.0.3",
+      "name": "markupsafe",
+      "version": "3.0.3",
+      "purl": "pkg:pypi/markupsafe@3.0.3",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "mpmath-21@1.3.0",
+      "name": "mpmath",
+      "version": "1.3.0",
+      "purl": "pkg:pypi/mpmath@1.3.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "msgpack-22@1.2.1",
+      "name": "msgpack",
+      "version": "1.2.1",
+      "purl": "pkg:pypi/msgpack@1.2.1",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "nagisa-23@0.2.11",
+      "name": "nagisa",
+      "version": "0.2.11",
+      "purl": "pkg:pypi/nagisa@0.2.11",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "narwhals-24@2.24.0",
+      "name": "narwhals",
+      "version": "2.24.0",
+      "purl": "pkg:pypi/narwhals@2.24.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "networkx-25@3.6.1",
+      "name": "networkx",
+      "version": "3.6.1",
+      "purl": "pkg:pypi/networkx@3.6.1",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "numba-26@0.66.0",
+      "name": "numba",
+      "version": "0.66.0",
+      "purl": "pkg:pypi/numba@0.66.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "numpy-27@2.4.6",
+      "name": "numpy",
+      "version": "2.4.6",
+      "purl": "pkg:pypi/numpy@2.4.6",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "packaging-28@26.2",
+      "name": "packaging",
+      "version": "26.2",
+      "purl": "pkg:pypi/packaging@26.2",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "platformdirs-29@4.11.0",
+      "name": "platformdirs",
+      "version": "4.11.0",
+      "purl": "pkg:pypi/platformdirs@4.11.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pooch-30@1.9.0",
+      "name": "pooch",
+      "version": "1.9.0",
+      "purl": "pkg:pypi/pooch@1.9.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "psutil-31@7.2.2",
+      "name": "psutil",
+      "version": "7.2.2",
+      "purl": "pkg:pypi/psutil@7.2.2",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pycparser-32@3.0",
+      "name": "pycparser",
+      "version": "3.0",
+      "purl": "pkg:pypi/pycparser@3.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "implementation_name != 'PyPy' and platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pyyaml-33@6.0.3",
+      "name": "pyyaml",
+      "version": "6.0.3",
+      "purl": "pkg:pypi/pyyaml@6.0.3",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "qwen-asr-34@0.0.6",
+      "name": "qwen-asr",
+      "version": "0.0.6",
+      "purl": "pkg:pypi/qwen-asr@0.0.6",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "regex-35@2026.7.19",
+      "name": "regex",
+      "version": "2026.7.19",
+      "purl": "pkg:pypi/regex@2026.7.19",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "requests-36@2.34.2",
+      "name": "requests",
+      "version": "2.34.2",
+      "purl": "pkg:pypi/requests@2.34.2",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "safetensors-37@0.8.0",
+      "name": "safetensors",
+      "version": "0.8.0",
+      "purl": "pkg:pypi/safetensors@0.8.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "scikit-learn-38@1.9.0",
+      "name": "scikit-learn",
+      "version": "1.9.0",
+      "purl": "pkg:pypi/scikit-learn@1.9.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "scipy-39@1.17.1",
+      "name": "scipy",
+      "version": "1.17.1",
+      "purl": "pkg:pypi/scipy@1.17.1",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "setuptools-40@83.0.0",
+      "name": "setuptools",
+      "version": "83.0.0",
+      "purl": "pkg:pypi/setuptools@83.0.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "six-41@1.17.0",
+      "name": "six",
+      "version": "1.17.0",
+      "purl": "pkg:pypi/six@1.17.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "soundfile-42@0.14.0",
+      "name": "soundfile",
+      "version": "0.14.0",
+      "purl": "pkg:pypi/soundfile@0.14.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "soxr-43@1.1.0",
+      "name": "soxr",
+      "version": "1.1.0",
+      "purl": "pkg:pypi/soxr@1.1.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "soynlp-44@0.0.493",
+      "name": "soynlp",
+      "version": "0.0.493",
+      "purl": "pkg:pypi/soynlp@0.0.493",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "sympy-45@1.14.0",
+      "name": "sympy",
+      "version": "1.14.0",
+      "purl": "pkg:pypi/sympy@1.14.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "threadpoolctl-46@3.6.0",
+      "name": "threadpoolctl",
+      "version": "3.6.0",
+      "purl": "pkg:pypi/threadpoolctl@3.6.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "tokenizers-47@0.22.2",
+      "name": "tokenizers",
+      "version": "0.22.2",
+      "purl": "pkg:pypi/tokenizers@0.22.2",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "torch-48@2.13.0",
+      "name": "torch",
+      "version": "2.13.0",
+      "purl": "pkg:pypi/torch@2.13.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "tqdm-49@4.70.0",
+      "name": "tqdm",
+      "version": "4.70.0",
+      "purl": "pkg:pypi/tqdm@4.70.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "transformers-50@4.57.6",
+      "name": "transformers",
+      "version": "4.57.6",
+      "purl": "pkg:pypi/transformers@4.57.6",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "typing-extensions-51@4.16.0",
+      "name": "typing-extensions",
+      "version": "4.16.0",
+      "purl": "pkg:pypi/typing-extensions@4.16.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "urllib3-52@2.7.0",
+      "name": "urllib3",
+      "version": "2.7.0",
+      "purl": "pkg:pypi/urllib3@2.7.0",
+      "properties": [
+        {
+          "name": "uv:package:marker",
+          "value": "platform_machine == 'arm64' and sys_platform == 'darwin'"
+        }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "accelerate-2@1.12.0",
+      "dependsOn": [
+        "huggingface-hub-13@0.36.2",
+        "numpy-27@2.4.6",
+        "packaging-28@26.2",
+        "psutil-31@7.2.2",
+        "pyyaml-33@6.0.3",
+        "safetensors-37@0.8.0",
+        "torch-48@2.13.0"
+      ]
+    },
+    {
+      "ref": "audioread-3@3.1.0"
+    },
+    {
+      "ref": "certifi-4@2026.7.22"
+    },
+    {
+      "ref": "cffi-5@2.1.0",
+      "dependsOn": [
+        "pycparser-32@3.0"
+      ]
+    },
+    {
+      "ref": "charset-normalizer-6@3.4.9"
+    },
+    {
+      "ref": "cython-7@3.2.9"
+    },
+    {
+      "ref": "decorator-8@5.3.1"
+    },
+    {
+      "ref": "dynet38-9@2.2",
+      "dependsOn": [
+        "cython-7@3.2.9",
+        "numpy-27@2.4.6"
+      ]
+    },
+    {
+      "ref": "filelock-10@3.32.2"
+    },
+    {
+      "ref": "fsspec-11@2026.7.0"
+    },
+    {
+      "ref": "hf-xet-12@1.5.2"
+    },
+    {
+      "ref": "huggingface-hub-13@0.36.2",
+      "dependsOn": [
+        "filelock-10@3.32.2",
+        "fsspec-11@2026.7.0",
+        "hf-xet-12@1.5.2",
+        "packaging-28@26.2",
+        "pyyaml-33@6.0.3",
+        "requests-36@2.34.2",
+        "tqdm-49@4.70.0",
+        "typing-extensions-51@4.16.0"
+      ]
+    },
+    {
+      "ref": "idna-14@3.18"
+    },
+    {
+      "ref": "jinja2-15@3.1.6",
+      "dependsOn": [
+        "markupsafe-20@3.0.3"
+      ]
+    },
+    {
+      "ref": "joblib-16@1.5.3"
+    },
+    {
+      "ref": "lazy-loader-17@0.5",
+      "dependsOn": [
+        "packaging-28@26.2"
+      ]
+    },
+    {
+      "ref": "librosa-18@0.11.0",
+      "dependsOn": [
+        "audioread-3@3.1.0",
+        "decorator-8@5.3.1",
+        "joblib-16@1.5.3",
+        "lazy-loader-17@0.5",
+        "msgpack-22@1.2.1",
+        "numba-26@0.66.0",
+        "numpy-27@2.4.6",
+        "pooch-30@1.9.0",
+        "scikit-learn-38@1.9.0",
+        "scipy-39@1.17.1",
+        "soundfile-42@0.14.0",
+        "soxr-43@1.1.0",
+        "typing-extensions-51@4.16.0"
+      ]
+    },
+    {
+      "ref": "llvmlite-19@0.48.0"
+    },
+    {
+      "ref": "markupsafe-20@3.0.3"
+    },
+    {
+      "ref": "mpmath-21@1.3.0"
+    },
+    {
+      "ref": "msgpack-22@1.2.1"
+    },
+    {
+      "ref": "nagisa-23@0.2.11",
+      "dependsOn": [
+        "dynet38-9@2.2",
+        "numpy-27@2.4.6",
+        "six-41@1.17.0"
+      ]
+    },
+    {
+      "ref": "narwhals-24@2.24.0"
+    },
+    {
+      "ref": "networkx-25@3.6.1"
+    },
+    {
+      "ref": "numba-26@0.66.0",
+      "dependsOn": [
+        "llvmlite-19@0.48.0",
+        "numpy-27@2.4.6"
+      ]
+    },
+    {
+      "ref": "numpy-27@2.4.6"
+    },
+    {
+      "ref": "packaging-28@26.2"
+    },
+    {
+      "ref": "platformdirs-29@4.11.0"
+    },
+    {
+      "ref": "pooch-30@1.9.0",
+      "dependsOn": [
+        "packaging-28@26.2",
+        "platformdirs-29@4.11.0",
+        "requests-36@2.34.2"
+      ]
+    },
+    {
+      "ref": "psutil-31@7.2.2"
+    },
+    {
+      "ref": "pycparser-32@3.0"
+    },
+    {
+      "ref": "pyyaml-33@6.0.3"
+    },
+    {
+      "ref": "qwen-asr-34@0.0.6",
+      "dependsOn": [
+        "accelerate-2@1.12.0",
+        "librosa-18@0.11.0",
+        "nagisa-23@0.2.11",
+        "soundfile-42@0.14.0",
+        "soynlp-44@0.0.493",
+        "transformers-50@4.57.6"
+      ]
+    },
+    {
+      "ref": "regex-35@2026.7.19"
+    },
+    {
+      "ref": "requests-36@2.34.2",
+      "dependsOn": [
+        "certifi-4@2026.7.22",
+        "charset-normalizer-6@3.4.9",
+        "idna-14@3.18",
+        "urllib3-52@2.7.0"
+      ]
+    },
+    {
+      "ref": "safetensors-37@0.8.0"
+    },
+    {
+      "ref": "scikit-learn-38@1.9.0",
+      "dependsOn": [
+        "joblib-16@1.5.3",
+        "narwhals-24@2.24.0",
+        "numpy-27@2.4.6",
+        "scipy-39@1.17.1",
+        "threadpoolctl-46@3.6.0"
+      ]
+    },
+    {
+      "ref": "scipy-39@1.17.1",
+      "dependsOn": [
+        "numpy-27@2.4.6"
+      ]
+    },
+    {
+      "ref": "setuptools-40@83.0.0"
+    },
+    {
+      "ref": "six-41@1.17.0"
+    },
+    {
+      "ref": "soca-qwen-asr-runtime-1@0.1.0",
+      "dependsOn": [
+        "accelerate-2@1.12.0",
+        "librosa-18@0.11.0",
+        "nagisa-23@0.2.11",
+        "numpy-27@2.4.6",
+        "qwen-asr-34@0.0.6",
+        "soundfile-42@0.14.0",
+        "soynlp-44@0.0.493",
+        "torch-48@2.13.0",
+        "transformers-50@4.57.6"
+      ]
+    },
+    {
+      "ref": "soundfile-42@0.14.0",
+      "dependsOn": [
+        "cffi-5@2.1.0",
+        "numpy-27@2.4.6",
+        "typing-extensions-51@4.16.0"
+      ]
+    },
+    {
+      "ref": "soxr-43@1.1.0",
+      "dependsOn": [
+        "numpy-27@2.4.6"
+      ]
+    },
+    {
+      "ref": "soynlp-44@0.0.493",
+      "dependsOn": [
+        "numpy-27@2.4.6",
+        "psutil-31@7.2.2",
+        "scikit-learn-38@1.9.0",
+        "scipy-39@1.17.1"
+      ]
+    },
+    {
+      "ref": "sympy-45@1.14.0",
+      "dependsOn": [
+        "mpmath-21@1.3.0"
+      ]
+    },
+    {
+      "ref": "threadpoolctl-46@3.6.0"
+    },
+    {
+      "ref": "tokenizers-47@0.22.2",
+      "dependsOn": [
+        "huggingface-hub-13@0.36.2"
+      ]
+    },
+    {
+      "ref": "torch-48@2.13.0",
+      "dependsOn": [
+        "filelock-10@3.32.2",
+        "fsspec-11@2026.7.0",
+        "jinja2-15@3.1.6",
+        "networkx-25@3.6.1",
+        "setuptools-40@83.0.0",
+        "sympy-45@1.14.0",
+        "typing-extensions-51@4.16.0"
+      ]
+    },
+    {
+      "ref": "tqdm-49@4.70.0"
+    },
+    {
+      "ref": "transformers-50@4.57.6",
+      "dependsOn": [
+        "filelock-10@3.32.2",
+        "huggingface-hub-13@0.36.2",
+        "numpy-27@2.4.6",
+        "packaging-28@26.2",
+        "pyyaml-33@6.0.3",
+        "regex-35@2026.7.19",
+        "requests-36@2.34.2",
+        "safetensors-37@0.8.0",
+        "tokenizers-47@0.22.2",
+        "tqdm-49@4.70.0"
+      ]
+    },
+    {
+      "ref": "typing-extensions-51@4.16.0"
+    },
+    {
+      "ref": "urllib3-52@2.7.0"
+    }
+  ]
+}

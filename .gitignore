@@ -54,6 +54,7 @@ notebooks/artifacts/
 runs/
 logs/
 artifacts/local/
+runtime/qwen-asr/.runtime-receipt.json
 *.log
 *.wav
 *.mp3

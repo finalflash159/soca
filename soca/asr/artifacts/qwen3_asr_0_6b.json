@@ -22,7 +22,7 @@
   "license": "apache-2.0",
   "device": "cpu",
   "dtype": "float32",
-  "runtime_lock_digest": null,
+  "runtime_lock_digest": "bbf96f7b16c241afee13734ae8bfa2525420675f6db536934d9a746b94ec7f9f",
   "context_policy_digest": null,
   "minimum_protocol_version": 1
 }

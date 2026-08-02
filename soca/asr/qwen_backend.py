@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 
 from .qwen_artifacts import QWEN_RELEASE_ARTIFACT
-from .whisper_onnx import ASRResult
+from .result import ASRResult
 
 DEFAULT_QWEN_MODEL_ID = QWEN_RELEASE_ARTIFACT.upstream.repo_id
 SAMPLING_RATE = 16_000
@@ -86,8 +86,8 @@ class QwenASRBackend:
                 "The Qwen3-ASR backend requires the `qwen-asr` package, which "
                 "pins transformers==4.57.6. Installing it into the main venv "
                 "would break other components that need a newer transformers "
-                "(e.g. the RAG dense retriever). Install it into a separate "
-                "venv (.venv-qwen) instead."
+                "(e.g. the RAG dense retriever). Provision the locked worker "
+                "environment with scripts/provision_qwen_runtime.py instead."
             ) from exc
 
         self.model_key = model_id

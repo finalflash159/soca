@@ -11,7 +11,7 @@ from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
-from .whisper_onnx import ASRResult
+from .result import ASRResult
 
 
 @runtime_checkable

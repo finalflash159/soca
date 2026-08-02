@@ -1,0 +1,44 @@
+{
+  "artifact": {
+    "model": "Qwen/Qwen3-ASR-0.6B",
+    "revision": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0"
+  },
+  "fixtures": ["cs_000.wav", "cs_007.wav", "cs_016.wav", "cs_033.wav"],
+  "hardware": "Apple M4 Pro, 48 GB unified memory",
+  "normalized_output_sha256": "1c5b56beb2c47f4aaffb98714ee781e64194e8492c48241e6c34e6c7b58f4444",
+  "platform": "macOS 15.7.4 arm64",
+  "python": "3.11.14",
+  "results": [
+    {
+      "cold_cache_bytes": 1233660887,
+      "cold_provision_s": 37.156,
+      "installed_bytes": 1214216483,
+      "layout": "upstream-locked",
+      "mean_rtf": 0.11145535968639586,
+      "packages": 92,
+      "peak_rss_bytes": 6302793728,
+      "startup_s": 5.224477375013521
+    },
+    {
+      "cold_cache_bytes": 1033749524,
+      "cold_provision_s": 27.606,
+      "installed_bytes": 1005908806,
+      "layout": "explicit-minimal",
+      "mean_rtf": 0.10745152727712587,
+      "packages": 51,
+      "peak_rss_bytes": 6263193600,
+      "startup_s": 4.26964404201135
+    },
+    {
+      "cold_cache_bytes": 964557099,
+      "cold_provision_s": 23.841,
+      "installed_bytes": 936572841,
+      "layout": "optionalized-fork",
+      "mean_rtf": 0.11053864415575694,
+      "packages": 46,
+      "peak_rss_bytes": 6028509184,
+      "startup_s": 3.2809202499920502
+    }
+  ],
+  "winner": "explicit-minimal"
+}

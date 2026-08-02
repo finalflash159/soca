@@ -50,7 +50,7 @@ Artifact manifests reject mutable revisions, unsafe relative file paths, duplica
 entries, invalid digests, unknown schema fields and role mismatches. Receipt inspection rejects
 symlinks and group/world permissions.
 
-The private mirror, exact worker lock digest and final context-policy digest are deliberately
+The runtime lock is now pinned by ADR 0006. Private mirror and context-policy fields remain
 `null` today. Null means unqualified, not “use latest” and not “ignore validation”. Later readiness
 and qualification work must require these pins before production activation.
 
