@@ -1,5 +1,3 @@
-"""Vietnamese speech-to-text pipeline."""
-
 from .deloop import has_excessive_repetition, remove_consecutive_repeats
 from .hallucination_heuristics import (
     HeuristicCheck,

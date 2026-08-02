@@ -1,10 +1,3 @@
-"""Qwen3-ASR backend, speaking the same interface as VietnameseASR.
-
-Optional backend: `qwen_asr` import is deferred to __init__ so the rest of
-the repo still works without the extra installed. See
-zplan/qwen3_asr_probe_plan.vi.md §Q0 for why this needs an isolated venv.
-"""
-
 from __future__ import annotations
 
 import time
@@ -89,9 +82,11 @@ class QwenASRBackend:
             from qwen_asr import Qwen3ASRModel
         except ImportError as exc:  # pragma: no cover - optional dependency
             raise RuntimeError(
-                "The Qwen3-ASR backend requires the `qwen-asr` package. It "
-                "pins transformers==4.57.6, so it must NOT be installed into "
-                "the main venv; see zplan/qwen3_asr_probe_plan.vi.md §Q0."
+                "The Qwen3-ASR backend requires the `qwen-asr` package, which "
+                "pins transformers==4.57.6. Installing it into the main venv "
+                "would break other components that need a newer transformers "
+                "(e.g. the RAG dense retriever). Install it into a separate "
+                "venv (.venv-qwen) instead."
             ) from exc
 
         self.model_key = model_id
