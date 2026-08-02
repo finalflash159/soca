@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import socket
 import subprocess
 import tempfile
@@ -31,6 +32,9 @@ DEFAULT_REQUEST_TIMEOUT_S = 30.0
 DEFAULT_SHUTDOWN_TIMEOUT_S = 5.0
 MAX_UNIX_SOCKET_PATH_BYTES = 103
 DEFAULT_QWEN_MODEL_ID = QWEN_RELEASE_ARTIFACT.upstream.repo_id
+SENSITIVE_MODEL_ENVIRONMENT = frozenset(
+    {"HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"}
+)
 
 
 class QwenServiceUnavailable(RuntimeError):
@@ -70,6 +74,7 @@ class QwenASRServiceClient:
         request_timeout_s: float = DEFAULT_REQUEST_TIMEOUT_S,
         shutdown_timeout_s: float = DEFAULT_SHUTDOWN_TIMEOUT_S,
         python_executable: Path | None = None,
+        process_environment: Mapping[str, str] | None = None,
     ) -> None:
         for name, value in (
             ("startup_timeout_s", startup_timeout_s),
@@ -103,6 +108,11 @@ class QwenASRServiceClient:
         self._process: subprocess.Popen[bytes] | None = None
 
         try:
+            child_environment = os.environ.copy()
+            for name in SENSITIVE_MODEL_ENVIRONMENT:
+                child_environment.pop(name, None)
+            if process_environment is not None:
+                child_environment.update(process_environment)
             self._process = subprocess.Popen(
                 [
                     str(executable),
@@ -119,6 +129,7 @@ class QwenASRServiceClient:
                 ],
                 cwd=str(REPO_ROOT),
                 stdin=subprocess.DEVNULL,
+                env=child_environment,
             )
             self._wait_for_ready(startup_timeout_s)
             handshake = self._request({"op": "ping"})
