@@ -55,9 +55,8 @@ def run_synth(args: argparse.Namespace) -> int:
     # Two runs of the control corpus differed by 3 of 8 items before this was
     # pinned, which is larger than the engine differences this harness exists to
     # detect. Set it where the engine exposes it and say so when it does not.
-    rng = getattr(engine, "_rng", None)
-    if rng is not None:
-        engine._rng = np.random.default_rng(args.seed)
+    if getattr(engine, "_rng", None) is not None:
+        setattr(engine, "_rng", np.random.default_rng(args.seed))  # noqa: B010
         print(f"Pinned TTS sampler seed to {args.seed}.")
     else:
         print(
