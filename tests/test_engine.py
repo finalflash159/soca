@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from soca.app.engine import (
     SocaEngine,
@@ -308,7 +309,9 @@ class _FailingAssistantRuntime:
         raise RuntimeError("synthetic runtime failure")
 
 
-def _fake_text_builder(config: TextRuntimeConfig, session_memory=None) -> TextRuntimeBundle:
+def _fake_text_builder(
+    config: TextRuntimeConfig, *, session_memory=None, **_runtime_dependencies
+) -> TextRuntimeBundle:
     return TextRuntimeBundle(
         runtime=_FakeAssistantRuntime(),  # type: ignore[arg-type]
         session_memory=session_memory,
@@ -318,7 +321,9 @@ def _fake_text_builder(config: TextRuntimeConfig, session_memory=None) -> TextRu
     )
 
 
-def _manifest_text_builder(config: TextRuntimeConfig, session_memory=None) -> TextRuntimeBundle:
+def _manifest_text_builder(
+    config: TextRuntimeConfig, *, session_memory=None, **_runtime_dependencies
+) -> TextRuntimeBundle:
     return TextRuntimeBundle(
         runtime=_ManifestAssistantRuntime(),  # type: ignore[arg-type]
         session_memory=session_memory,
@@ -328,7 +333,9 @@ def _manifest_text_builder(config: TextRuntimeConfig, session_memory=None) -> Te
     )
 
 
-def _cited_text_builder(config: TextRuntimeConfig, session_memory=None) -> TextRuntimeBundle:
+def _cited_text_builder(
+    config: TextRuntimeConfig, *, session_memory=None, **_runtime_dependencies
+) -> TextRuntimeBundle:
     return TextRuntimeBundle(
         runtime=_CitedAssistantRuntime(),  # type: ignore[arg-type]
         session_memory=session_memory,
@@ -428,7 +435,9 @@ def test_engine_context_exposes_last_prompt_manifest() -> None:
 def test_engine_chat_exception_does_not_emit_completed_progress() -> None:
     capture = ProtocolCapture()
 
-    def failing_builder(config: TextRuntimeConfig, session_memory=None) -> TextRuntimeBundle:
+    def failing_builder(
+        config: TextRuntimeConfig, *, session_memory=None, **_runtime_dependencies
+    ) -> TextRuntimeBundle:
         return TextRuntimeBundle(
             runtime=_FailingAssistantRuntime(),  # type: ignore[arg-type]
             session_memory=session_memory,
@@ -465,6 +474,32 @@ def test_engine_chat_exception_does_not_emit_completed_progress() -> None:
     assert workflow[-1]["payload"]["terminal_status"] == "system_failure"
 
 
+def test_text_runtime_builder_programming_type_error_is_not_retried() -> None:
+    from soca.app.engine import SocaEngine, _ProtocolWriter
+
+    calls = 0
+
+    def broken_builder(config, **dependencies):
+        nonlocal calls
+        del config, dependencies
+        calls += 1
+        raise TypeError("internal builder bug")
+
+    instance = SocaEngine(
+        voice_config=None,
+        text_config=make_text_config(),
+        profile="baseline",
+        writer=_ProtocolWriter(ProtocolCapture()),
+        text_runtime_builder=broken_builder,
+        warmup_voice=False,
+    )
+
+    with pytest.raises(TypeError, match="internal builder bug"):
+        instance._ensure_text_bundle()
+
+    assert calls == 1
+
+
 @dataclass
 class _FakeASR:
     confidence_guard_status: str = "disabled:test"
@@ -491,7 +526,10 @@ class _FakeDetector:
         return [{"start": 0, "end": int(len(audio))}]
 
 
-def _fake_voice_builder(config: ResolvedVoiceRuntimeConfig) -> VoiceRuntimeBundle:
+def _fake_voice_builder(
+    config: ResolvedVoiceRuntimeConfig, *, session_memory=None
+) -> VoiceRuntimeBundle:
+    del session_memory
     pipeline = _FakePipeline(
         [
             StreamingEvent(type="asr", text="xin chào"),
@@ -583,8 +621,12 @@ def test_engine_passes_one_selected_settings_and_goal_store_to_voice_builder(
     captured: dict[str, object] = {}
 
     def fake_build_voice_runtime(config, **kwargs):
-        captured.update(kwargs)
+        captured["voice"] = kwargs
         return _fake_voice_builder(config)
+
+    def fake_build_text_runtime(config, **kwargs):
+        captured["text"] = kwargs
+        return _fake_text_builder(config, **kwargs)
 
     monkeypatch.setattr("soca.app.engine.build_voice_runtime", fake_build_voice_runtime)
 
@@ -595,15 +637,24 @@ def test_engine_passes_one_selected_settings_and_goal_store_to_voice_builder(
         text_config=make_text_config(),
         profile="baseline",
         writer=_ProtocolWriter(ProtocolCapture()),
+        text_runtime_builder=fake_build_text_runtime,
         voice_player=_FakeAudioSink(),
         warmup_voice=False,
+        llm_engine_factory=lambda *args, **kwargs: object(),
     )
+    instance._ensure_text_bundle()
     controller = instance._ensure_voice_controller()
     controller._build_runtime_bundle()
 
-    assert captured["llm_settings"] is instance.llm_settings
-    assert captured["secret_store"] is instance.secret_store
-    assert captured["active_goal_store"] is instance.active_goal_store
+    text_dependencies = captured["text"]
+    voice_dependencies = captured["voice"]
+    assert isinstance(text_dependencies, dict)
+    assert isinstance(voice_dependencies, dict)
+    for dependencies in (text_dependencies, voice_dependencies):
+        assert dependencies["llm_settings"] is instance.llm_settings
+        assert dependencies["secret_store"] is instance.secret_store
+        assert dependencies["active_goal_store"] is instance.active_goal_store
+        assert dependencies["engine_factory"] is instance.llm_engine_factory
 
 
 def test_engine_no_model_rejects_voice_and_chat() -> None:

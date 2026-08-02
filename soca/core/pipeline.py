@@ -353,6 +353,8 @@ class VoicePipeline:
                 # eval/console read named keys, not the whole dict.
                 "llm_usage": getattr(runtime_result, "usage", None),
                 "prompt_manifest": getattr(trace, "prompt_manifest", None),
+                "provider_trace": dict(getattr(trace, "provider_trace", {}) or {}),
+                "llm_error": dict(getattr(trace, "llm_error", {}) or {}),
             },
         )
 

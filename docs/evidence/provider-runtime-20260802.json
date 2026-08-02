@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-08-02",
+  "environment": {
+    "os": "macOS 15.7.4 arm64",
+    "python": "3.11.14",
+    "openai_sdk": "2.48.0"
+  },
+  "scope": {
+    "chat": "real provider call through AssistantRuntime",
+    "voice_transcript": "real provider call through AssistantRuntime with source=voice; no microphone, ASR, TTS, or audio hardware",
+    "raw_logs": "local ignored artifacts; not committed",
+    "secrets": "environment only; not recorded"
+  },
+  "configuration": {
+    "max_attempts": 3,
+    "sdk_max_retries": 0,
+    "max_tokens": 96,
+    "openrouter_allow_fallbacks": false
+  },
+  "receipts": [
+    {
+      "provider": "gemini",
+      "model": "gemini-3.5-flash-lite",
+      "surface": "chat",
+      "terminal": "achieved",
+      "route": "free_chat",
+      "attempts": 1,
+      "retries": 0,
+      "prompt_tokens": 311,
+      "completion_tokens": 46,
+      "latency_ms": 1057.384
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.5-flash-lite",
+      "surface": "voice_transcript",
+      "terminal": "achieved",
+      "route": "free_chat",
+      "attempts": 1,
+      "retries": 0,
+      "prompt_tokens": 311,
+      "completion_tokens": 81,
+      "latency_ms": 915.41
+    },
+    {
+      "provider": "groq",
+      "model": "llama-3.1-8b-instant",
+      "surface": "chat",
+      "terminal": "achieved",
+      "route": "free_chat",
+      "attempts": 1,
+      "retries": 0,
+      "prompt_tokens": 331,
+      "completion_tokens": 96,
+      "latency_ms": 504.519
+    },
+    {
+      "provider": "groq",
+      "model": "llama-3.1-8b-instant",
+      "surface": "voice_transcript",
+      "terminal": "achieved",
+      "route": "free_chat",
+      "attempts": 1,
+      "retries": 0,
+      "prompt_tokens": 331,
+      "completion_tokens": 75,
+      "latency_ms": 366.502
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "surface": "chat",
+      "terminal": "achieved",
+      "route": "free_chat",
+      "attempts": 1,
+      "retries": 0,
+      "prompt_tokens": 313,
+      "completion_tokens": 50,
+      "latency_ms": 1979.925
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "surface": "voice_transcript",
+      "terminal": "achieved",
+      "route": "free_chat",
+      "attempts": 1,
+      "retries": 0,
+      "prompt_tokens": 315,
+      "completion_tokens": 91,
+      "latency_ms": 1773.36
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/gemini-2.5-flash-lite",
+      "surface": "chat",
+      "terminal": "achieved",
+      "route": "free_chat",
+      "attempts": 1,
+      "retries": 0,
+      "prompt_tokens": 309,
+      "completion_tokens": 17,
+      "latency_ms": 1179.338
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/gemini-2.5-flash-lite",
+      "surface": "voice_transcript",
+      "terminal": "achieved",
+      "route": "free_chat",
+      "attempts": 1,
+      "retries": 0,
+      "prompt_tokens": 309,
+      "completion_tokens": 77,
+      "latency_ms": 878.042
+    }
+  ],
+  "mandatory_reasoning_probe": {
+    "provider": "openrouter",
+    "model": "kwaipilot/kat-coder-air-v2.5",
+    "catalog_reasoning_capability": "unknown; request omitted a disable control",
+    "max_tokens": 512,
+    "openrouter_allow_fallbacks": false,
+    "chat": {
+      "terminal": "achieved",
+      "attempts": 1,
+      "completion_tokens": 191,
+      "latency_ms": 1905.594
+    },
+    "voice_transcript": {
+      "terminal": "achieved",
+      "attempts": 1,
+      "completion_tokens": 223,
+      "latency_ms": 1918.651
+    }
+  },
+  "reproduction": "PYTHONPATH=. python scripts/smoke_test_remote_llm.py --all --require-all --max-tokens 96 --artifact artifacts/local/provider-smoke.json"
+}

@@ -37,10 +37,11 @@ def test_local_backend_calls_local_factory_with_model() -> None:
 def test_remote_backend_builds_engine_with_resolved_key() -> None:
     captured: dict = {}
 
-    def fake_remote(provider, model, api_key):
+    def fake_remote(provider, model, api_key, **generation):
         captured["provider_key"] = provider.key
         captured["model"] = model
         captured["api_key"] = api_key
+        captured["generation"] = generation
         return object()
 
     settings = LlmSettings(backend="remote", provider_key="groq", model_id="llama-3.1-8b-instant")
@@ -53,7 +54,60 @@ def test_remote_backend_builds_engine_with_resolved_key() -> None:
         "provider_key": "groq",
         "model": "llama-3.1-8b-instant",
         "api_key": "sk-live-key",
+        "generation": {
+            "reasoning_enabled": None,
+            "reasoning_parameter": None,
+            "max_output_tokens": 4_096,
+        },
     }
+
+
+def test_remote_factory_receives_reconciled_model_limits_and_reasoning() -> None:
+    captured: dict = {}
+
+    def fake_remote(provider, model, api_key, **generation):
+        del provider, model, api_key
+        captured.update(generation)
+        return object()
+
+    settings = LlmSettings(
+        backend="remote",
+        provider_key="openrouter",
+        model_id="reasoning/model",
+        max_tokens=500_000,
+        reasoning_enabled=False,
+        model_max_output_tokens=16_384,
+        model_reasoning_supported=True,
+        model_reasoning_mandatory=True,
+        model_reasoning_parameter="reasoning",
+    )
+
+    build_llm_engine(
+        settings,
+        FakeSecrets({"openrouter": "sk-live-key"}),
+        remote_factory=fake_remote,
+    )
+
+    assert captured == {
+        "reasoning_enabled": True,
+        "reasoning_parameter": "reasoning",
+        "max_output_tokens": 16_384,
+    }
+
+
+def test_remote_factory_programming_type_error_is_not_hidden() -> None:
+    def broken_remote(provider, model, api_key, **generation):
+        del provider, model, api_key, generation
+        raise TypeError("factory implementation bug")
+
+    settings = LlmSettings(backend="remote", provider_key="groq", model_id="model")
+
+    with pytest.raises(TypeError, match="factory implementation bug"):
+        build_llm_engine(
+            settings,
+            FakeSecrets({"groq": "sk-live-key"}),
+            remote_factory=broken_remote,
+        )
 
 
 def test_remote_without_key_raises_auth_error() -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from types import SimpleNamespace
@@ -304,6 +304,8 @@ class _TraceDraft:
     evidence_completion_status: str = "not_run"
     evidence_completion_reason: str = ""
     evidence_completion_actions: int = 0
+    provider_trace: dict[str, Any] = field(default_factory=dict)
+    llm_error: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -942,6 +944,7 @@ class AssistantRuntime:
                     break
         except RemoteLLMError as exc:
             stream_error = exc
+            draft.llm_error = exc.as_dict()
         finally:
             if stream is not None:
                 close = getattr(stream, "close", None)
@@ -949,6 +952,9 @@ class AssistantRuntime:
                     close()
         ended = time.perf_counter()
         draft.stage_latencies_ms["llm"] = (ended - started) * 1000
+        provider_trace = getattr(self.llm, "last_call_trace", None)
+        if provider_trace is not None:
+            draft.provider_trace = provider_trace.as_dict()
 
         if block_event is None:
             tail = buffer.strip()
@@ -1855,6 +1861,10 @@ class AssistantRuntime:
                     inject_persona=False,
                 )
         except RemoteLLMError as exc:
+            draft.llm_error = exc.as_dict()
+            provider_trace = getattr(self.llm, "last_call_trace", None)
+            if provider_trace is not None:
+                draft.provider_trace = provider_trace.as_dict()
             return self._result(
                 frame,
                 draft,
@@ -1866,6 +1876,9 @@ class AssistantRuntime:
             )
 
         response_text = getattr(llm_result, "text", "").strip()
+        raw_provider_trace = getattr(llm_result, "provider_trace", None)
+        if isinstance(raw_provider_trace, Mapping):
+            draft.provider_trace = dict(raw_provider_trace)
         usage = LLMUsage.from_llm_result(llm_result)
         self._record_prompt_calibration(draft, usage, source="llm_result")
         citations = tuple(draft.citations)
@@ -2678,6 +2691,8 @@ class AssistantRuntime:
             evidence_completion_reason=draft.evidence_completion_reason,
             evidence_completion_actions=draft.evidence_completion_actions,
             prompt_manifest=draft.prompt_manifest,
+            provider_trace=draft.provider_trace,
+            llm_error=draft.llm_error,
         )
         return RuntimeResult(
             response_text=response_text,

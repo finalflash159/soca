@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -14,6 +14,7 @@ class LLMResult:
     ttft_ms: float
     total_latency_ms: float
     tokens_per_second: float
+    provider_trace: Mapping[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return asdict(self)
