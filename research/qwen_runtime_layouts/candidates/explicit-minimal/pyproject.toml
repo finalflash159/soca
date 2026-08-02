@@ -1,0 +1,27 @@
+[project]
+name = "soca-qwen-minimal-layout"
+version = "0.0.0"
+requires-python = "==3.11.*"
+dependencies = [
+  "accelerate==1.12.0",
+  "librosa==0.11.0",
+  "nagisa==0.2.11",
+  "numpy==2.4.6",
+  "qwen-asr==0.0.6",
+  "soundfile==0.14.0",
+  "soynlp==0.0.493",
+  "torch==2.13.0",
+  "transformers==4.57.6",
+]
+
+[tool.uv]
+package = false
+required-version = "==0.11.16"
+environments = ["sys_platform == 'darwin' and platform_machine == 'arm64'"]
+exclude-dependencies = [
+  "flask",
+  "gradio",
+  "pytz",
+  "qwen-omni-utils",
+  "sox",
+]

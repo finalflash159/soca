@@ -1,0 +1,30 @@
+--- a/qwen_asr/__init__.py
++++ b/qwen_asr/__init__.py
+@@
+ from .inference.qwen3_asr import Qwen3ASRModel
+-from .inference.qwen3_forced_aligner import Qwen3ForcedAligner
++
++def __getattr__(name: str):
++    if name == "Qwen3ForcedAligner":
++        from .inference.qwen3_forced_aligner import Qwen3ForcedAligner
++        return Qwen3ForcedAligner
++    raise AttributeError(name)
+--- a/qwen_asr/inference/qwen3_asr.py
++++ b/qwen_asr/inference/qwen3_asr.py
+@@
++from __future__ import annotations
+ from dataclasses import dataclass
+-from typing import Any, Dict, List, Optional, Union
++from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+@@
+-from .qwen3_forced_aligner import Qwen3ForcedAligner
++if TYPE_CHECKING:
++    from .qwen3_forced_aligner import Qwen3ForcedAligner
+@@
+         if forced_aligner is not None:
++            from .qwen3_forced_aligner import Qwen3ForcedAligner
+             forced_aligner_model = Qwen3ForcedAligner.from_pretrained(
+@@
+         if forced_aligner is not None:
++            from .qwen3_forced_aligner import Qwen3ForcedAligner
+             forced_aligner_model = Qwen3ForcedAligner.from_pretrained(

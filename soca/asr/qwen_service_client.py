@@ -21,11 +21,11 @@ from .qwen_ipc_protocol import (
     recv_header,
     send_frame,
 )
-from .whisper_onnx import ASRResult
+from .result import ASRResult
 
 LOGGER = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[2]
-QWEN_VENV_PYTHON = REPO_ROOT / ".venv-qwen" / "bin" / "python"
+QWEN_VENV_PYTHON = REPO_ROOT / "runtime" / "qwen-asr" / ".venv" / "bin" / "python"
 DEFAULT_STARTUP_TIMEOUT_S = 60.0
 DEFAULT_REQUEST_TIMEOUT_S = 30.0
 DEFAULT_SHUTDOWN_TIMEOUT_S = 5.0
@@ -81,8 +81,8 @@ class QwenASRServiceClient:
         executable = python_executable or QWEN_VENV_PYTHON
         if not executable.is_file():
             raise QwenServiceUnavailable(
-                f"{executable} not found. Create a separate venv at .venv-qwen "
-                "and install qwen-asr into it."
+                f"{executable} not found. Run scripts/provision_qwen_runtime.py "
+                "to create the locked qwen-asr environment."
             )
 
         root = socket_dir or Path(tempfile.gettempdir())

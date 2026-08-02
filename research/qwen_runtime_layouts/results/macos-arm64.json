@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "run_type": "release_benchmark",
+  "artifact": {
+    "key": "qwen3_asr_0_6b",
+    "model": "Qwen/Qwen3-ASR-0.6B",
+    "revision": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0"
+  },
+  "configuration": {
+    "context": "",
+    "device": "cpu",
+    "dtype": "float32",
+    "hf_hub_offline": true,
+    "language": "Vietnamese",
+    "max_new_tokens": 128,
+    "repetitions": 1,
+    "transformers_offline": true
+  },
+  "data": {
+    "manifest": "data/asr_codeswitch/manifest.jsonl",
+    "manifest_sha256": "aed1ccd96ed9d994412285f4dcff68ba119155be0effd7fa0d089fa635dde70d",
+    "fixtures": [
+      {"name": "cs_000.wav", "sha256": "6aa748d0b623a7e826bc801a956ced1294fa8f073e5711ea98f505e2b325e811"},
+      {"name": "cs_007.wav", "sha256": "7a335ea095e1c548f765fb13c553308a02bcead6cdb69f21ad717b73d2da90c4"},
+      {"name": "cs_016.wav", "sha256": "78fdbf057aebdb9c31c8d723c31c8b0dfb1e7f7afd5952e181d70320a31519c0"},
+      {"name": "cs_033.wav", "sha256": "367847d64e0c1336e91e6c102ac8f2251a112eb6161d852151fa47a40677ff04"}
+    ]
+  },
+  "source": {
+    "materialized_revision": "269a92e2dbe20df30c8b7c6c0b1f08c3481a75e1",
+    "run_worktree_dirty": true,
+    "note": "The benchmark ran before the cohesive implementation commit; that commit materializes the measured harness and runtime code."
+  },
+  "hardware": "Apple M4 Pro, 48 GB unified memory",
+  "normalized_output_sha256": "1c5b56beb2c47f4aaffb98714ee781e64194e8492c48241e6c34e6c7b58f4444",
+  "platform": "macOS 15.7.4 arm64",
+  "python": "3.11.14",
+  "raw_logs": {
+    "committed": false,
+    "local_directory": "benchmarks/raw/qwen_runtime_layouts/2026-08-02"
+  },
+  "failures": [
+    {
+      "candidate": "upstream-locked",
+      "disposition": "discarded_and_rerun",
+      "reason": "Initial cold-run terminal capture was incomplete; a fresh isolated cache/environment rerun produced the recorded result."
+    }
+  ],
+  "results": [
+    {
+      "cold_cache_bytes": 1233660887,
+      "cold_provision_s": 37.156,
+      "installed_bytes": 1214216483,
+      "layout": "upstream-locked",
+      "lock_sha256": "8d5445370c2d24491384fe4b9ab1768fc66c86167cac9f2ee7086a35aded04ac",
+      "mean_rtf": 0.11145535968639586,
+      "packages": 92,
+      "peak_rss_bytes": 6302793728,
+      "startup_s": 5.224477375013521
+    },
+    {
+      "cold_cache_bytes": 1033749524,
+      "cold_provision_s": 27.606,
+      "installed_bytes": 1005908806,
+      "layout": "explicit-minimal",
+      "lock_sha256": "83709b61f0ecda87c4516b17fc41a70437f15b517d8fcfa74d54dd701f933c69",
+      "mean_rtf": 0.10745152727712587,
+      "packages": 51,
+      "peak_rss_bytes": 6263193600,
+      "startup_s": 4.26964404201135
+    },
+    {
+      "cold_cache_bytes": 964557099,
+      "cold_provision_s": 23.841,
+      "installed_bytes": 936572841,
+      "layout": "optionalized-fork",
+      "lock_sha256": "54a0296e471a15ed2d017eaff15ae857a31bfabb3abd9e15e1f00f994fd7953a",
+      "mean_rtf": 0.11053864415575694,
+      "packages": 46,
+      "peak_rss_bytes": 6028509184,
+      "startup_s": 3.2809202499920502
+    }
+  ],
+  "decision": {
+    "winner": "explicit-minimal",
+    "status": "accepted",
+    "reason": "Exact transcript/logprob parity with 41 fewer packages and 18.3% faster startup than upstream, without maintaining a source fork."
+  }
+}
