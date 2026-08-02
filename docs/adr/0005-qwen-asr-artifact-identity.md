@@ -1,8 +1,8 @@
 # ADR 0005: Immutable Qwen ASR artifact identity
 
 Date: 2026-08-02
-Status: accepted for contract; provisioning remains blocked until private mirrors and the worker
-lock are pinned
+Status: accepted for contract; blocked — owner: @finalflash159; reason: provisioning requires
+private mirror commits and an exact worker lock digest before qualification
 
 ## Context
 

@@ -167,6 +167,10 @@ def test_receipt_must_be_private_regular_file(tmp_path: Path) -> None:
     with pytest.raises(QwenArtifactPermissionError, match="private"):
         validate_private_receipt(receipt)
 
+    receipt.chmod(0o200)
+    with pytest.raises(QwenArtifactPermissionError, match="readable by owner"):
+        validate_private_receipt(receipt)
+
 
 def test_receipt_symlink_is_rejected(tmp_path: Path) -> None:
     target = tmp_path / "target.json"

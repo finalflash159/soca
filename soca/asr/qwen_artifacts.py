@@ -213,8 +213,11 @@ def validate_private_receipt(path: Path) -> None:
         raise QwenArtifactPermissionError("artifact receipt is not readable") from exc
     if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
         raise QwenArtifactPermissionError("artifact receipt must be a regular file")
-    if metadata.st_mode & 0o077:
+    mode = stat.S_IMODE(metadata.st_mode)
+    if mode & 0o077:
         raise QwenArtifactPermissionError("artifact receipt permissions must be private")
+    if not mode & stat.S_IRUSR:
+        raise QwenArtifactPermissionError("artifact receipt must be readable by owner")
 
 
 def _require_object(payload: object, name: str) -> Mapping[str, Any]:
