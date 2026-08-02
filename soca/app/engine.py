@@ -60,6 +60,7 @@ from soca.core.workflow.protocol import (
     protocol_hello,
     workflow_event_to_protocol,
 )
+from soca.llm.factory import DEFAULT_LLM_ENGINE_FACTORY, EngineBuilder
 from soca.llm.providers import (
     PRICING_TABLE_AS_OF,
     LLMProvider,
@@ -84,7 +85,21 @@ from soca.tts import VALTEC_TTS_CONFIG
 PROTOCOL_VERSION = CURRENT_PROTOCOL_VERSION
 LOGGER = logging.getLogger(__name__)
 
-TextRuntimeBuilder = Callable[..., TextRuntimeBundle]
+
+
+class TextRuntimeBuilder(Protocol):
+    def __call__(
+        self,
+        config: TextRuntimeConfig,
+        *,
+        session_memory: SessionMemory | None,
+        llm_settings: LlmSettings,
+        secret_store: LlmSecretStore,
+        engine_factory: EngineBuilder,
+        active_goal_store: ActiveGoalStore,
+    ) -> TextRuntimeBundle: ...
+
+
 SettingsLoader = Callable[[], LlmSettings]
 SettingsSaver = Callable[[LlmSettings], None]
 CatalogFetcher = Callable[[LLMProvider, str], list[RemoteModelInfo]]
@@ -303,6 +318,7 @@ class SocaEngine:
         llm_settings_saver: SettingsSaver = save_settings,
         secret_store: LlmSecretStore | None = None,
         catalog_fetcher: CatalogFetcher = fetch_catalog,
+        llm_engine_factory: EngineBuilder = DEFAULT_LLM_ENGINE_FACTORY,
     ) -> None:
         self.voice_config = voice_config
         self.text_config = text_config
@@ -326,6 +342,7 @@ class SocaEngine:
             self._settings_warning = "Không thể đọc cấu hình LLM đã lưu; đang dùng Local mặc định."
         self.secret_store = secret_store or SecretStore()
         self.catalog_fetcher = catalog_fetcher
+        self.llm_engine_factory = llm_engine_factory
         # Provider /models endpoints (especially OpenRouter) can be large and
         # slow. Never run them on the stdin command loop: doing so makes a key
         # submit, startup, or model picker look frozen.
@@ -424,6 +441,11 @@ class SocaEngine:
 
     def shutdown(self) -> None:
         self._cmd_voice_stop()
+        if self.text_bundle is not None:
+            llm = getattr(self.text_bundle.runtime, "llm", None)
+            cancel = getattr(llm, "cancel", None)
+            if callable(cancel):
+                cancel()
         if self._chat_thread is not None:
             self._chat_thread.join(timeout=10.0)
         for thread in self._voice_threads:
@@ -1560,6 +1582,12 @@ class SocaEngine:
                     "blocked": result.blocked,
                     "usage": usage,
                     "citations": list(citation_records(result.citations)),
+                    "provider_trace": (
+                        dict(result.trace.provider_trace) if result.trace is not None else {}
+                    ),
+                    "llm_error": (
+                        dict(result.trace.llm_error) if result.trace is not None else {}
+                    ),
                 }
             )
             terminal_emitted = True
@@ -1649,30 +1677,20 @@ class SocaEngine:
         if self.text_bundle is not None:
             return self.text_bundle
         self.writer.emit({"event": "chat", "type": "loading", "text": "building text runtime"})
-        # Pass the engine's in-memory settings + secret store so chat honours the
-        # backend the UI just selected, rather than re-reading disk with a fresh
-        # SecretStore. Fall back for builders with a narrower signature (tests).
         runtime_config = dataclasses.replace(
             self.text_config,
             max_tokens=self.llm_settings.effective_max_tokens,
             temperature=self.llm_settings.temperature,
             top_p=self.llm_settings.top_p,
         )
-        try:
-            bundle = self.text_runtime_builder(
-                runtime_config,
-                session_memory=self.session_memory,
-                llm_settings=self.llm_settings,
-                secret_store=self.secret_store,
-                active_goal_store=self.active_goal_store,
-            )
-        except TypeError:
-            try:
-                bundle = self.text_runtime_builder(
-                    runtime_config, session_memory=self.session_memory
-                )
-            except TypeError:
-                bundle = self.text_runtime_builder(runtime_config)
+        bundle = self.text_runtime_builder(
+            runtime_config,
+            session_memory=self.session_memory,
+            llm_settings=self.llm_settings,
+            secret_store=self.secret_store,
+            engine_factory=self.llm_engine_factory,
+            active_goal_store=self.active_goal_store,
+        )
         self.text_bundle = bundle
         self.writer.emit(
             {
@@ -2039,6 +2057,7 @@ class SocaEngine:
                     session_memory=session_memory,
                     llm_settings=self._selected_voice_settings(),
                     secret_store=self.secret_store,
+                    engine_factory=self.llm_engine_factory,
                     active_goal_store=self.active_goal_store,
                 )
 
@@ -2080,6 +2099,7 @@ def run_engine(
     llm_settings_saver: SettingsSaver = save_settings,
     secret_store: LlmSecretStore | None = None,
     catalog_fetcher: CatalogFetcher = fetch_catalog,
+    llm_engine_factory: EngineBuilder = DEFAULT_LLM_ENGINE_FACTORY,
 ) -> int:
     """Run the engine loop until ``quit`` or EOF. Returns a process exit code."""
     reader = stdin or sys.stdin
@@ -2100,6 +2120,7 @@ def run_engine(
         llm_settings_saver=llm_settings_saver,
         secret_store=secret_store,
         catalog_fetcher=catalog_fetcher,
+        llm_engine_factory=llm_engine_factory,
     )
 
     # Keep protocol stdout pristine: reroute stray prints (model loaders,

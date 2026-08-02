@@ -53,6 +53,7 @@ notebooks/artifacts/
 # Runtime artifacts
 runs/
 logs/
+artifacts/local/
 *.log
 *.wav
 *.mp3

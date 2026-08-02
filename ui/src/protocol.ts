@@ -289,6 +289,8 @@ export interface ChatEvent {
   run_id?: string;
   goal_id?: string;
   citations?: CitationRecord[];
+  provider_trace?: Record<string, unknown>;
+  llm_error?: Record<string, unknown>;
 }
 
 export interface CitationRecord {

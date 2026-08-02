@@ -108,12 +108,13 @@ def make_bundle(
     *,
     detector: object | None = None,
     tts: object | None = None,
+    llm: object | None = None,
 ) -> VoiceRuntimeBundle:
     return VoiceRuntimeBundle(
         config=config,
         detector=detector or object(),
         asr=FakeASR(),  # type: ignore[arg-type]
-        llm=object(),  # type: ignore[arg-type]
+        llm=llm or object(),  # type: ignore[arg-type]
         tts=tts or object(),
         assistant_runtime=object(),  # type: ignore[arg-type]
         pipeline=pipeline,  # type: ignore[arg-type]
@@ -141,7 +142,10 @@ def test_voice_monitor_passive_silence_skips_asr_pipeline() -> None:
         tts=FakeTTS(),
     )
 
-    def runtime_builder(_config: ResolvedVoiceRuntimeConfig) -> VoiceRuntimeBundle:
+    def runtime_builder(
+        _config: ResolvedVoiceRuntimeConfig, *, session_memory=None
+    ) -> VoiceRuntimeBundle:
+        del session_memory
         return bundle
 
     queue: Queue = Queue()
@@ -166,7 +170,10 @@ def test_voice_monitor_reports_microphone_level_for_nonempty_audio() -> None:
     pipeline = FakePipeline([StreamingEvent(type="asr", text="hello")])
     bundle = make_bundle(config, pipeline, detector=FakeDetector(has_speech=True))
 
-    def runtime_builder(_config: ResolvedVoiceRuntimeConfig) -> VoiceRuntimeBundle:
+    def runtime_builder(
+        _config: ResolvedVoiceRuntimeConfig, *, session_memory=None
+    ) -> VoiceRuntimeBundle:
+        del session_memory
         return bundle
 
     queue: Queue = Queue()
@@ -197,7 +204,10 @@ def test_voice_monitor_passive_silence_speaks_playful_call_out() -> None:
         tts=fake_tts,
     )
 
-    def runtime_builder(_config: ResolvedVoiceRuntimeConfig) -> VoiceRuntimeBundle:
+    def runtime_builder(
+        _config: ResolvedVoiceRuntimeConfig, *, session_memory=None
+    ) -> VoiceRuntimeBundle:
+        del session_memory
         return bundle
 
     queue: Queue = Queue()
@@ -252,7 +262,10 @@ def test_voice_monitor_reports_runtime_error_and_traceback() -> None:
         no_memory=True,
     )
 
-    def failing_builder(_config: ResolvedVoiceRuntimeConfig) -> VoiceRuntimeBundle:
+    def failing_builder(
+        _config: ResolvedVoiceRuntimeConfig, *, session_memory=None
+    ) -> VoiceRuntimeBundle:
+        del session_memory
         raise RuntimeError("Valtec runtime failed to load weights")
 
     queue: Queue = Queue()
@@ -263,6 +276,32 @@ def test_voice_monitor_reports_runtime_error_and_traceback() -> None:
     error = [event for event in events if event.type == "error"][0]
     assert "Valtec runtime failed to load weights" in error.text
     assert "Traceback" in error.metadata["traceback"]
+
+
+def test_voice_stop_cancels_active_llm_before_stopping_audio() -> None:
+    calls: list[str] = []
+
+    class CancelableLLM:
+        def cancel(self) -> None:
+            calls.append("llm")
+
+    class OrderedAudioSink(FakeAudioSink):
+        def stop(self) -> None:
+            calls.append("audio")
+
+    config = make_config()
+    bundle = make_bundle(config, FakePipeline([]), llm=CancelableLLM())
+    controller = VoiceMonitorController(
+        config,
+        runtime_builder=lambda _config, *, session_memory=None: bundle,
+        player=OrderedAudioSink(),  # type: ignore[arg-type]
+        warmup=False,
+    )
+    controller.bundle = bundle
+
+    controller.stop()
+
+    assert calls == ["llm", "audio"]
 
 
 class FakeContextAwareASR:

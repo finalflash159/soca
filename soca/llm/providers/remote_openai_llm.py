@@ -1,51 +1,49 @@
-"""OpenAI-compatible remote LLM engine.
-
-One class serves every provider in :mod:`provider_registry` (OpenAI, Groq,
-OpenRouter, Gemini) because they all speak the OpenAI `/chat/completions`
-dialect. It implements the same :class:`~soca.llm.base.LLMEngine` Protocol as
-the local llama.cpp runner, so nothing downstream (runtime, guardrail, voice
-loop) needs to change to use it.
-
-The OpenAI client is injectable so tests drive it without any network access.
-"""
-
 from __future__ import annotations
 
+import threading
 import time
-from collections.abc import Iterator, Mapping
-from typing import Any, Literal
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass, field
+from typing import Any
 
 from soca.prompts import SOCA_LLM_SYSTEM_PROMPT, split_embedded_system_prompt
 
 from ..base import LLMResult
 from ..message_format import ChatMessage
 from .provider_registry import LLMProvider
+from .request_adapter import ProviderRequestAdapter, ReasoningParameter
+from .response_adapter import (
+    chunk_fields,
+    close_stream,
+    empty_response_error,
+    empty_stream_error,
+    first_choice,
+    map_provider_error,
+    message_text,
+    output_limit_error,
+)
+from .runtime_contracts import (
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_TIMEOUT_S,
+    ProviderAttempt,
+    ProviderCallTrace,
+    RemoteFailureKind,
+    RemoteLLMError,
+    RetryPolicy,
+    replace_remote_error,
+    trace_with_response_failure,
+)
 
-DEFAULT_TIMEOUT_S = 60.0
-DEFAULT_MAX_RETRIES = 2
-# Rough fallback when no tokenizer is available: ~4 chars per token.
 _CHARS_PER_TOKEN = 4
 
 
-class RemoteLLMError(RuntimeError):
-    """A remote provider call failed, with a user-friendly Vietnamese message.
-
-    ``category`` is one of ``auth`` | ``rate_limit`` | ``network`` | ``unknown``
-    so UI code can react without parsing the message text.
-    """
-
-    def __init__(self, message: str, *, category: str = "unknown") -> None:
-        super().__init__(message)
-        self.category = category
+@dataclass
+class _CallState:
+    cancelled: threading.Event = field(default_factory=threading.Event)
+    stream: Any | None = None
 
 
 def build_remote_messages(user_msg: str, inject_persona: bool) -> list[ChatMessage]:
-    """SoCa persona + user turn as OpenAI chat messages.
-
-    Mirrors :func:`soca.llm.message_format.build_chat_messages` but without the
-    GGUF-specific ``LLMModelConfig`` coupling: remote chat models need only a
-    system persona and the user message.
-    """
     messages: list[ChatMessage] = []
     if inject_persona:
         messages.append({"role": "system", "content": SOCA_LLM_SYSTEM_PROMPT})
@@ -56,31 +54,6 @@ def build_remote_messages(user_msg: str, inject_persona: bool) -> list[ChatMessa
             messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": user_content.strip()})
     return messages
-
-
-def _map_error(exc: Exception, provider: LLMProvider) -> RemoteLLMError:
-    """Translate an OpenAI/transport exception into a friendly RemoteLLMError.
-
-    Matches on ``status_code`` and class name so it works both for the real
-    ``openai`` exception types and for lightweight fakes in tests.
-    """
-    status = getattr(exc, "status_code", None)
-    name = type(exc).__name__
-    label = provider.label
-
-    if status == 401 or status == 403 or "Authentication" in name or "Permission" in name:
-        return RemoteLLMError(f"API key {label} sai hoặc hết hạn.", category="auth")
-    if status == 429 or "RateLimit" in name:
-        return RemoteLLMError(
-            f"{label} đã hết quota hoặc bị giới hạn tốc độ (rate limit).",
-            category="rate_limit",
-        )
-    if "Connection" in name or "Timeout" in name:
-        return RemoteLLMError(
-            f"Không kết nối được tới {label}. Kiểm tra mạng và thử lại.",
-            category="network",
-        )
-    return RemoteLLMError(f"Lỗi khi gọi {label}: {exc}", category="unknown")
 
 
 class RemoteOpenAILLM:
@@ -94,24 +67,35 @@ class RemoteOpenAILLM:
         timeout: float = DEFAULT_TIMEOUT_S,
         max_retries: int = DEFAULT_MAX_RETRIES,
         reasoning_enabled: bool | None = None,
-        reasoning_parameter: Literal["reasoning", "reasoning_effort"] | None = None,
+        reasoning_parameter: ReasoningParameter | None = None,
+        max_output_tokens: int | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if not model.strip():
             raise ValueError("model must not be empty")
         if not api_key.strip():
             raise ValueError("api_key must not be empty")
+        if max_retries < 0:
+            raise ValueError("max_retries must be non-negative")
+        if max_output_tokens is not None and max_output_tokens <= 0:
+            raise ValueError("max_output_tokens must be positive")
 
         self.provider = provider
         self.model = model
-        self.reasoning_enabled = reasoning_enabled
-        self.reasoning_parameter = reasoning_parameter
+        self.reasoning_enabled: bool | None = reasoning_enabled
+        self.reasoning_parameter: ReasoningParameter | None = reasoning_parameter
+        self.max_output_tokens = max_output_tokens
+        self._adapter = ProviderRequestAdapter(provider)
+        self._policy = RetryPolicy(max_attempts=max_retries + 1, deadline_s=timeout)
+        self._sleep = sleep
+        self._clock = clock
+        self._state_lock = threading.Lock()
+        self._active_call: _CallState | None = None
+        self.last_call_trace: ProviderCallTrace | None = None
         self._client = (
-            client
-            if client is not None
-            else _build_client(provider, api_key, timeout=timeout, max_retries=max_retries)
+            client if client is not None else _build_client(provider, api_key, timeout=timeout)
         )
-
-    # -- validation ---------------------------------------------------------
 
     @staticmethod
     def _validate_generation_args(
@@ -131,60 +115,181 @@ class RemoteOpenAILLM:
 
     @staticmethod
     def _prompt_for_metrics(messages: list[ChatMessage]) -> str:
-        return "\n".join(f"{m['role']}: {m['content']}" for m in messages)
+        return "\n".join(f"{message['role']}: {message['content']}" for message in messages)
+
+    def _effective_max_tokens(self, requested: int) -> int:
+        if self.max_output_tokens is None:
+            return requested
+        return min(requested, self.max_output_tokens)
+
+    def _request_options(self, max_tokens: int) -> dict[str, Any]:
+        return self._adapter.generation_options(
+            max_tokens=max_tokens,
+            reasoning_enabled=self.reasoning_enabled,
+            reasoning_parameter=self.reasoning_parameter,
+        )
+
+    def _begin_call(self) -> _CallState:
+        with self._state_lock:
+            if self._active_call is not None:
+                raise RuntimeError("concurrent calls on one LLM engine are not supported")
+            state = _CallState()
+            self._active_call = state
+            return state
+
+    def _end_call(self, state: _CallState) -> None:
+        with self._state_lock:
+            if self._active_call is state:
+                self._active_call = None
+
+    def cancel(self) -> None:
+        with self._state_lock:
+            state = self._active_call
+            if state is None:
+                return
+            state.cancelled.set()
+            stream = state.stream
+        close_stream(stream)
+
+    def _raise_if_cancelled(self, state: _CallState) -> None:
+        if state.cancelled.is_set():
+            raise RemoteLLMError(
+                "Yêu cầu tới model đã bị hủy.",
+                category=RemoteFailureKind.CANCELLED,
+                provider=self.provider.key,
+                model=self.model,
+            )
+
+    def _call_with_retry(
+        self,
+        operation: str,
+        request: Mapping[str, Any],
+        *,
+        requested_max_tokens: int,
+        effective_max_tokens: int,
+        state: _CallState,
+    ) -> tuple[Any, ProviderCallTrace]:
+        started = self._clock()
+        attempts: list[ProviderAttempt] = []
+        for attempt in range(1, self._policy.max_attempts + 1):
+            self._raise_if_cancelled(state)
+            try:
+                response = self._client.chat.completions.create(**dict(request))
+            except Exception as exc:
+                mapped = map_provider_error(exc, self.provider, self.model)
+                if mapped is None:
+                    raise
+                elapsed = self._clock() - started
+                can_retry = mapped.retryable and attempt < self._policy.max_attempts
+                delay = self._policy.delay(attempt, mapped.retry_after_s) if can_retry else 0.0
+                if can_retry and elapsed + delay < self._policy.deadline_s:
+                    attempts.append(
+                        ProviderAttempt(
+                            attempt,
+                            "failure",
+                            mapped.category,
+                            mapped.status_code,
+                            delay,
+                        )
+                    )
+                    self._sleep(delay)
+                    continue
+                attempts.append(
+                    ProviderAttempt(
+                        attempt,
+                        "cancelled" if mapped.category == "cancelled" else "failure",
+                        mapped.category,
+                        mapped.status_code,
+                    )
+                )
+                trace = self._make_trace(
+                    operation,
+                    requested_max_tokens,
+                    effective_max_tokens,
+                    attempts,
+                    started,
+                )
+                self.last_call_trace = trace
+                raise mapped.with_attempts(attempt) from exc
+            attempts.append(ProviderAttempt(attempt, "success"))
+            trace = self._make_trace(
+                operation,
+                requested_max_tokens,
+                effective_max_tokens,
+                attempts,
+                started,
+            )
+            self.last_call_trace = trace
+            return response, trace
+        raise AssertionError("retry loop exited without a result")
+
+    def _make_trace(
+        self,
+        operation: str,
+        requested_max_tokens: int,
+        effective_max_tokens: int,
+        attempts: list[ProviderAttempt],
+        started: float,
+    ) -> ProviderCallTrace:
+        return ProviderCallTrace(
+            provider=self.provider.key,
+            model=self.model,
+            operation=operation,
+            requested_max_tokens=requested_max_tokens,
+            effective_max_tokens=effective_max_tokens,
+            attempts=tuple(attempts),
+            elapsed_ms=(self._clock() - started) * 1000,
+        )
 
     def _create_non_streaming_result(
         self,
         messages: list[ChatMessage],
         request: dict[str, Any],
+        *,
+        requested_max_tokens: int,
+        effective_max_tokens: int,
+        operation: str,
     ) -> LLMResult:
+        state = self._begin_call()
         started = time.perf_counter()
         try:
-            response = self._client.chat.completions.create(**request)
-        except Exception as exc:  # noqa: BLE001 - provider boundary translation
-            raise _map_error(exc, self.provider) from exc
+            response, trace = self._call_with_retry(
+                operation,
+                request,
+                requested_max_tokens=requested_max_tokens,
+                effective_max_tokens=effective_max_tokens,
+                state=state,
+            )
+            self._raise_if_cancelled(state)
+        finally:
+            self._end_call(state)
         ended = time.perf_counter()
 
-        choices = getattr(response, "choices", None) or []
-        if not choices:
-            raise RemoteLLMError(
-                f"{self.provider.label} trả về response không có lựa chọn.",
-                category="unknown",
-            )
-
-        choice = choices[0]
-        message = getattr(choice, "message", None)
-        raw_text = getattr(message, "content", None)
-        text = raw_text.strip() if isinstance(raw_text, str) else ""
-        if not text:
-            finish_reason = getattr(choice, "finish_reason", None)
-            hint = (
-                " Model có thể đã dùng hết max_tokens trước khi tạo câu trả lời; "
-                "hãy tăng max_tokens hoặc chọn model chat khác."
-                if finish_reason == "length"
-                else " Hãy tăng max_tokens hoặc chọn model chat khác."
-            )
-            raise RemoteLLMError(
-                f"{self.provider.label} trả về nội dung rỗng.{hint}",
-                category="unknown",
-            )
+        try:
+            choice, message = first_choice(response, self.provider, self.model)
+            text = message_text(message)
+            finish_reason = str(getattr(choice, "finish_reason", None) or "")
+            if not text:
+                raise empty_response_error(choice, message, self.provider, self.model)
+            if finish_reason == "length":
+                raise output_limit_error(self.provider, self.model)
+        except RemoteLLMError as error:
+            self.last_call_trace = trace_with_response_failure(trace, error)
+            raise
         usage = getattr(response, "usage", None)
         n_prompt = getattr(usage, "prompt_tokens", 0) or 0
         n_completion = getattr(usage, "completion_tokens", 0) or 0
-        total_latency_ms = (ended - started) * 1000
         elapsed = ended - started
-        tokens_per_second = n_completion / elapsed if elapsed > 0 else 0.0
         return LLMResult(
             text=text,
             prompt=self._prompt_for_metrics(messages),
             n_prompt_tokens=n_prompt,
             n_completion_tokens=n_completion,
-            ttft_ms=total_latency_ms,
-            total_latency_ms=total_latency_ms,
-            tokens_per_second=tokens_per_second,
+            ttft_ms=elapsed * 1000,
+            total_latency_ms=elapsed * 1000,
+            tokens_per_second=n_completion / elapsed if elapsed > 0 else 0.0,
+            provider_trace=trace.as_dict(),
         )
-
-    # -- generation ---------------------------------------------------------
 
     def generate(
         self,
@@ -195,36 +300,23 @@ class RemoteOpenAILLM:
         inject_persona: bool = True,
     ) -> LLMResult:
         self._validate_generation_args(user_msg, max_tokens, temperature, top_p)
+        effective = self._effective_max_tokens(max_tokens)
         messages = build_remote_messages(user_msg, inject_persona)
+        request = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "top_p": top_p,
+            "stream": False,
+            **self._request_options(effective),
+        }
         return self._create_non_streaming_result(
             messages,
-            {
-                "model": self.model,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-                "top_p": top_p,
-                "stream": False,
-                **self._generation_options(),
-            },
+            request,
+            requested_max_tokens=max_tokens,
+            effective_max_tokens=effective,
+            operation="generate",
         )
-
-    def _generation_options(self) -> dict[str, Any]:
-        """Return only capability-verified reasoning controls.
-
-        Unknown capability means provider/model default. This is deliberately
-        safer than sending a guessed "off" value: some reasoning endpoints make
-        reasoning mandatory, while non-reasoning endpoints may reject the
-        parameter entirely.
-        """
-        if self.reasoning_enabled is None or self.reasoning_parameter is None:
-            return {}
-        if self.reasoning_parameter == "reasoning":
-            reasoning = (
-                {"enabled": True, "exclude": True} if self.reasoning_enabled else {"effort": "none"}
-            )
-            return {"extra_body": {"reasoning": reasoning}}
-        return {"extra_body": {"reasoning_effort": "medium" if self.reasoning_enabled else "none"}}
 
     def generate_structured(
         self,
@@ -239,16 +331,19 @@ class RemoteOpenAILLM:
         zero_data_retention: bool = True,
     ) -> LLMResult:
         self._validate_generation_args(user_msg, max_tokens, temperature, top_p)
-        if not isinstance(schema_name, str) or not schema_name.strip():
+        if not schema_name.strip():
             raise ValueError("structured output schema name is invalid")
         if not isinstance(schema, Mapping):
             raise ValueError("structured output schema is invalid")
-
+        effective = self._effective_max_tokens(max_tokens)
         messages = build_remote_messages(user_msg, inject_persona)
-        request: dict[str, Any] = {
+        options = self._adapter.merge_options(
+            self._request_options(effective),
+            self._adapter.structured_options(zero_data_retention=zero_data_retention),
+        )
+        request = {
             "model": self.model,
             "messages": messages,
-            "max_tokens": max_tokens,
             "temperature": temperature,
             "top_p": top_p,
             "stream": False,
@@ -260,16 +355,15 @@ class RemoteOpenAILLM:
                     "schema": dict(schema),
                 },
             },
+            **options,
         }
-        extra_body = dict(self._generation_options().get("extra_body", {}))
-        if self.provider.key == "openrouter":
-            extra_body["provider"] = {
-                "require_parameters": True,
-                "data_collection": "deny" if zero_data_retention else "allow",
-            }
-        if extra_body:
-            request["extra_body"] = extra_body
-        return self._create_non_streaming_result(messages, request)
+        return self._create_non_streaming_result(
+            messages,
+            request,
+            requested_max_tokens=max_tokens,
+            effective_max_tokens=effective,
+            operation="generate_structured",
+        )
 
     def generate_stream(
         self,
@@ -280,66 +374,145 @@ class RemoteOpenAILLM:
         inject_persona: bool = True,
     ) -> Iterator[str]:
         self._validate_generation_args(user_msg, max_tokens, temperature, top_p)
+        effective = self._effective_max_tokens(max_tokens)
         messages = build_remote_messages(user_msg, inject_persona)
-
+        request = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "top_p": top_p,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+            **self._request_options(effective),
+        }
+        state = self._begin_call()
+        started = self._clock()
+        attempts: list[ProviderAttempt] = []
         try:
-            stream = self._client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p,
-                stream=True,
-                stream_options={"include_usage": True},
-                **self._generation_options(),
-            )
-            for chunk in stream:
-                text = _chunk_delta_text(chunk)
-                if text:
-                    yield text
-        except Exception as exc:  # noqa: BLE001 - boundary: translate to friendly error
-            raise _map_error(exc, self.provider) from exc
+            for attempt in range(1, self._policy.max_attempts + 1):
+                emitted = False
+                finish_reason = ""
+                reasoning_seen = False
+                refusal = ""
+                stream = None
+                self._raise_if_cancelled(state)
+                try:
+                    stream = self._client.chat.completions.create(**request)
+                    state.stream = stream
+                    for chunk in stream:
+                        self._raise_if_cancelled(state)
+                        fields = chunk_fields(chunk)
+                        chunk_text, chunk_reasoning, chunk_refusal, chunk_finish = fields
+                        reasoning_seen = reasoning_seen or chunk_reasoning
+                        refusal = refusal or chunk_refusal
+                        finish_reason = chunk_finish or finish_reason
+                        if chunk_text:
+                            emitted = True
+                            yield chunk_text
+                    self._raise_if_cancelled(state)
+                except GeneratorExit:
+                    state.cancelled.set()
+                    raise
+                except RemoteLLMError as error:
+                    mapped = error
+                except Exception as exc:
+                    mapped = map_provider_error(exc, self.provider, self.model)
+                    if mapped is None:
+                        raise
+                else:
+                    if emitted:
+                        if finish_reason == "length":
+                            mapped = output_limit_error(self.provider, self.model)
+                        else:
+                            attempts.append(ProviderAttempt(attempt, "success"))
+                            self.last_call_trace = self._make_trace(
+                                "generate_stream", max_tokens, effective, attempts, started
+                            )
+                            return
+                    else:
+                        mapped = empty_stream_error(
+                            refusal=refusal,
+                            reasoning_seen=reasoning_seen,
+                            finish_reason=finish_reason,
+                            provider=self.provider,
+                            model=self.model,
+                        )
+                finally:
+                    close_stream(stream)
+                    state.stream = None
+
+                if emitted:
+                    mapped = replace_remote_error(
+                        mapped,
+                        message=f"Luồng {self.provider.label} bị ngắt sau một phần nội dung.",
+                        retryable=False,
+                    )
+                elapsed = self._clock() - started
+                can_retry = (
+                    mapped.retryable
+                    and not emitted
+                    and attempt < self._policy.max_attempts
+                )
+                delay = self._policy.delay(attempt, mapped.retry_after_s) if can_retry else 0.0
+                if can_retry and elapsed + delay < self._policy.deadline_s:
+                    attempts.append(
+                        ProviderAttempt(
+                            attempt,
+                            "failure",
+                            mapped.category,
+                            mapped.status_code,
+                            delay,
+                        )
+                    )
+                    self.last_call_trace = self._make_trace(
+                        "generate_stream", max_tokens, effective, attempts, started
+                    )
+                    self._sleep(delay)
+                    continue
+                attempts.append(
+                    ProviderAttempt(
+                        attempt,
+                        "cancelled" if mapped.category == "cancelled" else "failure",
+                        mapped.category,
+                        mapped.status_code,
+                    )
+                )
+                self.last_call_trace = self._make_trace(
+                    "generate_stream", max_tokens, effective, attempts, started
+                )
+                raise mapped.with_attempts(attempt)
+        finally:
+            self._end_call(state)
 
     def count_tokens(self, text: str) -> int:
-        """Pre-send token estimate (usage from responses is authoritative).
-
-        Uses a ~4-chars-per-token heuristic; exact counts come back in the
-        response ``usage`` for both generate and streaming calls.
-        """
         if not text:
             return 0
         return max(1, round(len(text) / _CHARS_PER_TOKEN))
 
 
-def _chunk_delta_text(chunk: Any) -> str:
-    choices = getattr(chunk, "choices", None) or []
-    if not choices:
-        return ""
-    delta = getattr(choices[0], "delta", None)
-    return (getattr(delta, "content", None) or "") if delta is not None else ""
-
-
-def _build_client(
-    provider: LLMProvider,
-    api_key: str,
-    *,
-    timeout: float,
-    max_retries: int,
-) -> Any:
+def _build_client(provider: LLMProvider, api_key: str, *, timeout: float) -> Any:
     try:
         from openai import OpenAI
-    except ImportError as exc:  # pragma: no cover - optional dependency guard
+    except ImportError as exc:  # pragma: no cover
         raise RemoteLLMError(
             "Thiếu gói 'openai'. Cài đặt: pip install 'soca[llm-remote]'.",
-            category="unknown",
+            category=RemoteFailureKind.REQUEST,
+            provider=provider.key,
         ) from exc
-
     return OpenAI(
         base_url=provider.base_url,
         api_key=api_key,
         timeout=timeout,
-        max_retries=max_retries,
+        max_retries=0,
     )
 
 
-__all__ = ["RemoteLLMError", "RemoteOpenAILLM", "build_remote_messages"]
+__all__ = [
+    "ProviderAttempt",
+    "ProviderCallTrace",
+    "RemoteFailureKind",
+    "RemoteLLMError",
+    "RemoteOpenAILLM",
+    "RetryPolicy",
+    "build_remote_messages",
+]

@@ -1,14 +1,12 @@
-"""Registry of OpenAI-compatible remote LLM providers.
-
-Every provider here speaks the OpenAI `/chat/completions` + `/models` dialect,
-so a single client (`RemoteOpenAILLM`) serves all of them by swapping
-`base_url` + `api_key`. Only the `base_url`, the environment variable holding
-the key, and whether `/models` returns pricing differ between them.
-"""
+"""Remote provider endpoints and protocol capabilities."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
+
+OutputTokenParameter = Literal["max_tokens", "max_completion_tokens"]
+ReasoningTransport = Literal["openai", "openrouter"]
 
 
 @dataclass(frozen=True)
@@ -20,6 +18,10 @@ class LLMProvider:
     # OpenRouter is the only provider whose /models endpoint returns pricing.
     has_pricing_api: bool
     models_docs_url: str
+    output_token_parameter: OutputTokenParameter
+    reasoning_transport: ReasoningTransport
+    supports_zero_data_retention_routing: bool = False
+    supports_upstream_fallback_control: bool = False
 
 
 PROVIDER_REGISTRY: dict[str, LLMProvider] = {
@@ -30,6 +32,8 @@ PROVIDER_REGISTRY: dict[str, LLMProvider] = {
         api_key_env="OPENAI_API_KEY",
         has_pricing_api=False,
         models_docs_url="https://platform.openai.com/docs/api-reference/models",
+        output_token_parameter="max_completion_tokens",
+        reasoning_transport="openai",
     ),
     "gemini": LLMProvider(
         key="gemini",
@@ -39,6 +43,8 @@ PROVIDER_REGISTRY: dict[str, LLMProvider] = {
         api_key_env="GEMINI_API_KEY",
         has_pricing_api=False,
         models_docs_url="https://ai.google.dev/gemini-api/docs/openai",
+        output_token_parameter="max_tokens",
+        reasoning_transport="openai",
     ),
     "openrouter": LLMProvider(
         key="openrouter",
@@ -47,6 +53,10 @@ PROVIDER_REGISTRY: dict[str, LLMProvider] = {
         api_key_env="OPENROUTER_API_KEY",
         has_pricing_api=True,
         models_docs_url="https://openrouter.ai/docs/api-reference/list-available-models",
+        output_token_parameter="max_tokens",
+        reasoning_transport="openrouter",
+        supports_zero_data_retention_routing=True,
+        supports_upstream_fallback_control=True,
     ),
     "groq": LLMProvider(
         key="groq",
@@ -55,6 +65,8 @@ PROVIDER_REGISTRY: dict[str, LLMProvider] = {
         api_key_env="GROQ_API_KEY",
         has_pricing_api=False,
         models_docs_url="https://console.groq.com/docs/models",
+        output_token_parameter="max_completion_tokens",
+        reasoning_transport="openai",
     ),
 }
 
@@ -67,4 +79,10 @@ def get_provider(key: str) -> LLMProvider:
         raise ValueError(f"Unknown LLM provider '{key}'. Valid providers: {valid}.") from exc
 
 
-__all__ = ["LLMProvider", "PROVIDER_REGISTRY", "get_provider"]
+__all__ = [
+    "LLMProvider",
+    "OutputTokenParameter",
+    "PROVIDER_REGISTRY",
+    "ReasoningTransport",
+    "get_provider",
+]

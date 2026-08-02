@@ -73,6 +73,8 @@ class RuntimeTrace:
     evidence_completion_reason: str = ""
     evidence_completion_actions: int = 0
     prompt_manifest: dict[str, Any] | None = None
+    provider_trace: dict[str, Any] = field(default_factory=dict)
+    llm_error: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

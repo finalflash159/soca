@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from queue import Queue
 from threading import Event
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 
@@ -51,7 +51,17 @@ class VoiceMonitorEvent:
     usage: TurnUsage | None = None
 
 
-VoiceRuntimeBuilder = Callable[..., VoiceRuntimeBundle]
+
+
+class VoiceRuntimeBuilder(Protocol):
+    def __call__(
+        self,
+        config: ResolvedVoiceRuntimeConfig,
+        *,
+        session_memory: SessionMemory | None,
+    ) -> VoiceRuntimeBundle: ...
+
+
 VoiceRecorder = Callable[..., np.ndarray]
 VoiceEventQueue = Queue[VoiceMonitorEvent | None]
 
@@ -177,6 +187,10 @@ class VoiceMonitorController:
             queue.put(None)
 
     def stop(self) -> None:
+        if self.bundle is not None:
+            cancel = getattr(self.bundle.llm, "cancel", None)
+            if callable(cancel):
+                cancel()
         self.player.stop()
 
     def _ensure_bundle(self, queue: VoiceEventQueue) -> VoiceRuntimeBundle:
@@ -241,24 +255,7 @@ class VoiceMonitorController:
         return self.bundle
 
     def _build_runtime_bundle(self) -> VoiceRuntimeBundle:
-        if self.session_memory is None:
-            return self.runtime_builder(self.config)
-
-        try:
-            signature = inspect.signature(self.runtime_builder)
-        except (TypeError, ValueError):
-            signature = None
-
-        supports_session_memory = signature is not None and (
-            "session_memory" in signature.parameters
-            or any(
-                param.kind is inspect.Parameter.VAR_KEYWORD
-                for param in signature.parameters.values()
-            )
-        )
-        if supports_session_memory:
-            return self.runtime_builder(self.config, session_memory=self.session_memory)
-        return self.runtime_builder(self.config)
+        return self.runtime_builder(self.config, session_memory=self.session_memory)
 
     def _run_one_turn(
         self,
