@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import sys
 import types
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -176,7 +177,14 @@ def _one_confident_step_scores():
     return (step,)
 
 
-def test_backend_uses_real_scores_when_generate_supports_output_scores(monkeypatch):
+@pytest.fixture
+def model_path(tmp_path: Path) -> Path:
+    path = tmp_path / "model"
+    path.mkdir()
+    return path
+
+
+def test_backend_uses_real_scores_when_generate_supports_output_scores(monkeypatch, model_path):
     engine = _FakeEngine(
         eos_token_id=[999],
         scores_factory=_one_confident_step_scores,
@@ -185,21 +193,19 @@ def test_backend_uses_real_scores_when_generate_supports_output_scores(monkeypat
     )
     _install_fake_qwen_asr(monkeypatch, engine)
 
-    backend = QwenASRBackend(context="tech context")
+    backend = QwenASRBackend(model_path, context="tech context")
 
     assert backend.supports_avg_logprob is True
 
     result = backend.transcribe(np.zeros(1600, dtype=np.float32))
 
     assert result.text == "xin chào"
-    expected_logprob = float(
-        torch.log_softmax(_one_confident_step_scores()[0][0], dim=-1)[5]
-    )
+    expected_logprob = float(torch.log_softmax(_one_confident_step_scores()[0][0], dim=-1)[5])
     assert result.avg_logprob == pytest.approx(expected_logprob, abs=1e-6)
     assert result.avg_logprob_reliable is True
 
 
-def test_backend_uses_instance_context_by_default(monkeypatch):
+def test_backend_uses_instance_context_by_default(monkeypatch, model_path):
     engine = _FakeEngine(
         eos_token_id=[999],
         scores_factory=_one_confident_step_scores,
@@ -208,13 +214,13 @@ def test_backend_uses_instance_context_by_default(monkeypatch):
     )
     _install_fake_qwen_asr(monkeypatch, engine)
 
-    backend = QwenASRBackend(context="tech context")
+    backend = QwenASRBackend(model_path, context="tech context")
     backend.transcribe(np.zeros(1600, dtype=np.float32))
 
     assert engine.last_context == "tech context"
 
 
-def test_backend_overrides_context_per_call_for_the_cheap_partial_path(monkeypatch):
+def test_backend_overrides_context_per_call_for_the_cheap_partial_path(monkeypatch, model_path):
     """context="" on a single call must not leak the instance's real context
     onto that call — this is what keeps the partial-caption path (§5.6.3)
     from ever showing the context-echo failure mode (§Q1b.3)."""
@@ -226,7 +232,7 @@ def test_backend_overrides_context_per_call_for_the_cheap_partial_path(monkeypat
     )
     _install_fake_qwen_asr(monkeypatch, engine)
 
-    backend = QwenASRBackend(context="tech context")
+    backend = QwenASRBackend(model_path, context="tech context")
     backend.transcribe(np.zeros(1600, dtype=np.float32), context="")
 
     assert engine.last_context == ""
@@ -236,7 +242,9 @@ def test_backend_overrides_context_per_call_for_the_cheap_partial_path(monkeypat
     assert engine.last_context == "tech context"
 
 
-def test_backend_honors_per_call_max_new_tokens_not_just_the_constructor_default(monkeypatch):
+def test_backend_honors_per_call_max_new_tokens_not_just_the_constructor_default(
+    monkeypatch, model_path
+):
     engine = _FakeEngine(
         eos_token_id=[999],
         scores_factory=_one_confident_step_scores,
@@ -245,21 +253,25 @@ def test_backend_honors_per_call_max_new_tokens_not_just_the_constructor_default
     )
     _install_fake_qwen_asr(monkeypatch, engine)
 
-    backend = QwenASRBackend(max_new_tokens=256)
+    backend = QwenASRBackend(model_path, max_new_tokens=256)
     backend.transcribe(np.zeros(1600, dtype=np.float32), max_new_tokens=64)
 
     assert engine.model.last_generate_kwargs["max_new_tokens"] == 64
 
 
-def test_backend_raises_at_init_when_scores_unavailable_and_logprob_required(monkeypatch):
+def test_backend_raises_at_init_when_scores_unavailable_and_logprob_required(
+    monkeypatch, model_path
+):
     engine = _FakeEngine(eos_token_id=[999], scores_factory=lambda: None, decoded_text="x")
     _install_fake_qwen_asr(monkeypatch, engine)
 
     with pytest.raises(QwenLogprobUnavailable):
-        QwenASRBackend(require_logprob=True)
+        QwenASRBackend(model_path, require_logprob=True)
 
 
-def test_backend_raises_when_generate_returns_a_plain_tensor_instead_of_scores(monkeypatch):
+def test_backend_raises_when_generate_returns_a_plain_tensor_instead_of_scores(
+    monkeypatch, model_path
+):
     """Some runtimes silently ignore return_dict_in_generate and hand back a
     bare tensor. Must fail the typed way (QwenLogprobUnavailable), not crash
     with an unrelated AttributeError."""
@@ -272,10 +284,12 @@ def test_backend_raises_when_generate_returns_a_plain_tensor_instead_of_scores(m
     _install_fake_qwen_asr(monkeypatch, engine)
 
     with pytest.raises(QwenLogprobUnavailable):
-        QwenASRBackend(require_logprob=True)
+        QwenASRBackend(model_path, require_logprob=True)
 
 
-def test_backend_falls_back_when_scores_unavailable_and_logprob_not_required(monkeypatch):
+def test_backend_falls_back_when_scores_unavailable_and_logprob_not_required(
+    monkeypatch, model_path
+):
     engine = _FakeEngine(
         eos_token_id=[999],
         scores_factory=lambda: None,
@@ -284,7 +298,7 @@ def test_backend_falls_back_when_scores_unavailable_and_logprob_not_required(mon
     )
     _install_fake_qwen_asr(monkeypatch, engine)
 
-    backend = QwenASRBackend(require_logprob=False)
+    backend = QwenASRBackend(model_path, require_logprob=False)
 
     assert backend.supports_avg_logprob is False
 
@@ -295,17 +309,17 @@ def test_backend_falls_back_when_scores_unavailable_and_logprob_not_required(mon
     assert result.avg_logprob_reliable is False
 
 
-def test_runtime_metadata_records_context_and_language(monkeypatch):
+def test_runtime_metadata_records_context_and_language(monkeypatch, model_path):
     engine = _FakeEngine(
         eos_token_id=[999], scores_factory=_one_confident_step_scores, decoded_text="x"
     )
     _install_fake_qwen_asr(monkeypatch, engine)
 
-    backend = QwenASRBackend(model_id="Qwen/Qwen3-ASR-1.7B", context="tech", language="Vietnamese")
+    backend = QwenASRBackend(model_path, context="tech", language="Vietnamese")
     meta = backend.runtime_metadata()
 
     assert meta["backend"] == "qwen3_asr"
-    assert meta["model_key"] == "Qwen/Qwen3-ASR-1.7B"
+    assert meta["model_key"] == "model"
     assert meta["context"] == "tech"
     assert meta["language"] == "Vietnamese"
     assert meta["supports_avg_logprob"] is True
@@ -313,12 +327,14 @@ def test_runtime_metadata_records_context_and_language(monkeypatch):
 
 @pytest.mark.real_model
 def test_real_qwen_backend_produces_a_strictly_negative_logprob():
-    """The one test no stub can fake: catches output_scores=True silently
-    ceasing to flow through after a qwen-asr upgrade. Run from .venv-qwen:
-        .venv-qwen/bin/python -m pytest tests/test_qwen_backend.py -m real_model
-    """
+    """Real worker check that generated token scores still reach the backend."""
     pytest.importorskip("qwen_asr")
-    backend = QwenASRBackend()
+    from soca.asr.qwen_artifacts import QWEN_REFERENCE_ARTIFACT
+
+    model_path = QWEN_REFERENCE_ARTIFACT.model_path()
+    if not model_path.is_dir():
+        pytest.skip("reference Qwen artifact is not provisioned")
+    backend = QwenASRBackend(model_path)
     audio = np.random.default_rng(0).uniform(-0.1, 0.1, size=16_000).astype(np.float32)
     result = backend.transcribe(audio)
     assert result.avg_logprob < 0.0

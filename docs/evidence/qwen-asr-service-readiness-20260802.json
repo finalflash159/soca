@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "run_type": "qwen_asr_service_readiness_real_flow",
+  "recorded_at": "2026-08-02",
+  "baseline_commit": "c9a59358a14be90cfe25a86d181a40e609e7e56b",
+  "is_benchmark": false,
+  "host": {
+    "architecture": "arm64",
+    "cpu": "Apple M4 Pro",
+    "memory_bytes": 51539607552,
+    "os": "macOS 15.7.4 (24G517)"
+  },
+  "runtime": {
+    "python": "3.11.14",
+    "protocol_version": 1,
+    "runtime_lock_sha256": "bbf96f7b16c241afee13734ae8bfa2525420675f6db536934d9a746b94ec7f9f",
+    "worker_environment": {
+      "HF_HOME": "empty temporary directory",
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1",
+      "registry_tokens_inherited": false
+    }
+  },
+  "static_status": {
+    "artifact_key": "qwen3_asr_0_6b",
+    "state": "provisioned",
+    "service_state": "stopped",
+    "model_loaded_by_status": false,
+    "no_fallback_attempted": true
+  },
+  "contract_gates": {
+    "python_tests": {
+      "passed": 83,
+      "deselected_real_model": 3
+    },
+    "full_python_tests": {
+      "passed": 1499,
+      "skipped": 4
+    },
+    "ui_tests": 88,
+    "ruff": "pass",
+    "pyright": "pass",
+    "typescript": "pass",
+    "ui_build": "pass"
+  },
+  "real_flow": {
+    "audio_kind": "real_recorded_voice",
+    "audio_path": "data/asr_codeswitch/wav/cs_033.wav",
+    "sample_rate": 16000,
+    "combined_elapsed_seconds": 13.13,
+    "requests_per_artifact": ["partial_empty_context", "final_typed_context"],
+    "artifacts": [
+      {
+        "key": "qwen3_asr_0_6b",
+        "role": "release",
+        "revision": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0",
+        "artifact_digest": "21d13688aefbb05b7cc2b9efd48701753f36c209d0a7368334109572a32ab639",
+        "identity_match": true,
+        "semantic_terms_recognized": ["level", "debug", "info"],
+        "observed_substitution": "log level -> lock level",
+        "selected_token_logprob": true,
+        "graceful_exit": true,
+        "socket_and_marker_removed": true
+      },
+      {
+        "key": "qwen3_asr_1_7b",
+        "role": "reference",
+        "revision": "7278e1e70fe206f11671096ffdd38061171dd6e5",
+        "artifact_digest": "ef7e0267457361962782405bf4554ca37de5951340f27cc424b7c88ea7601828",
+        "identity_match": true,
+        "semantic_terms_recognized": ["log level", "debug", "info"],
+        "observed_substitution": null,
+        "selected_token_logprob": true,
+        "graceful_exit": true,
+        "socket_and_marker_removed": true
+      }
+    ]
+  },
+  "failure_paths": [
+    "stale_ready_marker",
+    "identity_mismatch",
+    "protocol_mismatch",
+    "startup_process_exit",
+    "startup_timeout",
+    "request_timeout",
+    "backend_error",
+    "shutdown_terminate_kill_escalation"
+  ],
+  "outcome": "pass_with_quality_observation",
+  "decision": {
+    "service_readiness": "accepted for voice-runtime integration",
+    "release_quality": "not evaluated; preserve 0.6B substitution for qualification corpus",
+    "automatic_fallback": false
+  },
+  "raw_logs": "benchmarks/raw/qwen_service_readiness/2026-08-02 (local, gitignored)"
+}

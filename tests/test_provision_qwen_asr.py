@@ -9,6 +9,7 @@ import pytest
 import soundfile as sf
 
 from scripts import provision_qwen_asr as provision
+from soca.asr.qwen_artifacts import QWEN_RELEASE_ARTIFACT
 from soca.asr.result import ASRResult
 
 
@@ -81,13 +82,15 @@ def test_health_probe_uses_local_path_offline_and_closes_worker(
             self.closed = True
 
     model_path = tmp_path / "model"
+    model_path.mkdir()
     result = provision.build_health_probe(
         audio_path,
+        QWEN_RELEASE_ARTIFACT,
         client_factory=FakeClient,  # type: ignore[arg-type]
     )(model_path)
 
     client = clients[0]
-    assert client.kwargs["model_id"] == str(model_path)  # type: ignore[attr-defined]
+    assert client.kwargs["launch"].model_path == model_path  # type: ignore[attr-defined]
     assert client.kwargs["process_environment"] == {  # type: ignore[attr-defined]
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1",
@@ -124,9 +127,7 @@ def test_install_defaults_to_pinned_mirror_and_never_falls_back(
 def test_inspect_is_static_and_reports_both_missing_artifacts(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    exit_code = provision.main(
-        ["--store-root", str(tmp_path / "store"), "inspect", "--json"]
-    )
+    exit_code = provision.main(["--store-root", str(tmp_path / "store"), "inspect", "--json"])
 
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
