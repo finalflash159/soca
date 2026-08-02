@@ -6,9 +6,10 @@ from typing import Any
 
 import numpy as np
 
+from .qwen_artifacts import QWEN_RELEASE_ARTIFACT
 from .whisper_onnx import ASRResult
 
-DEFAULT_QWEN_MODEL_ID = "Qwen/Qwen3-ASR-0.6B"
+DEFAULT_QWEN_MODEL_ID = QWEN_RELEASE_ARTIFACT.upstream.repo_id
 SAMPLING_RATE = 16_000
 DEFAULT_EOS_TOKEN_IDS = (151645, 151643)
 
