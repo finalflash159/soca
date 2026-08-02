@@ -36,6 +36,10 @@ class QwenArtifactPermissionError(QwenArtifactError):
     """An artifact receipt is not a private regular file."""
 
 
+class QwenArtifactPathError(QwenArtifactError):
+    """A local artifact path is missing, indirect or not a directory."""
+
+
 class ArtifactRole(StrEnum):
     RELEASE = "release"
     REFERENCE = "reference"
@@ -220,6 +224,30 @@ def validate_private_receipt(path: Path) -> None:
         raise QwenArtifactPermissionError("artifact receipt must be readable by owner")
 
 
+def validate_local_model_directory(path: Path) -> Path:
+    target = path.expanduser()
+    if not target.is_absolute() or ".." in target.parts:
+        raise QwenArtifactPathError(
+            "Qwen model path must be absolute without traversal"
+        )
+    try:
+        for component in (target, *target.parents):
+            metadata = component.lstat()
+            if stat.S_ISLNK(metadata.st_mode):
+                raise QwenArtifactPathError(
+                    f"Qwen model path contains a symlink: {component}"
+                )
+        if not stat.S_ISDIR(target.lstat().st_mode):
+            raise QwenArtifactPathError(
+                "Qwen model path must be a local directory"
+            )
+    except FileNotFoundError as exc:
+        raise QwenArtifactPathError("Qwen model path does not exist") from exc
+    except OSError as exc:
+        raise QwenArtifactPathError("Qwen model path cannot be inspected") from exc
+    return target
+
+
 def _require_object(payload: object, name: str) -> Mapping[str, Any]:
     if not isinstance(payload, Mapping):
         raise QwenArtifactManifestError(f"{name} must be an object")
@@ -375,11 +403,13 @@ __all__ = [
     "QwenArtifactError",
     "QwenArtifactManifestError",
     "QwenArtifactPermissionError",
+    "QwenArtifactPathError",
     "QwenArtifactRoleError",
     "QwenArtifactSchemaError",
     "canonical_manifest_json",
     "decode_artifact_manifest",
     "default_asr_model_root",
     "get_qwen_artifact",
+    "validate_local_model_directory",
     "validate_private_receipt",
 ]

@@ -15,6 +15,7 @@ from soca.asr.qwen_artifacts import (
     QWEN_RELEASE_ARTIFACT,
     ArtifactRole,
     QwenArtifactManifestError,
+    QwenArtifactPathError,
     QwenArtifactPermissionError,
     QwenArtifactRoleError,
     QwenArtifactSchemaError,
@@ -22,6 +23,7 @@ from soca.asr.qwen_artifacts import (
     decode_artifact_manifest,
     default_asr_model_root,
     get_qwen_artifact,
+    validate_local_model_directory,
     validate_private_receipt,
 )
 
@@ -209,15 +211,27 @@ def test_model_path_rejects_parent_traversal(tmp_path: Path) -> None:
         QWEN_RELEASE_ARTIFACT.model_path(unsafe_root)
 
 
-def test_qwen_runtime_defaults_share_the_release_artifact() -> None:
-    from soca.asr.qwen_backend import DEFAULT_QWEN_MODEL_ID as backend_default
-    from soca.asr.qwen_service_client import DEFAULT_QWEN_MODEL_ID as client_default
-    from soca.asr.qwen_service_server import DEFAULT_QWEN_MODEL_ID as server_default
+def test_local_model_directory_rejects_symlink_ancestors(tmp_path: Path) -> None:
+    real_parent = tmp_path / "real"
+    model = real_parent / "model"
+    model.mkdir(parents=True)
+    linked_parent = tmp_path / "linked"
+    linked_parent.symlink_to(real_parent, target_is_directory=True)
 
-    expected = QWEN_RELEASE_ARTIFACT.upstream.repo_id
-    assert backend_default == expected
-    assert client_default == expected
-    assert server_default == expected
+    with pytest.raises(QwenArtifactPathError, match="contains a symlink"):
+        validate_local_model_directory(linked_parent / "model")
+
+
+def test_qwen_runtime_has_no_remote_model_defaults() -> None:
+    import inspect
+
+    from soca.asr.qwen_backend import QwenASRBackend
+    from soca.asr.qwen_service_client import QwenASRServiceClient
+
+    backend = inspect.signature(QwenASRBackend).parameters
+    client = inspect.signature(QwenASRServiceClient).parameters
+    assert backend["model_path"].default is inspect.Parameter.empty
+    assert client["launch"].default is inspect.Parameter.empty
 
 
 def test_registry_import_does_not_load_qwen_or_open_network() -> None:

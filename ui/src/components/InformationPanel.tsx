@@ -419,10 +419,10 @@ function StatusBody({
 }
 
 function runtimeComponentColor(status: RuntimeComponentStatus["status"]): string {
-  if (status === "loaded" || status === "ready") return ROLE.ok;
-  if (status === "missing") return ROLE.danger;
-  if (status === "degraded") return ROLE.busy;
-  if (status === "disabled") return COLOR.alt;
+  if (["loaded", "ready", "provisioned"].includes(status)) return ROLE.ok;
+  if (["missing", "invalid", "failed"].includes(status)) return ROLE.danger;
+  if (["degraded", "starting", "busy", "stopping"].includes(status)) return ROLE.busy;
+  if (["disabled", "unsupported", "stopped"].includes(status)) return COLOR.alt;
   return ROLE.focus;
 }
 

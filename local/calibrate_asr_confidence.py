@@ -1,25 +1,4 @@
-"""CLI: calibrate ASR confidence thresholds from speech + non-speech audio.
-
-Calibrates RobustASR's confidence guard (avg_logprob / compression_ratio)
-against real model output on FLEURS speech + noise samples. Must be re-run
-after changing model, decoder, provider, max_new_tokens, VAD params, or
-(for LLM-decoder backends like Qwen) context — any of those can shift the
-metric distribution.
-
-Outputs:
-    eval/results/asr_confidence_calibration_{model_key}.json  (full audit log)
-    data/asr/threshold_calibration.json  (merged, read by RobustASR at runtime)
-
-Usage:
-    uv run python -m local.download_fleurs --target 200
-    uv run python -m local.collect_noise
-
-    uv run python -m local.calibrate_asr_confidence --model phowhisper_small --n-speech 200 --n-noise 1000
-
-    .venv-qwen/bin/python -m local.calibrate_asr_confidence \\
-        --backend qwen --model Qwen/Qwen3-ASR-1.7B --qwen-context tech \\
-        --n-speech 200 --n-noise 1000
-"""
+"""Calibrate ASR confidence from reviewed speech and non-speech corpora."""
 
 from __future__ import annotations
 
@@ -448,7 +427,7 @@ def calibrate_model(
     speech_asr = [r for r in rows if r["kind"] == "speech" and r["asr_ran"]]
     noise_asr = [r for r in rows if r["kind"] == "noise" and r["asr_ran"]]
     # A backend can flag avg_logprob as unreliable (e.g. Qwen returns a
-    # placeholder 0.0 when every generated token was a skip-id, §5.3.2) —
+    # placeholder 0.0 when every generated token was a skip-id) —
     # 0.0 reads as maximum confidence, so an unreliable row must never feed
     # the threshold calculation, not even as an outlier.
     speech_avg_logprob = [
@@ -578,7 +557,7 @@ def calibrate_model(
 
 
 def build_qwen_factory(
-    model_id: str, *, context: str, device: str, dtype: str
+    model_path: Path, *, context: str, device: str, dtype: str
 ) -> Callable[[], CalibratableASR]:
     def factory() -> CalibratableASR:
         from soca.asr.qwen_backend import QwenASRBackend
@@ -587,7 +566,7 @@ def build_qwen_factory(
         # can't produce a real logprob would just bake a meaningless
         # threshold into the shared file.
         return QwenASRBackend(
-            model_id=model_id,
+            model_path=model_path,
             context=context,
             device=device,
             dtype=dtype,
@@ -610,8 +589,8 @@ def build_qwen_factory(
     multiple=True,
     help=(
         "whisper-onnx: registry key, e.g. phowhisper_small (default: "
-        f"{DEFAULT_ASR_MODEL_KEY}). qwen: HF model id, e.g. "
-        "Qwen/Qwen3-ASR-0.6B (required). Repeat for multiple models."
+        f"{DEFAULT_ASR_MODEL_KEY}). qwen: provisioned artifact key, e.g. "
+        "qwen3_asr_0_6b (required). Repeat for multiple models."
     ),
 )
 @click.option("--n-speech", default=200, type=int, help="Number of FLEURS speech samples.")
@@ -638,7 +617,7 @@ def build_qwen_factory(
     type=click.Choice(sorted(QWEN_CONTEXTS)),
     help=(
         "qwen only: must match the context used in production, since "
-        "context shifts the logprob distribution (§5.5.3)."
+        "context shifts the logprob distribution."
     ),
 )
 @click.option(
@@ -692,7 +671,7 @@ def main(
     else:
         if not selected_model_keys:
             raise click.BadParameter(
-                "--model is required for --backend qwen, e.g. Qwen/Qwen3-ASR-0.6B."
+                "--model is required for --backend qwen, e.g. qwen3_asr_0_6b."
             )
         if ctx.get_parameter_source("providers") != click.core.ParameterSource.DEFAULT:
             console.print(
@@ -702,11 +681,35 @@ def main(
         provider_list = []
 
     for model_key in selected_model_keys:
-        asr_factory = (
-            build_qwen_factory(model_key, context=QWEN_CONTEXTS[qwen_context], device=device, dtype=dtype)
-            if backend == "qwen"
-            else None
-        )
+        asr_factory = None
+        if backend == "qwen":
+            from soca.asr.qwen_artifacts import (
+                QwenArtifactError,
+                default_asr_model_root,
+                get_qwen_artifact,
+            )
+            from soca.asr.qwen_store import QwenArtifactStore, QwenStoreError
+
+            try:
+                spec = get_qwen_artifact(model_key)
+                receipt = QwenArtifactStore(default_asr_model_root()).verify(
+                    spec, deep=False
+                )
+            except (QwenArtifactError, QwenStoreError, OSError, ValueError) as exc:
+                raise click.ClickException(
+                    f"Qwen artifact {model_key!r} is not ready: {exc}"
+                ) from exc
+            if (device, dtype) != (spec.device, spec.dtype):
+                raise click.BadParameter(
+                    f"artifact {model_key} requires {spec.device}/{spec.dtype}; "
+                    "calibration identity cannot override it"
+                )
+            asr_factory = build_qwen_factory(
+                Path(receipt.model_path),
+                context=QWEN_CONTEXTS[qwen_context],
+                device=spec.device,
+                dtype=spec.dtype,
+            )
         calibrate_model(
             model_key=model_key,
             n_speech=n_speech,

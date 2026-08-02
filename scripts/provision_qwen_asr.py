@@ -23,6 +23,7 @@ from soca.asr.qwen_artifacts import (
     default_asr_model_root,
 )
 from soca.asr.qwen_service_client import QwenASRServiceClient
+from soca.asr.qwen_service_identity import QwenServiceLaunch
 from soca.asr.qwen_store import (
     ArtifactPreflight,
     ArtifactSourceKind,
@@ -121,6 +122,7 @@ def verify_worker_runtime() -> Mapping[str, object]:
 
 def build_health_probe(
     audio_path: Path,
+    spec: QwenASRArtifactSpec,
     *,
     client_factory: Callable[..., QwenASRServiceClient] = QwenASRServiceClient,
 ) -> Callable[[Path], Mapping[str, object]]:
@@ -138,7 +140,7 @@ def build_health_probe(
     def probe(model_path: Path) -> Mapping[str, object]:
         started = time.monotonic()
         client = client_factory(
-            model_id=str(model_path),
+            launch=QwenServiceLaunch.for_provisioning(spec, model_path),
             python_executable=RUNTIME_PYTHON,
             startup_timeout_s=180.0,
             request_timeout_s=90.0,
@@ -219,7 +221,7 @@ def execute(args: argparse.Namespace) -> Mapping[str, object]:
             raise QwenProvisionCommandError(
                 "deep verification requires --health-audio with real 16 kHz mono speech"
             )
-        health = build_health_probe(args.health_audio) if args.deep else None
+        health = build_health_probe(args.health_audio, spec) if args.deep else None
         receipt = store.verify(spec, deep=args.deep, health_probe=health)
         return {
             "artifact_key": spec.key,
@@ -243,7 +245,7 @@ def execute(args: argparse.Namespace) -> Mapping[str, object]:
         spec,
         source,
         source_kind=source_kind,
-        health_probe=build_health_probe(args.health_audio),
+        health_probe=build_health_probe(args.health_audio, spec),
         runtime_lock=RUNTIME_LOCK,
         progress=_progress,
     )

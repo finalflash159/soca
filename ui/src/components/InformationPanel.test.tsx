@@ -83,6 +83,46 @@ describe("InformationPanel", () => {
     panel.unmount();
   });
 
+  it.each([
+    "missing",
+    "invalid",
+    "provisioned",
+    "unsupported",
+    "starting",
+    "ready",
+    "busy",
+    "failed",
+    "stopping",
+    "stopped",
+  ] as const)("renders the Qwen lifecycle state %s", (status) => {
+    const panel = render(
+      <InformationPanel
+        view="status"
+        width={100}
+        context={null}
+        memory={null}
+        usage={null}
+        stack={{ llm: "local" }}
+        knowledge={null}
+        runtimeComponents={[
+          {
+            id: "qwen_asr_release",
+            label: "Qwen ASR release",
+            status,
+            detail: "no fallback attempted",
+          },
+        ]}
+        memoryCompaction={null}
+      />,
+    );
+
+    const frame = panel.lastFrame() ?? "";
+    expect(frame).toContain("Qwen ASR release");
+    expect(frame).toContain(status);
+    expect(frame).toContain("no fallback attempted");
+    panel.unmount();
+  });
+
   it("shows the explicit five-turn manual compaction gate", () => {
     const panel = render(
       <InformationPanel

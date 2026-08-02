@@ -326,7 +326,21 @@ export interface StatusEvent {
 export interface RuntimeComponentStatus {
   id: string;
   label: string;
-  status: "loaded" | "ready" | "configured" | "disabled" | "missing" | "degraded";
+  status:
+    | "loaded"
+    | "ready"
+    | "configured"
+    | "disabled"
+    | "missing"
+    | "degraded"
+    | "invalid"
+    | "provisioned"
+    | "unsupported"
+    | "starting"
+    | "busy"
+    | "failed"
+    | "stopping"
+    | "stopped";
   detail: string;
 }
 

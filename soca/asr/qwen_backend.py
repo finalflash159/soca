@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import time
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from .qwen_artifacts import QWEN_RELEASE_ARTIFACT
+from .qwen_artifacts import QwenArtifactPathError, validate_local_model_directory
 from .result import ASRResult
 
-DEFAULT_QWEN_MODEL_ID = QWEN_RELEASE_ARTIFACT.upstream.repo_id
 SAMPLING_RATE = 16_000
 DEFAULT_EOS_TOKEN_IDS = (151645, 151643)
 
@@ -55,21 +55,14 @@ def _mean_selected_logprob(
 
 
 class QwenASRBackend:
-    """Qwen3-ASR speaking the same protocol as VietnameseASR.
-
-    `avg_logprob` is a real number, obtained via `output_scores=True` on a
-    hand-rolled generate() call (§5.3.2) — not a fake 0.0. RobustASR's
-    confidence guard therefore works normally, provided this backend's own
-    threshold has been calibrated (§5.5); Whisper's threshold does not
-    transfer.
-    """
+    """Local-path Qwen3-ASR backend with selected-token log probabilities."""
 
     BACKEND = "qwen3_asr"
     DECODE_STRATEGY = "llm_decoder"
 
     def __init__(
         self,
-        model_id: str = DEFAULT_QWEN_MODEL_ID,
+        model_path: Path,
         *,
         context: str = "",
         language: str | None = "Vietnamese",
@@ -78,6 +71,10 @@ class QwenASRBackend:
         max_new_tokens: int = 256,
         require_logprob: bool = True,
     ) -> None:
+        try:
+            model_path = validate_local_model_directory(model_path)
+        except QwenArtifactPathError as exc:
+            raise ValueError(str(exc)) from exc
         try:
             import torch
             from qwen_asr import Qwen3ASRModel
@@ -90,14 +87,14 @@ class QwenASRBackend:
                 "environment with scripts/provision_qwen_runtime.py instead."
             ) from exc
 
-        self.model_key = model_id
+        self.model_key = model_path.name
         self.context = context
         self.language = language
         self._device = device
         self._dtype = dtype
         self._max_new_tokens = max_new_tokens
         self._engine = Qwen3ASRModel.from_pretrained(
-            model_id,
+            str(model_path),
             dtype=torch.float32 if dtype == "float32" else torch.bfloat16,
             device_map=device,
             max_new_tokens=max_new_tokens,
@@ -110,7 +107,7 @@ class QwenASRBackend:
 
         # Measure capability with 200ms of silence rather than trusting
         # documentation — this is the actual answer to "does THIS runtime
-        # give me scores", not an assumption (§5.3.3).
+        # give me scores", not an assumption.
         probe = np.zeros(int(0.2 * SAMPLING_RATE), dtype=np.float32)
         try:
             self._transcribe_with_scores(probe, max_new_tokens, context)
@@ -127,10 +124,7 @@ class QwenASRBackend:
         *,
         context: str | None = None,
     ) -> ASRResult:
-        """`context=""` is for the cheap partial-caption path (§5.6.3): it
-        avoids the context-echo failure mode (§Q1b.3) leaking onto the
-        caption. `context=None` (default) uses `self.context` — the final
-        transcript that actually goes to the LLM."""
+        """Transcribe mono audio; an explicit empty context keeps partials unprompted."""
         if audio.ndim != 1:
             raise ValueError(f"Audio must be 1D mono, got shape {audio.shape}")
 
@@ -146,7 +140,7 @@ class QwenASRBackend:
         else:
             # Only reachable when the caller explicitly accepted
             # require_logprob=False. RobustASR reads supports_avg_logprob to
-            # disable just the logprob guard (§5.3.1); the compression guard
+            # disable just the logprob guard; the compression guard
             # still runs.
             results = self._engine.transcribe(
                 audio=(audio, SAMPLING_RATE),
@@ -172,7 +166,7 @@ class QwenASRBackend:
 
         `context` and `language` are part of the identity: they change the
         logprob distribution, so a threshold calibrated for one context does
-        not carry over to another (§5.5.3).
+        not carry over to another.
         """
         return {
             "backend": self.BACKEND,
@@ -211,7 +205,7 @@ class QwenASRBackend:
         # real package that Qwen3ASRForConditionalGeneration.generate()
         # already hardcodes it internally before forwarding to
         # self.thinker.generate() — passing it again raises "got multiple
-        # values for keyword argument 'return_dict_in_generate'" (§5.3.2).
+        # values for keyword argument 'return_dict_in_generate'".
         # The `output.scores is None` check below is the actual defense if
         # a future qwen-asr version stops forcing this.
         output = model.generate(
@@ -220,7 +214,7 @@ class QwenASRBackend:
             output_scores=True,
         )
         if getattr(output, "scores", None) is None:
-            # A typed failure, not a fake 0.0 (§5.3.3).
+            # A typed failure, not a fake 0.0.
             raise QwenLogprobUnavailable(
                 "generate() did not return scores; the installed qwen-asr "
                 "version may have changed how kwargs reach generate(). "

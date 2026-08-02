@@ -14,13 +14,18 @@ from typing import Any
 
 import numpy as np
 
-from .qwen_artifacts import QWEN_RELEASE_ARTIFACT
 from .qwen_ipc_protocol import (
     MAX_AUDIO_SAMPLES,
     SAMPLE_RATE,
     QwenIPCProtocolError,
     recv_header,
     send_frame,
+)
+from .qwen_service_identity import (
+    QwenServiceIdentity,
+    QwenServiceIdentityError,
+    QwenServiceLaunch,
+    QwenServiceState,
 )
 from .result import ASRResult
 
@@ -31,10 +36,7 @@ DEFAULT_STARTUP_TIMEOUT_S = 60.0
 DEFAULT_REQUEST_TIMEOUT_S = 30.0
 DEFAULT_SHUTDOWN_TIMEOUT_S = 5.0
 MAX_UNIX_SOCKET_PATH_BYTES = 103
-DEFAULT_QWEN_MODEL_ID = QWEN_RELEASE_ARTIFACT.upstream.repo_id
-SENSITIVE_MODEL_ENVIRONMENT = frozenset(
-    {"HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"}
-)
+SENSITIVE_MODEL_ENVIRONMENT = frozenset({"HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"})
 
 
 class QwenServiceUnavailable(RuntimeError):
@@ -53,6 +55,14 @@ class QwenServiceProtocolError(RuntimeError):
     """The service returned a malformed or mismatched response."""
 
 
+class QwenServiceIdentityMismatch(QwenServiceProtocolError):
+    """The live worker identity differs from the verified launch contract."""
+
+
+class QwenServiceNotReady(QwenServiceUnavailable):
+    """The worker answered but its lifecycle state cannot admit requests."""
+
+
 class QwenTranscribeError(RuntimeError):
     def __init__(self, remote_type: str, message: str, request_id: str) -> None:
         super().__init__(f"{remote_type}: {message}")
@@ -67,8 +77,7 @@ class QwenASRServiceClient:
     def __init__(
         self,
         *,
-        model_id: str = DEFAULT_QWEN_MODEL_ID,
-        context: str = "",
+        launch: QwenServiceLaunch,
         socket_dir: Path | None = None,
         startup_timeout_s: float = DEFAULT_STARTUP_TIMEOUT_S,
         request_timeout_s: float = DEFAULT_REQUEST_TIMEOUT_S,
@@ -96,8 +105,7 @@ class QwenASRServiceClient:
         self._socket_path = root / f"soca-qwen-asr-{uuid.uuid4().hex}.sock"
         if len(str(self._socket_path).encode()) > MAX_UNIX_SOCKET_PATH_BYTES:
             raise QwenServiceUnavailable(
-                f"Unix socket path exceeds {MAX_UNIX_SOCKET_PATH_BYTES} bytes: "
-                f"{self._socket_path}"
+                f"Unix socket path exceeds {MAX_UNIX_SOCKET_PATH_BYTES} bytes: {self._socket_path}"
             )
         self._ready_path = self._socket_path.with_suffix(".ready")
         self._request_timeout_s = request_timeout_s
@@ -106,13 +114,19 @@ class QwenASRServiceClient:
         self._active_sockets: set[socket.socket] = set()
         self._closed = False
         self._process: subprocess.Popen[bytes] | None = None
+        self._launch = launch
+        self._lifecycle_state = QwenServiceState.STARTING
+        self._last_failure_type: str | None = None
+        self.identity: QwenServiceIdentity | None = None
 
         try:
             child_environment = os.environ.copy()
-            for name in SENSITIVE_MODEL_ENVIRONMENT:
-                child_environment.pop(name, None)
             if process_environment is not None:
                 child_environment.update(process_environment)
+            for name in SENSITIVE_MODEL_ENVIRONMENT:
+                child_environment.pop(name, None)
+            child_environment["HF_HUB_OFFLINE"] = "1"
+            child_environment["TRANSFORMERS_OFFLINE"] = "1"
             self._process = subprocess.Popen(
                 [
                     str(executable),
@@ -120,10 +134,12 @@ class QwenASRServiceClient:
                     "soca.asr.qwen_service_server",
                     "--socket-path",
                     str(self._socket_path),
-                    "--model-id",
-                    model_id,
-                    "--context",
-                    context,
+                    "--artifact-key",
+                    launch.spec.key,
+                    "--model-path",
+                    str(launch.model_path),
+                    "--launch-mode",
+                    launch.mode.value,
                     "--connection-timeout",
                     str(request_timeout_s),
                 ],
@@ -132,15 +148,17 @@ class QwenASRServiceClient:
                 env=child_environment,
             )
             self._wait_for_ready(startup_timeout_s)
-            handshake = self._request({"op": "ping"})
-            self._require_success(handshake, operation="ping")
-            self.model_key = self._required_string(handshake, "model_key")
-            self.supports_avg_logprob = self._required_bool(
-                handshake, "supports_avg_logprob"
-            )
-            self.context = self._required_string(handshake, "context")
-            self.language = self._required_string(handshake, "language")
-        except Exception:
+            identity = self.live_identity()
+            if identity.state is not QwenServiceState.READY:
+                detail = identity.last_failure_type or identity.state.value
+                raise QwenServiceNotReady(
+                    f"Qwen ASR worker started in {identity.state.value}: {detail}"
+                )
+            self.model_key = identity.artifact_key
+            self.supports_avg_logprob = identity.supports_avg_logprob
+            self._lifecycle_state = identity.state
+        except Exception as exc:
+            self._record_failure(exc)
             self.close()
             raise
 
@@ -155,6 +173,35 @@ class QwenASRServiceClient:
     @property
     def ready_path(self) -> Path:
         return self._ready_path
+
+    @property
+    def lifecycle_state(self) -> QwenServiceState:
+        return self._lifecycle_state
+
+    @property
+    def last_failure_type(self) -> str | None:
+        return self._last_failure_type
+
+    def live_identity(self) -> QwenServiceIdentity:
+        response = self._request({"op": "ping"})
+        self._require_success(response, operation="ping")
+        payload = response.get("identity")
+        if not isinstance(payload, Mapping):
+            error = QwenServiceIdentityMismatch("ping identity must be an object")
+            self._record_failure(error)
+            raise error
+        try:
+            identity = QwenServiceIdentity.from_wire(payload)
+            identity.assert_matches(self._launch)
+        except QwenServiceIdentityError as exc:
+            error = QwenServiceIdentityMismatch(str(exc))
+            self._record_failure(error)
+            raise error from exc
+        self.identity = identity
+        if identity.state is QwenServiceState.FAILED:
+            self._last_failure_type = identity.last_failure_type
+        self._lifecycle_state = identity.state
+        return identity
 
     def _wait_for_ready(self, timeout_s: float) -> None:
         deadline = time.monotonic() + timeout_s
@@ -179,9 +226,9 @@ class QwenASRServiceClient:
     def _request(self, header: Mapping[str, Any], payload: bytes = b"") -> dict[str, Any]:
         process = self._require_process()
         if process.poll() is not None:
-            raise QwenServiceCrashed(
-                f"qwen_service_server exited with code {process.returncode}"
-            )
+            error = QwenServiceCrashed(f"qwen_service_server exited with code {process.returncode}")
+            self._record_failure(error)
+            raise error
         channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         channel.settimeout(self._request_timeout_s)
         with self._state_lock:
@@ -194,13 +241,17 @@ class QwenASRServiceClient:
             send_frame(channel, header, payload)
             return recv_header(channel)
         except TimeoutError as exc:
-            raise QwenServiceTimeout(
-                f"Qwen ASR request exceeded {self._request_timeout_s}s"
-            ) from exc
+            error = QwenServiceTimeout(f"Qwen ASR request exceeded {self._request_timeout_s}s")
+            self._record_failure(error)
+            raise error from exc
         except QwenIPCProtocolError as exc:
-            raise QwenServiceProtocolError(str(exc)) from exc
+            error = QwenServiceProtocolError(str(exc))
+            self._record_failure(error)
+            raise error from exc
         except (ConnectionError, OSError) as exc:
-            raise QwenServiceCrashed(str(exc)) from exc
+            error = QwenServiceCrashed(str(exc))
+            self._record_failure(error)
+            raise error from exc
         finally:
             with self._state_lock:
                 self._active_sockets.discard(channel)
@@ -234,15 +285,19 @@ class QwenASRServiceClient:
         )
         response_request_id = response.get("request_id")
         if response_request_id != request_id:
-            raise QwenServiceProtocolError(
+            error = QwenServiceProtocolError(
                 f"Response request_id {response_request_id!r} does not match {request_id!r}"
             )
+            self._record_failure(error)
+            raise error
         if response.get("ok") is not True:
-            raise QwenTranscribeError(
+            error = QwenTranscribeError(
                 self._required_string(response, "error_type"),
                 self._required_string(response, "error_message"),
                 request_id,
             )
+            self._record_failure(error)
+            raise error
         try:
             return ASRResult(
                 text=self._required_string(response, "text"),
@@ -250,22 +305,22 @@ class QwenASRServiceClient:
                 audio_duration_ms=float(response["audio_duration_ms"]),
                 rtf=float(response["rtf"]),
                 avg_logprob=float(response["avg_logprob"]),
-                avg_logprob_reliable=self._required_bool(
-                    response, "avg_logprob_reliable"
-                ),
+                avg_logprob_reliable=self._required_bool(response, "avg_logprob_reliable"),
                 alternatives=tuple(response["alternatives"]),
             )
         except (KeyError, TypeError, ValueError) as exc:
-            raise QwenServiceProtocolError(f"Malformed transcribe response: {exc}") from exc
+            error = QwenServiceProtocolError(f"Malformed transcribe response: {exc}")
+            self._record_failure(error)
+            raise error from exc
 
     def runtime_metadata(self, max_new_tokens: int = 128) -> dict[str, Any]:
-        response = self._request(
-            {"op": "runtime_metadata", "max_new_tokens": max_new_tokens}
-        )
+        response = self._request({"op": "runtime_metadata", "max_new_tokens": max_new_tokens})
         self._require_success(response, operation="runtime_metadata")
         metadata = response.get("metadata")
         if not isinstance(metadata, dict):
-            raise QwenServiceProtocolError("runtime_metadata response is not an object")
+            error = QwenServiceProtocolError("runtime_metadata response is not an object")
+            self._record_failure(error)
+            raise error
         return metadata
 
     def close(self) -> None:
@@ -273,6 +328,8 @@ class QwenASRServiceClient:
             if self._closed:
                 return
             self._closed = True
+            if self._last_failure_type is None:
+                self._lifecycle_state = QwenServiceState.STOPPING
             active_sockets = tuple(self._active_sockets)
             self._active_sockets.clear()
         for channel in active_sockets:
@@ -291,6 +348,12 @@ class QwenASRServiceClient:
                 process.wait(timeout=self._shutdown_timeout_s)
         self._socket_path.unlink(missing_ok=True)
         self._ready_path.unlink(missing_ok=True)
+        if self._last_failure_type is None:
+            self._lifecycle_state = QwenServiceState.STOPPED
+
+    def _record_failure(self, error: Exception) -> None:
+        self._last_failure_type = type(error).__name__
+        self._lifecycle_state = QwenServiceState.FAILED
 
     def _request_graceful_shutdown(self) -> bool:
         channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -319,22 +382,22 @@ class QwenASRServiceClient:
             raise QwenServiceProtocolError(f"{key} must be a boolean")
         return value
 
-    @classmethod
-    def _require_success(cls, payload: Mapping[str, Any], *, operation: str) -> None:
+    def _require_success(self, payload: Mapping[str, Any], *, operation: str) -> None:
         if payload.get("ok") is True:
             return
-        error_type = cls._required_string(payload, "error_type")
-        error_message = cls._required_string(payload, "error_message")
-        raise QwenServiceProtocolError(
-            f"{operation} failed with {error_type}: {error_message}"
-        )
+        error_type = self._required_string(payload, "error_type")
+        error_message = self._required_string(payload, "error_message")
+        error = QwenServiceProtocolError(f"{operation} failed with {error_type}: {error_message}")
+        self._record_failure(error)
+        raise error
 
 
 __all__ = [
-    "DEFAULT_QWEN_MODEL_ID",
     "QWEN_VENV_PYTHON",
     "QwenASRServiceClient",
     "QwenServiceCrashed",
+    "QwenServiceIdentityMismatch",
+    "QwenServiceNotReady",
     "QwenServiceProtocolError",
     "QwenServiceTimeout",
     "QwenServiceUnavailable",

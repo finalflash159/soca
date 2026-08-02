@@ -1,6 +1,4 @@
-"""Tests for the backend-agnostic calibrator refactor. VAD and ASR are both
-injected via factories so these run without any real model or Silero VAD —
-matching the plan's "no model needed, CI-safe" requirement."""
+"""Backend-agnostic calibration tests with injected VAD and ASR factories."""
 
 from __future__ import annotations
 
@@ -15,7 +13,7 @@ import soundfile as sf
 from click.testing import CliRunner
 
 from local import config as cfg
-from local.calibrate_asr_confidence import calibrate_model, main
+from local.calibrate_asr_confidence import build_qwen_factory, calibrate_model, main
 from soca.asr.protocols import CalibratableASR
 from soca.asr.vad import VADResult
 from soca.asr.whisper_onnx import ASRResult
@@ -294,3 +292,37 @@ def test_qwen_backend_requires_a_model_key():
     result = runner.invoke(main, ["--backend", "qwen"])
     assert result.exit_code != 0
     assert "--model is required" in result.output
+
+
+def test_qwen_factory_passes_the_verified_local_model_path(monkeypatch, tmp_path):
+    model_path = tmp_path / "model"
+    model_path.mkdir()
+    captured = {}
+
+    class FakeQwenBackend:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("soca.asr.qwen_backend.QwenASRBackend", FakeQwenBackend)
+    factory = build_qwen_factory(
+        model_path,
+        context="technical terms",
+        device="cpu",
+        dtype="float32",
+    )
+
+    factory()
+
+    assert captured["model_path"] == model_path
+    assert "model_id" not in captured
+
+
+def test_qwen_cli_rejects_remote_repository_identifiers():
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["--backend", "qwen", "--model", "Qwen/Qwen3-ASR-0.6B"],
+    )
+
+    assert result.exit_code != 0
+    assert "unknown Qwen ASR artifact" in result.output

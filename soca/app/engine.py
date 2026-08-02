@@ -521,6 +521,8 @@ class SocaEngine:
     ) -> list[dict[str, str]]:
         """Describe configured runtime dependencies without eagerly loading them."""
 
+        from soca.asr.qwen_artifacts import QWEN_RELEASE_ARTIFACT
+        from soca.asr.qwen_readiness import inspect_qwen_readiness
         from soca.asr.registry import get_asr_model_config
         from soca.core.smart_turn import _MODEL_FILE as SMART_TURN_MODEL_FILE
         from soca.llm.registry import get_model_config
@@ -629,6 +631,14 @@ class SocaEngine:
                 guard_state,
                 f"confidence {'+' if calibration_path.is_file() else '-'}",
             )
+
+        qwen_readiness = inspect_qwen_readiness(QWEN_RELEASE_ARTIFACT)
+        add(
+            "qwen_asr_release",
+            "Qwen ASR release",
+            qwen_readiness.state.value,
+            qwen_readiness.detail,
+        )
 
         if self.session_memory is None:
             add("summary", "Working summary", "disabled", "session memory disabled")

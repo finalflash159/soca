@@ -11,6 +11,7 @@ from pathlib import Path
 
 import soundfile as sf
 
+from soca.asr.qwen_artifacts import validate_local_model_directory
 from soca.asr.qwen_backend import QwenASRBackend
 
 
@@ -44,9 +45,10 @@ def main() -> None:
     parser.add_argument("--raw-log-reference", required=True)
     parser.add_argument("audio", nargs="+", type=Path)
     args = parser.parse_args()
+    model_path = validate_local_model_directory(args.model.expanduser())
 
     started = time.perf_counter()
-    backend = QwenASRBackend(model_id=str(args.model), max_new_tokens=128)
+    backend = QwenASRBackend(model_path=model_path, max_new_tokens=128)
     startup_s = time.perf_counter() - started
     records: list[dict[str, object]] = []
     for audio_path in args.audio:
@@ -77,7 +79,7 @@ def main() -> None:
                 "artifact": {
                     "key": args.artifact_key,
                     "revision": args.artifact_revision,
-                    "local_snapshot": str(args.model.resolve()),
+                    "local_snapshot": str(model_path),
                 },
                 "configuration": {
                     "context": "",
