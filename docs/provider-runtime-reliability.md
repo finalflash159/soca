@@ -77,4 +77,7 @@ Each provider receives one chat turn and one voice-transcript turn through the
 same application engine factory. The receipt records provider/model, surface,
 route, terminal state, usage, latency, response, retry ledger, and typed error.
 The voice-transcript receipt is not a microphone, ASR, TTS, or audio-device
-test. API keys and private transcripts are never written to the artifact.
+test. The artifact identifies itself as `real_provider_smoke`, records source,
+scenario, model, environment, configuration, raw-log provenance, and decision
+metadata, and is explicitly ineligible for benchmark or model-selection claims.
+API keys and private transcripts are never written to the artifact.

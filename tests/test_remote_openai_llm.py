@@ -6,6 +6,7 @@ import pytest
 
 from soca.llm.providers.provider_registry import get_provider
 from soca.llm.providers.remote_openai_llm import RemoteLLMError, RemoteOpenAILLM
+from soca.llm.providers.response_adapter import map_provider_error
 
 # ---------------------------------------------------------------------------
 # Fake OpenAI client (no network). Mirrors the shape of openai>=1.x responses.
@@ -87,12 +88,19 @@ class FakeStatusError(Exception):
         self.body = body
 
 
-class FakeConnectionError(Exception):
+class FakeConnectionError(ConnectionError):
     """Mimics openai.APIConnectionError (no status_code)."""
 
 
 class FakeProgrammingError(Exception):
     pass
+
+
+class SDKInternalError(Exception):
+    pass
+
+
+SDKInternalError.__module__ = "openai"
 
 
 class ClosableChunks:
@@ -563,6 +571,17 @@ def test_programming_exception_is_not_translated_or_retried():
     engine = _engine(FakeClient(raises=FakeProgrammingError("bug")))
 
     with pytest.raises(FakeProgrammingError, match="bug"):
+        engine.generate("hi")
+
+    assert len(engine._client.calls) == 1
+
+
+def test_sdk_module_exception_is_not_assumed_to_be_a_transport_failure():
+    error = SDKInternalError("sdk bug")
+    assert map_provider_error(error, get_provider("groq"), "test/model") is None
+    engine = _engine(FakeClient(raises=error))
+
+    with pytest.raises(SDKInternalError, match="sdk bug"):
         engine.generate("hi")
 
     assert len(engine._client.calls) == 1

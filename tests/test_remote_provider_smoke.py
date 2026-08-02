@@ -41,11 +41,17 @@ def test_smoke_harness_records_chat_and_voice_transcript_without_audio(
 
     receipts = smoke.run_provider("openrouter", "test/model", max_tokens=96)
     artifact = tmp_path / "provider-smoke.json"
-    smoke._write_artifact(artifact, receipts)
+    smoke._write_artifact(artifact, receipts, max_tokens=96)
     payload = json.loads(artifact.read_text(encoding="utf-8"))
 
     assert [item.surface for item in receipts] == ["chat", "voice_transcript"]
     assert all(item.provider_called for item in receipts)
     assert all(item.terminal == "achieved" for item in receipts)
-    assert "no microphone" in payload["voice_scope"]
+    assert payload["run_type"] == "real_provider_smoke"
+    assert payload["benchmark_eligible"] is False
+    assert payload["scenario"]["revision"].startswith("sha256:")
+    assert payload["models"][0]["revision"].startswith("provider-managed")
+    assert "no microphone" in payload["configuration"]["voice_scope"]
+    assert payload["raw_log"]["committed"] is False
+    assert "exclude" in payload["decision"]
     assert len(payload["receipts"]) == 2

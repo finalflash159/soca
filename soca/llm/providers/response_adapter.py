@@ -139,13 +139,7 @@ def map_provider_error(
 ) -> RemoteLLMError | None:
     status = getattr(exc, "status_code", None)
     name = type(exc).__name__
-    module = type(exc).__module__
-    recognized_transport = (
-        module.startswith(("openai", "httpx", "httpcore"))
-        or "Connection" in name
-        or "Timeout" in name
-        or isinstance(exc, (ConnectionError, TimeoutError))
-    )
+    recognized_transport = _is_transport_failure(exc)
     if not isinstance(status, int) and not recognized_transport:
         return None
 
@@ -200,6 +194,45 @@ def map_provider_error(
         category=RemoteFailureKind.UNKNOWN,
         **common,
     )
+
+
+def _is_transport_failure(exc: Exception) -> bool:
+    if isinstance(exc, (ConnectionError, TimeoutError)):
+        return True
+    known_classes = {
+        "openai": {"APIConnectionError", "APITimeoutError"},
+        "httpx": {
+            "CloseError",
+            "ConnectError",
+            "ConnectTimeout",
+            "NetworkError",
+            "PoolTimeout",
+            "ProxyError",
+            "ReadError",
+            "ReadTimeout",
+            "TimeoutException",
+            "TransportError",
+            "WriteError",
+            "WriteTimeout",
+        },
+        "httpcore": {
+            "ConnectError",
+            "ConnectTimeout",
+            "ConnectionNotAvailable",
+            "NetworkError",
+            "PoolTimeout",
+            "ProxyError",
+            "ReadError",
+            "ReadTimeout",
+            "WriteError",
+            "WriteTimeout",
+        },
+    }
+    for cls in type(exc).__mro__:
+        root_module = cls.__module__.split(".", 1)[0]
+        if cls.__name__ in known_classes.get(root_module, set()):
+            return True
+    return False
 
 
 def _provider_error_code(exc: Exception) -> str:

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import platform
+import subprocess
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -145,12 +149,83 @@ def run_provider(
     return receipts
 
 
-def _write_artifact(path: Path, receipts: list[SmokeReceipt]) -> None:
+def _package_version(package: str) -> str:
+    try:
+        return version(package)
+    except PackageNotFoundError:
+        return "not-installed"
+
+
+def _source_revision() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    return result.stdout.strip() or "unknown"
+
+
+def _scenario_revision() -> str:
+    encoded = json.dumps(
+        SURFACE_PROMPTS,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _write_artifact(
+    path: Path,
+    receipts: list[SmokeReceipt],
+    *,
+    max_tokens: int,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    models = sorted({(receipt.provider, receipt.model) for receipt in receipts})
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "run_type": "real_provider_smoke",
+        "benchmark_eligible": False,
         "created_at": datetime.now(UTC).isoformat(),
-        "voice_scope": "transcript-only; no microphone, ASR, TTS, or audio hardware",
+        "source_revision": _source_revision(),
+        "environment": {
+            "os": platform.system(),
+            "os_release": platform.release(),
+            "machine": platform.machine(),
+            "processor": platform.processor() or "unknown",
+            "python": platform.python_version(),
+            "openai_sdk": _package_version("openai"),
+        },
+        "scenario": {
+            "revision": _scenario_revision(),
+            "source": "fixed inline prompts; no external dataset",
+        },
+        "models": [
+            {
+                "provider": provider,
+                "model": model,
+                "revision": "provider-managed; not exposed by this API surface",
+            }
+            for provider, model in models
+        ],
+        "configuration": {
+            "max_tokens": max_tokens,
+            "voice_scope": "transcript-only; no microphone, ASR, TTS, or audio hardware",
+        },
+        "raw_log": {
+            "committed": False,
+            "reference": "stdout from the same invocation; local-only when retained",
+        },
+        "decision": (
+            "Use only as provider wiring and reliability evidence; exclude from "
+            "quality, latency, and model-selection benchmark decisions."
+        ),
         "receipts": [asdict(receipt) for receipt in receipts],
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -180,7 +255,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         receipts.extend(run_provider(provider_key, model, max_tokens=args.max_tokens))
 
     if args.artifact is not None:
-        _write_artifact(args.artifact, receipts)
+        _write_artifact(args.artifact, receipts, max_tokens=args.max_tokens)
         console.print(f"\nartifact: {args.artifact}")
 
     table = Table(title="Remote provider smoke")

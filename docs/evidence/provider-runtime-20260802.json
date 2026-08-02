@@ -1,10 +1,24 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "run_type": "real_provider_smoke",
+  "benchmark_eligible": false,
   "recorded_at": "2026-08-02",
+  "source_revision": "97f603bd2270116a0f4df76d974c452a85854c00",
   "environment": {
     "os": "macOS 15.7.4 arm64",
+    "hardware": "Apple arm64 development machine; exact SKU not captured",
     "python": "3.11.14",
     "openai_sdk": "2.48.0"
+  },
+  "scenario": {
+    "revision": "sha256:827bd54f932e40126b70806502ba3d1e288c398e299df0980fbcafca9ae6c1f2",
+    "source": "fixed inline prompts in scripts/smoke_test_remote_llm.py; no external dataset"
+  },
+  "model_revision_policy": "Provider model identifiers are recorded per receipt; immutable provider-managed revisions were not exposed by these API surfaces.",
+  "run_decision": "Provider wiring and reliability gate only; excluded from quality, latency, and model-selection benchmark decisions.",
+  "raw_log": {
+    "committed": false,
+    "reference": "artifacts/local/provider-smoke.json and invocation stdout on the development machine; intentionally not committed"
   },
   "scope": {
     "chat": "real provider call through AssistantRuntime",
