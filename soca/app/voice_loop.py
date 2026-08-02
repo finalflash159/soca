@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -34,6 +35,7 @@ from soca.tts import VALTEC_TTS_CONFIG
 InputFn = Callable[[str], str]
 RuntimeBuilder = Callable[[ResolvedVoiceRuntimeConfig], VoiceRuntimeBundle]
 Recorder = Callable[..., np.ndarray]
+LOGGER = logging.getLogger(__name__)
 
 
 def run_voice_loop(
@@ -194,7 +196,10 @@ def run_voice_loop(
 
         return 0
     finally:
-        bundle.close()
+        try:
+            bundle.close()
+        except Exception:  # noqa: BLE001 - shutdown must complete
+            LOGGER.exception("Voice runtime cleanup failed during voice loop shutdown")
 
 
 def _turn_streaming(

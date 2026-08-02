@@ -311,7 +311,7 @@ def guard_rejection(row: RawPrediction, thresholds: GuardThresholds) -> str | No
     if row.hit_max_new_tokens is True:
         return "decode_limit_reached"
     if not row.text.strip():
-        return None
+        return "empty_asr"
     if (
         row.avg_logprob is not None
         and row.avg_logprob_reliable

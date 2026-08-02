@@ -8,6 +8,26 @@
     "inference_config_sha256": "4a9eb7b639d59c828c64e270808f029cb92e9e95045db8d636b05cfbe99c7e22",
     "release_gate_config_sha256": "d2d38686c8afc7b4ba4bf42af6d1a21f6340ea7e25313b07ce93f9bd205049a5",
     "analysis_config_sha256": "17e82b812527f3cc82cf1de5f88a8f278a0d518005e13a8680b4864e81aaf7a2",
+    "config_artifacts": {
+      "inference": {
+        "run_type": "release_benchmark",
+        "path": "eval/results/qwen_asr_release/20260802T191341Z-5f4a990e/benchmark_config.json",
+        "sha256": "4a9eb7b639d59c828c64e270808f029cb92e9e95045db8d636b05cfbe99c7e22",
+        "availability": "local_ignored"
+      },
+      "release_gate": {
+        "run_type": "release_gate",
+        "path": "eval/gates/qwen_asr_release.json",
+        "sha256": "d2d38686c8afc7b4ba4bf42af6d1a21f6340ea7e25313b07ce93f9bd205049a5",
+        "git_revision": "56af407"
+      },
+      "analysis_identity": {
+        "run_type": "release_analysis",
+        "path": "eval/results/qwen_asr_release/20260802T191341Z-5f4a990e/run.json",
+        "sha256": "ef1bab3beaed1ef602282745ab4467d25e4197d6b4636aaf15c04ef30b40f567",
+        "availability": "local_ignored"
+      }
+    },
     "dataset_manifests": {
       "private_codeswitch": "aed1ccd96ed9d994412285f4dcff68ba119155be0effd7fa0d089fa635dde70d",
       "fleurs_vi": "81de44e064d2925ca31ea5e911d560157e3b8e83319bdee66a750e3bab00978c",
@@ -85,6 +105,8 @@
   },
   "real_voice": {
     "remote": {
+      "run_type": "real_voice_remote_llm_tts",
+      "is_release_benchmark": false,
       "sample_count": 8,
       "profile": "qwen-release",
       "provider": "openrouter",
@@ -102,6 +124,8 @@
       "evidence_status": "pass_with_abstention_and_blocked_action_paths"
     },
     "local_smoke": {
+      "run_type": "real_voice_local_smoke",
+      "is_release_benchmark": false,
       "sample_count": 2,
       "profile": "qwen-release",
       "llm": "arcee_vylinh_3b_q4_k_m",

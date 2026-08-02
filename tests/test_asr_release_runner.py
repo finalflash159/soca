@@ -190,6 +190,19 @@ def test_summary_keeps_hard_negative_and_quality_separate() -> None:
     assert guard_rejection(rows[0], thresholds) is None
 
 
+def test_summary_rejects_empty_speech_transcripts() -> None:
+    thresholds = GuardThresholds(-0.5, 2.4, 4)
+    empty = replace(
+        _row("speech", "fleurs_vi", "holdout", -0.2, 1.0),
+        text="   ",
+    )
+
+    assert guard_rejection(empty, thresholds) == "empty_asr"
+    summary = summarize_predictions([empty], thresholds)
+    assert summary["fleurs_vi"]["empty"]["accepted"] == 0
+    assert summary["fleurs_vi"]["empty"]["rejected"] == 1
+
+
 def test_calibration_artifact_is_canonical_and_atomic(tmp_path) -> None:
     import json
 
