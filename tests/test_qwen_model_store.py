@@ -35,6 +35,8 @@ def _sha256(path: Path) -> str:
 
 
 def _fixture(tmp_path: Path) -> tuple[QwenASRArtifactSpec, Path, Path]:
+    runtime_lock = tmp_path / "uv.lock"
+    runtime_lock.write_text("locked runtime", encoding="utf-8")
     source = tmp_path / "source"
     source.mkdir()
     (source / "config.json").write_text(
@@ -60,11 +62,27 @@ def _fixture(tmp_path: Path) -> tuple[QwenASRArtifactSpec, Path, Path]:
         license="apache-2.0",
         device="cpu",
         dtype="float32",
-        runtime_lock_digest="b" * 64,
+        runtime_lock_digest=_sha256(runtime_lock),
         context_policy_digest=None,
         minimum_protocol_version=1,
     )
     return spec, source, tmp_path / "store"
+
+
+def _install(
+    store: QwenArtifactStore,
+    spec: QwenASRArtifactSpec,
+    source: Path,
+    **kwargs,
+):
+    return store.install_from_snapshot(
+        spec,
+        source,
+        runtime_lock=source.parent / "uv.lock",
+        system="Darwin",
+        machine="arm64",
+        **kwargs,
+    )
 
 
 def test_install_activates_verified_private_read_only_generation(tmp_path: Path) -> None:
@@ -72,7 +90,8 @@ def test_install_activates_verified_private_read_only_generation(tmp_path: Path)
     probes: list[Path] = []
     store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 3)
 
-    receipt = store.install_from_snapshot(
+    receipt = _install(
+        store,
         spec,
         source,
         source_kind=ArtifactSourceKind.UPSTREAM,
@@ -105,11 +124,11 @@ def test_install_is_idempotent_and_does_not_probe_twice(tmp_path: Path) -> None:
         return {"transcript": "ok"}
 
     store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 3)
-    first = store.install_from_snapshot(
-        spec, source, source_kind=ArtifactSourceKind.UPSTREAM, health_probe=probe
+    first = _install(
+        store, spec, source, source_kind=ArtifactSourceKind.UPSTREAM, health_probe=probe
     )
-    second = store.install_from_snapshot(
-        spec, source, source_kind=ArtifactSourceKind.UPSTREAM, health_probe=probe
+    second = _install(
+        store, spec, source, source_kind=ArtifactSourceKind.UPSTREAM, health_probe=probe
     )
 
     assert first == second
@@ -124,7 +143,8 @@ def test_wrong_hash_and_health_failure_never_activate(tmp_path: Path) -> None:
     store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 3)
 
     with pytest.raises(ArtifactInvalid, match="sha256"):
-        store.install_from_snapshot(
+        _install(
+            store,
             spec,
             source,
             source_kind=ArtifactSourceKind.UPSTREAM,
@@ -139,7 +159,8 @@ def test_mirror_source_requires_a_pinned_mirror(tmp_path: Path) -> None:
     spec, source, root = _fixture(tmp_path)
 
     with pytest.raises(MirrorNotPinned):
-        QwenArtifactStore(root).install_from_snapshot(
+        _install(
+            QwenArtifactStore(root),
             spec,
             source,
             source_kind=ArtifactSourceKind.MIRROR,
@@ -152,7 +173,8 @@ def test_preflight_rejects_insufficient_disk_before_copy(tmp_path: Path) -> None
     store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes - 1)
 
     with pytest.raises(InsufficientArtifactDisk):
-        store.install_from_snapshot(
+        _install(
+            store,
             spec,
             source,
             source_kind=ArtifactSourceKind.UPSTREAM,
@@ -210,13 +232,63 @@ def test_preflight_rejects_unsupported_platform_and_runtime_drift(tmp_path: Path
         )
 
 
+def test_install_cannot_bypass_platform_preflight(tmp_path: Path) -> None:
+    spec, source, root = _fixture(tmp_path)
+    store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 4)
+
+    with pytest.raises(UnsupportedArtifactPlatform, match="Linux/x86_64"):
+        store.install_from_snapshot(
+            spec,
+            source,
+            source_kind=ArtifactSourceKind.UPSTREAM,
+            health_probe=lambda _: {"transcript": "ok"},
+            runtime_lock=tmp_path / "uv.lock",
+            system="Linux",
+            machine="x86_64",
+        )
+
+    assert not root.exists()
+
+
+def test_store_rejects_symlinked_parent_before_creating_target(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    redirect = tmp_path / "redirect"
+    redirect.symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ArtifactInvalid, match="contains a symlink"):
+        QwenArtifactStore(
+            redirect / "store",
+        )
+
+    assert not (outside / "store").exists()
+
+
+def test_verification_and_chmod_reject_symlinks_inside_generation(
+    tmp_path: Path,
+) -> None:
+    spec, source, root = _fixture(tmp_path)
+    external = tmp_path / "external"
+    external.write_text("outside", encoding="utf-8")
+    (source / "escape").symlink_to(external)
+    store = QwenArtifactStore(root)
+
+    with pytest.raises(ArtifactInvalid, match="tree contains a symlink"):
+        store.verify_directory(spec, source, deep=False)
+    with pytest.raises(ArtifactInvalid, match="tree contains a symlink"):
+        store._make_read_only(source)
+
+    assert stat.S_IMODE(external.stat().st_mode) & stat.S_IWUSR
+
+
 def test_concurrent_provision_lock_is_typed(tmp_path: Path) -> None:
     spec, source, root = _fixture(tmp_path)
     store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 3)
 
     with store.provision_lock():
         with pytest.raises(ProvisionLockBusy):
-            store.install_from_snapshot(
+            _install(
+                store,
                 spec,
                 source,
                 source_kind=ArtifactSourceKind.UPSTREAM,
@@ -227,7 +299,8 @@ def test_concurrent_provision_lock_is_typed(tmp_path: Path) -> None:
 def test_quick_verify_detects_post_activation_mutation(tmp_path: Path) -> None:
     spec, source, root = _fixture(tmp_path)
     store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 3)
-    store.install_from_snapshot(
+    _install(
+        store,
         spec,
         source,
         source_kind=ArtifactSourceKind.UPSTREAM,
@@ -248,7 +321,8 @@ def test_quick_verify_detects_post_activation_mutation(tmp_path: Path) -> None:
 def test_deep_verify_runs_health_probe_without_storing_transcript(tmp_path: Path) -> None:
     spec, source, root = _fixture(tmp_path)
     store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 3)
-    store.install_from_snapshot(
+    _install(
+        store,
         spec,
         source,
         source_kind=ArtifactSourceKind.UPSTREAM,
@@ -270,7 +344,8 @@ def test_health_failure_leaves_only_private_staging_cleanup(tmp_path: Path) -> N
     store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 3)
 
     with pytest.raises(ArtifactInvalid, match="empty transcript"):
-        store.install_from_snapshot(
+        _install(
+            store,
             spec,
             source,
             source_kind=ArtifactSourceKind.UPSTREAM,
@@ -286,7 +361,8 @@ def test_health_receipt_rejects_sensitive_fields(tmp_path: Path) -> None:
     store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 3)
 
     with pytest.raises(ArtifactInvalid, match="sensitive"):
-        store.install_from_snapshot(
+        _install(
+            store,
             spec,
             source,
             source_kind=ArtifactSourceKind.UPSTREAM,
@@ -308,7 +384,8 @@ def test_activation_permission_failure_rolls_back_generation(
 
     monkeypatch.setattr(store, "_make_read_only", fail_read_only)
     with pytest.raises(ArtifactInvalid, match="activation"):
-        store.install_from_snapshot(
+        _install(
+            store,
             spec,
             source,
             source_kind=ArtifactSourceKind.UPSTREAM,
@@ -322,7 +399,8 @@ def test_activation_permission_failure_rolls_back_generation(
 def test_gc_never_removes_active_generation(tmp_path: Path) -> None:
     spec, source, root = _fixture(tmp_path)
     store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 3)
-    store.install_from_snapshot(
+    _install(
+        store,
         spec,
         source,
         source_kind=ArtifactSourceKind.UPSTREAM,
@@ -345,7 +423,8 @@ def test_gc_never_removes_active_generation(tmp_path: Path) -> None:
 def test_receipt_rejects_unknown_fields_and_never_contains_token(tmp_path: Path) -> None:
     spec, source, root = _fixture(tmp_path)
     store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 3)
-    store.install_from_snapshot(
+    _install(
+        store,
         spec,
         source,
         source_kind=ArtifactSourceKind.UPSTREAM,

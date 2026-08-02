@@ -108,11 +108,10 @@ class QwenASRServiceClient:
         self._process: subprocess.Popen[bytes] | None = None
 
         try:
-            child_environment = None
+            child_environment = os.environ.copy()
+            for name in SENSITIVE_MODEL_ENVIRONMENT:
+                child_environment.pop(name, None)
             if process_environment is not None:
-                child_environment = os.environ.copy()
-                for name in SENSITIVE_MODEL_ENVIRONMENT:
-                    child_environment.pop(name, None)
                 child_environment.update(process_environment)
             self._process = subprocess.Popen(
                 [

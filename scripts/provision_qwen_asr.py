@@ -244,6 +244,7 @@ def execute(args: argparse.Namespace) -> Mapping[str, object]:
         source,
         source_kind=source_kind,
         health_probe=build_health_probe(args.health_audio),
+        runtime_lock=RUNTIME_LOCK,
         progress=_progress,
     )
     return {

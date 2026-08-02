@@ -152,12 +152,39 @@ def _sha256(path: Path) -> str:
 
 def _private_directory(path: Path) -> None:
     try:
+        _reject_symlink_components(path)
         path.mkdir(parents=True, exist_ok=True, mode=0o700)
-        if path.is_symlink() or not path.is_dir():
+        _reject_symlink_components(path)
+        metadata = path.lstat()
+        if not stat.S_ISDIR(metadata.st_mode):
             raise ArtifactInvalid(f"artifact directory is not a private directory: {path}")
-        os.chmod(path, 0o700)
+        _chmod_no_follow(path, 0o700)
     except OSError as exc:
         raise ArtifactInvalid(f"artifact directory cannot be made private: {path}") from exc
+
+
+def _reject_symlink_components(path: Path) -> None:
+    for component in (path, *path.parents):
+        try:
+            metadata = component.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(metadata.st_mode):
+            raise ArtifactInvalid(f"artifact path contains a symlink: {component}")
+
+
+def _chmod_no_follow(path: Path, mode: int) -> None:
+    metadata = path.lstat()
+    if stat.S_ISLNK(metadata.st_mode):
+        raise ArtifactInvalid(f"artifact tree contains a symlink: {path}")
+    flags = os.O_RDONLY | os.O_NOFOLLOW
+    if stat.S_ISDIR(metadata.st_mode):
+        flags |= os.O_DIRECTORY
+    descriptor = os.open(path, flags)
+    try:
+        os.fchmod(descriptor, mode)
+    finally:
+        os.close(descriptor)
 
 
 def _fsync_directory(path: Path) -> None:
@@ -315,6 +342,10 @@ class QwenArtifactStore:
         expanded = root.expanduser()
         if not expanded.is_absolute() or ".." in expanded.parts:
             raise ValueError("Qwen artifact store root must be absolute without traversal")
+        try:
+            _reject_symlink_components(expanded)
+        except OSError as exc:
+            raise ArtifactInvalid("Qwen artifact store path cannot be inspected") from exc
         self.root = expanded
         self._disk_free = disk_free or (lambda path: shutil.disk_usage(path).free)
 
@@ -396,11 +427,21 @@ class QwenArtifactStore:
         *,
         source_kind: ArtifactSourceKind,
         health_probe: HealthProbe,
+        runtime_lock: Path,
+        system: str | None = None,
+        machine: str | None = None,
         progress: ProgressCallback | None = None,
     ) -> ArtifactReceipt:
         source = spec.mirror if source_kind is ArtifactSourceKind.MIRROR else spec.upstream
         if source is None:
             raise MirrorNotPinned("artifact mirror is not pinned")
+        self.preflight(
+            spec,
+            source_root,
+            runtime_lock=runtime_lock,
+            system=system,
+            machine=machine,
+        )
         with self.provision_lock():
             existing = self._load_if_valid(spec)
             if existing is not None:
@@ -550,6 +591,13 @@ class QwenArtifactStore:
         *,
         deep: bool,
     ) -> None:
+        if root.is_symlink():
+            raise ArtifactInvalid("artifact generation must not be a symlink")
+        for path in root.rglob("*"):
+            if path.is_symlink():
+                raise ArtifactInvalid(
+                    f"artifact tree contains a symlink: {path.relative_to(root)}"
+                )
         actual = tuple(
             path.relative_to(root).as_posix()
             for path in sorted(root.rglob("*"))
@@ -723,14 +771,14 @@ class QwenArtifactStore:
     @staticmethod
     def _make_read_only(root: Path) -> None:
         for path in root.rglob("*"):
-            os.chmod(path, 0o500 if path.is_dir() else 0o400)
-        os.chmod(root, 0o500)
+            _chmod_no_follow(path, 0o500 if path.is_dir() else 0o400)
+        _chmod_no_follow(root, 0o500)
 
     @staticmethod
     def _make_writable(root: Path) -> None:
-        os.chmod(root, 0o700)
+        _chmod_no_follow(root, 0o700)
         for path in root.rglob("*"):
-            os.chmod(path, 0o700 if path.is_dir() else 0o600)
+            _chmod_no_follow(path, 0o700 if path.is_dir() else 0o600)
 
 
 __all__ = [

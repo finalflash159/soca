@@ -209,13 +209,13 @@ def test_worker_environment_is_offline_and_does_not_inherit_tokens(
     process.poll.return_value = None
     process.wait.return_value = 0
     services: list[FakeQwenService] = []
-    captured_environment: dict[str, str] = {}
+    captured_environments: list[dict[str, str]] = []
     socket_dir = Path(tempfile.mkdtemp(prefix="soca-qwen-test-", dir="/tmp"))
     monkeypatch.setenv("HF_TOKEN", "must-not-reach-worker")
     monkeypatch.setenv("HUGGING_FACE_HUB_TOKEN", "also-private")
 
     def popen(args, **kwargs):
-        captured_environment.update(kwargs["env"])
+        captured_environments.append(kwargs["env"])
         socket_path = Path(args[args.index("--socket-path") + 1])
         services.append(FakeQwenService(socket_path))
         return process
@@ -230,12 +230,18 @@ def test_worker_environment_is_offline_and_does_not_inherit_tokens(
         },
     )
     client.close()
+    default_client = QwenASRServiceClient(
+        socket_dir=socket_dir,
+        python_executable=executable,
+    )
+    default_client.close()
 
-    assert captured_environment["HF_HUB_OFFLINE"] == "1"
-    assert captured_environment["TRANSFORMERS_OFFLINE"] == "1"
-    assert "PATH" in captured_environment
-    assert "HF_TOKEN" not in captured_environment
-    assert "HUGGING_FACE_HUB_TOKEN" not in captured_environment
+    assert captured_environments[0]["HF_HUB_OFFLINE"] == "1"
+    assert captured_environments[0]["TRANSFORMERS_OFFLINE"] == "1"
+    for environment in captured_environments:
+        assert "PATH" in environment
+        assert "HF_TOKEN" not in environment
+        assert "HUGGING_FACE_HUB_TOKEN" not in environment
     for service in services:
         service.close()
     shutil.rmtree(socket_dir, ignore_errors=True)

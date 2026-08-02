@@ -3,6 +3,31 @@
   "run_type": "real_recorded_audio_artifact_provision",
   "recorded_at": "2026-08-02",
   "baseline_commit": "debb1c54cf55eb528665ba78a6e06e553828d5a9",
+  "is_benchmark": false,
+  "configuration": {
+    "commands": [
+      "install --artifact release --source upstream --cache-only --health-audio <recorded-voice>",
+      "install --artifact reference --source upstream --cache-only --health-audio <recorded-voice>",
+      "verify --artifact release --deep --health-audio <recorded-voice>",
+      "verify --artifact reference --deep --health-audio <recorded-voice>"
+    ],
+    "source_policy": "one explicitly selected exact upstream revision; no fallback",
+    "cache_only_install": true,
+    "deep_verify": true,
+    "worker_environment": {
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1",
+      "HF_HOME": "empty temporary directory for cache-independence verification"
+    },
+    "health_decode": {
+      "max_new_tokens": 128,
+      "startup_timeout_seconds": 180.0,
+      "request_timeout_seconds": 90.0,
+      "shutdown_timeout_seconds": 10.0
+    },
+    "store_root_policy": "default XDG persistent ASR model store",
+    "token_transport": "HF_TOKEN read by provisioner only; stripped from worker"
+  },
   "host": {
     "architecture": "arm64",
     "cpu": "Apple M4 Pro",
@@ -63,6 +88,13 @@
     "automatic_fallback": false,
     "mirror_status": "blocked: mirror_not_pinned",
     "mirror_owner": "@finalflash159"
+  },
+  "failures": [],
+  "outcome": "pass",
+  "decision": {
+    "artifact_lifecycle": "accepted for production wiring",
+    "performance_model_selection": "not evaluated by this health run",
+    "mirror_release_gate": "blocked until both private mirror revisions are pinned"
   },
   "raw_logs": "benchmarks/raw/qwen_model_store/2026-08-02 (local, gitignored)"
 }
