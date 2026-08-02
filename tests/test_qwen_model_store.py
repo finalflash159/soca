@@ -169,7 +169,13 @@ def test_preflight_reports_manifest_bytes_and_exact_runtime_lock(tmp_path: Path)
     spec = replace(spec, runtime_lock_digest=_sha256(lock))
     store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 4)
 
-    report = store.preflight(spec, source, runtime_lock=lock)
+    report = store.preflight(
+        spec,
+        source,
+        runtime_lock=lock,
+        system="Darwin",
+        machine="arm64",
+    )
 
     assert report.platform == "Darwin"
     assert report.architecture == "arm64"
@@ -195,7 +201,13 @@ def test_preflight_rejects_unsupported_platform_and_runtime_drift(tmp_path: Path
             machine="x86_64",
         )
     with pytest.raises(WorkerRuntimeInvalid, match="digest"):
-        store.preflight(spec, source, runtime_lock=lock)
+        store.preflight(
+            spec,
+            source,
+            runtime_lock=lock,
+            system="Darwin",
+            machine="arm64",
+        )
 
 
 def test_concurrent_provision_lock_is_typed(tmp_path: Path) -> None:
