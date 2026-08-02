@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "run_type": "qwen_voice_runtime_integration",
+  "created_at_utc": "2026-08-02T11:58:01Z",
+  "default_profile": "baseline",
+  "profiles": {
+    "qwen-release": {
+      "artifact_key": "qwen3_asr_0_6b",
+      "role": "release",
+      "static_artifact_state": "provisioned",
+      "runtime_state": "not_ready",
+      "reason": "exact full-identity confidence calibration missing"
+    },
+    "qwen-reference": {
+      "artifact_key": "qwen3_asr_1_7b",
+      "role": "reference",
+      "static_artifact_state": "provisioned",
+      "runtime_state": "not_ready",
+      "reason": "historical calibration does not match service and context-policy identity"
+    }
+  },
+  "context_contract": {
+    "partial_context": "empty",
+    "final_context": "dynamic_typed_snapshot",
+    "normalization": "unicode_nfc_whitespace_v1",
+    "max_chars": 1024,
+    "max_approximate_tokens": 256,
+    "max_terms": 64,
+    "provenance_exposed": true,
+    "content_digest": "sha256",
+    "policy_digest": "sha256"
+  },
+  "historical_context_echo_diagnostic": {
+    "private_real_voice_utterances": 40,
+    "qwen_0_6b_echoes": 3,
+    "qwen_1_7b_echoes": 1,
+    "qwen_1_7b_calibration_speech_rows": 200,
+    "qwen_1_7b_calibration_noise_echoes": 14,
+    "confidence_guard_accepted_noise_echoes": 14,
+    "overlap_guard_observed_false_negatives": 0,
+    "overlap_guard_observed_speech_false_positives": 0,
+    "release_decision": "not_qualified_for_dynamic_context"
+  },
+  "verified_contracts": [
+    "typed release/reference selection",
+    "no Whisper-registry lookup for Qwen",
+    "one service client per voice bundle",
+    "partial empty context and final dynamic context",
+    "context bounds, provenance and digest",
+    "full calibration identity lookup",
+    "missing calibration blocks before service start",
+    "idempotent stop and startup rollback cleanup",
+    "short Loading ASR, Listening and Transcribing progress states",
+    "no silent ASR fallback"
+  ],
+  "real_flow": {
+    "service_recorded_audio": {
+      "command": "SOCA_RUN_QWEN_SERVICE_REAL=1 uv run pytest -q tests/test_qwen_service_client.py -k real_qwen_service -vv",
+      "release_0_6b": "passed",
+      "reference_1_7b": "passed",
+      "duration_seconds": 13.43,
+      "model_source": "verified immutable local artifact; offline worker"
+    },
+    "voice_controller_remote_llm_tts": "blocked_pending_exact_calibration",
+    "raw_logs": "local and gitignored"
+  },
+  "verification": {
+    "python": {
+      "ruff": "passed",
+      "pyright": "0 errors",
+      "pytest": "1528 passed, 4 skipped"
+    },
+    "ui": {
+      "vitest": "91 passed with one worker; the default parallel run exposed a pre-existing SettingsScreen timing flake",
+      "typecheck": "passed",
+      "build": "passed"
+    },
+    "runtime_profiles": {
+      "baseline": "ok",
+      "qwen_release": "not_ready",
+      "qwen_reference": "not_ready"
+    }
+  }
+}

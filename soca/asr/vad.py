@@ -1,17 +1,10 @@
-"""Silero VAD wrapper for speech extraction before Whisper transcription.
-
-Whisper hallucinates on silence/noise. Pre-filtering with VAD reduces
-hallucinations by 40-60% (Bain et al. 2023, faster-whisper).
-
-References:
-- https://github.com/snakers4/silero-vad
-- WhisperX paper: https://arxiv.org/abs/2303.00747
-"""
+"""Silero VAD speech extraction."""
 
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from typing import ClassVar
 
 import numpy as np
 
@@ -32,7 +25,7 @@ class VADResult:
 class SpeechDetector:
     """Silero VAD wrapper. Extracts speech regions from raw audio."""
 
-    SAMPLE_RATE = 16000
+    SAMPLE_RATE: ClassVar[int] = 16000
 
     def __init__(
         self,

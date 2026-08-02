@@ -40,4 +40,21 @@ describe("TurnProgress", () => {
     expect(view.lastFrame()).toContain("Transcribing…");
     view.unmount();
   });
+
+  it("uses a short listening label while recording", () => {
+    const view = render(
+      <TurnProgress
+        progress={{
+          event: "turn_progress",
+          surface: "voice",
+          phase: "preparing",
+          operation: "listening",
+          status: "active",
+        }}
+      />,
+    );
+
+    expect(view.lastFrame()).toContain("Listening…");
+    view.unmount();
+  });
 });

@@ -1,11 +1,4 @@
-"""Regression tests for the split logprob/compression confidence guard.
-
-Before this split, `RobustASR` gated both checks behind one flag
-(`use_confidence_guard`), so any backend without a usable logprob (or any
-model-mismatch/missing-calibration skip) silently also lost the
-compression-ratio check, even though that check is pure text and does not
-depend on the model at all.
-"""
+"""Regression tests for independent transcript quality checks."""
 
 from __future__ import annotations
 
@@ -47,7 +40,14 @@ class _NoLogprobASR:
         self.text = text
         self.model_key = model_key
 
-    def transcribe(self, audio: np.ndarray) -> ASRResult:
+    def transcribe(
+        self,
+        audio: np.ndarray,
+        max_new_tokens: int = 128,
+        *,
+        context: str,
+    ) -> ASRResult:
+        del max_new_tokens, context
         return ASRResult(
             text=self.text,
             latency_ms=0.0,
@@ -68,7 +68,14 @@ class _LogprobASR:
         self.avg_logprob = avg_logprob
         self.model_key = model_key
 
-    def transcribe(self, audio: np.ndarray) -> ASRResult:
+    def transcribe(
+        self,
+        audio: np.ndarray,
+        max_new_tokens: int = 128,
+        *,
+        context: str,
+    ) -> ASRResult:
+        del max_new_tokens, context
         return ASRResult(
             text=self.text,
             latency_ms=0.0,
@@ -89,7 +96,14 @@ class _NoLogprobNoModelKeyASR:
     def __init__(self, text: str):
         self.text = text
 
-    def transcribe(self, audio: np.ndarray) -> ASRResult:
+    def transcribe(
+        self,
+        audio: np.ndarray,
+        max_new_tokens: int = 128,
+        *,
+        context: str,
+    ) -> ASRResult:
+        del max_new_tokens, context
         return ASRResult(
             text=self.text,
             latency_ms=0.0,

@@ -7,6 +7,7 @@ import numpy as np
 from rich.console import Console
 
 from soca.app.voice_loop import run_voice_loop
+from soca.asr.selection import ASRSelection
 from soca.core import LLMUsage, ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
 from soca.tts import TTSResult
 
@@ -14,6 +15,9 @@ from soca.tts import TTSResult
 @dataclass
 class FakeASRForBundle:
     confidence_guard_status: str = "disabled:test"
+
+    def close(self) -> None:
+        return None
 
 
 class FakePipeline:
@@ -57,7 +61,7 @@ class FakeAudioSink:
 def make_config() -> ResolvedVoiceRuntimeConfig:
     return ResolvedVoiceRuntimeConfig(
         profile_key="baseline",
-        asr_model="phowhisper_base",
+        asr=ASRSelection.phowhisper("phowhisper_base"),
         llm_model="arcee_vylinh_3b_q4_k_m",
         tts_voice="NF",
         endpoint_silence_ms=700,

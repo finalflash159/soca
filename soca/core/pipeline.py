@@ -49,7 +49,7 @@ class PipelineResult:
     asr_result: Any | None = None
     llm_result: Any | None = None
     runtime_result: Any | None = None
-    # Repair layer (plan §9): user-facing follow-up for a rejected turn. Kept
+    # User-facing follow-up for a rejected turn. Kept
     # alongside the legacy rejected/rejection_reason fields for back-compat.
     repair_kind: str = ""
     repair_action: str = ""
@@ -212,6 +212,10 @@ class VoicePipeline:
             metadata={
                 "rejection_reason": rejection_reason,
                 "alternatives": list(asr_alternatives),
+                "context_digest": getattr(asr_result, "context_digest", ""),
+                "context_provenance": list(
+                    getattr(asr_result, "context_provenance", ())
+                ),
             },
         )
 
@@ -221,7 +225,7 @@ class VoicePipeline:
                 repair, attempt=self._repair_state.no_input_attempts
             )
             # Repair event lands before sentence/tts so UI can label the turn as a
-            # follow-up (not an error) and act on handover (plan §9).
+            # follow-up (not an error) and act on handover.
             yield StreamingEvent(
                 type="repair",
                 text=repair.text,

@@ -391,3 +391,39 @@ describe("progress reducer", () => {
     });
   });
 });
+
+describe("voice ASR status", () => {
+  it("shows the concrete backend loading message", () => {
+    const state = reduce(initialState, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "loading",
+        text: "Loading Qwen ASR…",
+        latency_ms: null,
+        metadata: {},
+        usage: null,
+      },
+    });
+
+    expect(state.voiceState).toBe("loading");
+    expect(state.voiceNote).toBe("Loading Qwen ASR…");
+  });
+
+  it("shows transcription separately from recording", () => {
+    const state = reduce(initialState, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "transcribing",
+        text: "Transcribing",
+        latency_ms: null,
+        metadata: {},
+        usage: null,
+      },
+    });
+
+    expect(state.voiceState).toBe("processing");
+    expect(state.voiceNote).toBe("Transcribing…");
+  });
+});

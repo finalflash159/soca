@@ -111,7 +111,7 @@ def test_parse_profiles_defaults_and_dedupes() -> None:
 def test_parse_profiles_can_select_all_profiles() -> None:
     profiles = parse_profiles([], all_profiles=True)
 
-    assert profiles == ["baseline"]
+    assert profiles == ["baseline", "qwen-release", "qwen-reference"]
 
 
 @pytest.mark.parametrize("profile", ["quality", "edge"])

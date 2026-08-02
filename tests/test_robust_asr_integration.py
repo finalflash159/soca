@@ -11,6 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
+from soca.asr.context import ASRContextBuilder, ASRContextSourceRecord
 from soca.asr.robust_asr import RobustASR, load_confidence_guard_calibration
 from soca.asr.vad import VADResult
 from soca.asr.whisper_onnx import ASRResult
@@ -19,6 +20,7 @@ DUMMY_AUDIO = np.zeros(16000, dtype=np.float32)
 
 
 class MockASR:
+    supports_avg_logprob = True
     def __init__(
         self,
         text: str,
@@ -34,7 +36,14 @@ class MockASR:
         self.context = context
         self.calls = 0
 
-    def transcribe(self, audio: np.ndarray) -> ASRResult:
+    def transcribe(
+        self,
+        audio: np.ndarray,
+        max_new_tokens: int = 128,
+        *,
+        context: str,
+    ) -> ASRResult:
+        del max_new_tokens
         self.calls += 1
         return ASRResult(
             text=self.text,
@@ -44,6 +53,19 @@ class MockASR:
             avg_logprob=self.avg_logprob,
             alternatives=self.alternatives,
         )
+
+    def close(self) -> None:
+        return None
+
+    def runtime_metadata(self, max_new_tokens: int = 128) -> dict:
+        return {"max_new_tokens": max_new_tokens}
+
+
+def context_provider(text: str):
+    snapshot = ASRContextBuilder().build(
+        (ASRContextSourceRecord(text, "test"),) if text else ()
+    )
+    return lambda: snapshot
 
 
 class MockVAD:
@@ -119,6 +141,7 @@ def test_context_echo_rejected():
     pipeline = RobustASR(
         asr=MockASR(context, avg_logprob=0.0, context=context),
         vad=MockVAD(),
+        context_provider=context_provider(context),
     )
 
     result = pipeline.transcribe(DUMMY_AUDIO)
@@ -136,6 +159,7 @@ def test_short_sentence_sharing_context_vocabulary_is_not_rejected():
     pipeline = RobustASR(
         asr=MockASR(phrase, avg_logprob=0.0, context=context),
         vad=MockVAD(),
+        context_provider=context_provider(context),
     )
 
     result = pipeline.transcribe(DUMMY_AUDIO)

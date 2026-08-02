@@ -17,6 +17,8 @@ class FakeASRResult:
     text: str
     rejection_reason: str = ""
     alternatives: tuple[str, ...] = ()
+    context_digest: str = ""
+    context_provenance: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -30,10 +32,14 @@ class FakeASR:
         text: str,
         rejection_reason: str = "",
         alternatives: tuple[str, ...] = (),
+        context_digest: str = "",
+        context_provenance: tuple[str, ...] = (),
     ) -> None:
         self.text = text
         self.rejection_reason = rejection_reason
         self.alternatives = alternatives
+        self.context_digest = context_digest
+        self.context_provenance = context_provenance
         self.calls = 0
 
     def transcribe(self, audio: np.ndarray) -> FakeASRResult:
@@ -42,6 +48,8 @@ class FakeASR:
             text=self.text,
             rejection_reason=self.rejection_reason,
             alternatives=self.alternatives,
+            context_digest=self.context_digest,
+            context_provenance=self.context_provenance,
         )
 
 
@@ -331,6 +339,35 @@ def test_voice_pipeline_forwards_asr_alternatives_for_goal_repair() -> None:
             "asr_rejection_reason": "",
             "asr_alternatives": list(alternatives),
         }
+    ]
+
+
+def test_voice_pipeline_exposes_asr_context_provenance_as_protocol_data() -> None:
+    asr = FakeASR(
+        "mở ghi chú attention",
+        context_digest="a" * 64,
+        context_provenance=("vault:7:wiki/attention.md:title", "session:thread:0:user"),
+    )
+    pipeline = VoicePipeline(
+        asr=asr,
+        llm=SpyLLM(),
+        tts=SpyTTS(),
+        assistant_runtime=FakeStreamingRuntime(["Mình đang mở ghi chú."]),
+    )
+
+    events = list(
+        pipeline.turn_streaming(
+            np.zeros(16000, dtype=np.float32),
+            audio_sink=NullAudioPlayer(),
+            min_sentence_chars=8,
+        )
+    )
+
+    asr_event = next(event for event in events if event.type == "asr")
+    assert asr_event.metadata["context_digest"] == "a" * 64
+    assert asr_event.metadata["context_provenance"] == [
+        "vault:7:wiki/attention.md:title",
+        "session:thread:0:user",
     ]
 
 

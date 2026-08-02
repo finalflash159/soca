@@ -1,9 +1,4 @@
-"""Contract between tooling (calibrator, eval scripts) and any ASR backend.
-
-Making this explicit is what lets `local/calibrate_asr_confidence.py`
-calibrate a non-Whisper backend without depending on `VietnameseASR`
-directly.
-"""
+"""Typed ASR backend contracts."""
 
 from __future__ import annotations
 
@@ -20,16 +15,33 @@ class CalibratableASR(Protocol):
 
     model_key: str
 
-    def transcribe(self, audio: np.ndarray, max_new_tokens: int = 128) -> ASRResult:
+    def transcribe(
+        self,
+        audio: np.ndarray,
+        max_new_tokens: int = 128,
+        *,
+        context: str | None = None,
+    ) -> ASRResult:
         """Accepts float32 mono 16kHz 1-D audio. `avg_logprob` must be a real
         number from the model, not a placeholder."""
         ...
 
-    def runtime_metadata(self, max_new_tokens: int = 128) -> dict[str, Any]:
-        """Runtime identity recorded into the calibration file.
+    def runtime_metadata(self, max_new_tokens: int = 128) -> dict[str, Any]: ...
 
-        Required, not decorative: a threshold is only valid for the exact
-        runtime that produced it. Changing decoder/provider/max_new_tokens
-        (or, for LLM-decoder backends, context) requires recalibrating.
-        """
-        ...
+
+@runtime_checkable
+class VoiceASRBackend(Protocol):
+    model_key: str
+    supports_avg_logprob: bool
+
+    def transcribe(
+        self,
+        audio: np.ndarray,
+        max_new_tokens: int = 128,
+        *,
+        context: str,
+    ) -> ASRResult: ...
+
+    def runtime_metadata(self, max_new_tokens: int = 128) -> dict[str, Any]: ...
+
+    def close(self) -> None: ...

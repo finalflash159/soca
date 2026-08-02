@@ -299,7 +299,7 @@ function reduceVoiceCore(
         speechChunks: meta["phase"] === "fired" ? [] : state.speechChunks,
       };
     case "loading":
-      return { ...state, voiceState: "loading", voiceNote: "tải ASR/LLM/TTS…" };
+      return { ...state, voiceState: "loading", voiceNote: event.text || "Loading ASR" };
     case "ready":
     case "warmup":
       return { ...state, voiceState: "loading", voiceNote: "khởi động…" };
@@ -328,6 +328,8 @@ function reduceVoiceCore(
       return { ...state, voiceState: "listening", voiceNote: "đang nghe…" };
     case "recorded":
       return { ...state, voiceState: "processing", voiceNote: "" };
+    case "transcribing":
+      return { ...state, voiceState: "processing", voiceNote: "Transcribing…" };
     case "asr":
       return {
         ...state,
