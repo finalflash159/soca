@@ -195,9 +195,13 @@ class VoiceMonitorController:
                 cancel()
         self.player.stop()
         if bundle is not None:
-            bundle.close()
-            if self.bundle is bundle:
-                self.bundle = None
+            try:
+                bundle.close()
+            except Exception:  # noqa: BLE001 - shutdown must complete
+                LOGGER.exception("Voice runtime cleanup failed during controller stop")
+            finally:
+                if self.bundle is bundle:
+                    self.bundle = None
 
     def _ensure_bundle(self, queue: VoiceEventQueue) -> VoiceRuntimeBundle:
         if self.bundle is not None:
@@ -259,7 +263,12 @@ class VoiceMonitorController:
                 )
             failures = [result for result in warmup_results if not result.ok]
             if failures:
-                self.bundle.close()
+                try:
+                    self.bundle.close()
+                except Exception:  # noqa: BLE001 - preserve warmup failure
+                    LOGGER.exception("Voice runtime cleanup failed after warmup error")
+                finally:
+                    self.bundle = None
                 raise VoiceRuntimeWarmupError(tuple(failures))
             self._warmed_up = True
 

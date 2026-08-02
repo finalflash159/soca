@@ -128,6 +128,25 @@ def make_bundle(
     )
 
 
+def test_runtime_bundle_closes_llm_and_tts_handles() -> None:
+    class CloseSpy:
+        def __init__(self) -> None:
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    llm = CloseSpy()
+    tts = CloseSpy()
+    bundle = make_bundle(make_config(), FakePipeline([]), llm=llm, tts=tts)
+
+    bundle.close()
+    bundle.close()
+
+    assert llm.close_calls == 1
+    assert tts.close_calls == 1
+
+
 def _drain_voice_events(queue: Queue) -> list:
     events = []
     while True:
@@ -307,6 +326,27 @@ def test_voice_stop_cancels_active_llm_before_stopping_audio() -> None:
     controller.stop()
 
     assert calls == ["llm", "audio"]
+
+
+def test_voice_stop_keeps_teardown_observable_when_component_close_fails() -> None:
+    config = make_config()
+    bundle = make_bundle(config, FakePipeline([]))
+
+    def fail_close() -> None:
+        raise RuntimeError("native close failed")
+
+    bundle.close = fail_close  # type: ignore[method-assign]
+    controller = VoiceMonitorController(
+        config,
+        runtime_builder=lambda _config, *, session_memory=None: bundle,
+        player=FakeAudioSink(),  # type: ignore[arg-type]
+        warmup=False,
+    )
+    controller.bundle = bundle
+
+    controller.stop()
+
+    assert controller.bundle is None
 
 
 def test_voice_loop_reuses_one_runtime_and_closes_it_once() -> None:

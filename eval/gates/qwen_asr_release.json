@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "run_name": "qwen-asr-release-macos-arm64",
+  "seed": 20260802,
+  "artifacts": [
+    "qwen3_asr_0_6b",
+    "qwen3_asr_1_7b"
+  ],
+  "datasets": {
+    "private_codeswitch": {
+      "manifest": "data/asr_codeswitch/manifest.jsonl",
+      "expected_sha256": "aed1ccd96ed9d994412285f4dcff68ba119155be0effd7fa0d089fa635dde70d",
+      "usage": "held_out_release_evaluation"
+    },
+    "fleurs_vi": {
+      "manifest": "data/fleurs_vi/manifest.jsonl",
+      "expected_sha256": "81de44e064d2925ca31ea5e911d560157e3b8e83319bdee66a750e3bab00978c",
+      "repo_id": "google/fleurs",
+      "revision": "70bb2e84b976b7e960aa89f1c648e09c59f894dd",
+      "config": "vi_vn",
+      "split": "test",
+      "usage": "calibration_and_public_holdout"
+    },
+    "non_speech": {
+      "manifest": "data/noise_for_boh/manifest.jsonl",
+      "expected_sha256": "48b01f480e0020e2041a0f845011b90af4af035da1517c83664e1848882543b6",
+      "repo_id": "ashraq/esc50",
+      "revision": "e3e2a63ffff66b9a9735524551e3818e96af03ee",
+      "usage": "calibration_and_hard_negative_holdout"
+    }
+  },
+  "split_policy": {
+    "algorithm": "sha256_id_modulo_v1",
+    "calibration_buckets": 60,
+    "total_buckets": 100
+  },
+  "context_variants": [
+    "empty",
+    "production_catalog"
+  ],
+  "decode": {
+    "language": "Vietnamese",
+    "max_new_tokens": 128,
+    "final_budget_candidates": [128, 256, 512],
+    "budget_probe_timeout_s": 120.0
+  },
+  "repetitions": {
+    "cold_process": 5,
+    "warm_per_item": 3,
+    "start_stop": 20
+  },
+  "threshold_selection": {
+    "max_calibration_speech_false_reject_rate": 0.01,
+    "max_compression_ratio_floor": 2.4
+  },
+  "context_echo_candidates": {
+    "minimum_unique_tokens": 4,
+    "token_overlap_thresholds": [0.5, 0.6, 0.7, 0.8, 0.9],
+    "contiguous_token_thresholds": [3, 4, 5],
+    "selected_min_contiguous_tokens": 4
+  },
+  "release_gates": {
+    "private_codeswitch_min_absolute_cs_wer_improvement": 0.15,
+    "private_codeswitch_max_absolute_wer_regression": 0.05,
+    "public_vi_max_absolute_wer_regression": 0.05,
+    "speech_false_reject_rate_max": 0.02,
+    "hard_negative_false_accept_rate_max": 0.10,
+    "context_echo_false_accept_rate_max": 0.0,
+    "context_echo_false_reject_rate_max": 0.01,
+    "final_rtf_p95_max": 0.50,
+    "partial_latency_p95_ms_max": 2000.0,
+    "start_stop_failure_rate_max": 0.0,
+    "orphan_process_count_max": 0,
+    "fallback_attempt_count_max": 0
+  }
+}

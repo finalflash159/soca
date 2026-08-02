@@ -30,6 +30,7 @@ data/*
 !data/asr/
 data/asr/*
 !data/asr/threshold_calibration.json
+!data/asr/qwen_confidence_calibration.json
 !data/asr/boh/
 data/asr/boh/*
 !data/asr/boh/phowhisper_base_vi_boh_v1.json

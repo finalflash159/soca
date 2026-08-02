@@ -15,7 +15,7 @@ from .qwen_artifacts import (
 if TYPE_CHECKING:
     from .qwen_store import ArtifactReceipt
 
-QWEN_SERVICE_PROTOCOL_VERSION = 1
+QWEN_SERVICE_PROTOCOL_VERSION = 2
 REQUIRED_PACKAGE_VERSIONS = frozenset({"qwen-asr", "soca", "torch", "transformers"})
 
 

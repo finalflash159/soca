@@ -51,6 +51,7 @@ class FakeQwenClient:
         self.model_key = launch.spec.key
         self.supports_avg_logprob = True
         self.calls: list[str] = []
+        self.max_token_calls: list[int] = []
         self.close_calls = 0
 
     def transcribe(
@@ -60,7 +61,7 @@ class FakeQwenClient:
         *,
         context: str | None = None,
     ) -> ASRResult:
-        del max_new_tokens
+        self.max_token_calls.append(max_new_tokens)
         self.calls.append(context or "")
         return ASRResult(
             text="mở tài liệu attention",
@@ -108,6 +109,7 @@ def _install_qwen_fakes(monkeypatch: pytest.MonkeyPatch) -> list[FakeQwenClient]
             identity=identity,
             min_avg_logprob=-0.5,
             max_compression_ratio=2.4,
+            context_echo_min_contiguous_tokens=4,
         ),
     )
     return clients
@@ -139,9 +141,7 @@ def test_qwen_final_uses_dynamic_context_and_partial_is_empty(
         tags=("deep learning",),
         headings=(SimpleNamespace(text="Scaled dot product", line=12),),
     )
-    catalog = SimpleNamespace(
-        snapshot=lambda: SimpleNamespace(revision=7, documents=(document,))
-    )
+    catalog = SimpleNamespace(snapshot=lambda: SimpleNamespace(revision=7, documents=(document,)))
     runtime = _build_voice_asr(
         config,
         detector=FakeDetector(),
@@ -154,6 +154,7 @@ def test_qwen_final_uses_dynamic_context_and_partial_is_empty(
 
     assert len(clients) == 1
     assert clients[0].calls[0] == ""
+    assert clients[0].max_token_calls[0] == 64
     assert "Attention và Transformer" in clients[0].calls[1]
     assert result.context_digest == runtime.last_context.digest
     assert any(item.startswith("vault:7:") for item in result.context_provenance)
@@ -228,6 +229,7 @@ def test_calibration_lookup_requires_the_full_canonical_identity(tmp_path) -> No
                         "recommended_thresholds": {
                             "min_avg_logprob": -0.4,
                             "max_compression_ratio": 2.4,
+                            "context_echo_min_contiguous_tokens": 4,
                         },
                     }
                 }
@@ -254,7 +256,11 @@ def test_calibration_lookup_rejects_unsafe_thresholds(
     value: float,
 ) -> None:
     identity = qwen_calibration_identity(QWEN_RELEASE_ARTIFACT)
-    thresholds = {"min_avg_logprob": -0.4, "max_compression_ratio": 2.4}
+    thresholds = {
+        "min_avg_logprob": -0.4,
+        "max_compression_ratio": 2.4,
+        "context_echo_min_contiguous_tokens": 4,
+    }
     thresholds[field] = value
     path = tmp_path / "calibration.json"
     path.write_text(
@@ -293,6 +299,7 @@ def test_calibration_lookup_rejects_invalid_creation_timestamp(
                         "recommended_thresholds": {
                             "min_avg_logprob": -0.4,
                             "max_compression_ratio": 2.4,
+                            "context_echo_min_contiguous_tokens": 4,
                         },
                     }
                 }

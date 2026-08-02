@@ -13,9 +13,13 @@ class FakeLlama:
 
     def __init__(self, **kwargs: Any) -> None:
         self.kwargs = kwargs
+        self.close_calls = 0
         self.completion_calls: list[dict[str, Any]] = []
         self.chat_calls: list[dict[str, Any]] = []
         FakeLlama.instances.append(self)
+
+    def close(self) -> None:
+        self.close_calls += 1
 
     def __call__(self, prompt: str, **kwargs: Any):
         self.completion_calls.append({"prompt": prompt, **kwargs})
@@ -92,6 +96,19 @@ def test_missing_model_error_points_to_generic_downloader(tmp_path: Path) -> Non
 
     with pytest.raises(FileNotFoundError, match="scripts/download_llm.py --model phogpt_4b_q4_k_m"):
         LocalLlamaCppLLM(model_key="phogpt_4b_q4_k_m", model_path=missing_model)
+
+
+def test_close_releases_native_model_handle_idempotently(tmp_path: Path) -> None:
+    llm = LocalLlamaCppLLM(
+        model_key="arcee_vylinh_3b_q4_k_m",
+        model_path=touch_model(tmp_path),
+    )
+
+    llm.close()
+    llm.close()
+
+    assert llm._native_closed is True
+    assert FakeLlama.instances[0].close_calls == 1
 
 
 def test_qwen_stream_output_strips_think_blocks(

@@ -61,6 +61,22 @@ class LocalLlamaCppLLM:
             llama_kwargs["chat_format"] = self.config.chat_format
 
         self.llm = Llama(**llama_kwargs)
+        self._native_closed = False
+
+    def close(self) -> None:
+        """Release the native llama.cpp model handle.
+
+        The runtime owns this handle for the lifetime of the engine.  Explicit
+        cleanup is required because relying on ``__del__`` is not reliable at
+        interpreter shutdown, especially when native resources are still
+        referenced by worker threads.
+        """
+        if self._native_closed:
+            return
+        self._native_closed = True
+        close = getattr(self.llm, "close", None)
+        if callable(close):
+            close()
 
     @staticmethod
     def _validate_generation_args(

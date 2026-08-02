@@ -1,11 +1,4 @@
-"""Lightweight post-ASR heuristic checks for Whisper hallucinations.
-
-These catch novel loops, filler-only outputs, and output too long for the
-input duration without relying on an empirical phrase list.
-
-Reference: Barański et al. (ICASSP 2025); thresholds calibrated from p99
-on real Vietnamese speech (see local/calibrate_thresholds.py).
-"""
+"""Post-ASR transcript integrity checks."""
 
 from __future__ import annotations
 
@@ -81,28 +74,36 @@ def compression_ratio(text: str) -> float:
     return len(raw) / len(zlib.compress(raw))
 
 
-def looks_like_context_echo(text: str, context: str, *, threshold: float = 0.6) -> bool:
-    """True if `text` looks copied from `context` rather than transcribed
-    from audio.
-
-    A context-aware backend (e.g. Qwen3-ASR with context injection) can
-    occasionally return the system prompt verbatim instead of transcribing
-    the audio. That output looks "clean" — correct grammar, no repeated
-    tokens — so it passes every other check in this module; only comparing
-    against the prompt catches it.
-
-    Token-set overlap, not substring match: the model may echo only part of
-    the context, or change case. `len(hyp) < 4` guards short, legitimate
-    sentences that happen to contain a couple of context terms (e.g. "mở
-    repo trên github") from being flagged just for sharing vocabulary.
-    """
+def max_contiguous_context_tokens(text: str, context: str) -> int:
+    """Return the longest contiguous token span shared with ASR context."""
     if not context.strip():
-        return False
-    hyp = set(re.findall(r"\w+", text.lower()))
-    if len(hyp) < 4:
-        return False
-    ctx = set(re.findall(r"\w+", context.lower()))
-    return len(hyp & ctx) / len(hyp) >= threshold
+        return 0
+    hypothesis = re.findall(r"\w+", text.casefold())
+    context_tokens = re.findall(r"\w+", context.casefold())
+    if not hypothesis or not context_tokens:
+        return 0
+    previous = [0] * (len(context_tokens) + 1)
+    best = 0
+    for hypothesis_token in hypothesis:
+        current = [0] * (len(context_tokens) + 1)
+        for index, context_token in enumerate(context_tokens, 1):
+            if hypothesis_token == context_token:
+                current[index] = previous[index - 1] + 1
+                best = max(best, current[index])
+        previous = current
+    return best
+
+
+def looks_like_context_echo(
+    text: str,
+    context: str,
+    *,
+    minimum_contiguous_tokens: int = 4,
+) -> bool:
+    """Detect a calibrated contiguous copy from the supplied ASR context."""
+    if minimum_contiguous_tokens < 1:
+        raise ValueError("minimum_contiguous_tokens must be positive")
+    return max_contiguous_context_tokens(text, context) >= minimum_contiguous_tokens
 
 
 def check_heuristics(

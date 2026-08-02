@@ -134,9 +134,13 @@ class QwenASRBackend:
         start = time.perf_counter()
 
         if self.supports_avg_logprob:
-            text, avg_logprob, avg_logprob_reliable = self._transcribe_with_scores(
-                audio, max_new_tokens, active_context
-            )
+            (
+                text,
+                avg_logprob,
+                avg_logprob_reliable,
+                generated_token_count,
+                hit_max_new_tokens,
+            ) = self._transcribe_with_scores(audio, max_new_tokens, active_context)
         else:
             # Only reachable when the caller explicitly accepted
             # require_logprob=False. RobustASR reads supports_avg_logprob to
@@ -150,6 +154,8 @@ class QwenASRBackend:
             text = results[0].text.strip() if results else ""
             avg_logprob = 0.0
             avg_logprob_reliable = False
+            generated_token_count = None
+            hit_max_new_tokens = None
 
         latency_ms = (time.perf_counter() - start) * 1000
         return ASRResult(
@@ -159,6 +165,8 @@ class QwenASRBackend:
             rtf=latency_ms / max(audio_duration_ms, 1.0),
             avg_logprob=avg_logprob,
             avg_logprob_reliable=avg_logprob_reliable,
+            generated_token_count=generated_token_count,
+            hit_max_new_tokens=hit_max_new_tokens,
         )
 
     def runtime_metadata(self, max_new_tokens: int = 128) -> dict[str, Any]:
@@ -184,7 +192,7 @@ class QwenASRBackend:
 
     def _transcribe_with_scores(
         self, audio: np.ndarray, max_new_tokens: int, context: str
-    ) -> tuple[str, float, bool]:
+    ) -> tuple[str, float, bool, int, bool]:
         """Inference path that keeps the generation scores.
 
         Mirrors what Qwen3ASRModel._infer_asr_transformers does for batch=1,
@@ -230,4 +238,13 @@ class QwenASRBackend:
         avg_logprob, avg_logprob_reliable = _mean_selected_logprob(
             output.scores, generated, self._skip_ids
         )
-        return text.strip(), avg_logprob, avg_logprob_reliable
+        generated_token_count = int(generated.shape[0])
+        ended_with_eos = bool(generated_token_count and int(generated[-1]) in self._skip_ids)
+        hit_max_new_tokens = generated_token_count >= max_new_tokens and not ended_with_eos
+        return (
+            text.strip(),
+            avg_logprob,
+            avg_logprob_reliable,
+            generated_token_count,
+            hit_max_new_tokens,
+        )
