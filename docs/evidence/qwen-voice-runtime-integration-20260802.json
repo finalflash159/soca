@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "run_type": "qwen_voice_runtime_integration",
+  "created_at_utc": "2026-08-02T11:58:01Z",
+  "default_profile": "baseline",
+  "profiles": {
+    "qwen-release": {
+      "artifact_key": "qwen3_asr_0_6b",
+      "role": "release",
+      "static_artifact_state": "provisioned",
+      "runtime_state": "not_ready",
+      "reason": "exact full-identity confidence calibration missing"
+    },
+    "qwen-reference": {
+      "artifact_key": "qwen3_asr_1_7b",
+      "role": "reference",
+      "static_artifact_state": "provisioned",
+      "runtime_state": "not_ready",
+      "reason": "historical calibration does not match service and context-policy identity"
+    }
+  },
+  "context_contract": {
+    "partial_context": "empty",
+    "final_context": "dynamic_typed_snapshot",
+    "normalization": "unicode_nfc_whitespace_v1",
+    "max_chars": 1024,
+    "max_approximate_tokens": 256,
+    "max_terms": 64,
+    "provenance_exposed": true,
+    "content_digest": "sha256",
+    "policy_digest": "sha256"
+  },
+  "historical_context_echo_diagnostic": {
+    "evidence_class": "historical_diagnostic_not_release_evidence",
+    "source_runs": [
+      {
+        "model_id": "Qwen/Qwen3-ASR-0.6B",
+        "model_revision": "not captured by historical run",
+        "qwen_asr_package_version": "0.0.6",
+        "device": "cpu",
+        "dtype": "float32",
+        "max_new_tokens": 256,
+        "context_variant": "fixed_tech",
+        "dataset_manifest": "data/asr_codeswitch/manifest.jsonl",
+        "dataset_manifest_sha256": "aed1ccd96ed9d994412285f4dcff68ba119155be0effd7fa0d089fa635dde70d",
+        "local_raw_predictions": "data/asr_codeswitch/preds/qwen3_asr_0.6b_ctx_tech.json"
+      },
+      {
+        "model_id": "Qwen/Qwen3-ASR-1.7B",
+        "model_revision": "not captured by historical run",
+        "qwen_asr_package_version": "0.0.6",
+        "device": "cpu",
+        "dtype": "float32",
+        "max_new_tokens": 256,
+        "context_variant": "fixed_tech",
+        "dataset_manifest": "data/asr_codeswitch/manifest.jsonl",
+        "dataset_manifest_sha256": "aed1ccd96ed9d994412285f4dcff68ba119155be0effd7fa0d089fa635dde70d",
+        "local_raw_predictions": "data/asr_codeswitch/preds/qwen3_asr_1.7b_ctx_tech.json"
+      },
+      {
+        "model_id": "Qwen/Qwen3-ASR-1.7B",
+        "model_revision": "not captured by historical run",
+        "device": "cpu",
+        "dtype": "float32",
+        "max_new_tokens": 128,
+        "speech_dataset": "google/fleurs:vi_vn:test",
+        "noise_dataset": "data/noise_for_boh manifest",
+        "local_raw_result": "eval/results/asr_confidence_calibration_Qwen__Qwen3-ASR-1.7B.json"
+      }
+    ],
+    "hardware": "not captured by historical runs",
+    "private_real_voice_utterances": 40,
+    "qwen_0_6b_echoes": 3,
+    "qwen_1_7b_echoes": 1,
+    "qwen_1_7b_calibration_speech_rows": 200,
+    "qwen_1_7b_calibration_noise_echoes": 14,
+    "confidence_guard_accepted_noise_echoes": 14,
+    "overlap_guard_observed_false_negatives": 0,
+    "overlap_guard_observed_speech_false_positives": 0,
+    "qualification_status": "not_qualified_for_dynamic_context",
+    "limitations": [
+      "historical runs used a fixed context rather than the production dynamic context policy",
+      "exact model revisions and hardware identity were not captured",
+      "raw predictions are local and gitignored"
+    ]
+  },
+  "verified_contracts": [
+    "typed release/reference selection",
+    "no Whisper-registry lookup for Qwen",
+    "one service client per voice bundle",
+    "partial empty context and final dynamic context",
+    "context bounds, provenance and digest",
+    "full calibration identity lookup",
+    "missing calibration blocks before service start",
+    "missing PhoWhisper calibration blocks before model load",
+    "idempotent stop and startup rollback cleanup",
+    "short Loading ASR, Listening and Transcribing progress states",
+    "no ASR model fallback or silent confidence-guard degradation"
+  ],
+  "real_flow": {
+    "service_recorded_audio": {
+      "command": "SOCA_RUN_QWEN_SERVICE_REAL=1 uv run pytest -q tests/test_qwen_service_client.py -k real_qwen_service -vv",
+      "release_0_6b": "passed",
+      "reference_1_7b": "passed",
+      "duration_seconds": 12.48,
+      "model_source": "verified immutable local artifact; offline worker"
+    },
+    "voice_controller_remote_llm_tts": "blocked_pending_exact_calibration",
+    "raw_logs": "local and gitignored"
+  },
+  "verification": {
+    "python": {
+      "ruff": "passed",
+      "pyright": "0 errors",
+      "pytest": "1534 passed, 4 skipped",
+      "ci_without_local_model_cache": "startup rollback regression passed with an empty XDG data home"
+    },
+    "ui": {
+      "vitest": "91 passed with one worker; the default parallel run exposed a pre-existing SettingsScreen timing flake",
+      "typecheck": "passed",
+      "build": "passed"
+    },
+    "runtime_profiles": {
+      "baseline": "ok",
+      "qwen_release": "not_ready",
+      "qwen_reference": "not_ready"
+    }
+  }
+}

@@ -5,9 +5,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from soca.asr.context import ASRContextBuilder, ASRContextSourceRecord
+from soca.asr.selection import ASRSelection
 from soca.core.voice_runtime import (
     ResolvedVoiceRuntimeConfig,
     VoiceRuntimeBundle,
+    VoiceRuntimeWarmupError,
+    VoiceRuntimeWarmupResult,
     _smart_turn_model_dir,
     warm_up_voice_runtime,
 )
@@ -20,7 +24,14 @@ class FakeInnerASR:
     def __init__(self) -> None:
         self.calls: list[tuple[int, int]] = []
 
-    def transcribe(self, audio: np.ndarray, max_new_tokens: int = 128):
+    def transcribe(
+        self,
+        audio: np.ndarray,
+        max_new_tokens: int = 128,
+        *,
+        context: str,
+    ):
+        assert context == ""
         self.calls.append((len(audio), max_new_tokens))
         return object()
 
@@ -30,6 +41,9 @@ class FakeRobustASR:
 
     def __init__(self) -> None:
         self.asr = FakeInnerASR()
+
+    def snapshot_context(self):
+        return ASRContextBuilder().build(())
 
 
 class FakeContextAwareInnerASR:
@@ -53,6 +67,14 @@ class FakeRobustASRWithContext:
 
     def __init__(self, inner: FakeContextAwareInnerASR) -> None:
         self.asr = inner
+
+    def snapshot_context(self):
+        records = (
+            (ASRContextSourceRecord(self.asr.context, "test"),)
+            if self.asr.context
+            else ()
+        )
+        return ASRContextBuilder().build(records)
 
 
 class FakeLLM:
@@ -98,7 +120,7 @@ class FailingTurnDetector:
 def make_config() -> ResolvedVoiceRuntimeConfig:
     return ResolvedVoiceRuntimeConfig(
         profile_key="baseline",
-        asr_model="phowhisper_small",
+        asr=ASRSelection.phowhisper("phowhisper_small"),
         llm_model="arcee_vylinh_3b_q4_k_m",
         tts_voice="NF",
         endpoint_silence_ms=700,
@@ -156,10 +178,10 @@ def test_warm_up_voice_runtime_triggers_asr_llm_and_tts_first_call_paths() -> No
 
 
 def test_warm_up_voice_runtime_warms_both_partial_and_final_context_paths() -> None:
-    """§5.6-c: a context-aware backend must warm BOTH the partial path
+    """A context-aware backend must warm both the partial path
     (context="", cheap and used for every caption update) and the final
     path (the real context) — a cold context switch pays an extra prefill
-    cost (§Q1c.3) that must not land on the user's actual first turn."""
+    cost that must not land on the user's actual first turn."""
     inner = FakeContextAwareInnerASR(context="tech context")
     bundle = VoiceRuntimeBundle(
         config=make_config(),
@@ -239,6 +261,31 @@ def test_warm_up_voice_runtime_fails_fast_when_smart_turn_warmup_fails() -> None
 
     with pytest.raises(RuntimeError, match="smart turn warmup failed"):
         warm_up_voice_runtime(bundle, asr_seconds=0.5)
+
+
+def test_voice_runtime_warmup_error_preserves_typed_failures() -> None:
+    failure = VoiceRuntimeWarmupResult(
+        component="asr",
+        ok=False,
+        latency_ms=12.0,
+        detail="service timeout",
+    )
+
+    error = VoiceRuntimeWarmupError((failure,))
+
+    assert error.failures == (failure,)
+    assert str(error) == "Voice runtime warmup failed: asr: service timeout"
+
+    with pytest.raises(ValueError, match="only failed"):
+        VoiceRuntimeWarmupError(
+            (
+                VoiceRuntimeWarmupResult(
+                    component="tts",
+                    ok=True,
+                    latency_ms=1.0,
+                ),
+            )
+        )
 
 
 def test_smart_turn_model_dir_points_to_repo_models_dir() -> None:

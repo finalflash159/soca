@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from soca.asr.calibration import ASRCalibrationNotReady
 from soca.config import LlmSettings
 from soca.core import (
     RuntimeOptions,
@@ -122,18 +124,22 @@ def test_voice_runtime_uses_shared_knowledge_setup(
         raising=False,
     )
     monkeypatch.setattr(voice_runtime, "SpeechDetector", lambda: object())
-    monkeypatch.setattr(voice_runtime, "VietnameseASR", lambda **kwargs: object())
-    monkeypatch.setattr(voice_runtime, "RobustASR", lambda **kwargs: object())
+    monkeypatch.setattr(voice_runtime, "PhoWhisperVoiceBackend", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(voice_runtime, "RobustASR", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(
         voice_runtime,
         "load_confidence_guard_calibration",
-        lambda _model_key: None,
+        lambda model_key: SimpleNamespace(
+            model_key=model_key,
+            min_avg_logprob=-0.5,
+            max_compression_ratio=2.4,
+        ),
     )
     def fake_engine_factory(settings, secrets, **kwargs):
         del settings, secrets, kwargs
         return object()
-    monkeypatch.setattr(voice_runtime, "create_tts_engine", lambda **kwargs: object())
-    monkeypatch.setattr(voice_runtime, "VoicePipeline", lambda **kwargs: object())
+    monkeypatch.setattr(voice_runtime, "create_tts_engine", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(voice_runtime, "VoicePipeline", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(voice_runtime, "default_repair_catalog", lambda: object())
     config = resolve_voice_runtime_config(
         profile_key="baseline",
@@ -177,15 +183,19 @@ def test_voice_runtime_uses_selected_remote_llm_without_local_construction(
         return object()
 
     monkeypatch.setattr(voice_runtime, "SpeechDetector", lambda: object())
-    monkeypatch.setattr(voice_runtime, "VietnameseASR", lambda **kwargs: object())
-    monkeypatch.setattr(voice_runtime, "RobustASR", lambda **kwargs: object())
+    monkeypatch.setattr(voice_runtime, "PhoWhisperVoiceBackend", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(voice_runtime, "RobustASR", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(
         voice_runtime,
         "load_confidence_guard_calibration",
-        lambda _model_key: None,
+        lambda model_key: SimpleNamespace(
+            model_key=model_key,
+            min_avg_logprob=-0.5,
+            max_compression_ratio=2.4,
+        ),
     )
-    monkeypatch.setattr(voice_runtime, "create_tts_engine", lambda **kwargs: object())
-    monkeypatch.setattr(voice_runtime, "VoicePipeline", lambda **kwargs: object())
+    monkeypatch.setattr(voice_runtime, "create_tts_engine", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(voice_runtime, "VoicePipeline", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(voice_runtime, "default_repair_catalog", lambda: object())
 
     bundle = build_voice_runtime(
@@ -198,3 +208,73 @@ def test_voice_runtime_uses_selected_remote_llm_without_local_construction(
     assert len(calls) == 1
     assert calls[0][0] is settings
     assert bundle.llm_settings == settings
+
+
+def test_voice_runtime_closes_asr_when_later_startup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class CloseSpy:
+        close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    class LLMSpy:
+        cancel_calls = 0
+
+        def cancel(self) -> None:
+            self.cancel_calls += 1
+
+    asr = CloseSpy()
+    llm = LLMSpy()
+    config = resolve_voice_runtime_config(
+        profile_key="baseline",
+        vault=tmp_path / "missing-vault",
+        adaptive_endpoint=False,
+        no_memory=True,
+    )
+    monkeypatch.setattr(voice_runtime, "SpeechDetector", lambda: object())
+    monkeypatch.setattr(voice_runtime, "_build_voice_asr", lambda *_args, **_kwargs: asr)
+    monkeypatch.setattr(
+        voice_runtime,
+        "create_tts_engine",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("TTS startup failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="TTS startup failed"):
+        build_voice_runtime(
+            config,
+            engine_factory=lambda *_args, **_kwargs: llm,
+        )
+
+    assert asr.close_calls == 1
+    assert llm.cancel_calls == 1
+
+
+def test_voice_runtime_checks_asr_before_constructing_llm(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine_calls = 0
+    config = resolve_voice_runtime_config(
+        profile_key="qwen-release",
+        vault=tmp_path / "missing-vault",
+        adaptive_endpoint=False,
+        no_memory=True,
+    )
+
+    def reject_asr(*_args, **_kwargs):
+        raise ASRCalibrationNotReady("calibration missing")
+
+    def forbidden_engine(*_args, **_kwargs):
+        nonlocal engine_calls
+        engine_calls += 1
+        raise AssertionError("LLM must not start before ASR readiness passes")
+
+    monkeypatch.setattr(voice_runtime, "SpeechDetector", lambda: object())
+    monkeypatch.setattr(voice_runtime, "_build_voice_asr", reject_asr)
+
+    with pytest.raises(ASRCalibrationNotReady, match="calibration missing"):
+        build_voice_runtime(config, engine_factory=forbidden_engine)
+    assert engine_calls == 0

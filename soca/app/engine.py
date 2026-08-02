@@ -521,9 +521,9 @@ class SocaEngine:
     ) -> list[dict[str, str]]:
         """Describe configured runtime dependencies without eagerly loading them."""
 
+        from soca.app.profiles import asr_readiness
         from soca.asr.qwen_artifacts import QWEN_RELEASE_ARTIFACT
         from soca.asr.qwen_readiness import inspect_qwen_readiness
-        from soca.asr.registry import get_asr_model_config
         from soca.core.smart_turn import _MODEL_FILE as SMART_TURN_MODEL_FILE
         from soca.llm.registry import get_model_config
         from soca.memory.summary import default_summary_model_root, production_summary_model_spec
@@ -564,13 +564,16 @@ class SocaEngine:
             add("vad", "VAD", "disabled", "voice runtime not configured")
             add("asr_guards", "ASR guards", "disabled", "voice runtime not configured")
         else:
-            asr_config = get_asr_model_config(self.voice_config.asr_model)
-            asr_ready = asr_config.encoder_path.is_file() and asr_config.decoder_path.is_file()
+            configured_asr = asr_readiness(self.voice_config.asr)
             add(
                 "voice_asr",
                 "Voice ASR",
-                "loaded" if voice_bundle is not None else ("ready" if asr_ready else "missing"),
-                f"{self.voice_config.asr_model} · ONNX Runtime",
+                "loaded" if voice_bundle is not None else configured_asr.status,
+                (
+                    f"{self.voice_config.asr_model} · {voice_bundle.asr_context_status}"
+                    if voice_bundle is not None
+                    else configured_asr.detail
+                ),
             )
             voice_settings = self._selected_voice_settings()
             if voice_settings.backend == "remote":
@@ -1917,7 +1920,13 @@ class SocaEngine:
                         TurnNode.SYNTHESIZE,
                         payload={"text": event.text},
                     )
-            elif event.type == "recorded":
+            elif event.type == "recording":
+                self._emit_turn_progress(
+                    "voice",
+                    "preparing",
+                    operation="listening",
+                )
+            elif event.type == "transcribing":
                 self._emit_turn_progress(
                     "voice",
                     "analyzing",

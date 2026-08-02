@@ -31,6 +31,9 @@ function progressLabel(event: TurnProgressEvent): string {
   if (event.operation === "speech_recognition") {
     return "Transcribing…";
   }
+  if (event.operation === "listening") {
+    return "Listening…";
+  }
   return PHASE_VIEW[event.phase].label;
 }
 

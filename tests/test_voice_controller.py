@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from soca.app.voice_controller import VoiceMonitorController
+from soca.asr.selection import ASRSelection
 from soca.core import ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
 from soca.tts import TTSResult
 
@@ -22,6 +23,10 @@ from soca.tts import TTSResult
 @dataclass
 class FakeASR:
     confidence_guard_status: str = "disabled:test"
+    close_calls: int = 0
+
+    def close(self) -> None:
+        self.close_calls += 1
 
 
 class FakePipeline:
@@ -82,7 +87,7 @@ class FakeTTS:
 def make_config() -> ResolvedVoiceRuntimeConfig:
     return ResolvedVoiceRuntimeConfig(
         profile_key="baseline",
-        asr_model="phowhisper_base",
+        asr=ASRSelection.phowhisper("phowhisper_base"),
         llm_model="arcee_vylinh_3b_q4_k_m",
         tts_voice="NF",
         endpoint_silence_ms=700,
@@ -243,7 +248,7 @@ def test_voice_monitor_passive_silence_speaks_playful_call_out() -> None:
 def test_voice_monitor_reports_runtime_error_and_traceback() -> None:
     config = ResolvedVoiceRuntimeConfig(
         profile_key="baseline",
-        asr_model="phowhisper_small",
+        asr=ASRSelection.phowhisper("phowhisper_small"),
         llm_model="arcee_vylinh_3b_q4_k_m",
         tts_voice="NF",
         endpoint_silence_ms=700,
@@ -304,6 +309,33 @@ def test_voice_stop_cancels_active_llm_before_stopping_audio() -> None:
     assert calls == ["llm", "audio"]
 
 
+def test_voice_loop_reuses_one_runtime_and_closes_it_once() -> None:
+    config = make_config()
+    pipeline = FakePipeline([StreamingEvent(type="asr", text="hello")])
+    bundle = make_bundle(config, pipeline, detector=FakeDetector(has_speech=True))
+    build_calls = 0
+
+    def runtime_builder(_config, *, session_memory=None):
+        nonlocal build_calls
+        del session_memory
+        build_calls += 1
+        return bundle
+
+    controller = VoiceMonitorController(
+        config,
+        runtime_builder=runtime_builder,
+        recorder=lambda *_args, **_kwargs: np.ones(1600, dtype=np.float32),
+        player=FakeAudioSink(),  # type: ignore[arg-type]
+        warmup=False,
+    )
+    queue: Queue = Queue()
+    controller.run_loop(queue, stop_event=Event(), max_turns=2)
+
+    assert build_calls == 1
+    assert bundle.closed is True
+    assert bundle.asr.close_calls == 1
+
+
 class FakeContextAwareASR:
     """Mirrors QwenASRBackend: transcribe() accepts a context kwarg."""
 
@@ -314,16 +346,11 @@ class FakeContextAwareASR:
         self.calls.append({"audio_len": len(audio), "context": context})
         return SimpleNamespace(text="hypothesis")
 
+    def transcribe_partial(self, audio: np.ndarray):
+        return self.transcribe(audio, context="")
 
-class FakeContextlessASR:
-    """Mirrors VietnameseASR: no context kwarg at all."""
-
-    def __init__(self) -> None:
-        self.calls: list[int] = []
-
-    def transcribe(self, audio: np.ndarray):
-        self.calls.append(len(audio))
-        return SimpleNamespace(text="hypothesis")
+    def close(self) -> None:
+        return None
 
 
 def _bundle_with_raw_asr(config: ResolvedVoiceRuntimeConfig, inner_asr: object) -> VoiceRuntimeBundle:
@@ -341,8 +368,8 @@ def _bundle_with_raw_asr(config: ResolvedVoiceRuntimeConfig, inner_asr: object) 
 
 
 def test_build_partial_transcriber_passes_empty_context_for_a_context_aware_backend() -> None:
-    """§5.6.5: partial must call with context="" — never leak the real
-    context onto the caption (the context-echo failure mode, §Q1b.3), since
+    """Partial must call with context="" and never leak the final context
+    onto the caption, since
     partial uses the raw backend directly with no guard in front of it."""
     config = make_config()
     inner = FakeContextAwareASR()
@@ -355,17 +382,3 @@ def test_build_partial_transcriber_passes_empty_context_for_a_context_aware_back
 
     assert text == "hypothesis"
     assert inner.calls == [{"audio_len": 160, "context": ""}]
-
-
-def test_build_partial_transcriber_works_with_a_backend_that_has_no_context_param() -> None:
-    config = make_config()
-    inner = FakeContextlessASR()
-    bundle = _bundle_with_raw_asr(config, inner)
-
-    transcribe = VoiceMonitorController._build_partial_transcriber(bundle)
-    assert transcribe is not None
-
-    text = transcribe(np.zeros(160, dtype=np.float32))
-
-    assert text == "hypothesis"
-    assert inner.calls == [160]

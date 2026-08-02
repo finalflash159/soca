@@ -1,6 +1,8 @@
 import pytest
 
+from soca.asr.qwen_artifacts import QWEN_ARTIFACT_REGISTRY
 from soca.asr.registry import ASR_MODEL_REGISTRY
+from soca.asr.selection import ASREngine, ASRSelection
 from soca.core.profiles import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
     VOICE_RUNTIME_PROFILES,
@@ -23,12 +25,21 @@ def test_profile_keys_match_profile_key_field() -> None:
 
 def test_all_profiles_reference_registered_models() -> None:
     for profile in VOICE_RUNTIME_PROFILES.values():
-        assert profile.asr_model in ASR_MODEL_REGISTRY
+        registry = (
+            ASR_MODEL_REGISTRY
+            if profile.asr.engine is ASREngine.PHOWHISPER
+            else QWEN_ARTIFACT_REGISTRY
+        )
+        assert profile.asr_model in registry
         assert profile.llm_model in LLM_MODEL_REGISTRY
 
 
-def test_baseline_is_the_only_runtime_profile() -> None:
-    assert set(VOICE_RUNTIME_PROFILES) == {"baseline"}
+def test_qwen_profiles_are_explicit_and_baseline_remains_default() -> None:
+    assert set(VOICE_RUNTIME_PROFILES) == {
+        "baseline",
+        "qwen-reference",
+        "qwen-release",
+    }
     assert {profile.tts_voice for profile in VOICE_RUNTIME_PROFILES.values()} == {
         VALTEC_TTS_CONFIG.default_voice
     }
@@ -60,19 +71,19 @@ def test_runtime_profile_validation_passes() -> None:
     assert validate_voice_runtime_profiles() == []
 
 
-def test_runtime_profile_validation_rejects_a_second_profile(monkeypatch) -> None:
+def test_runtime_profile_validation_rejects_an_unknown_extra_profile(monkeypatch) -> None:
     monkeypatch.setitem(
         VOICE_RUNTIME_PROFILES,
         "quality",
         VoiceRuntimeProfile(
             key="quality",
             description="Invalid duplicate product profile.",
-            asr_model="phowhisper_small",
+            asr=ASRSelection.phowhisper("phowhisper_small"),
             llm_model="arcee_vylinh_3b_q4_k_m",
             tts_voice=VALTEC_TTS_CONFIG.default_voice,
         ),
     )
 
-    assert validate_voice_runtime_profiles()[0] == (
-        "runtime profiles must contain exactly ['baseline'], got ['baseline', 'quality']"
-    )
+    error = validate_voice_runtime_profiles()[0]
+    assert "runtime profiles must contain exactly" in error
+    assert "quality" in error

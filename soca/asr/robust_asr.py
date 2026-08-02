@@ -1,16 +1,17 @@
-"""Production ASR pipeline: VAD → ASR → confidence/de-loop → heuristics."""
-
 from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from .context import ASRContextBuilder, ASRContextSnapshot
 from .deloop import remove_consecutive_repeats
 from .hallucination_heuristics import (
     HeuristicCheck,
@@ -18,9 +19,11 @@ from .hallucination_heuristics import (
     compression_ratio,
     looks_like_context_echo,
 )
+from .protocols import VoiceASRBackend
 from .registry import DEFAULT_ASR_MODEL_KEY
 from .vad import SpeechDetector, VADResult
-from .whisper_onnx import ASRResult, VietnameseASR
+from .voice_backend import PhoWhisperVoiceBackend
+from .whisper_onnx import ASRResult
 
 LOGGER = logging.getLogger(__name__)
 
@@ -144,21 +147,16 @@ class RobustASRResult:
     confidence_guard_status: str = ""
     compression_guard_status: str = ""
     alternatives: tuple[str, ...] = ()
+    context_digest: str = ""
+    context_provenance: tuple[str, ...] = ()
 
 
 class RobustASR:
-    """4-stage hallucination-mitigation pipeline.
-
-    Stages:
-        1. Silero VAD (Whisper-tuned params) — skip ASR if no speech.
-        2. PhoWhisper transcription on speech-only audio.
-        3. De-loop: collapse consecutively repeated fragments.
-        4. Heuristics: filler / n-gram / chars-per-100ms safety net.
-    """
+    """VAD, ASR and observable transcript quality checks."""
 
     def __init__(
         self,
-        asr: VietnameseASR | None = None,
+        asr: VoiceASRBackend | None = None,
         vad: SpeechDetector | None = None,
         # Calibrated by `uv run python -m local.calibrate_asr_confidence`
         # on 200 FLEURS vi speech samples + 50 non-speech samples:
@@ -170,9 +168,14 @@ class RobustASR:
         max_compression_ratio: float = DEFAULT_MAX_COMPRESSION_RATIO,
         confidence_profile_model_key: str | None = DEFAULT_ASR_MODEL_KEY,
         confidence_guard_skip_reason: str | None = None,
+        context_provider: Callable[[], ASRContextSnapshot] | None = None,
     ):
-        self.asr = asr if asr is not None else VietnameseASR(num_threads=4)
+        self.asr = asr if asr is not None else PhoWhisperVoiceBackend(DEFAULT_ASR_MODEL_KEY)
         self.vad = vad if vad is not None else SpeechDetector()
+        self._context_provider = context_provider
+        self.last_context = ASRContextBuilder().build(())
+        self._close_lock = threading.Lock()
+        self._closed = False
         runtime_model_key = getattr(self.asr, "model_key", None)
         self.asr_model_key = str(runtime_model_key or DEFAULT_ASR_MODEL_KEY)
         self.min_avg_logprob = min_avg_logprob
@@ -234,6 +237,7 @@ class RobustASR:
     def transcribe(self, audio: np.ndarray) -> RobustASRResult:
         """Run the production pipeline on a 1D float32 16kHz mono array."""
         t0 = time.perf_counter()
+        self.last_context = ASRContextBuilder().build(())
 
         # Stage 1: VAD
         vad_result = self.vad.detect(audio)
@@ -254,7 +258,9 @@ class RobustASR:
             )
 
         # Stage 2: ASR on speech-only audio (saves compute when VAD trimmed silence)
-        asr_result = self.asr.transcribe(vad_result.speech_audio)
+        context = self._context_provider() if self._context_provider is not None else self.last_context
+        self.last_context = context
+        asr_result = self.asr.transcribe(vad_result.speech_audio, context=context.text)
         raw_text = asr_result.text
         alternatives = _normalise_alternatives(asr_result, primary=raw_text)
         avg_logprob = asr_result.avg_logprob
@@ -279,6 +285,8 @@ class RobustASR:
                 confidence_guard_status=self.confidence_guard_status,
                 compression_guard_status=self.compression_guard_status,
                 alternatives=alternatives,
+                context_digest=context.digest,
+                context_provenance=context.provenances,
             )
 
         if self.use_logprob_guard and avg_logprob < self.min_avg_logprob:
@@ -297,6 +305,8 @@ class RobustASR:
                 confidence_guard_status=self.confidence_guard_status,
                 compression_guard_status=self.compression_guard_status,
                 alternatives=alternatives,
+                context_digest=context.digest,
+                context_provenance=context.provenances,
             )
 
         if self.use_compression_guard and raw_compression_ratio > self.max_compression_ratio:
@@ -315,15 +325,16 @@ class RobustASR:
                 confidence_guard_status=self.confidence_guard_status,
                 compression_guard_status=self.compression_guard_status,
                 alternatives=alternatives,
+                context_digest=context.digest,
+                context_provenance=context.provenances,
             )
 
         # Context-echo guard: a context-aware backend can occasionally
         # return its system prompt verbatim instead of transcribing the
-        # audio (§Q1b.3). That output passes every check above (clean text,
+        # audio. That output passes every check above (clean text,
         # normal compression), so it needs its own dedicated check, run
         # before de-loop/heuristics touch the text.
-        backend_context = getattr(self.asr, "context", "")
-        if backend_context and looks_like_context_echo(raw_text, backend_context):
+        if context.text and looks_like_context_echo(raw_text, context.text):
             return RobustASRResult(
                 text="",
                 raw_text=raw_text,
@@ -339,6 +350,8 @@ class RobustASR:
                 confidence_guard_status=self.confidence_guard_status,
                 compression_guard_status=self.compression_guard_status,
                 alternatives=alternatives,
+                context_digest=context.digest,
+                context_provenance=context.provenances,
             )
 
         # Stage 3: De-loop
@@ -373,7 +386,24 @@ class RobustASR:
             confidence_guard_status=self.confidence_guard_status,
             compression_guard_status=self.compression_guard_status,
             alternatives=alternatives,
+            context_digest=context.digest,
+            context_provenance=context.provenances,
         )
+
+    def transcribe_partial(self, audio: np.ndarray) -> ASRResult:
+        return self.asr.transcribe(audio, context="")
+
+    def snapshot_context(self) -> ASRContextSnapshot:
+        context = self._context_provider() if self._context_provider is not None else self.last_context
+        self.last_context = context
+        return context
+
+    def close(self) -> None:
+        with self._close_lock:
+            if self._closed:
+                return
+            self._closed = True
+        self.asr.close()
 
     def transcribe_file(self, path: str | Path) -> RobustASRResult:
         import librosa

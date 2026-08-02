@@ -125,6 +125,7 @@ if TYPE_CHECKING:
     from .voice_runtime import (
         ResolvedVoiceRuntimeConfig,
         VoiceRuntimeBundle,
+        VoiceRuntimeWarmupError,
         VoiceRuntimeWarmupResult,
         build_voice_runtime,
         resolve_voice_runtime_config,
@@ -155,6 +156,7 @@ def __getattr__(name: str):
     if name in {
         "ResolvedVoiceRuntimeConfig",
         "VoiceRuntimeBundle",
+        "VoiceRuntimeWarmupError",
         "VoiceRuntimeWarmupResult",
         "build_voice_runtime",
         "resolve_voice_runtime_config",
@@ -163,6 +165,7 @@ def __getattr__(name: str):
         from .voice_runtime import (
             ResolvedVoiceRuntimeConfig,
             VoiceRuntimeBundle,
+            VoiceRuntimeWarmupError,
             VoiceRuntimeWarmupResult,
             build_voice_runtime,
             resolve_voice_runtime_config,
@@ -172,6 +175,7 @@ def __getattr__(name: str):
         return {
             "ResolvedVoiceRuntimeConfig": ResolvedVoiceRuntimeConfig,
             "VoiceRuntimeBundle": VoiceRuntimeBundle,
+            "VoiceRuntimeWarmupError": VoiceRuntimeWarmupError,
             "VoiceRuntimeWarmupResult": VoiceRuntimeWarmupResult,
             "build_voice_runtime": build_voice_runtime,
             "resolve_voice_runtime_config": resolve_voice_runtime_config,
@@ -273,6 +277,7 @@ __all__ = [
     "TurnFrame",
     "VoicePipeline",
     "VoiceRuntimeBundle",
+    "VoiceRuntimeWarmupError",
     "VoiceRuntimeWarmupResult",
     "block_samples",
     "check_final_output",

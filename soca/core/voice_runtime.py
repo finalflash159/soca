@@ -1,19 +1,37 @@
 from __future__ import annotations
 
-import inspect
 import logging
 import os
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Lock
 from typing import Any, cast
 
 import numpy as np
 
-from soca.asr import ASR_MODEL_REGISTRY, SpeechDetector
+from soca.asr import SpeechDetector
+from soca.asr.calibration import (
+    ASRCalibrationNotReady,
+    compute_vad_policy_digest,
+    load_strict_confidence_calibration,
+    qwen_calibration_identity,
+)
+from soca.asr.context import (
+    ASRContextBuilder,
+    ASRContextLimits,
+    ASRContextSourceRecord,
+    DynamicASRContextProvider,
+)
+from soca.asr.protocols import VoiceASRBackend
+from soca.asr.qwen_artifacts import default_asr_model_root, get_qwen_artifact
+from soca.asr.qwen_service_client import QwenASRServiceClient
+from soca.asr.qwen_service_identity import QwenServiceLaunch
+from soca.asr.qwen_store import QwenArtifactStore
 from soca.asr.robust_asr import RobustASR, load_confidence_guard_calibration
-from soca.asr.whisper_onnx import VietnameseASR
+from soca.asr.selection import ASREngine, ASRSelection
+from soca.asr.voice_backend import PhoWhisperVoiceBackend
 from soca.config import LlmSettings, SecretStore, load_settings
 from soca.core.knowledge_setup import build_knowledge_runtime_setup
 from soca.core.memory_setup import (
@@ -61,7 +79,7 @@ LOGGER = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class ResolvedVoiceRuntimeConfig:
     profile_key: str
-    asr_model: str
+    asr: ASRSelection
     llm_model: str
     tts_voice: str | None
     endpoint_silence_ms: int
@@ -111,6 +129,10 @@ class ResolvedVoiceRuntimeConfig:
     temperature_is_override: bool = False
     top_p_is_override: bool = False
 
+    @property
+    def asr_model(self) -> str:
+        return self.asr.model_key
+
 
 @dataclass
 class VoiceRuntimeBundle:
@@ -128,10 +150,31 @@ class VoiceRuntimeBundle:
     partial_interval_ms: int = 800  # partial cadence seed (handles device variance)
     partial_enabled: bool = True  # False when the device is too slow for partials
     llm_settings: LlmSettings | None = None
+    _close_lock: Lock = field(default_factory=Lock, init=False, repr=False)
+    _closed: bool = field(default=False, init=False, repr=False)
 
     @property
     def asr_guard_status(self) -> str:
         return f"confidence={self.asr.confidence_guard_status}"
+
+    @property
+    def asr_context_status(self) -> str:
+        context = self.asr.last_context
+        return (
+            f"context={context.digest[:12]} · {context.term_count} terms · "
+            f"{context.approximate_tokens} tok"
+        )
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def close(self) -> None:
+        with self._close_lock:
+            if self._closed:
+                return
+            self._closed = True
+        self.asr.close()
 
 
 @dataclass(frozen=True)
@@ -140,6 +183,17 @@ class VoiceRuntimeWarmupResult:
     ok: bool
     latency_ms: float
     detail: str = ""
+
+
+class VoiceRuntimeWarmupError(RuntimeError):
+    def __init__(self, failures: tuple[VoiceRuntimeWarmupResult, ...]) -> None:
+        if not failures or any(result.ok for result in failures):
+            raise ValueError("warmup failures must contain only failed results")
+        self.failures = failures
+        details = "; ".join(
+            f"{result.component}: {result.detail}" for result in failures
+        )
+        super().__init__(f"Voice runtime warmup failed: {details}")
 
 
 def default_semantic_turn_examples() -> Path:
@@ -190,10 +244,7 @@ def resolve_voice_runtime_config(
 ) -> ResolvedVoiceRuntimeConfig:
     profile = get_voice_runtime_profile(profile_key)
 
-    resolved_asr_model = asr_model or profile.asr_model
-    if resolved_asr_model not in ASR_MODEL_REGISTRY:
-        valid = ", ".join(sorted(ASR_MODEL_REGISTRY))
-        raise ValueError(f"Unknown ASR model key: {resolved_asr_model}. Valid keys: {valid}")
+    resolved_asr = ASRSelection.phowhisper(asr_model) if asr_model is not None else profile.asr
 
     resolved_llm_model = llm_model or profile.llm_model
     if resolved_llm_model not in LLM_MODEL_REGISTRY:
@@ -221,7 +272,7 @@ def resolve_voice_runtime_config(
 
     return ResolvedVoiceRuntimeConfig(
         profile_key=profile_key,
-        asr_model=resolved_asr_model,
+        asr=resolved_asr,
         llm_model=resolved_llm_model,
         tts_voice=resolved_tts_voice,
         endpoint_silence_ms=(
@@ -283,6 +334,141 @@ def resolve_voice_runtime_config(
     )
 
 
+def _asr_context_records(
+    knowledge_catalog: Any | None,
+    session_memory: SessionMemory | None,
+) -> tuple[ASRContextSourceRecord, ...]:
+    records: list[ASRContextSourceRecord] = []
+    if knowledge_catalog is not None:
+        snapshot = knowledge_catalog.snapshot()
+        for document in snapshot.documents:
+            records.append(
+                ASRContextSourceRecord(
+                    value=document.title,
+                    provenance=f"vault:{snapshot.revision}:{document.path}:title",
+                    priority=30,
+                )
+            )
+            records.extend(
+                ASRContextSourceRecord(
+                    value=tag,
+                    provenance=f"vault:{snapshot.revision}:{document.path}:tag",
+                    priority=20,
+                )
+                for tag in document.tags
+            )
+            records.extend(
+                ASRContextSourceRecord(
+                    value=heading.text,
+                    provenance=f"vault:{snapshot.revision}:{document.path}:heading:{heading.line}",
+                    priority=10,
+                )
+                for heading in document.headings
+            )
+    if session_memory is not None:
+        for index, turn in enumerate(session_memory.turns):
+            records.append(
+                ASRContextSourceRecord(
+                    value=turn.text,
+                    provenance=f"session:{session_memory.working.thread_id}:{index}:{turn.role}",
+                    priority=40,
+                )
+            )
+    return tuple(records)
+
+
+def _build_voice_asr(
+    config: ResolvedVoiceRuntimeConfig,
+    *,
+    detector: SpeechDetector,
+    knowledge_catalog: Any | None,
+    session_memory: SessionMemory | None,
+) -> RobustASR:
+    selection = config.asr
+    if selection.engine is ASREngine.PHOWHISPER:
+        calibration = load_confidence_guard_calibration(selection.model_key)
+        if calibration is None:
+            raise ASRCalibrationNotReady(
+                f"confidence calibration is missing for {selection.model_key}"
+            )
+        backend: VoiceASRBackend = PhoWhisperVoiceBackend(selection.model_key)
+        return RobustASR(
+            asr=backend,
+            vad=detector,
+            min_avg_logprob=calibration.min_avg_logprob,
+            max_compression_ratio=calibration.max_compression_ratio,
+            confidence_profile_model_key=calibration.model_key,
+        )
+
+    spec = get_qwen_artifact(selection.model_key, expected_role=selection.artifact_role)
+    limits = ASRContextLimits()
+    provider = DynamicASRContextProvider(
+        source_loader=lambda: _asr_context_records(knowledge_catalog, session_memory),
+        builder=ASRContextBuilder(limits),
+    )
+    calibration_identity = qwen_calibration_identity(
+        spec,
+        context_limits=limits,
+        vad_policy_digest=compute_vad_policy_digest(detector),
+    )
+    calibration = load_strict_confidence_calibration(calibration_identity)
+    receipt = QwenArtifactStore(default_asr_model_root()).verify(spec, deep=False)
+    client = QwenASRServiceClient(launch=QwenServiceLaunch.for_active(spec, receipt))
+    return RobustASR(
+        asr=client,
+        vad=detector,
+        min_avg_logprob=calibration.min_avg_logprob,
+        max_compression_ratio=calibration.max_compression_ratio,
+        confidence_profile_model_key=spec.key,
+        context_provider=provider.snapshot,
+    )
+
+
+@dataclass
+class _VoiceRuntimeStartupResources:
+    asr: RobustASR | None = None
+    llm: Any | None = None
+    tts: Any | None = None
+    owned_session_memory: SessionMemory | None = None
+
+    def release(self) -> None:
+        self.asr = None
+        self.llm = None
+        self.tts = None
+        self.owned_session_memory = None
+
+    def rollback(self) -> None:
+        close_tts = getattr(self.tts, "close", None)
+        if callable(close_tts):
+            try:
+                close_tts()
+            except Exception:
+                LOGGER.exception("Voice runtime TTS startup rollback failed")
+        cancel = getattr(self.llm, "cancel", None)
+        if callable(cancel):
+            try:
+                cancel()
+            except Exception:
+                LOGGER.exception("Voice runtime LLM startup rollback failed")
+        close_llm = getattr(self.llm, "close", None)
+        if callable(close_llm):
+            try:
+                close_llm()
+            except Exception:
+                LOGGER.exception("Voice runtime LLM close during startup rollback failed")
+        if self.asr is not None:
+            try:
+                self.asr.close()
+            except Exception:
+                LOGGER.exception("Voice runtime ASR startup rollback failed")
+        if self.owned_session_memory is not None:
+            try:
+                self.owned_session_memory.close()
+            except Exception:
+                LOGGER.exception("Voice runtime session startup rollback failed")
+        self.release()
+
+
 def build_voice_runtime(
     config: ResolvedVoiceRuntimeConfig,
     *,
@@ -291,6 +477,34 @@ def build_voice_runtime(
     secret_store: SecretReader | None = None,
     engine_factory=build_llm_engine,
     active_goal_store: ActiveGoalStore | None = None,
+) -> VoiceRuntimeBundle:
+    resources = _VoiceRuntimeStartupResources()
+    try:
+        bundle = _build_voice_runtime_components(
+            config,
+            session_memory=session_memory,
+            llm_settings=llm_settings,
+            secret_store=secret_store,
+            engine_factory=engine_factory,
+            active_goal_store=active_goal_store,
+            startup_resources=resources,
+        )
+    except Exception:
+        resources.rollback()
+        raise
+    resources.release()
+    return bundle
+
+
+def _build_voice_runtime_components(
+    config: ResolvedVoiceRuntimeConfig,
+    *,
+    session_memory: SessionMemory | None,
+    llm_settings: LlmSettings | None,
+    secret_store: SecretReader | None,
+    engine_factory,
+    active_goal_store: ActiveGoalStore | None,
+    startup_resources: _VoiceRuntimeStartupResources,
 ) -> VoiceRuntimeBundle:
     selected_settings = llm_settings or load_settings()
     if config.llm_model_is_override:
@@ -315,29 +529,6 @@ def build_voice_runtime(
         model_dir = _smart_turn_model_dir()
         turn_detector = SmartTurnDetector(model_dir=model_dir)
 
-    confidence_calibration = load_confidence_guard_calibration(config.asr_model)
-    if confidence_calibration is None:
-        asr = RobustASR(
-            asr=VietnameseASR(model_key=config.asr_model),
-            vad=detector,
-            confidence_guard_skip_reason=f"skipped:missing_for_model:{config.asr_model}",
-        )
-    else:
-        asr = RobustASR(
-            asr=VietnameseASR(model_key=config.asr_model),
-            vad=detector,
-            min_avg_logprob=confidence_calibration.min_avg_logprob,
-            max_compression_ratio=confidence_calibration.max_compression_ratio,
-            confidence_profile_model_key=confidence_calibration.model_key,
-        )
-    llm = engine_factory(
-        selected_settings,
-        secrets,
-        local_factory=None,
-        n_threads=config.llm_threads,
-        n_gpu_layers=config.llm_gpu_layers,
-    )
-
     model_context_window = (
         LLM_MODEL_REGISTRY[selected_settings.model_id].context_window
         if selected_settings.backend == "local" and selected_settings.model_id in LLM_MODEL_REGISTRY
@@ -350,6 +541,7 @@ def build_voice_runtime(
     knowledge_status = "disabled:not_found"
     memory_builder = None
     knowledge_builder = None
+    knowledge_catalog = None
     tools: list[Tool] = []
     manifest_provider: Callable[[], str] | None = None
 
@@ -363,6 +555,7 @@ def build_voice_runtime(
             ),
         )
         knowledge_builder = knowledge.builder
+        knowledge_catalog = knowledge.catalog
         tools.extend([knowledge.inspect_tool, knowledge.search_tool, knowledge.read_tool])
 
         def provide_manifest() -> str:
@@ -382,10 +575,8 @@ def build_voice_runtime(
             output_reserve_tokens=effective_max_tokens,
             mode="background_summary",
         )
-        session_memory = (
-            session_memory
-            if session_memory is not None
-            else SessionMemory(
+        if session_memory is None:
+            session_memory = SessionMemory(
                 thread_id=config.session_id,
                 max_turns=config.session_turns,
                 max_chars=config.session_chars,
@@ -401,7 +592,7 @@ def build_voice_runtime(
                 ),
                 resume=config.session_resume,
             )
-        )
+            startup_resources.owned_session_memory = session_memory
         memory_setup = build_memory_runtime_setup(
             config.vault,
             session=session_memory,
@@ -423,6 +614,22 @@ def build_voice_runtime(
         memory_builder = memory_setup.builder
         memory_status = memory_setup.status
         tools.append(MemorySearchTool(memory_builder, max_limit=config.knowledge_limit))
+
+    asr = _build_voice_asr(
+        config,
+        detector=detector,
+        knowledge_catalog=knowledge_catalog,
+        session_memory=session_memory if not config.no_memory else None,
+    )
+    startup_resources.asr = asr
+    llm = engine_factory(
+        selected_settings,
+        secrets,
+        local_factory=None,
+        n_threads=config.llm_threads,
+        n_gpu_layers=config.llm_gpu_layers,
+    )
+    startup_resources.llm = llm
 
     tool_runtime = ToolRuntime(tools)
     router_embedding_model = None
@@ -480,6 +687,7 @@ def build_voice_runtime(
     )
 
     tts = create_tts_engine(voice=config.tts_voice)
+    startup_resources.tts = tts
     pipeline = VoicePipeline(
         asr=asr,
         llm=llm,
@@ -539,35 +747,18 @@ def _smart_turn_model_dir() -> Path:
 def _warm_up_asr(bundle: VoiceRuntimeBundle, *, seconds: float) -> VoiceRuntimeWarmupResult:
     t0 = time.perf_counter()
     try:
-        # cast: RobustASR.asr is typed VietnameseASR, but at runtime it can be
-        # any duck-typed backend (e.g. QwenASRBackend, which accepts a
-        # context kwarg VietnameseASR doesn't declare) — checked below via
-        # inspect.signature, not assumed.
-        inner = cast(Any, bundle.asr.asr)
+        inner = bundle.asr.asr
         sample_rate = getattr(inner, "SAMPLING_RATE", 16000)
-        try:
-            params = inspect.signature(inner.transcribe).parameters
-        except (TypeError, ValueError):
-            params = {}
-            LOGGER.warning(
-                "Could not inspect %s.transcribe signature; assuming no "
-                "context support for ASR warmup.",
-                type(inner).__name__,
-            )
-        accepts_context = "context" in params or any(
-            p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()
-        )
-        partial_kwargs = {"context": ""} if accepts_context else {}
 
         audio = np.zeros(max(int(sample_rate * seconds), 1), dtype=np.float32)
-        inner.transcribe(audio, max_new_tokens=1, **partial_kwargs)  # kernel warm
+        inner.transcribe(audio, max_new_tokens=1, context="")
         # --- calibrate partial cadence: one REPRESENTATIVE decode (NOT max_new_tokens=1,
         #     since 1 token does not measure decoder cost). Uses context="" —
         #     the same context the live partial path actually calls with
-        #     (§5.6.3) — since a different context shifts decode cost (§Q1c.3).
+        #     since a different context shifts decode cost.
         probe = (np.random.randn(sample_rate * 3) * 0.01).astype(np.float32)
         c0 = time.perf_counter()
-        inner.transcribe(probe, **partial_kwargs)  # real decode
+        inner.transcribe(probe, context="")
         per_call_ms = (time.perf_counter() - c0) * 1000
         interval, enabled = partial_interval_from_cost(per_call_ms, os.cpu_count())
         bundle.partial_interval_ms = interval
@@ -575,12 +766,12 @@ def _warm_up_asr(bundle: VoiceRuntimeBundle, *, seconds: float) -> VoiceRuntimeW
 
         # Also warm the FINAL path (the real context, if any): the first
         # true call after a cold context switch pays an extra prefill cost
-        # (§Q1c.3), which must not land on the user's actual first turn.
+        # which must not land on the user's actual first turn.
         # max_new_tokens=1: this call only needs to pay the context-prefill
         # cost, not repeat the representative decode already measured above.
-        real_context = getattr(inner, "context", "") if accepts_context else ""
-        if real_context:
-            inner.transcribe(probe, max_new_tokens=1, context=real_context)
+        final_context = bundle.asr.snapshot_context()
+        if final_context.text:
+            inner.transcribe(probe, max_new_tokens=1, context=final_context.text)
 
         detail = f"{bundle.config.asr_model} · partial={interval}ms{'' if enabled else ' (off)'}"
         return VoiceRuntimeWarmupResult(

@@ -8,7 +8,16 @@ from rich.console import Console
 from rich.table import Table
 
 from soca.app.style.palette import ALT, st
+from soca.asr.calibration import (
+    ASRCalibrationError,
+    load_strict_confidence_calibration,
+    qwen_calibration_identity,
+)
+from soca.asr.qwen_artifacts import QWEN_ARTIFACT_REGISTRY
+from soca.asr.qwen_readiness import QwenReadinessState, inspect_qwen_readiness
 from soca.asr.registry import ASR_MODEL_REGISTRY
+from soca.asr.robust_asr import load_confidence_guard_calibration
+from soca.asr.selection import ASREngine, ASRSelection
 from soca.core.profiles import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
     VOICE_RUNTIME_PROFILES,
@@ -77,11 +86,15 @@ def collect_runtime_profile_readiness() -> list[RuntimeProfileReadiness]:
             )
             continue
 
-        asr_status = _asr_readiness(profile.asr_model)
+        asr_status = asr_readiness(profile.asr)
         llm_status = _llm_readiness(profile.llm_model)
         tts_status = _valtec_readiness()
         status = _combine_status(asr_status, llm_status, tts_status)
-        notes = _join_notes(profile.description, tts_status.detail)
+        notes = _join_notes(
+            profile.description,
+            tts_status.detail,
+            asr_detail=asr_status.detail if not asr_status.ok else "",
+        )
 
         rows.append(
             RuntimeProfileReadiness(
@@ -144,11 +157,10 @@ def render_profiles(console: Console, *, show_paths: bool = False) -> None:
         console.print()
         console.print("[bold]Profile artifact path details[/bold]")
         for row in rows:
-            asr = ASR_MODEL_REGISTRY.get(row.asr_model)
             llm = LLM_MODEL_REGISTRY.get(row.llm_model)
             console.print(
                 f"{row.key}: "
-                f"ASR={asr.local_dir if asr else 'unknown'}; "
+                f"ASR={_asr_path(VOICE_RUNTIME_PROFILES[row.key].asr)}; "
                 f"LLM={llm.local_path if llm else 'unknown'}; "
                 f"TTS={VALTEC_TTS_CONFIG.local_dir}",
                 highlight=False,
@@ -196,11 +208,10 @@ def _profile_paths_table(rows: list[RuntimeProfileReadiness]) -> Table:
     table.add_column("TTS path", overflow="fold")
 
     for row in rows:
-        asr = ASR_MODEL_REGISTRY.get(row.asr_model)
         llm = LLM_MODEL_REGISTRY.get(row.llm_model)
         table.add_row(
             row.key,
-            str(asr.local_dir if asr else "unknown"),
+            str(_asr_path(VOICE_RUNTIME_PROFILES[row.key].asr)),
             str(llm.local_path if llm else "unknown"),
             str(VALTEC_TTS_CONFIG.local_dir),
         )
@@ -223,8 +234,24 @@ def _group_validation_errors(errors: list[str]) -> dict[str, tuple[str, ...]]:
     return {key: tuple(messages) for key, messages in grouped.items()}
 
 
-def _asr_readiness(model_key: str) -> ComponentReadiness:
-    config = ASR_MODEL_REGISTRY[model_key]
+def asr_readiness(selection: ASRSelection) -> ComponentReadiness:
+    if selection.engine is ASREngine.QWEN_SERVICE:
+        spec = QWEN_ARTIFACT_REGISTRY[selection.model_key]
+        readiness = inspect_qwen_readiness(spec)
+        if readiness.state is not QwenReadinessState.PROVISIONED:
+            return ComponentReadiness(readiness.state.value, readiness.detail)
+        try:
+            calibration = load_strict_confidence_calibration(
+                qwen_calibration_identity(spec)
+            )
+        except ASRCalibrationError as exc:
+            return ComponentReadiness("not_ready", str(exc))
+        return ComponentReadiness(
+            "ok",
+            f"artifact and calibration {calibration.identity.digest[:12]} verified",
+        )
+
+    config = ASR_MODEL_REGISTRY[selection.model_key]
     missing = [
         path.name for path in (config.encoder_path, config.decoder_path) if not path.exists()
     ]
@@ -233,7 +260,18 @@ def _asr_readiness(model_key: str) -> ComponentReadiness:
             "missing",
             f"missing ASR artifact(s): {', '.join(missing)}; {config.download_command}",
         )
+    if load_confidence_guard_calibration(selection.model_key) is None:
+        return ComponentReadiness(
+            "not_ready",
+            f"confidence calibration is missing for {selection.model_key}",
+        )
     return ComponentReadiness("ok", "ONNX encoder/decoder found")
+
+
+def _asr_path(selection: ASRSelection) -> Path | str:
+    if selection.engine is ASREngine.QWEN_SERVICE:
+        return QWEN_ARTIFACT_REGISTRY[selection.model_key].model_path()
+    return ASR_MODEL_REGISTRY[selection.model_key].local_dir
 
 
 def _llm_readiness(model_key: str) -> ComponentReadiness:
@@ -259,12 +297,9 @@ def _valtec_readiness() -> ComponentReadiness:
 
 
 def _combine_status(*components: ComponentReadiness) -> str:
-    if any(component.status == "invalid" for component in components):
-        return "invalid"
-    if any(component.status == "missing" for component in components):
-        return "missing"
-    if any(component.status == "warning" for component in components):
-        return "warning"
+    for status in ("invalid", "missing", "not_ready", "unsupported", "warning"):
+        if any(component.status == status for component in components):
+            return status
     return "ok"
 
 
@@ -272,7 +307,10 @@ def _format_component(name: str, readiness: ComponentReadiness) -> str:
     return f"{name} [{readiness.status}]"
 
 
-def _join_notes(description: str, tts_detail: str) -> str:
-    if not tts_detail:
-        return description
-    return f"{description} TTS: {tts_detail}"
+def _join_notes(description: str, tts_detail: str, *, asr_detail: str = "") -> str:
+    details = [description]
+    if asr_detail:
+        details.append(f"ASR: {asr_detail}")
+    if tts_detail:
+        details.append(f"TTS: {tts_detail}")
+    return " ".join(details)

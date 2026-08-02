@@ -15,6 +15,7 @@ from soca.app.engine import (
     run_engine,
 )
 from soca.app.text_runtime import TextRuntimeBundle, TextRuntimeConfig
+from soca.asr.selection import ASRSelection
 from soca.core import ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
 from soca.core.turn import RuntimeResult, RuntimeRoute, RuntimeTrace
 from soca.knowledge import KnowledgeCitation
@@ -64,7 +65,7 @@ def make_text_config() -> TextRuntimeConfig:
 def make_voice_config() -> ResolvedVoiceRuntimeConfig:
     return ResolvedVoiceRuntimeConfig(
         profile_key="baseline",
-        asr_model="phowhisper_base",
+        asr=ASRSelection.phowhisper("phowhisper_base"),
         llm_model="arcee_vylinh_3b_q4_k_m",
         tts_voice="NF",
         endpoint_silence_ms=700,
@@ -510,6 +511,9 @@ def test_text_runtime_builder_programming_type_error_is_not_retried() -> None:
 @dataclass
 class _FakeASR:
     confidence_guard_status: str = "disabled:test"
+
+    def close(self) -> None:
+        return None
 
 
 class _FakePipeline:

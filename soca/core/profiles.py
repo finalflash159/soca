@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from soca.asr.registry import ASR_MODEL_REGISTRY
+from soca.asr.qwen_artifacts import ArtifactRole
+from soca.asr.selection import ASRSelection
 from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.tts.config import VALTEC_TTS_CONFIG
 
@@ -11,7 +12,7 @@ from soca.tts.config import VALTEC_TTS_CONFIG
 class VoiceRuntimeProfile:
     key: str
     description: str
-    asr_model: str
+    asr: ASRSelection
     llm_model: str
     tts_voice: str | None = None
     endpoint_silence_ms: int = 700
@@ -30,6 +31,10 @@ class VoiceRuntimeProfile:
     knowledge_retrieval_mode: str = "hybrid"
     knowledge_dense_backend: str = "aiteamvn_v2"
 
+    @property
+    def asr_model(self) -> str:
+        return self.asr.model_key
+
 
 DEFAULT_VOICE_RUNTIME_PROFILE_KEY = "baseline"
 
@@ -37,7 +42,27 @@ VOICE_RUNTIME_PROFILES: dict[str, VoiceRuntimeProfile] = {
     "baseline": VoiceRuntimeProfile(
         key="baseline",
         description="Default high-accuracy local voice runtime using Valtec TTS.",
-        asr_model="phowhisper_small",
+        asr=ASRSelection.phowhisper("phowhisper_small"),
+        llm_model="arcee_vylinh_3b_q4_k_m",
+        tts_voice=VALTEC_TTS_CONFIG.default_voice,
+    ),
+    "qwen-release": VoiceRuntimeProfile(
+        key="qwen-release",
+        description="Explicit Qwen3-ASR 0.6B release candidate voice runtime.",
+        asr=ASRSelection.qwen_service(
+            "qwen3_asr_0_6b",
+            role=ArtifactRole.RELEASE,
+        ),
+        llm_model="arcee_vylinh_3b_q4_k_m",
+        tts_voice=VALTEC_TTS_CONFIG.default_voice,
+    ),
+    "qwen-reference": VoiceRuntimeProfile(
+        key="qwen-reference",
+        description="Explicit Qwen3-ASR 1.7B reference voice runtime.",
+        asr=ASRSelection.qwen_service(
+            "qwen3_asr_1_7b",
+            role=ArtifactRole.REFERENCE,
+        ),
         llm_model="arcee_vylinh_3b_q4_k_m",
         tts_voice=VALTEC_TTS_CONFIG.default_voice,
     ),
@@ -56,7 +81,11 @@ def get_voice_runtime_profile(profile_key: str) -> VoiceRuntimeProfile:
 
 def validate_voice_runtime_profiles() -> list[str]:
     errors: list[str] = []
-    expected_keys = {DEFAULT_VOICE_RUNTIME_PROFILE_KEY}
+    expected_keys = {
+        DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
+        "qwen-release",
+        "qwen-reference",
+    }
     actual_keys = set(VOICE_RUNTIME_PROFILES)
     if actual_keys != expected_keys:
         errors.append(
@@ -67,8 +96,6 @@ def validate_voice_runtime_profiles() -> list[str]:
     for key, profile in VOICE_RUNTIME_PROFILES.items():
         if profile.key != key:
             errors.append(f"{key}: profile.key must match dict key")
-        if profile.asr_model not in ASR_MODEL_REGISTRY:
-            errors.append(f"{key}: unknown ASR model {profile.asr_model!r}")
         if profile.llm_model not in LLM_MODEL_REGISTRY:
             errors.append(f"{key}: unknown LLM model {profile.llm_model!r}")
         if profile.tts_voice not in VALTEC_TTS_CONFIG.voices:
