@@ -13,6 +13,7 @@ from typing import Any
 
 import numpy as np
 
+from .qwen_artifacts import QWEN_RELEASE_ARTIFACT
 from .qwen_ipc_protocol import (
     MAX_AUDIO_SAMPLES,
     SAMPLE_RATE,
@@ -29,6 +30,7 @@ DEFAULT_STARTUP_TIMEOUT_S = 60.0
 DEFAULT_REQUEST_TIMEOUT_S = 30.0
 DEFAULT_SHUTDOWN_TIMEOUT_S = 5.0
 MAX_UNIX_SOCKET_PATH_BYTES = 103
+DEFAULT_QWEN_MODEL_ID = QWEN_RELEASE_ARTIFACT.upstream.repo_id
 
 
 class QwenServiceUnavailable(RuntimeError):
@@ -61,7 +63,7 @@ class QwenASRServiceClient:
     def __init__(
         self,
         *,
-        model_id: str = "Qwen/Qwen3-ASR-1.7B",
+        model_id: str = DEFAULT_QWEN_MODEL_ID,
         context: str = "",
         socket_dir: Path | None = None,
         startup_timeout_s: float = DEFAULT_STARTUP_TIMEOUT_S,
@@ -318,6 +320,7 @@ class QwenASRServiceClient:
 
 
 __all__ = [
+    "DEFAULT_QWEN_MODEL_ID",
     "QWEN_VENV_PYTHON",
     "QwenASRServiceClient",
     "QwenServiceCrashed",

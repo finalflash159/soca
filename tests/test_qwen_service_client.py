@@ -13,6 +13,7 @@ import pytest
 import soundfile as sf
 
 from local.qwen_contexts import CONTEXTS
+from soca.asr.qwen_artifacts import QWEN_REFERENCE_ARTIFACT
 from soca.asr.qwen_ipc_protocol import recv_audio_payload, recv_header, send_frame
 from soca.asr.qwen_service_client import (
     QWEN_VENV_PYTHON,
@@ -283,6 +284,7 @@ def test_real_qwen_service_transcribes_recorded_voice_and_cleans_up() -> None:
     )
     assert sample_rate == 16_000
     client = QwenASRServiceClient(
+        model_id=QWEN_REFERENCE_ARTIFACT.upstream.repo_id,
         context=CONTEXTS["tech"],
         startup_timeout_s=120.0,
     )

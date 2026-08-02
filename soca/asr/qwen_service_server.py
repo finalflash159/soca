@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Protocol
 
+from soca.asr.qwen_artifacts import QWEN_RELEASE_ARTIFACT
 from soca.asr.qwen_backend import QwenASRBackend
 from soca.asr.qwen_ipc_protocol import (
     SAMPLE_RATE,
@@ -22,6 +23,7 @@ from soca.asr.qwen_ipc_protocol import (
 LOGGER = logging.getLogger(__name__)
 DEFAULT_CONNECTION_TIMEOUT_S = 60.0
 SERVER_BACKLOG = 8
+DEFAULT_QWEN_MODEL_ID = QWEN_RELEASE_ARTIFACT.upstream.repo_id
 
 
 class QwenBackend(Protocol):
@@ -194,7 +196,7 @@ def _handle_connection(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--socket-path", required=True)
-    parser.add_argument("--model-id", default="Qwen/Qwen3-ASR-1.7B")
+    parser.add_argument("--model-id", default=DEFAULT_QWEN_MODEL_ID)
     parser.add_argument("--context", default="")
     parser.add_argument("--language", default="Vietnamese")
     parser.add_argument("--device", default="cpu")
