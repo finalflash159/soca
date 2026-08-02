@@ -24,6 +24,7 @@ from soca.core import (
     StreamingEvent,
     TurnUsage,
     VoiceRuntimeBundle,
+    VoiceRuntimeWarmupError,
     audio_duration_ms,
     build_voice_runtime,
     record_until_silence,
@@ -258,11 +259,8 @@ class VoiceMonitorController:
                 )
             failures = [result for result in warmup_results if not result.ok]
             if failures:
-                details = "; ".join(
-                    f"{result.component}: {result.detail}" for result in failures
-                )
                 self.bundle.close()
-                raise RuntimeError(f"Voice runtime warmup failed: {details}")
+                raise VoiceRuntimeWarmupError(tuple(failures))
             self._warmed_up = True
 
         return self.bundle

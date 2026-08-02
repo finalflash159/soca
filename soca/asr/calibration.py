@@ -5,6 +5,7 @@ import json
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar, Protocol
 
@@ -206,13 +207,16 @@ def load_strict_confidence_calibration(
     try:
         min_avg_logprob = float(thresholds["min_avg_logprob"])
         max_compression_ratio = float(thresholds["max_compression_ratio"])
-        created_at_utc = str(payload["created_at_utc"])
+        created_at_utc = payload["created_at_utc"]
         if not math.isfinite(min_avg_logprob):
             raise ValueError("min_avg_logprob must be finite")
         if not math.isfinite(max_compression_ratio) or max_compression_ratio <= 0:
             raise ValueError("max_compression_ratio must be finite and positive")
-        if not created_at_utc.strip():
-            raise ValueError("created_at_utc must not be empty")
+        if not isinstance(created_at_utc, str) or not created_at_utc.strip():
+            raise ValueError("created_at_utc must be a non-empty string")
+        parsed_created_at = datetime.fromisoformat(created_at_utc.replace("Z", "+00:00"))
+        if parsed_created_at.tzinfo is None or parsed_created_at.utcoffset() != UTC.utcoffset(None):
+            raise ValueError("created_at_utc must be an ISO-8601 UTC timestamp")
         return ASRConfidenceCalibration(
             identity=identity,
             min_avg_logprob=min_avg_logprob,

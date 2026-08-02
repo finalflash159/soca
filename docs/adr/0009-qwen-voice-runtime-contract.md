@@ -8,6 +8,8 @@ Status: accepted for integration; release qualification pending
 Voice configuration selects ASR through a typed engine/model/artifact-role tuple.
 `baseline` remains PhoWhisper. `qwen-release` and `qwen-reference` are explicit
 profiles and never act as fallbacks for each other or for PhoWhisper.
+PhoWhisper is equally strict in production: missing confidence calibration blocks
+readiness before its model is loaded instead of silently disabling the guard.
 
 A voice bundle owns one long-lived Qwen service client. Partial captions call the
 backend with an explicit empty context. Final transcription obtains a fresh immutable
@@ -45,6 +47,11 @@ calibration, 14 noise outputs echoed context and all 14 passed the model-confide
 threshold. The current overlap detector caught those observed echoes and had no
 observed false positive on the 200 speech calibration rows.
 
+These observations are diagnostic, not release evidence: the historical runs did
+not capture exact model revisions or hardware identity and used a fixed context.
+Their local raw paths and dataset digest are retained in the integration evidence;
+the qualification run must replace them with fully reproducible metadata.
+
 This does not qualify the overlap detector for dynamic context. Its threshold was not
 selected on an independent labelled set, and dual-decode/model-native alternatives
 have not been measured under the new context policy. Therefore no context-echo winner
@@ -56,6 +63,7 @@ empty ASR context, so this unqualified detector is inactive there.
 
 - Status can truthfully show provisioned weights while the profile remains
   `not_ready` because calibration is missing.
+- Selecting one profile never downloads, provisions or starts another ASR backend.
 - Integration tests may inject a calibration record to verify wiring; production
   cannot bypass the gate.
 - The next qualification run must use the service path and dynamic context policy,

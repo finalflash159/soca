@@ -10,6 +10,8 @@ from soca.asr.selection import ASRSelection
 from soca.core.voice_runtime import (
     ResolvedVoiceRuntimeConfig,
     VoiceRuntimeBundle,
+    VoiceRuntimeWarmupError,
+    VoiceRuntimeWarmupResult,
     _smart_turn_model_dir,
     warm_up_voice_runtime,
 )
@@ -259,6 +261,31 @@ def test_warm_up_voice_runtime_fails_fast_when_smart_turn_warmup_fails() -> None
 
     with pytest.raises(RuntimeError, match="smart turn warmup failed"):
         warm_up_voice_runtime(bundle, asr_seconds=0.5)
+
+
+def test_voice_runtime_warmup_error_preserves_typed_failures() -> None:
+    failure = VoiceRuntimeWarmupResult(
+        component="asr",
+        ok=False,
+        latency_ms=12.0,
+        detail="service timeout",
+    )
+
+    error = VoiceRuntimeWarmupError((failure,))
+
+    assert error.failures == (failure,)
+    assert str(error) == "Voice runtime warmup failed: asr: service timeout"
+
+    with pytest.raises(ValueError, match="only failed"):
+        VoiceRuntimeWarmupError(
+            (
+                VoiceRuntimeWarmupResult(
+                    component="tts",
+                    ok=True,
+                    latency_ms=1.0,
+                ),
+            )
+        )
 
 
 def test_smart_turn_model_dir_points_to_repo_models_dir() -> None:

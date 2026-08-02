@@ -13,6 +13,7 @@ import numpy as np
 
 from soca.asr import SpeechDetector
 from soca.asr.calibration import (
+    ASRCalibrationNotReady,
     compute_vad_policy_digest,
     load_strict_confidence_calibration,
     qwen_calibration_identity,
@@ -182,6 +183,17 @@ class VoiceRuntimeWarmupResult:
     ok: bool
     latency_ms: float
     detail: str = ""
+
+
+class VoiceRuntimeWarmupError(RuntimeError):
+    def __init__(self, failures: tuple[VoiceRuntimeWarmupResult, ...]) -> None:
+        if not failures or any(result.ok for result in failures):
+            raise ValueError("warmup failures must contain only failed results")
+        self.failures = failures
+        details = "; ".join(
+            f"{result.component}: {result.detail}" for result in failures
+        )
+        super().__init__(f"Voice runtime warmup failed: {details}")
 
 
 def default_semantic_turn_examples() -> Path:
@@ -375,15 +387,11 @@ def _build_voice_asr(
     selection = config.asr
     if selection.engine is ASREngine.PHOWHISPER:
         calibration = load_confidence_guard_calibration(selection.model_key)
-        backend: VoiceASRBackend = PhoWhisperVoiceBackend(selection.model_key)
         if calibration is None:
-            return RobustASR(
-                asr=backend,
-                vad=detector,
-                confidence_guard_skip_reason=(
-                    f"skipped:missing_for_model:{selection.model_key}"
-                ),
+            raise ASRCalibrationNotReady(
+                f"confidence calibration is missing for {selection.model_key}"
             )
+        backend: VoiceASRBackend = PhoWhisperVoiceBackend(selection.model_key)
         return RobustASR(
             asr=backend,
             vad=detector,
@@ -416,6 +424,51 @@ def _build_voice_asr(
     )
 
 
+@dataclass
+class _VoiceRuntimeStartupResources:
+    asr: RobustASR | None = None
+    llm: Any | None = None
+    tts: Any | None = None
+    owned_session_memory: SessionMemory | None = None
+
+    def release(self) -> None:
+        self.asr = None
+        self.llm = None
+        self.tts = None
+        self.owned_session_memory = None
+
+    def rollback(self) -> None:
+        close_tts = getattr(self.tts, "close", None)
+        if callable(close_tts):
+            try:
+                close_tts()
+            except Exception:
+                LOGGER.exception("Voice runtime TTS startup rollback failed")
+        cancel = getattr(self.llm, "cancel", None)
+        if callable(cancel):
+            try:
+                cancel()
+            except Exception:
+                LOGGER.exception("Voice runtime LLM startup rollback failed")
+        close_llm = getattr(self.llm, "close", None)
+        if callable(close_llm):
+            try:
+                close_llm()
+            except Exception:
+                LOGGER.exception("Voice runtime LLM close during startup rollback failed")
+        if self.asr is not None:
+            try:
+                self.asr.close()
+            except Exception:
+                LOGGER.exception("Voice runtime ASR startup rollback failed")
+        if self.owned_session_memory is not None:
+            try:
+                self.owned_session_memory.close()
+            except Exception:
+                LOGGER.exception("Voice runtime session startup rollback failed")
+        self.release()
+
+
 def build_voice_runtime(
     config: ResolvedVoiceRuntimeConfig,
     *,
@@ -424,6 +477,34 @@ def build_voice_runtime(
     secret_store: SecretReader | None = None,
     engine_factory=build_llm_engine,
     active_goal_store: ActiveGoalStore | None = None,
+) -> VoiceRuntimeBundle:
+    resources = _VoiceRuntimeStartupResources()
+    try:
+        bundle = _build_voice_runtime_components(
+            config,
+            session_memory=session_memory,
+            llm_settings=llm_settings,
+            secret_store=secret_store,
+            engine_factory=engine_factory,
+            active_goal_store=active_goal_store,
+            startup_resources=resources,
+        )
+    except Exception:
+        resources.rollback()
+        raise
+    resources.release()
+    return bundle
+
+
+def _build_voice_runtime_components(
+    config: ResolvedVoiceRuntimeConfig,
+    *,
+    session_memory: SessionMemory | None,
+    llm_settings: LlmSettings | None,
+    secret_store: SecretReader | None,
+    engine_factory,
+    active_goal_store: ActiveGoalStore | None,
+    startup_resources: _VoiceRuntimeStartupResources,
 ) -> VoiceRuntimeBundle:
     selected_settings = llm_settings or load_settings()
     if config.llm_model_is_override:
@@ -447,14 +528,6 @@ def build_voice_runtime(
     if config.adaptive_endpoint:
         model_dir = _smart_turn_model_dir()
         turn_detector = SmartTurnDetector(model_dir=model_dir)
-
-    llm = engine_factory(
-        selected_settings,
-        secrets,
-        local_factory=None,
-        n_threads=config.llm_threads,
-        n_gpu_layers=config.llm_gpu_layers,
-    )
 
     model_context_window = (
         LLM_MODEL_REGISTRY[selected_settings.model_id].context_window
@@ -502,10 +575,8 @@ def build_voice_runtime(
             output_reserve_tokens=effective_max_tokens,
             mode="background_summary",
         )
-        session_memory = (
-            session_memory
-            if session_memory is not None
-            else SessionMemory(
+        if session_memory is None:
+            session_memory = SessionMemory(
                 thread_id=config.session_id,
                 max_turns=config.session_turns,
                 max_chars=config.session_chars,
@@ -521,7 +592,7 @@ def build_voice_runtime(
                 ),
                 resume=config.session_resume,
             )
-        )
+            startup_resources.owned_session_memory = session_memory
         memory_setup = build_memory_runtime_setup(
             config.vault,
             session=session_memory,
@@ -543,6 +614,22 @@ def build_voice_runtime(
         memory_builder = memory_setup.builder
         memory_status = memory_setup.status
         tools.append(MemorySearchTool(memory_builder, max_limit=config.knowledge_limit))
+
+    asr = _build_voice_asr(
+        config,
+        detector=detector,
+        knowledge_catalog=knowledge_catalog,
+        session_memory=session_memory if not config.no_memory else None,
+    )
+    startup_resources.asr = asr
+    llm = engine_factory(
+        selected_settings,
+        secrets,
+        local_factory=None,
+        n_threads=config.llm_threads,
+        n_gpu_layers=config.llm_gpu_layers,
+    )
+    startup_resources.llm = llm
 
     tool_runtime = ToolRuntime(tools)
     router_embedding_model = None
@@ -599,29 +686,20 @@ def build_voice_runtime(
         ),
     )
 
-    asr = _build_voice_asr(
-        config,
-        detector=detector,
-        knowledge_catalog=knowledge_catalog,
-        session_memory=session_memory if not config.no_memory else None,
+    tts = create_tts_engine(voice=config.tts_voice)
+    startup_resources.tts = tts
+    pipeline = VoicePipeline(
+        asr=asr,
+        llm=llm,
+        tts=tts,
+        assistant_runtime=assistant_runtime,
+        repair_catalog=default_repair_catalog(),
+        first_clause_enabled=config.first_clause_enabled,
+        first_clause_min_chars=config.first_clause_min_chars,
+        first_clause_min_words=config.first_clause_min_words,
+        first_clause_max_scan_chars=config.first_clause_max_scan_chars,
+        pcm_crossfade_ms=(config.pcm_crossfade_ms if config.pcm_crossfade_enabled else 0.0),
     )
-    try:
-        tts = create_tts_engine(voice=config.tts_voice)
-        pipeline = VoicePipeline(
-            asr=asr,
-            llm=llm,
-            tts=tts,
-            assistant_runtime=assistant_runtime,
-            repair_catalog=default_repair_catalog(),
-            first_clause_enabled=config.first_clause_enabled,
-            first_clause_min_chars=config.first_clause_min_chars,
-            first_clause_min_words=config.first_clause_min_words,
-            first_clause_max_scan_chars=config.first_clause_max_scan_chars,
-            pcm_crossfade_ms=(config.pcm_crossfade_ms if config.pcm_crossfade_enabled else 0.0),
-        )
-    except Exception:
-        asr.close()
-        raise
     return VoiceRuntimeBundle(
         config=config,
         detector=detector,

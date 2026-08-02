@@ -16,6 +16,7 @@ from soca.asr.calibration import (
 from soca.asr.qwen_artifacts import QWEN_ARTIFACT_REGISTRY
 from soca.asr.qwen_readiness import QwenReadinessState, inspect_qwen_readiness
 from soca.asr.registry import ASR_MODEL_REGISTRY
+from soca.asr.robust_asr import load_confidence_guard_calibration
 from soca.asr.selection import ASREngine, ASRSelection
 from soca.core.profiles import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
@@ -258,6 +259,11 @@ def asr_readiness(selection: ASRSelection) -> ComponentReadiness:
         return ComponentReadiness(
             "missing",
             f"missing ASR artifact(s): {', '.join(missing)}; {config.download_command}",
+        )
+    if load_confidence_guard_calibration(selection.model_key) is None:
+        return ComponentReadiness(
+            "not_ready",
+            f"confidence calibration is missing for {selection.model_key}",
         )
     return ComponentReadiness("ok", "ONNX encoder/decoder found")
 

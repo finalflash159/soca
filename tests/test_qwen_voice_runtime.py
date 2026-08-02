@@ -190,6 +190,31 @@ def test_missing_qwen_calibration_blocks_before_service_start(
     assert started is False
 
 
+def test_missing_phowhisper_calibration_blocks_before_model_load(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    started = False
+
+    def forbidden_backend(_model_key: str):
+        nonlocal started
+        started = True
+        raise AssertionError("ASR model must not load")
+
+    monkeypatch.setattr(voice_runtime, "load_confidence_guard_calibration", lambda _key: None)
+    monkeypatch.setattr(voice_runtime, "PhoWhisperVoiceBackend", forbidden_backend)
+    config = resolve_voice_runtime_config(profile_key="baseline", vault=tmp_path)
+
+    with pytest.raises(ASRCalibrationNotReady, match="phowhisper_small"):
+        _build_voice_asr(
+            config,
+            detector=FakeDetector(),
+            knowledge_catalog=None,
+            session_memory=None,
+        )
+    assert started is False
+
+
 def test_calibration_lookup_requires_the_full_canonical_identity(tmp_path) -> None:
     identity = qwen_calibration_identity(QWEN_RELEASE_ARTIFACT)
     path = tmp_path / "calibration.json"
@@ -240,6 +265,35 @@ def test_calibration_lookup_rejects_unsafe_thresholds(
                         "identity": identity.payload,
                         "created_at_utc": "2026-08-02T00:00:00Z",
                         "recommended_thresholds": thresholds,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ASRCalibrationError, match="malformed"):
+        load_strict_confidence_calibration(identity, path)
+
+
+@pytest.mark.parametrize("created_at_utc", (None, 123, "2026-08-02T07:00:00+07:00"))
+def test_calibration_lookup_rejects_invalid_creation_timestamp(
+    tmp_path,
+    created_at_utc: object,
+) -> None:
+    identity = qwen_calibration_identity(QWEN_RELEASE_ARTIFACT)
+    path = tmp_path / "calibration.json"
+    path.write_text(
+        json.dumps(
+            {
+                "calibrations": {
+                    identity.digest: {
+                        "identity": identity.payload,
+                        "created_at_utc": created_at_utc,
+                        "recommended_thresholds": {
+                            "min_avg_logprob": -0.4,
+                            "max_compression_ratio": 2.4,
+                        },
                     }
                 }
             }

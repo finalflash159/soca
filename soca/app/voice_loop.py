@@ -25,6 +25,7 @@ from soca.core.usage import TurnUsage
 from soca.core.voice_runtime import (
     ResolvedVoiceRuntimeConfig,
     VoiceRuntimeBundle,
+    VoiceRuntimeWarmupError,
     build_voice_runtime,
     warm_up_voice_runtime,
 )
@@ -72,10 +73,7 @@ def run_voice_loop(
                 print_warmup_result(console, result)
             failures = [result for result in warmup_results if not result.ok]
             if failures:
-                details = "; ".join(
-                    f"{result.component}: {result.detail}" for result in failures
-                )
-                raise RuntimeError(f"Voice runtime warmup failed: {details}")
+                raise VoiceRuntimeWarmupError(tuple(failures))
 
         endpoint_config = EndpointConfig(
             endpoint_silence_ms=config.endpoint_silence_ms,
