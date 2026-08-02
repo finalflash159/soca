@@ -10,12 +10,14 @@ from pathlib import Path
 from typing import ClassVar, Protocol
 
 from .context import ASRContextLimits
+from .hallucination_heuristics import max_contiguous_context_tokens
 from .qwen_artifacts import QwenASRArtifactSpec
 
 QWEN_CONFIDENCE_CALIBRATION_PATH = (
     Path(__file__).resolve().parents[2] / "data" / "asr" / "qwen_confidence_calibration.json"
 )
 QWEN_ASR_MAX_NEW_TOKENS = 128
+QWEN_ASR_PARTIAL_MAX_NEW_TOKENS = 64
 
 
 def _digest(payload: Mapping[str, object]) -> str:
@@ -25,10 +27,12 @@ def _digest(payload: Mapping[str, object]) -> str:
 
 CONTEXT_ECHO_POLICY_DIGEST = _digest(
     {
-        "minimum_unique_tokens": 4,
-        "mode": "token_set_overlap",
-        "normalization": "lower_word_regex_v1",
-        "threshold": 0.6,
+        "algorithm": "longest_common_contiguous_token_span_v1",
+        "implementation": (
+            f"{max_contiguous_context_tokens.__module__}."
+            f"{max_contiguous_context_tokens.__qualname__}"
+        ),
+        "normalization": "unicode_casefold_word_regex_v1",
     }
 )
 DEFAULT_VAD_POLICY_DIGEST = _digest(
@@ -125,6 +129,7 @@ class ASRConfidenceCalibration:
     identity: ASRCalibrationIdentity
     min_avg_logprob: float
     max_compression_ratio: float
+    context_echo_min_contiguous_tokens: int
     source_path: Path
     created_at_utc: str
 
@@ -161,7 +166,10 @@ def qwen_calibration_identity(
     if spec.runtime_lock_digest is None:
         raise ASRCalibrationError(f"Qwen artifact {spec.key} has no runtime lock identity")
     limits = context_limits or ASRContextLimits()
-    if spec.context_policy_digest is not None and spec.context_policy_digest != limits.policy_digest:
+    if (
+        spec.context_policy_digest is not None
+        and spec.context_policy_digest != limits.policy_digest
+    ):
         raise ASRCalibrationError(
             f"Qwen artifact {spec.key} context policy does not match the runtime policy"
         )
@@ -207,11 +215,18 @@ def load_strict_confidence_calibration(
     try:
         min_avg_logprob = float(thresholds["min_avg_logprob"])
         max_compression_ratio = float(thresholds["max_compression_ratio"])
+        context_echo_min_contiguous_tokens = thresholds["context_echo_min_contiguous_tokens"]
         created_at_utc = payload["created_at_utc"]
         if not math.isfinite(min_avg_logprob):
             raise ValueError("min_avg_logprob must be finite")
         if not math.isfinite(max_compression_ratio) or max_compression_ratio <= 0:
             raise ValueError("max_compression_ratio must be finite and positive")
+        if (
+            isinstance(context_echo_min_contiguous_tokens, bool)
+            or not isinstance(context_echo_min_contiguous_tokens, int)
+            or context_echo_min_contiguous_tokens < 1
+        ):
+            raise ValueError("context echo span threshold must be a positive integer")
         if not isinstance(created_at_utc, str) or not created_at_utc.strip():
             raise ValueError("created_at_utc must be a non-empty string")
         parsed_created_at = datetime.fromisoformat(created_at_utc.replace("Z", "+00:00"))
@@ -221,6 +236,7 @@ def load_strict_confidence_calibration(
             identity=identity,
             min_avg_logprob=min_avg_logprob,
             max_compression_ratio=max_compression_ratio,
+            context_echo_min_contiguous_tokens=context_echo_min_contiguous_tokens,
             source_path=path,
             created_at_utc=created_at_utc,
         )

@@ -171,6 +171,8 @@ class FakeQwenService:
                         "avg_logprob": -0.05,
                         "avg_logprob_reliable": True,
                         "alternatives": [],
+                        "generated_token_count": 17,
+                        "hit_max_new_tokens": False,
                     },
                 )
             except BrokenPipeError:
@@ -246,6 +248,8 @@ def test_client_handshake_transcribe_metadata_and_idempotent_close(
     assert client.identity.state is QwenServiceState.READY
     assert result.text == "Bản ghi thử nghiệm."
     assert result.avg_logprob == -0.05
+    assert result.generated_token_count == 17
+    assert result.hit_max_new_tokens is False
     np.testing.assert_array_equal(services[0].received_audio[0], audio)
     assert client.runtime_metadata(256) == {"max_new_tokens": 256}
 
@@ -545,9 +549,7 @@ def test_real_qwen_service_transcribes_recorded_voice_and_cleans_up(
     client = QwenASRServiceClient(
         launch=QwenServiceLaunch.for_active(
             artifact,
-            QwenArtifactStore(artifact.model_path().parents[1]).verify(
-                artifact, deep=False
-            ),
+            QwenArtifactStore(artifact.model_path().parents[1]).verify(artifact, deep=False),
         ),
         startup_timeout_s=120.0,
     )

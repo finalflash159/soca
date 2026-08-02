@@ -57,6 +57,8 @@ class FakeBackend:
                 avg_logprob=-0.1,
                 avg_logprob_reliable=True,
                 alternatives=(),
+                generated_token_count=12,
+                hit_max_new_tokens=False,
             )
         finally:
             with self._state_lock:

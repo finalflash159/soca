@@ -307,6 +307,8 @@ class QwenASRServiceClient:
                 avg_logprob=float(response["avg_logprob"]),
                 avg_logprob_reliable=self._required_bool(response, "avg_logprob_reliable"),
                 alternatives=tuple(response["alternatives"]),
+                generated_token_count=self._optional_int(response, "generated_token_count"),
+                hit_max_new_tokens=self._optional_bool(response, "hit_max_new_tokens"),
             )
         except (KeyError, TypeError, ValueError) as exc:
             error = QwenServiceProtocolError(f"Malformed transcribe response: {exc}")
@@ -322,6 +324,24 @@ class QwenASRServiceClient:
             self._record_failure(error)
             raise error
         return metadata
+
+    @staticmethod
+    def _optional_int(response: Mapping[str, Any], name: str) -> int | None:
+        value = response.get(name)
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"{name} must be a non-negative integer or null")
+        return value
+
+    @staticmethod
+    def _optional_bool(response: Mapping[str, Any], name: str) -> bool | None:
+        value = response.get(name)
+        if value is None:
+            return None
+        if not isinstance(value, bool):
+            raise ValueError(f"{name} must be a boolean or null")
+        return value
 
     def close(self) -> None:
         with self._state_lock:

@@ -21,6 +21,7 @@ DUMMY_AUDIO = np.zeros(16000, dtype=np.float32)
 
 class MockASR:
     supports_avg_logprob = True
+
     def __init__(
         self,
         text: str,
@@ -28,12 +29,14 @@ class MockASR:
         model_key: str = "phowhisper_tiny",
         alternatives: tuple[str, ...] = (),
         context: str = "",
+        hit_max_new_tokens: bool | None = None,
     ):
         self.text = text
         self.avg_logprob = avg_logprob
         self.model_key = model_key
         self.alternatives = alternatives
         self.context = context
+        self.hit_max_new_tokens = hit_max_new_tokens
         self.calls = 0
 
     def transcribe(
@@ -52,6 +55,7 @@ class MockASR:
             rtf=0.0,
             avg_logprob=self.avg_logprob,
             alternatives=self.alternatives,
+            hit_max_new_tokens=self.hit_max_new_tokens,
         )
 
     def close(self) -> None:
@@ -62,9 +66,7 @@ class MockASR:
 
 
 def context_provider(text: str):
-    snapshot = ASRContextBuilder().build(
-        (ASRContextSourceRecord(text, "test"),) if text else ()
-    )
+    snapshot = ASRContextBuilder().build((ASRContextSourceRecord(text, "test"),) if text else ())
     return lambda: snapshot
 
 
@@ -114,6 +116,23 @@ def test_low_confidence_rejected_before_text_filters():
     assert result.text_after_deloop == "thôi."
 
 
+def test_decode_limit_output_is_rejected_before_downstream_use():
+    pipeline = RobustASR(
+        asr=MockASR(
+            "đây là một transcript đã bị cắt",
+            avg_logprob=0.0,
+            hit_max_new_tokens=True,
+        ),
+        vad=MockVAD(),
+    )
+
+    result = pipeline.transcribe(DUMMY_AUDIO)
+
+    assert result.text == ""
+    assert result.raw_text == "đây là một transcript đã bị cắt"
+    assert result.rejection_reason == "decode_limit_reached"
+
+
 def test_high_compression_rejected():
     repeated = "xin chào " * 80
     pipeline = RobustASR(
@@ -135,8 +154,7 @@ def test_context_echo_rejected():
     (clean grammar, no repetition, normal compression), so it needs its own
     dedicated rejection reason."""
     context = (
-        "Cuộc hội thoại về lập trình. GitHub, PyTorch, TensorFlow, "
-        "PostgreSQL, Docker, Kubernetes."
+        "Cuộc hội thoại về lập trình. GitHub, PyTorch, TensorFlow, PostgreSQL, Docker, Kubernetes."
     )
     pipeline = RobustASR(
         asr=MockASR(context, avg_logprob=0.0, context=context),
@@ -152,8 +170,7 @@ def test_context_echo_rejected():
 
 def test_short_sentence_sharing_context_vocabulary_is_not_rejected():
     context = (
-        "Cuộc hội thoại về lập trình. GitHub, PyTorch, TensorFlow, "
-        "PostgreSQL, Docker, Kubernetes."
+        "Cuộc hội thoại về lập trình. GitHub, PyTorch, TensorFlow, PostgreSQL, Docker, Kubernetes."
     )
     phrase = "mở repo trên github"
     pipeline = RobustASR(

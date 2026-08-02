@@ -186,9 +186,7 @@ def _handle_connection(
 
         if op == "runtime_metadata":
             try:
-                max_new_tokens = _validate_max_new_tokens(
-                    header.get("max_new_tokens", 128)
-                )
+                max_new_tokens = _validate_max_new_tokens(header.get("max_new_tokens", 128))
                 metadata = backend.runtime_metadata(max_new_tokens=max_new_tokens)
                 send_frame(conn, {"ok": True, "metadata": metadata})
             except QwenIPCProtocolError as exc:
@@ -263,6 +261,8 @@ def _handle_connection(
                     "avg_logprob": result.avg_logprob,
                     "avg_logprob_reliable": result.avg_logprob_reliable,
                     "alternatives": list(result.alternatives),
+                    "generated_token_count": result.generated_token_count,
+                    "hit_max_new_tokens": result.hit_max_new_tokens,
                 },
             )
             lifecycle.finish_inference()
@@ -290,6 +290,7 @@ def _handle_connection(
 
 def main() -> None:
     started_at = time.monotonic()
+    os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
     parser = argparse.ArgumentParser()
     parser.add_argument("--socket-path", required=True)
     parser.add_argument("--artifact-key", required=True)
@@ -310,6 +311,7 @@ def main() -> None:
         parser.error("--connection-timeout must be positive")
 
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
+    logging.getLogger("transformers").setLevel(logging.ERROR)
     spec = get_qwen_artifact(args.artifact_key)
     launch = QwenServiceLaunch(
         spec=spec,

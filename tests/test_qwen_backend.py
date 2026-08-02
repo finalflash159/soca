@@ -201,6 +201,42 @@ def test_backend_uses_real_scores_when_generate_supports_output_scores(monkeypat
     expected_logprob = float(torch.log_softmax(_one_confident_step_scores()[0][0], dim=-1)[5])
     assert result.avg_logprob == pytest.approx(expected_logprob, abs=1e-6)
     assert result.avg_logprob_reliable is True
+    assert result.generated_token_count == 1
+    assert result.hit_max_new_tokens is False
+
+
+def test_backend_reports_when_generation_reaches_the_decode_limit(monkeypatch, model_path):
+    scores = tuple(torch.zeros((1, 10)) for _ in range(3))
+    engine = _FakeEngine(
+        eos_token_id=[999],
+        scores_factory=lambda: scores,
+        decoded_text="một câu bị cắt",
+        generated_token_ids=[5, 6, 7],
+    )
+    _install_fake_qwen_asr(monkeypatch, engine)
+
+    backend = QwenASRBackend(model_path)
+    result = backend.transcribe(np.zeros(1600, dtype=np.float32), max_new_tokens=3)
+
+    assert result.generated_token_count == 3
+    assert result.hit_max_new_tokens is True
+
+
+def test_backend_reports_eos_at_limit_as_complete(monkeypatch, model_path):
+    scores = tuple(torch.zeros((1, 1000)) for _ in range(3))
+    engine = _FakeEngine(
+        eos_token_id=[999],
+        scores_factory=lambda: scores,
+        decoded_text="một câu hoàn chỉnh",
+        generated_token_ids=[5, 6, 999],
+    )
+    _install_fake_qwen_asr(monkeypatch, engine)
+
+    backend = QwenASRBackend(model_path)
+    result = backend.transcribe(np.zeros(1600, dtype=np.float32), max_new_tokens=3)
+
+    assert result.generated_token_count == 3
+    assert result.hit_max_new_tokens is False
 
 
 def test_backend_uses_instance_context_by_default(monkeypatch, model_path):

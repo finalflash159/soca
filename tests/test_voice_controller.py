@@ -128,6 +128,25 @@ def make_bundle(
     )
 
 
+def test_runtime_bundle_closes_llm_and_tts_handles() -> None:
+    class CloseSpy:
+        def __init__(self) -> None:
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    llm = CloseSpy()
+    tts = CloseSpy()
+    bundle = make_bundle(make_config(), FakePipeline([]), llm=llm, tts=tts)
+
+    bundle.close()
+    bundle.close()
+
+    assert llm.close_calls == 1
+    assert tts.close_calls == 1
+
+
 def _drain_voice_events(queue: Queue) -> list:
     events = []
     while True:

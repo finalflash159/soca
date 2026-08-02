@@ -55,7 +55,9 @@ class FakeContextAwareInnerASR:
         self.context = context
         self.calls: list[dict] = []
 
-    def transcribe(self, audio: np.ndarray, max_new_tokens: int = 128, *, context: str | None = None):
+    def transcribe(
+        self, audio: np.ndarray, max_new_tokens: int = 128, *, context: str | None = None
+    ):
         self.calls.append(
             {"audio_len": len(audio), "max_new_tokens": max_new_tokens, "context": context}
         )
@@ -69,11 +71,7 @@ class FakeRobustASRWithContext:
         self.asr = inner
 
     def snapshot_context(self):
-        records = (
-            (ASRContextSourceRecord(self.asr.context, "test"),)
-            if self.asr.context
-            else ()
-        )
+        records = (ASRContextSourceRecord(self.asr.context, "test"),) if self.asr.context else ()
         return ASRContextBuilder().build(records)
 
 
@@ -161,7 +159,7 @@ def test_warm_up_voice_runtime_triggers_asr_llm_and_tts_first_call_paths() -> No
     assert [result.component for result in results] == ["asr", "llm", "tts"]
     assert all(result.ok for result in results)
     # Warm call (max_new_tokens=1) + a 3s representative probe that calibrates the
-    # partial-caption cadence (default max_new_tokens=128).
+    # partial-caption cadence uses the runtime's selected partial budget.
     assert asr.asr.calls == [(8000, 1), (48000, 128)]
     assert bundle.partial_enabled is True
     assert bundle.partial_interval_ms == 800  # fake ASR ~instant -> clamps to floor

@@ -13,6 +13,7 @@ import numpy as np
 
 from soca.asr import SpeechDetector
 from soca.asr.calibration import (
+    QWEN_ASR_PARTIAL_MAX_NEW_TOKENS,
     ASRCalibrationNotReady,
     compute_vad_policy_digest,
     load_strict_confidence_calibration,
@@ -21,9 +22,9 @@ from soca.asr.calibration import (
 from soca.asr.context import (
     ASRContextBuilder,
     ASRContextLimits,
-    ASRContextSourceRecord,
     DynamicASRContextProvider,
 )
+from soca.asr.context_sources import runtime_context_records
 from soca.asr.protocols import VoiceASRBackend
 from soca.asr.qwen_artifacts import default_asr_model_root, get_qwen_artifact
 from soca.asr.qwen_service_client import QwenASRServiceClient
@@ -174,7 +175,24 @@ class VoiceRuntimeBundle:
             if self._closed:
                 return
             self._closed = True
-        self.asr.close()
+
+        failures: list[tuple[str, Exception]] = []
+        for name, component in (
+            ("ASR", self.asr),
+            ("LLM", self.llm),
+            ("TTS", self.tts),
+        ):
+            close = getattr(component, "close", None)
+            if not callable(close):
+                continue
+            try:
+                close()
+            except Exception as exc:  # noqa: BLE001 - cleanup boundary
+                failures.append((name, exc))
+
+        if failures:
+            details = "; ".join(f"{name}: {error}" for name, error in failures)
+            raise RuntimeError(f"Voice runtime cleanup failed: {details}") from failures[0][1]
 
 
 @dataclass(frozen=True)
@@ -190,9 +208,7 @@ class VoiceRuntimeWarmupError(RuntimeError):
         if not failures or any(result.ok for result in failures):
             raise ValueError("warmup failures must contain only failed results")
         self.failures = failures
-        details = "; ".join(
-            f"{result.component}: {result.detail}" for result in failures
-        )
+        details = "; ".join(f"{result.component}: {result.detail}" for result in failures)
         super().__init__(f"Voice runtime warmup failed: {details}")
 
 
@@ -334,49 +350,6 @@ def resolve_voice_runtime_config(
     )
 
 
-def _asr_context_records(
-    knowledge_catalog: Any | None,
-    session_memory: SessionMemory | None,
-) -> tuple[ASRContextSourceRecord, ...]:
-    records: list[ASRContextSourceRecord] = []
-    if knowledge_catalog is not None:
-        snapshot = knowledge_catalog.snapshot()
-        for document in snapshot.documents:
-            records.append(
-                ASRContextSourceRecord(
-                    value=document.title,
-                    provenance=f"vault:{snapshot.revision}:{document.path}:title",
-                    priority=30,
-                )
-            )
-            records.extend(
-                ASRContextSourceRecord(
-                    value=tag,
-                    provenance=f"vault:{snapshot.revision}:{document.path}:tag",
-                    priority=20,
-                )
-                for tag in document.tags
-            )
-            records.extend(
-                ASRContextSourceRecord(
-                    value=heading.text,
-                    provenance=f"vault:{snapshot.revision}:{document.path}:heading:{heading.line}",
-                    priority=10,
-                )
-                for heading in document.headings
-            )
-    if session_memory is not None:
-        for index, turn in enumerate(session_memory.turns):
-            records.append(
-                ASRContextSourceRecord(
-                    value=turn.text,
-                    provenance=f"session:{session_memory.working.thread_id}:{index}:{turn.role}",
-                    priority=40,
-                )
-            )
-    return tuple(records)
-
-
 def _build_voice_asr(
     config: ResolvedVoiceRuntimeConfig,
     *,
@@ -403,7 +376,7 @@ def _build_voice_asr(
     spec = get_qwen_artifact(selection.model_key, expected_role=selection.artifact_role)
     limits = ASRContextLimits()
     provider = DynamicASRContextProvider(
-        source_loader=lambda: _asr_context_records(knowledge_catalog, session_memory),
+        source_loader=lambda: runtime_context_records(knowledge_catalog, session_memory),
         builder=ASRContextBuilder(limits),
     )
     calibration_identity = qwen_calibration_identity(
@@ -419,6 +392,8 @@ def _build_voice_asr(
         vad=detector,
         min_avg_logprob=calibration.min_avg_logprob,
         max_compression_ratio=calibration.max_compression_ratio,
+        context_echo_min_contiguous_tokens=calibration.context_echo_min_contiguous_tokens,
+        partial_max_new_tokens=QWEN_ASR_PARTIAL_MAX_NEW_TOKENS,
         confidence_profile_model_key=spec.key,
         context_provider=provider.snapshot,
     )
@@ -758,7 +733,15 @@ def _warm_up_asr(bundle: VoiceRuntimeBundle, *, seconds: float) -> VoiceRuntimeW
         #     since a different context shifts decode cost.
         probe = (np.random.randn(sample_rate * 3) * 0.01).astype(np.float32)
         c0 = time.perf_counter()
-        inner.transcribe(probe, context="")
+        partial_max_new_tokens = getattr(bundle.asr, "partial_max_new_tokens", None)
+        if partial_max_new_tokens is None:
+            inner.transcribe(probe, context="")
+        else:
+            inner.transcribe(
+                probe,
+                max_new_tokens=partial_max_new_tokens,
+                context="",
+            )
         per_call_ms = (time.perf_counter() - c0) * 1000
         interval, enabled = partial_interval_from_cost(per_call_ms, os.cpu_count())
         bundle.partial_interval_ms = interval

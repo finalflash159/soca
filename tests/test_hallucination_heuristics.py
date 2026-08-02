@@ -7,6 +7,7 @@ from soca.asr.hallucination_heuristics import (
     compression_ratio,
     is_filler_only,
     looks_like_context_echo,
+    max_contiguous_context_tokens,
     n_gram_repetition,
     repetition_ratio,
 )
@@ -126,8 +127,23 @@ class TestLooksLikeContextEcho:
         assert looks_like_context_echo(self.CONTEXT, self.CONTEXT) is True
 
     def test_case_changed_partial_echo_is_flagged(self):
-        echoed = "cuộc hội thoại về lập trình github pytorch tensorflow postgresql docker kubernetes"
+        echoed = (
+            "cuộc hội thoại về lập trình github pytorch tensorflow postgresql docker kubernetes"
+        )
         assert looks_like_context_echo(echoed, self.CONTEXT) is True
+
+    def test_non_contiguous_shared_vocabulary_is_not_flagged(self):
+        text = "github mở giúp tôi rồi kiểm tra docker"
+        assert looks_like_context_echo(text, self.CONTEXT) is False
+
+    def test_reports_longest_contiguous_span(self):
+        assert (
+            max_contiguous_context_tokens(
+                "giữ nguyên cách viết thuật ngữ",
+                self.CONTEXT,
+            )
+            == 4
+        )
 
     def test_normal_transcript_is_not_flagged(self):
         text = "mở cái repo trên github ra xem giúp tôi"

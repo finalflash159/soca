@@ -52,11 +52,7 @@ def _payload_model_key(payload: dict[str, Any]) -> str | None:
     # Backward compatibility for older single-model payloads that only stored
     # runtime metadata. This keeps the loader conservative: it only infers a
     # model when the known model key appears in the model_dir path.
-    model_dir = (
-        payload.get("runtime_identity", {})
-        .get("asr", {})
-        .get("model_dir", "")
-    )
+    model_dir = payload.get("runtime_identity", {}).get("asr", {}).get("model_dir", "")
     model_dir = str(model_dir)
     for model_key in (
         "phowhisper_tiny",
@@ -166,6 +162,8 @@ class RobustASR:
         # thresholds whose model identity is tracked outside this class.
         min_avg_logprob: float = DEFAULT_MIN_AVG_LOGPROB,
         max_compression_ratio: float = DEFAULT_MAX_COMPRESSION_RATIO,
+        context_echo_min_contiguous_tokens: int = 4,
+        partial_max_new_tokens: int | None = None,
         confidence_profile_model_key: str | None = DEFAULT_ASR_MODEL_KEY,
         confidence_guard_skip_reason: str | None = None,
         context_provider: Callable[[], ASRContextSnapshot] | None = None,
@@ -180,6 +178,20 @@ class RobustASR:
         self.asr_model_key = str(runtime_model_key or DEFAULT_ASR_MODEL_KEY)
         self.min_avg_logprob = min_avg_logprob
         self.max_compression_ratio = max_compression_ratio
+        if (
+            isinstance(context_echo_min_contiguous_tokens, bool)
+            or not isinstance(context_echo_min_contiguous_tokens, int)
+            or context_echo_min_contiguous_tokens < 1
+        ):
+            raise ValueError("context echo span threshold must be a positive integer")
+        self.context_echo_min_contiguous_tokens = context_echo_min_contiguous_tokens
+        if partial_max_new_tokens is not None and (
+            isinstance(partial_max_new_tokens, bool)
+            or not isinstance(partial_max_new_tokens, int)
+            or partial_max_new_tokens < 1
+        ):
+            raise ValueError("partial max_new_tokens must be a positive integer or None")
+        self.partial_max_new_tokens = partial_max_new_tokens
         self.confidence_profile_model_key = confidence_profile_model_key
 
         # Backend capability. Backends should declare `supports_avg_logprob`
@@ -221,9 +233,7 @@ class RobustASR:
         self.use_compression_guard = True
         self.compression_guard_status = "enabled"
 
-    def _resolve_confidence_guard_status(
-        self, profile_model_key: str | None
-    ) -> tuple[bool, str]:
+    def _resolve_confidence_guard_status(self, profile_model_key: str | None) -> tuple[bool, str]:
         """Enable confidence thresholds only when their model identity matches."""
         if profile_model_key is None:
             return True, "enabled:unversioned_profile"
@@ -258,7 +268,9 @@ class RobustASR:
             )
 
         # Stage 2: ASR on speech-only audio (saves compute when VAD trimmed silence)
-        context = self._context_provider() if self._context_provider is not None else self.last_context
+        context = (
+            self._context_provider() if self._context_provider is not None else self.last_context
+        )
         self.last_context = context
         asr_result = self.asr.transcribe(vad_result.speech_audio, context=context.text)
         raw_text = asr_result.text
@@ -269,6 +281,26 @@ class RobustASR:
         # Stage 2b: model-confidence guard on raw ASR output.
         # This must run before text-cleaning stages so diagnostics reflect
         # exactly what the model produced.
+        if asr_result.hit_max_new_tokens is True:
+            return RobustASRResult(
+                text="",
+                raw_text=raw_text,
+                text_after_deloop=raw_text,
+                has_speech=True,
+                was_looping=False,
+                rejection_reason="decode_limit_reached",
+                vad=vad_result,
+                asr=asr_result,
+                total_latency_ms=(time.perf_counter() - t0) * 1000,
+                avg_logprob=avg_logprob,
+                compression_ratio=raw_compression_ratio,
+                confidence_guard_status=self.confidence_guard_status,
+                compression_guard_status=self.compression_guard_status,
+                alternatives=alternatives,
+                context_digest=context.digest,
+                context_provenance=context.provenances,
+            )
+
         if not raw_text.strip():
             return RobustASRResult(
                 text="",
@@ -334,7 +366,11 @@ class RobustASR:
         # audio. That output passes every check above (clean text,
         # normal compression), so it needs its own dedicated check, run
         # before de-loop/heuristics touch the text.
-        if context.text and looks_like_context_echo(raw_text, context.text):
+        if context.text and looks_like_context_echo(
+            raw_text,
+            context.text,
+            minimum_contiguous_tokens=self.context_echo_min_contiguous_tokens,
+        ):
             return RobustASRResult(
                 text="",
                 raw_text=raw_text,
@@ -391,10 +427,18 @@ class RobustASR:
         )
 
     def transcribe_partial(self, audio: np.ndarray) -> ASRResult:
-        return self.asr.transcribe(audio, context="")
+        if self.partial_max_new_tokens is None:
+            return self.asr.transcribe(audio, context="")
+        return self.asr.transcribe(
+            audio,
+            max_new_tokens=self.partial_max_new_tokens,
+            context="",
+        )
 
     def snapshot_context(self) -> ASRContextSnapshot:
-        context = self._context_provider() if self._context_provider is not None else self.last_context
+        context = (
+            self._context_provider() if self._context_provider is not None else self.last_context
+        )
         self.last_context = context
         return context
 
