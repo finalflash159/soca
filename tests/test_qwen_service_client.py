@@ -200,6 +200,47 @@ def test_client_handshake_transcribe_metadata_and_idempotent_close(
     assert not client.ready_path.exists()
 
 
+def test_worker_environment_is_offline_and_does_not_inherit_tokens(
+    monkeypatch, tmp_path
+) -> None:
+    executable = tmp_path / "python"
+    executable.touch()
+    process = MagicMock()
+    process.poll.return_value = None
+    process.wait.return_value = 0
+    services: list[FakeQwenService] = []
+    captured_environment: dict[str, str] = {}
+    socket_dir = Path(tempfile.mkdtemp(prefix="soca-qwen-test-", dir="/tmp"))
+    monkeypatch.setenv("HF_TOKEN", "must-not-reach-worker")
+    monkeypatch.setenv("HUGGING_FACE_HUB_TOKEN", "also-private")
+
+    def popen(args, **kwargs):
+        captured_environment.update(kwargs["env"])
+        socket_path = Path(args[args.index("--socket-path") + 1])
+        services.append(FakeQwenService(socket_path))
+        return process
+
+    monkeypatch.setattr("soca.asr.qwen_service_client.subprocess.Popen", popen)
+    client = QwenASRServiceClient(
+        socket_dir=socket_dir,
+        python_executable=executable,
+        process_environment={
+            "HF_HUB_OFFLINE": "1",
+            "TRANSFORMERS_OFFLINE": "1",
+        },
+    )
+    client.close()
+
+    assert captured_environment["HF_HUB_OFFLINE"] == "1"
+    assert captured_environment["TRANSFORMERS_OFFLINE"] == "1"
+    assert "PATH" in captured_environment
+    assert "HF_TOKEN" not in captured_environment
+    assert "HUGGING_FACE_HUB_TOKEN" not in captured_environment
+    for service in services:
+        service.close()
+    shutil.rmtree(socket_dir, ignore_errors=True)
+
+
 def test_transport_drop_is_not_reported_as_transcription_error(fake_subprocess) -> None:
     build_client, _, _ = fake_subprocess
     client = build_client()

@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "run_type": "real_recorded_audio_artifact_provision",
+  "recorded_at": "2026-08-02",
+  "baseline_commit": "debb1c54cf55eb528665ba78a6e06e553828d5a9",
+  "host": {
+    "architecture": "arm64",
+    "cpu": "Apple M4 Pro",
+    "memory_bytes": 51539607552,
+    "os": "macOS 15.7.4 (24G517)"
+  },
+  "runtime": {
+    "python": "3.11.14",
+    "provisioner_uv": "0.11.16",
+    "runtime_lock_sha256": "bbf96f7b16c241afee13734ae8bfa2525420675f6db536934d9a746b94ec7f9f"
+  },
+  "health_audio": {
+    "kind": "real_recorded_voice",
+    "sample_rate": 16000,
+    "samples": 66435,
+    "sha256": "367847d64e0c1336e91e6c102ac8f2251a112eb6161d852151fa47a40677ff04"
+  },
+  "artifacts": [
+    {
+      "key": "qwen3_asr_0_6b",
+      "role": "release",
+      "source_kind": "explicit_upstream_import",
+      "repo_id": "Qwen/Qwen3-ASR-0.6B",
+      "revision": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0",
+      "artifact_digest": "21d13688aefbb05b7cc2b9efd48701753f36c209d0a7368334109572a32ab639",
+      "logical_bytes": 1880619678,
+      "health_latency_ms": 410.2179590117885,
+      "health_elapsed_ms": 4679.023250006139,
+      "health_rtf": 0.09879562495956372,
+      "health_avg_logprob": -0.0731407446655794,
+      "transcript_nonempty": true,
+      "deep_hash_verified": true,
+      "empty_hf_home_offline_verified": true
+    },
+    {
+      "key": "qwen3_asr_1_7b",
+      "role": "reference",
+      "source_kind": "explicit_upstream_import",
+      "repo_id": "Qwen/Qwen3-ASR-1.7B",
+      "revision": "7278e1e70fe206f11671096ffdd38061171dd6e5",
+      "artifact_digest": "ef7e0267457361962782405bf4554ca37de5951340f27cc424b7c88ea7601828",
+      "logical_bytes": 4703114308,
+      "health_latency_ms": 826.0662909888197,
+      "health_elapsed_ms": 5885.551875006058,
+      "health_rtf": 0.19894725153640574,
+      "health_avg_logprob": -0.13916646686345757,
+      "transcript_nonempty": true,
+      "deep_hash_verified": true,
+      "empty_hf_home_offline_verified": true
+    }
+  ],
+  "permissions": {
+    "store_directories": "0700; activated generations 0500",
+    "model_files": "0400",
+    "receipts": "0600"
+  },
+  "source_policy": {
+    "automatic_fallback": false,
+    "mirror_status": "blocked: mirror_not_pinned",
+    "mirror_owner": "@finalflash159"
+  },
+  "raw_logs": "benchmarks/raw/qwen_model_store/2026-08-02 (local, gitignored)"
+}
