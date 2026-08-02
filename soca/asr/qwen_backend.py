@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 
+from .qwen_artifacts import QwenArtifactPathError, validate_local_model_directory
 from .result import ASRResult
 
 SAMPLING_RATE = 16_000
@@ -70,8 +71,10 @@ class QwenASRBackend:
         max_new_tokens: int = 256,
         require_logprob: bool = True,
     ) -> None:
-        if not model_path.is_absolute() or model_path.is_symlink() or not model_path.is_dir():
-            raise ValueError("Qwen model_path must be an absolute local directory")
+        try:
+            model_path = validate_local_model_directory(model_path)
+        except QwenArtifactPathError as exc:
+            raise ValueError(str(exc)) from exc
         try:
             import torch
             from qwen_asr import Qwen3ASRModel

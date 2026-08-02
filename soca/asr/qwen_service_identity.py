@@ -6,7 +6,11 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .qwen_artifacts import QwenASRArtifactSpec
+from .qwen_artifacts import (
+    QwenArtifactPathError,
+    QwenASRArtifactSpec,
+    validate_local_model_directory,
+)
 
 if TYPE_CHECKING:
     from .qwen_store import ArtifactReceipt
@@ -68,13 +72,10 @@ class QwenServiceLaunch:
             raise QwenServiceIdentityError(
                 "Qwen service protocol does not satisfy the artifact minimum"
             )
-        path = self.model_path.expanduser()
-        if not path.is_absolute() or ".." in path.parts:
-            raise QwenServiceIdentityError("Qwen service model path must be absolute")
-        if path.is_symlink() or not path.is_dir():
-            raise QwenServiceIdentityError(
-                "Qwen service model path must be a local non-symlink directory"
-            )
+        try:
+            path = validate_local_model_directory(self.model_path.expanduser())
+        except QwenArtifactPathError as exc:
+            raise QwenServiceIdentityError(str(exc)) from exc
         object.__setattr__(self, "model_path", path)
 
 

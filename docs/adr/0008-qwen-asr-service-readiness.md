@@ -38,15 +38,15 @@ and owns this service.
 
 On the supported Apple M4 Pro host, `/status` reported the exact 0.6B release
 revision as provisioned, service stopped and artifact verified without loading a
-model. Contract coverage passed 83 focused non-model tests. The repository gate
-passed 1,499 tests with four expected skips; the complete UI passed 88 tests,
+model. Contract coverage passed 86 focused non-model tests. The repository gate
+passed 1,504 tests with four expected skips; the complete UI passed 88 tests,
 TypeScript typecheck and production build.
 
 Both persistent artifacts then ran through the real subprocess client from an
 empty `HF_HOME` with both offline flags enabled. Each completed strict active
 identity handshake, partial transcription without context, final transcription
 with the typed tech context, selected-token logprob output, graceful exit and
-socket/marker cleanup. The final combined warm-cache run passed in 13.13 seconds.
+socket/marker cleanup. The final combined warm-cache run passed in 13.01 seconds.
 
 The 1.7B reference recognized the clip's “log level”, “debug” and “info” terms.
 The 0.6B release recognized “debug” and “info” but substituted “lock level” for

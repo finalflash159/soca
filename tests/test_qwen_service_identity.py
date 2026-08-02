@@ -110,6 +110,18 @@ def test_launch_rejects_artifact_requiring_newer_protocol(tmp_path: Path) -> Non
         QwenServiceLaunch.for_provisioning(incompatible, model_path)
 
 
+def test_launch_rejects_model_path_with_symlink_ancestor(tmp_path: Path) -> None:
+    real_parent = tmp_path / "real"
+    (real_parent / "model").mkdir(parents=True)
+    linked_parent = tmp_path / "linked"
+    linked_parent.symlink_to(real_parent, target_is_directory=True)
+
+    with pytest.raises(QwenServiceIdentityError, match="contains a symlink"):
+        QwenServiceLaunch.for_provisioning(
+            QWEN_RELEASE_ARTIFACT, linked_parent / "model"
+        )
+
+
 def test_active_launch_requires_matching_receipt_and_absolute_local_path(
     tmp_path: Path,
 ) -> None:

@@ -30,11 +30,11 @@
   },
   "contract_gates": {
     "python_tests": {
-      "passed": 83,
+      "passed": 86,
       "deselected_real_model": 3
     },
     "full_python_tests": {
-      "passed": 1499,
+      "passed": 1504,
       "skipped": 4
     },
     "ui_tests": 88,
@@ -47,7 +47,7 @@
     "audio_kind": "real_recorded_voice",
     "audio_path": "data/asr_codeswitch/wav/cs_033.wav",
     "sample_rate": 16000,
-    "combined_elapsed_seconds": 13.13,
+    "combined_elapsed_seconds": 13.01,
     "requests_per_artifact": ["partial_empty_context", "final_typed_context"],
     "artifacts": [
       {
@@ -84,7 +84,8 @@
     "startup_timeout",
     "request_timeout",
     "backend_error",
-    "shutdown_terminate_kill_escalation"
+    "shutdown_terminate_kill_escalation",
+    "model_path_symlink_ancestor"
   ],
   "outcome": "pass_with_quality_observation",
   "decision": {

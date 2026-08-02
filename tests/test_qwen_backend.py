@@ -53,9 +53,7 @@ def test_mean_selected_logprob_excludes_skip_ids_from_the_average():
 
 
 def test_mean_selected_logprob_flags_unreliable_when_every_token_is_skipped():
-    """The dangerous edge case flagged in the plan: counted==0 would give
-    0.0, the MOST confident value possible, if not flagged. `reliable=False`
-    lets callers tell this apart from a real high-confidence score."""
+    """An empty average must not look maximally confident to callers."""
     step0 = torch.zeros((1, 3))
     result, reliable = _mean_selected_logprob((step0,), torch.tensor([7]), skip_ids=frozenset({7}))
     assert result == 0.0
@@ -222,8 +220,7 @@ def test_backend_uses_instance_context_by_default(monkeypatch, model_path):
 
 def test_backend_overrides_context_per_call_for_the_cheap_partial_path(monkeypatch, model_path):
     """context="" on a single call must not leak the instance's real context
-    onto that call — this is what keeps the partial-caption path (§5.6.3)
-    from ever showing the context-echo failure mode (§Q1b.3)."""
+    onto that call, which keeps the partial-caption path unprompted."""
     engine = _FakeEngine(
         eos_token_id=[999],
         scores_factory=_one_confident_step_scores,
@@ -323,6 +320,16 @@ def test_runtime_metadata_records_context_and_language(monkeypatch, model_path):
     assert meta["context"] == "tech"
     assert meta["language"] == "Vietnamese"
     assert meta["supports_avg_logprob"] is True
+
+
+def test_backend_rejects_model_path_with_symlink_ancestor(tmp_path):
+    real_parent = tmp_path / "real"
+    (real_parent / "model").mkdir(parents=True)
+    linked_parent = tmp_path / "linked"
+    linked_parent.symlink_to(real_parent, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="contains a symlink"):
+        QwenASRBackend(linked_parent / "model")
 
 
 @pytest.mark.real_model
