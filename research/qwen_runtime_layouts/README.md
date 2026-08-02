@@ -15,5 +15,9 @@ The runtime test must use an immutable local model snapshot and offline mode:
 ```bash
 PYTHONPATH="$PWD" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
   <candidate>/.venv/bin/python research/qwen_runtime_layouts/benchmark_runtime.py \
-  --layout <name> --model <absolute-snapshot> <audio>...
+  --run-type release_benchmark --layout <name> \
+  --artifact-key qwen3_asr_0_6b --artifact-revision <immutable-revision> \
+  --model <absolute-snapshot> --lock <candidate-lock> \
+  --source-revision <git-commit> --raw-log-reference <ignored-local-path> \
+  <audio>...
 ```

@@ -11,7 +11,7 @@ import sys
 class BlockMainRuntime:
     def find_spec(self, fullname, path=None, target=None):
         blocked = ("onnxruntime", "sounddevice", "silero_vad")
-        if fullname == blocked or fullname.startswith(tuple(name + "." for name in blocked)):
+        if fullname in blocked or fullname.startswith(tuple(name + "." for name in blocked)):
             raise RuntimeError(f"unexpected main-runtime import: {fullname}")
         return None
 

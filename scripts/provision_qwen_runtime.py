@@ -27,14 +27,25 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _run(command: list[str], *, environment: dict[str, str] | None = None) -> None:
-    completed = subprocess.run(
-        command,
-        cwd=REPO_ROOT,
-        env=environment,
-        check=False,
-        text=True,
-    )
+def _run(
+    command: list[str],
+    *,
+    timeout_s: float,
+    environment: dict[str, str] | None = None,
+) -> None:
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=REPO_ROOT,
+            env=environment,
+            check=False,
+            text=True,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise QwenRuntimeProvisionError(
+            f"Command timed out after {timeout_s:g}s: {' '.join(command)}"
+        ) from exc
     if completed.returncode != 0:
         raise QwenRuntimeProvisionError(
             f"Command failed with exit {completed.returncode}: {' '.join(command)}"
@@ -68,6 +79,7 @@ def provision(environment_path: Path = DEFAULT_ENVIRONMENT) -> dict[str, object]
     uv = ["uvx", f"uv@{UV_VERSION}"]
     _run(
         [*uv, "sync", "--project", str(RUNTIME_PROJECT), "--frozen", "--no-dev"],
+        timeout_s=1_800.0,
         environment=process_environment,
     )
 
@@ -77,6 +89,7 @@ def provision(environment_path: Path = DEFAULT_ENVIRONMENT) -> dict[str, object]
         build_environment["SOURCE_DATE_EPOCH"] = "315532800"
         _run(
             [*uv, "build", "--wheel", "--out-dir", str(wheel_directory), str(REPO_ROOT)],
+            timeout_s=600.0,
             environment=build_environment,
         )
         wheels = tuple(wheel_directory.glob("soca-*.whl"))
@@ -94,7 +107,8 @@ def provision(environment_path: Path = DEFAULT_ENVIRONMENT) -> dict[str, object]
                 "--no-deps",
                 "--reinstall",
                 str(wheel),
-            ]
+            ],
+            timeout_s=600.0,
         )
 
     verify_script = """
@@ -109,7 +123,7 @@ if direct_url and json.loads(direct_url).get("dir_info", {}).get("editable"):
 import qwen_asr
 print(metadata.version("qwen-asr"))
 """
-    _run([str(_python_path(environment_path)), "-c", verify_script])
+    _run([str(_python_path(environment_path)), "-c", verify_script], timeout_s=120.0)
     receipt: dict[str, object] = {
         "schema_version": 1,
         "python": "3.11.14",
