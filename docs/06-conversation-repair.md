@@ -135,7 +135,7 @@ policy primitive for a future controller integration, not as evidence that the
 trusted transcript:
 
 ```text
-asr → repair → sentence* → tts/audio* → done
+asr → repair → sentence* → (tts → playback_started → audio)* → done
 ```
 
 The `repair` event is a `StreamingEvent` and contains:
@@ -150,7 +150,9 @@ The `repair` event is a `StreamingEvent` and contains:
 | `handover_target` | `chat` only for the handover action, otherwise `null` |
 
 The event is emitted before sentence/TTS events so the UI can label the line as
-a follow-up rather than an error. This branch never calls the assistant LLM.
+a follow-up rather than an error. When speech is enabled, each TTS chunk emits
+`tts`, then `playback_started`, then its corresponding `audio` event. This
+branch never calls the assistant LLM.
 
 ### Passive-silence controller turn
 

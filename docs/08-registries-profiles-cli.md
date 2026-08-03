@@ -47,6 +47,29 @@ registries and enforces `valtec_multispeaker` plus a known Valtec voice. Retired
 names such as `quality` and `edge` fail fast; a profile never silently aliases
 another ASR or model after a startup failure.
 
+### Resolution lifecycle and precedence
+
+Runtime construction has four separate steps:
+
+1. The registry resolves a **name** to immutable metadata: artifact identity,
+   local path, context/capability information, license and runtime kind. It
+   does not load weights.
+2. The profile supplies the product defaults for ASR, LLM, TTS, retrieval and
+   generation. Profile validation rejects unknown or retired names before a
+   model process is started.
+3. An explicit CLI/UI override is applied to the named field only. For
+   example, `--llm-model` changes the LLM while leaving the selected ASR and
+   TTS profile intact; it does not create an implicit fallback profile.
+4. The builder checks local readiness and constructs the selected backend.
+   `configured`, `ready`, `loaded` and `failed` describe different stages and
+   are exposed to status/UI callers.
+
+The effective value is therefore `explicit override → selected profile →
+registered default`. A missing artifact, bad calibration, incompatible
+dependency or failed worker is a typed failure for that exact selection. The
+builder never changes ASR, LLM, TTS or retrieval backend to make startup look
+healthy. An operator must select and provision another profile explicitly.
+
 ### Settings drive both chat and voice
 
 `soca ui`, `soca ask`, and `soca chat` resolve defaults from `baseline`. A
@@ -54,6 +77,12 @@ selected provider/model setting is shared by chat and voice through
 `SocaEngine`; a CLI `--llm-model` remains a deliberate local diagnostic/eval
 override. ASR profile selection is still explicit and independent from the LLM
 provider setting.
+
+The shared LLM setting is resolved when the next runtime turn is built. A
+currently running turn keeps its provider/model and cancellation contract; a
+settings change cannot rewrite a prompt halfway through a stream. ASR remains
+a separate profile choice because changing ASR changes local model/service
+readiness and audio latency, not merely the remote transcript destination.
 
 ## CLI (`soca/cli.py`)
 

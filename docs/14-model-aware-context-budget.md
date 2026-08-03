@@ -50,6 +50,33 @@ for a small model that cannot admit it.
 The 16K working values are therefore a product policy for the 32K-capable
 runtime, not an assumption that every model can accept 16K input.
 
+## Admission order
+
+`PromptAssembler` builds the prompt in a stable order so the same turn can be
+explained by the runtime trace and `/context`:
+
+1. required system/runtime instructions and the current user request;
+2. required workflow/tool contract and safety instructions;
+3. working summary and the protected recent-turn window;
+4. selected core memory, when configured;
+5. query-dependent knowledge or archive-memory evidence;
+6. optional catalog/navigation metadata and other diagnostic context;
+7. the effective output reserve and final safety margin.
+
+Required components are admitted or raise `PromptBudgetError`. Optional
+components are considered by priority and can be dropped as a whole; the
+manifest records every drop and its reason. Query-dependent slots are not
+counted as present before retrieval, so `/context` can distinguish an estimate
+from a post-turn observed prompt. The assembler never solves overflow by
+silently truncating a citation, changing model, or switching retrieval backend.
+
+For example, if a 4K model cannot fit archive memory after required system,
+workflow and recent-turn sections, archive memory is reported as dropped and
+the turn continues only if the required sections fit. If a required evidence
+or instruction block itself cannot fit, the runtime returns a typed budget
+failure before making a provider request. This makes the failure diagnosable
+and prevents a fluent answer generated from an incomplete contract.
+
 ## Evidence
 
 The deterministic test matrix covers context windows 2,048, 4,096, 16,384 and
