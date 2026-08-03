@@ -1,13 +1,26 @@
-# SoCa (Sơn Ca)
+<p align="center">
+  <img src="docs/assets/soca-mark.svg" width="108" alt="SoCa">
+</p>
 
-![SoCa](docs/assets/soca-mark.svg)
+<h1 align="center">SoCa <sub>(Sơn Ca)</sub></h1>
 
-**An offline-first Vietnamese voice assistant that runs on your own machine.**
-Microphone → VAD → robust ASR → assistant runtime (guardrails · tools · knowledge ·
-memory · local or remote LLM) → TTS → speaker. Audio capture, ASR, TTS, knowledge,
-and memory stay local. The LLM is local by default, or can be explicitly configured
-as a remote provider for both chat and voice; remote selection sends transcript and
-prompt context to that provider.
+<p align="center">
+  <strong>Vietnamese voice assistant · offline-first by default</strong><br>
+  Local audio, ASR, TTS, knowledge, and memory · optional local or remote LLM
+</p>
+
+<p align="center">
+  <a href="https://github.com/finalflash159/soca/actions/workflows/quality.yml">
+    <img src="https://github.com/finalflash159/soca/actions/workflows/quality.yml/badge.svg" alt="Quality CI">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-8b6f47.svg" alt="MIT license">
+  </a>
+</p>
+
+Audio capture, ASR, TTS, knowledge, and memory stay local. The LLM is local by
+default; an explicitly selected remote provider is used by both chat and voice and
+receives the transcript and prompt context.
 
 SoCa is a research-heavy personal project. Every model in the product path had to
 win a local bake-off before it became a default, and every release decision is
