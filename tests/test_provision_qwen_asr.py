@@ -124,6 +124,57 @@ def test_install_defaults_to_pinned_mirror_and_never_falls_back(
     assert "private-token-must-not-leak" not in output
 
 
+def test_refresh_cli_reissues_receipt_with_health_probe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    receipt = type("Receipt", (), {"model_path": str(tmp_path / "model")})()
+    captured: dict[str, object] = {}
+
+    class FakeStore:
+        def refresh_receipt(self, spec, *, source_kind, health_probe, runtime_lock):
+            captured.update(
+                {
+                    "key": spec.key,
+                    "source_kind": source_kind.value,
+                    "health": health_probe(tmp_path / "model"),
+                    "runtime_lock": runtime_lock,
+                }
+            )
+            return receipt
+
+    monkeypatch.setattr(provision, "verify_worker_runtime", lambda: {"python": "3.11.14"})
+    monkeypatch.setattr(provision, "QwenArtifactStore", lambda _root: FakeStore())
+    monkeypatch.setattr(
+        provision,
+        "build_health_probe",
+        lambda _audio, _spec: lambda _path: {"transcript": "ok"},
+    )
+
+    exit_code = provision.main(
+        [
+            "--store-root",
+            str(tmp_path / "store"),
+            "refresh",
+            "--artifact",
+            "release",
+            "--source",
+            "upstream",
+            "--health-audio",
+            str(tmp_path / "voice.wav"),
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["receipt_refreshed"] is True
+    assert captured == {
+        "key": QWEN_RELEASE_ARTIFACT.key,
+        "source_kind": "upstream",
+        "health": {"transcript": "ok"},
+        "runtime_lock": provision.RUNTIME_LOCK,
+    }
+
+
 def test_inspect_is_static_and_reports_both_missing_artifacts(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

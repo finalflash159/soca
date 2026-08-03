@@ -64,6 +64,16 @@ def _device_family(value: object) -> str:
     return text
 
 
+def _device_matches(expected: str, actual: object) -> bool:
+    expected_family = _device_family(expected)
+    actual_text = str(actual)
+    if _device_family(actual_text) != expected_family:
+        return False
+    if expected_family == "cuda" and ":" in expected:
+        return actual_text == expected
+    return True
+
+
 def assert_model_matches(*, model: Any, device: str, dtype: str) -> tuple[str, str]:
     actual_device = getattr(model, "device", None)
     if actual_device is None:
@@ -72,9 +82,7 @@ def assert_model_matches(*, model: Any, device: str, dtype: str) -> tuple[str, s
         except (AttributeError, StopIteration) as exc:
             raise QwenDeviceMismatch("loaded Qwen model has no observable device") from exc
     actual_dtype = getattr(model, "dtype", None)
-    expected_family = _device_family(device)
-    observed_family = _device_family(actual_device)
-    if observed_family != expected_family:
+    if not _device_matches(device, actual_device):
         raise QwenDeviceMismatch(
             f"Qwen model loaded on {actual_device}, expected {device}"
         )
@@ -98,13 +106,6 @@ def _dtype_name(value: object) -> str:
     return text
 
 
-def synchronize(torch: Any, device: str) -> None:
-    if device == MPS_DEVICE:
-        torch.mps.synchronize()
-    elif device.startswith("cuda"):
-        torch.cuda.synchronize()
-
-
 __all__ = [
     "MPS_DEVICE",
     "MPS_FALLBACK_ENV",
@@ -113,7 +114,6 @@ __all__ = [
     "QwenDeviceUnavailable",
     "SUPPORTED_QWEN_DTYPES",
     "assert_model_matches",
-    "synchronize",
     "torch_dtype",
     "validate_execution_request",
 ]

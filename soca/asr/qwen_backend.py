@@ -10,7 +10,6 @@ import numpy as np
 from .qwen_artifacts import QwenArtifactPathError, validate_local_model_directory
 from .qwen_device import (
     assert_model_matches,
-    synchronize,
     torch_dtype,
     validate_execution_request,
 )
@@ -214,7 +213,6 @@ class QwenASRBackend:
         plus output_scores=True. Has to be hand-rolled because the public
         transcribe() does not forward kwargs down to generate().
         """
-        import torch
         from qwen_asr.inference.utils import parse_asr_output
 
         engine = self._engine
@@ -237,7 +235,6 @@ class QwenASRBackend:
             max_new_tokens=max_new_tokens,
             output_scores=True,
         )
-        synchronize(torch, self._device)
         if getattr(output, "scores", None) is None:
             # A typed failure, not a fake 0.0.
             raise QwenLogprobUnavailable(

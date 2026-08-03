@@ -55,3 +55,14 @@ def test_loaded_model_device_and_dtype_are_verified() -> None:
 
     with pytest.raises(QwenDeviceMismatch, match="expected cpu"):
         assert_model_matches(model=model, device="cpu", dtype="float16")
+
+
+def test_loaded_model_preserves_cuda_device_index() -> None:
+    model = SimpleNamespace(device="cuda:1", dtype=torch.float16)
+
+    assert assert_model_matches(model=model, device="cuda:1", dtype="float16") == (
+        "cuda:1",
+        "float16",
+    )
+    with pytest.raises(QwenDeviceMismatch, match="cuda:0"):
+        assert_model_matches(model=model, device="cuda:0", dtype="float16")
