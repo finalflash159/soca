@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "kind": "platform_audio_release_gate_summary",
+  "recorded_at": "2026-08-03",
+  "source_commit": "894f615604fb5c3d4da79e787ddbffe7cfe9ec67",
+  "suite": "platform-audio-release",
+  "environment": {
+    "platform": "macOS arm64",
+    "python": "3.11.14",
+    "raw_logs": "local ignored runs; not committed",
+    "private_content": "not included"
+  },
+  "automated_gates": {
+    "watcher_and_process_resume": "pass",
+    "index_lifecycle": {
+      "status": "pass",
+      "documents": 24,
+      "chunks": 24,
+      "edit_embedded_rows": 1,
+      "rename_reused_rows": 24,
+      "warm_dense_state": "ready"
+    },
+    "memory_lifecycle": {
+      "status": "pass",
+      "episode_round_trip": true,
+      "proposal_approved": true
+    },
+    "remote_provider_transcript": {
+      "status": "pass",
+      "provider": "openrouter",
+      "model": "google/gemini-2.5-flash-lite",
+      "surfaces": ["chat", "voice_transcript"],
+      "provider_called": true,
+      "terminal": "achieved"
+    },
+    "remote_knowledge_workflow": {
+      "status": "pass",
+      "provider": "openrouter",
+      "model": "google/gemini-2.5-flash-lite",
+      "provider_called": true,
+      "terminal": "achieved",
+      "tool_calls": 1,
+      "executed_actions": 1,
+      "structured_repairs": 1,
+      "evidence_count": 2
+    },
+    "summary_cold_process": {
+      "status": "pass",
+      "model": "qwen3_4b_instruct_2507_q4_k_m",
+      "trigger_token_count": 15288,
+      "final": "published",
+      "summary_published": true,
+      "checkpoint_round_trip": true,
+      "render_round_trip": true,
+      "worker_stopped": true,
+      "peak_rss_mb": 6291.84,
+      "generation_latency_ms": 49497.6
+    },
+    "qwen_remote_voice_transcript": {
+      "status": "pass",
+      "asr": "qwen3_asr_0_6b",
+      "provider": "openrouter",
+      "model": "google/gemini-2.5-flash-lite",
+      "sample_count": 3,
+      "error_rate": 0.0,
+      "playback_sink": "NullAudioPlayer",
+      "hardware_claim": "not a microphone or listening test"
+    }
+  },
+  "blocking_gate": {
+    "real_rag_grounding": {
+      "status": "fail",
+      "answerable_raw_recall_at_5": 1.0,
+      "answerable_accepted_evidence_recall_at_5": 1.0,
+      "unanswerable_false_evidence_rate": 0.5,
+      "release_threshold": 0.05,
+      "decision": "do not enable groundedness enforcement or claim release quality"
+    }
+  },
+  "manual_or_external_gates": {
+    "pty_ime_matrix": "unsupported_until_manual_iTerm2_Terminal_app_run",
+    "microphone_speaker_barge_in": "unsupported_until_real_device_run",
+    "qwen_release_default": "blocked_by_existing_qwen_release_decision",
+    "private_huggingface_mirrors": "deferred_joint_operator_step"
+  },
+  "decision": "blocked",
+  "no_silent_fallback": true
+}
