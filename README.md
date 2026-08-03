@@ -1,5 +1,13 @@
 # SoCa (Sơn Ca)
 
+![SoCa](docs/assets/soca-mark.svg)
+
+*The perched songbird is the splash mark the TUI actually draws. The SVG is generated
+by `uv run python scripts/render_logo_svg.py`, which reads the glyphs from
+[`ui/src/components/Logo.tsx`](ui/src/components/Logo.tsx) and the dawn ramp from
+[`soca/app/style/palette.py`](soca/app/style/palette.py), so the mark here cannot
+drift from the one on screen. Sơn ca is the lark, and it sings at first light.*
+
 **An offline-first Vietnamese voice assistant that runs entirely on your own
 machine.** Microphone → VAD → robust ASR → assistant runtime (guardrails · tools ·
 knowledge · memory · local LLM) → TTS → speaker. Nothing in the voice path touches
@@ -322,26 +330,48 @@ The anti-hallucination pipeline is adapted from:
 Turn-taking metrics use Full-Duplex-Bench vocabulary; ASR reporting follows the Open
 ASR Leaderboard convention of publishing quality and speed together.
 
-### Key Python dependencies
+### Python dependencies
 
-| Package | License | | Package | License |
-| --- | --- | --- | --- | --- |
-| `onnxruntime` | MIT | | `numpy` | BSD-3-Clause |
-| `transformers` | Apache-2.0 | | `scipy` | BSD-3-Clause |
-| `llama-cpp-python` | MIT | | `librosa` | ISC |
-| `silero-vad` | MIT | | `soundfile` | BSD-3-Clause |
-| `sounddevice` | MIT | | `torchcodec` | BSD-3-Clause |
-| `pywebrtc-audio` | Apache-2.0 | | `click` | BSD-3-Clause |
-| `huggingface-hub` | Apache-2.0 | | `rich` | MIT |
-| `sentence-transformers` | Apache-2.0 | | `markdown-it-py` | MIT |
-| `bm25s` | MIT | | `PyYAML` | MIT |
-| `faiss-cpu` (eval only) | MIT | | `tqdm` | MPL-2.0 AND MIT |
-| `fastembed` | Apache-2.0 | | `jiwer` (eval only) | Apache-2.0 |
-| `model2vec` | MIT | | `underthesea` (eval only) | Apache-2.0 |
-| `usearch` | Apache-2.0 | | `pyahocorasick` (eval only) | BSD-3-Clause |
-| `g2p-en` | Apache-2.0 | | `eng-to-ipa` | MIT (bundles CMUdict) |
+Every package SoCa depends on directly is MIT, BSD, Apache-2.0, or ISC, and the Ink
+TUI in [`ui/`](ui/) depends on `ink` and `react`, both MIT. Listing them one by one
+would only duplicate `uv.lock` and go stale, so this section records the ones that
+carry an actual obligation instead.
 
-The Ink TUI in [`ui/`](ui/) depends on `ink` and `react`, both MIT.
+Four transitive packages are not permissive. None is a blocker, and all four are
+used as ordinary separate libraries rather than being copied into SoCa's own source:
+
+| Package | License | Reaches the tree via |
+| --- | --- | --- |
+| `soxr` | LGPL-2.1-or-later | `librosa` (core dependency) — resampling |
+| `Distance` | GPL (unversioned classifier) | `g2p-en`, i.e. only the optional `tts-en` extra |
+| `tqdm` | MPL-2.0 AND MIT | many packages, and SoCa directly |
+| `certifi`, `fqdn` | MPL-2.0 | `requests` / `httpx` / `jsonschema` |
+
+MPL-2.0 is file-level copyleft and imposes nothing on surrounding code. The `soxr`
+and `Distance` entries deserve a decision before any binary redistribution:
+installing the `tts-en` extra puts a GPL-classified package in the environment.
+Skipping that extra removes it — English G2P then falls back to the bundled
+CMUdict lexicon, which is what
+[BENCHMARKS.md](BENCHMARKS.md#a1--anti-hallucination-ablation-phowhisper-tiny)
+measures anyway.
+
+This list was produced by reading installed package metadata, and it can be
+regenerated after any dependency change:
+
+```bash
+uv run python -c "
+import importlib.metadata as md
+for d in md.distributions():
+    name = d.metadata['Name']
+    lic = d.metadata.get('License-Expression') or d.metadata.get('License') or ''
+    cls = ' '.join(c for c in (d.metadata.get_all('Classifier') or []) if c.startswith('License'))
+    text = (lic + ' ' + cls).lower()
+    if any(k in text for k in ('mpl', 'mozilla public', 'gnu', 'gpl', 'eupl', 'noncommercial')):
+        print(f'{name:24} {(lic or cls)[:60]}')
+"
+```
+
+None of this is legal advice — it is what the packages declare about themselves.
 
 Benchmark dataset licenses are listed in
 [BENCHMARKS.md § 2](BENCHMARKS.md#2-datasets-and-corpora).
