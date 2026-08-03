@@ -762,6 +762,79 @@ def test_knowledge_index_failure_cleans_up_before_engine_shutdown(
     assert failure["error_code"] == "embedding_model_missing"
 
 
+def test_knowledge_index_start_failure_releases_lock_and_reports_error(
+    monkeypatch, tmp_path: Path
+) -> None:
+    class Writer:
+        def __init__(self) -> None:
+            self.events: list[dict] = []
+
+        def emit(self, event: dict) -> None:
+            self.events.append(event)
+
+    class Config:
+        vault = tmp_path
+
+    def fail_start(self) -> None:
+        raise RuntimeError("thread start failed")
+
+    engine = object.__new__(SocaEngine)
+    engine.text_config = Config()
+    engine.writer = Writer()
+    engine._knowledge_job_lock = threading.Lock()
+    engine._knowledge_job_thread = None
+    (tmp_path / "wiki").mkdir()
+    monkeypatch.setattr(threading.Thread, "start", fail_start)
+
+    engine._cmd_knowledge_index()
+
+    assert engine._knowledge_job_thread is None
+    assert engine._knowledge_job_lock.acquire(blocking=False)
+    failure = next(
+        event for event in engine.writer.events if event.get("event") == "knowledge_setup"
+    )
+    assert failure["status"] == "failed"
+    assert failure["error_code"] == "knowledge_index_start_failed"
+
+
+def test_shutdown_emits_bye_after_worker_cleanup_timeout() -> None:
+    class Writer:
+        def __init__(self) -> None:
+            self.events: list[dict] = []
+
+        def emit(self, event: dict) -> None:
+            self.events.append(event)
+
+    class StuckThread:
+        def join(self, timeout: float) -> None:
+            return None
+
+        def is_alive(self) -> bool:
+            return True
+
+    engine = object.__new__(SocaEngine)
+    engine._shutdown = False
+    engine.writer = Writer()
+    engine._cmd_voice_stop = lambda: False
+    engine._dispose_text_bundle = lambda: True
+    engine._chat_thread = None
+    engine._voice_threads = []
+    engine._knowledge_job_thread = StuckThread()
+    engine._catalog_lock = threading.Lock()
+    engine._catalog_threads = set()
+    engine.text_bundle = None
+    engine.session_memory = None
+
+    engine.shutdown()
+
+    assert engine._shutdown is True
+    assert engine.writer.events[-1] == {"event": "bye"}
+    assert any(
+        event.get("code") == "knowledge_index_stop_timeout"
+        for event in engine.writer.events
+    )
+
+
 def test_engine_no_model_rejects_voice_and_chat() -> None:
     capture = ProtocolCapture()
 

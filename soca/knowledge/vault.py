@@ -68,6 +68,7 @@ class ScaffoldResult:
     created_dirs: tuple[Path, ...]
     created_files: tuple[Path, ...]
     skipped_files: tuple[Path, ...]
+    permission_warnings: tuple[str, ...] = ()
 
 
 def default_vault_root() -> Path:
@@ -81,8 +82,16 @@ def init_knowledge_vault(root: str | Path, *, force: bool = False) -> ScaffoldRe
     root_path = Path(root).expanduser().resolve()
     existed = root_path.exists()
     root_path.mkdir(parents=True, exist_ok=True)
+    permission_warnings: list[str] = []
+
+    def set_mode(path: Path, mode: int) -> None:
+        try:
+            path.chmod(mode)
+        except OSError as exc:
+            permission_warnings.append(f"{path}: {exc}")
+
     if not existed:
-        root_path.chmod(0o700)
+        set_mode(root_path, 0o700)
 
     created_dirs: list[Path] = []
     created_files: list[Path] = []
@@ -93,7 +102,7 @@ def init_knowledge_vault(root: str | Path, *, force: bool = False) -> ScaffoldRe
         existed = path.exists()
         path.mkdir(parents=True, exist_ok=True)
         if relative_dir == ".soca":
-            path.chmod(0o700)
+            set_mode(path, 0o700)
         if not existed:
             created_dirs.append(path)
 
@@ -104,7 +113,7 @@ def init_knowledge_vault(root: str | Path, *, force: bool = False) -> ScaffoldRe
             skipped_files.append(path)
             continue
         path.write_text(content, encoding="utf-8")
-        path.chmod(0o600 if relative_file == "memory/core.json" else 0o644)
+        set_mode(path, 0o600 if relative_file == "memory/core.json" else 0o644)
         created_files.append(path)
 
     return ScaffoldResult(
@@ -112,6 +121,7 @@ def init_knowledge_vault(root: str | Path, *, force: bool = False) -> ScaffoldRe
         created_dirs=tuple(created_dirs),
         created_files=tuple(created_files),
         skipped_files=tuple(skipped_files),
+        permission_warnings=tuple(permission_warnings),
     )
 
 

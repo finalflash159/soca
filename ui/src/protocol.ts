@@ -342,6 +342,7 @@ export interface KnowledgeSetupEvent {
   created_dirs?: number;
   created_files?: number;
   skipped_files?: number;
+  warnings?: string[];
   revision?: number;
   documents?: number;
   chunks?: number;

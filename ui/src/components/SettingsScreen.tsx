@@ -551,6 +551,10 @@ export function SettingsScreen({
                 <Text color={COLOR.bad}>
                   {`${ICON.err} ${knowledgeSetup.error_code ? `${knowledgeSetup.error_code}: ` : ""}${knowledgeSetup.detail}`}
                 </Text>
+              ) : knowledgeSetup?.warnings?.length ? (
+                <Text color={COLOR.warn}>
+                  {`${ICON.half} ${knowledgeSetup.detail}`}
+                </Text>
               ) : knowledgeVault.initialized && knowledgeIndex ? (
                 <Text color={COLOR.text}>
                   {`${knowledgeIndex.documents} docs · ${knowledgeIndex.chunks} chunks · dense ${knowledgeIndex.dense_state}`}

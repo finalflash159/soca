@@ -458,55 +458,61 @@ class SocaEngine:
     def shutdown(self) -> None:
         if self._shutdown:
             return
-        cleanup_failed = self._cmd_voice_stop()
-        if not self._dispose_text_bundle():
-            cleanup_failed = True
-        if self._chat_thread is not None:
-            self._chat_thread.join(timeout=10.0)
-            if self._chat_thread.is_alive():
-                cleanup_failed = True
-                self._error("chat thread did not stop", code="chat_thread_stop_timeout")
-        for thread in self._voice_threads:
-            thread.join(timeout=5.0)
-            if thread.is_alive():
-                cleanup_failed = True
-                self._error("voice thread did not stop", code="voice_thread_stop_timeout")
-        knowledge_thread = self._knowledge_job_thread
-        if knowledge_thread is not None:
-            knowledge_thread.join(timeout=30.0)
-            if knowledge_thread.is_alive():
-                cleanup_failed = True
-                self._error(
-                    "knowledge index thread did not stop",
-                    code="knowledge_index_stop_timeout",
-                )
-        # Fake fetchers finish immediately in tests; real HTTP fetches are
-        # bounded below the UI termination grace period. Threads are daemonized
-        # so a slow provider cannot keep the process alive forever.
-        with self._catalog_lock:
-            catalog_threads = tuple(self._catalog_threads)
-        for thread in catalog_threads:
-            thread.join(timeout=1.0)
-            if thread.is_alive():
-                cleanup_failed = True
-                self._error("model catalog fetch did not stop", code="catalog_thread_stop_timeout")
-        if self.text_bundle is not None:
+        cleanup_failed = False
+        try:
+            cleanup_failed = self._cmd_voice_stop()
             if not self._dispose_text_bundle():
                 cleanup_failed = True
-        if self.session_memory is not None:
-            try:
-                self.session_memory.close()
-            except Exception as exc:  # noqa: BLE001 - expose cleanup failure
-                cleanup_failed = True
-                self._error(
-                    "session memory cleanup failed",
-                    code="session_cleanup_failed",
-                    detail=type(exc).__name__,
-                )
-        if cleanup_failed:
-            return
-        self._shutdown = True
-        self.writer.emit({"event": "bye"})
+            if self._chat_thread is not None:
+                self._chat_thread.join(timeout=10.0)
+                if self._chat_thread.is_alive():
+                    cleanup_failed = True
+                    self._error("chat thread did not stop", code="chat_thread_stop_timeout")
+            for thread in self._voice_threads:
+                thread.join(timeout=5.0)
+                if thread.is_alive():
+                    cleanup_failed = True
+                    self._error("voice thread did not stop", code="voice_thread_stop_timeout")
+            knowledge_thread = self._knowledge_job_thread
+            if knowledge_thread is not None:
+                knowledge_thread.join(timeout=30.0)
+                if knowledge_thread.is_alive():
+                    cleanup_failed = True
+                    self._error(
+                        "knowledge index thread did not stop",
+                        code="knowledge_index_stop_timeout",
+                    )
+            # Fake fetchers finish immediately in tests; real HTTP fetches are
+            # bounded below the UI termination grace period. Threads are daemonized
+            # so a slow provider cannot keep the process alive forever.
+            with self._catalog_lock:
+                catalog_threads = tuple(self._catalog_threads)
+            for thread in catalog_threads:
+                thread.join(timeout=1.0)
+                if thread.is_alive():
+                    cleanup_failed = True
+                    self._error(
+                        "model catalog fetch did not stop",
+                        code="catalog_thread_stop_timeout",
+                    )
+            if self.text_bundle is not None:
+                if not self._dispose_text_bundle():
+                    cleanup_failed = True
+            if self.session_memory is not None:
+                try:
+                    self.session_memory.close()
+                except Exception as exc:  # noqa: BLE001 - expose cleanup failure
+                    cleanup_failed = True
+                    self._error(
+                        "session memory cleanup failed",
+                        code="session_cleanup_failed",
+                        detail=type(exc).__name__,
+                    )
+            if cleanup_failed:
+                self._error("engine cleanup completed with errors", code="engine_cleanup_failed")
+        finally:
+            self._shutdown = True
+            self.writer.emit({"event": "bye"})
 
     def _dispose_text_bundle(self) -> bool:
         """Close the current text runtime before a configuration mutation.
@@ -558,13 +564,23 @@ class SocaEngine:
                 error_code="knowledge_init_failed",
             )
             return
+        detail = (
+            f"{len(result.created_dirs)} thư mục mới · "
+            f"{len(result.created_files)} file mới"
+        )
+        extra: dict[str, Any] = {}
+        if result.permission_warnings:
+            detail += f" · cảnh báo quyền: {len(result.permission_warnings)}"
+            extra["warnings"] = list(result.permission_warnings)
+            extra["error_code"] = "knowledge_permissions_unverified"
         self._emit_knowledge_setup(
             "init",
             "ready",
-            f"{len(result.created_dirs)} thư mục mới · {len(result.created_files)} file mới",
+            detail,
             created_dirs=len(result.created_dirs),
             created_files=len(result.created_files),
             skipped_files=len(result.skipped_files),
+            **extra,
         )
         self._cmd_status()
 
@@ -586,6 +602,17 @@ class SocaEngine:
                 error_code="knowledge_index_busy",
             )
             return
+
+        lock_guard = threading.Lock()
+        lock_released = False
+
+        def release_job_lock() -> None:
+            nonlocal lock_released
+            with lock_guard:
+                if lock_released:
+                    return
+                lock_released = True
+                self._knowledge_job_lock.release()
 
         def run() -> None:
             try:
@@ -649,7 +676,7 @@ class SocaEngine:
                     error_code="knowledge_index_invalid",
                 )
             finally:
-                self._knowledge_job_lock.release()
+                release_job_lock()
                 self._knowledge_job_thread = None
 
         thread = threading.Thread(
@@ -658,7 +685,17 @@ class SocaEngine:
             name="soca-knowledge-index",
         )
         self._knowledge_job_thread = thread
-        thread.start()
+        try:
+            thread.start()
+        except Exception as exc:  # noqa: BLE001 - release the acquired job lock
+            self._knowledge_job_thread = None
+            release_job_lock()
+            self._emit_knowledge_setup(
+                "index",
+                "failed",
+                f"Không thể khởi động worker index: {exc}",
+                error_code="knowledge_index_start_failed",
+            )
 
     # --- status -----------------------------------------------------------------
 
