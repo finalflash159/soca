@@ -73,10 +73,33 @@ Detailed system design lives in [`docs/`](docs/README.md).
 
 ## Architecture
 
+The shortest accurate mental model is still a left-to-right flow. The detailed
+boundary view follows it for readers who need storage, provider, and event
+ownership:
+
+```mermaid
+flowchart LR
+    Mic[/Microphone/] --> Capture[VAD + AEC]
+    Capture --> ASR[RobustASR]
+    ASR -->|transcript| RT[AssistantRuntime]
+    RT --> WF[Controlled workflow]
+    WF --> RAG[(Knowledge index)]
+    WF --> MEM[(Working · core · archive)]
+    WF --> LLM{Selected LLM}
+    LLM --> TTS[TTS]
+    TTS --> Spk[/Speaker/]
+    ASR -. typed reject .-> Repair[Repair layer]
+    Repair -.-> TTS
+    RT -. progress · usage .-> UI[[CLI · Ink TUI]]
+    LLM -. explicit remote .-> Remote[OpenAI · Gemini · OpenRouter · Groq]
+```
+
+Detailed boundary view:
+
 ![SoCa system overview](docs/assets/diagrams/system-overview.svg)
 
-The editable Lucid source and the focused subsystem diagrams are catalogued in
-[the architecture diagram register](docs/diagrams.md).
+The editable Lucid source for the flow above and the focused subsystem diagrams
+are catalogued in [the architecture diagram register](docs/diagrams.md).
 
 Dependency rule: `app` (CLI/TUI) → `soca.core` (facade) → backends
 (`asr` / `llm` / `tts` / `knowledge` / `memory` / `tools`). Details:
