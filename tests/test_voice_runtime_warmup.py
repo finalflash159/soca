@@ -7,6 +7,7 @@ import pytest
 
 from soca.asr.context import ASRContextBuilder, ASRContextSourceRecord
 from soca.asr.selection import ASRSelection
+from soca.config import LlmSettings
 from soca.core.voice_runtime import (
     ResolvedVoiceRuntimeConfig,
     VoiceRuntimeBundle,
@@ -166,13 +167,42 @@ def test_warm_up_voice_runtime_triggers_asr_llm_and_tts_first_call_paths() -> No
     assert llm.calls == [
         {
             "prompt": "xin chào",
-            "max_tokens": 1,
+            "max_tokens": 160,
             "temperature": 0.0,
             "top_p": 1.0,
             "inject_persona": True,
         }
     ]
     assert tts.calls == ["Xin chào, tôi là SoCa."]
+
+
+def test_warm_up_llm_uses_capability_clamped_budget_for_reasoning_model() -> None:
+    llm = FakeLLM()
+    bundle = VoiceRuntimeBundle(
+        config=make_config(),
+        detector=object(),
+        asr=FakeRobustASR(),
+        llm=llm,
+        tts=FakeTTS(),
+        assistant_runtime=object(),
+        pipeline=object(),
+        memory_status="disabled:test",
+        knowledge_status="disabled:test",
+        llm_settings=LlmSettings(
+            backend="remote",
+            provider_key="openrouter",
+            model_id="reasoning/test",
+            max_tokens=4_096,
+            model_max_output_tokens=2_048,
+            model_reasoning_supported=True,
+            model_reasoning_mandatory=True,
+            model_reasoning_parameter="reasoning",
+        ),
+    )
+
+    warm_up_voice_runtime(bundle, asr_seconds=0.5)
+
+    assert llm.calls[0]["max_tokens"] == 2_048
 
 
 def test_warm_up_voice_runtime_warms_both_partial_and_final_context_paths() -> None:
