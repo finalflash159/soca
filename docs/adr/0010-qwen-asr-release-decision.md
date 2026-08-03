@@ -54,3 +54,30 @@ overlap. No model fallback, silent background retry, or automatic downgrade is
 allowed while resolving these blockers.
 
 Evidence index: `docs/evidence/qwen-asr-release-20260803.json`.
+
+## MPS rerun update — 2026-08-03
+
+The release matrix was rerun on the Apple M4 Pro with explicit MPS/float16
+artifacts after the device-contract fixes. Both artifacts completed the
+20-cycle start/stop probe, typed crash probe, concurrency probe, and partial
+latency probe without an ASR fallback or orphan process. The 0.6B partial p95
+was 1,018 ms and the 1.7B reference partial p95 was 1,704 ms against the
+configured 2,000 ms ceiling. Manual context-echo review and the automatic
+quality gates passed for both identities.
+
+The remote trajectory was rerun with eight recorded private samples per
+profile using OpenRouter `google/gemini-3.5-flash-lite` and Valtec TTS. Both
+profiles reached eight normal terminal rows, including typed uncertain-input
+and blocked-action paths. Full-stack RSS in these single trajectories was
+2,877 MB for 0.6B and 2,770 MB for 1.7B; the two-sample local smoke reached
+5,859 MB. These are trajectory measurements, not the missing repeated memory
+pressure gate. Summary-worker overlap was not exercised. The 1.7B probe also
+emitted one Python `resource_tracker` leaked-semaphore warning; it is retained
+as a blocker rather than suppressed.
+
+Therefore the decision remains `blocked`: MPS materially resolves the prior
+CPU partial-latency failure, but rollout still requires repeated full-stack
+resource evidence, summary-worker overlap evidence, and root-cause closure for
+the semaphore warning. The complete sanitized record is
+`docs/evidence/qwen-asr-mps-20260803.json`. No runtime model fallback or
+automatic downgrade is enabled.

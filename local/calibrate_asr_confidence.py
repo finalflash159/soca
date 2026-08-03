@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import click
 import librosa
@@ -400,13 +400,16 @@ def calibrate_model(
     )
 
     console.print(f"[bold]Loading ASR + VAD...[/bold] model={model_key}")
-    asr: CalibratableASR = (
+    asr = (
         asr_factory()
         if asr_factory is not None
-        else VietnameseASR(
-            model_key=model_key,
-            num_threads=cfg.NUM_THREADS,
-            providers=provider_list,
+        else cast(
+            CalibratableASR,
+            VietnameseASR(
+                model_key=model_key,
+                num_threads=cfg.NUM_THREADS,
+                providers=provider_list,
+            ),
         )
     )
     vad = vad_factory() if vad_factory is not None else SpeechDetector()
@@ -609,7 +612,10 @@ def build_qwen_factory(
 )
 @click.option("--device", default="cpu", type=click.Choice(["cpu", "mps"]), help="qwen only.")
 @click.option(
-    "--dtype", default="float32", type=click.Choice(["float32", "bfloat16"]), help="qwen only."
+    "--dtype",
+    default="float32",
+    type=click.Choice(["float16", "float32", "bfloat16"]),
+    help="qwen only; must match the artifact manifest.",
 )
 @click.option(
     "--qwen-context",

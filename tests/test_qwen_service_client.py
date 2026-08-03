@@ -302,12 +302,14 @@ def test_worker_environment_is_offline_and_does_not_inherit_tokens(monkeypatch, 
 
     assert captured_environments[0]["HF_HUB_OFFLINE"] == "1"
     assert captured_environments[0]["TRANSFORMERS_OFFLINE"] == "1"
+    assert captured_environments[0]["PYTORCH_ENABLE_MPS_FALLBACK"] == "0"
     for environment in captured_environments:
         assert "PATH" in environment
         assert "HF_TOKEN" not in environment
         assert "HUGGING_FACE_HUB_TOKEN" not in environment
         assert environment["HF_HUB_OFFLINE"] == "1"
         assert environment["TRANSFORMERS_OFFLINE"] == "1"
+        assert environment["PYTORCH_ENABLE_MPS_FALLBACK"] == "0"
     for service in services:
         service.close()
     shutil.rmtree(socket_dir, ignore_errors=True)

@@ -20,7 +20,7 @@ from rich.table import Table
 
 from eval.result_io import EvalRunPaths, make_eval_run_paths, update_latest_eval_report
 from eval.system_metrics import get_current_memory_mb
-from soca.config import SecretStore
+from soca.config import LlmSettings, SecretStore, load_settings
 from soca.core import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
     VOICE_RUNTIME_PROFILES,
@@ -380,16 +380,48 @@ def selected_llm_to_dict(bundle: Any) -> dict[str, Any]:
     }
 
 
+def resolve_eval_llm_settings(args: argparse.Namespace) -> LlmSettings | None:
+    backend = getattr(args, "llm_backend", None)
+    provider = getattr(args, "llm_provider", None)
+    model = getattr(args, "llm_model", None)
+    if backend is None and provider is None:
+        return None
+
+    settings = load_settings()
+    if backend is not None:
+        settings = settings.with_backend(backend)
+    if provider is not None:
+        settings = settings.with_provider(provider)
+    if model is not None:
+        settings = settings.with_model(model)
+    if any(
+        getattr(args, name, None) is not None
+        for name in ("max_tokens", "temperature", "top_p")
+    ):
+        settings = settings.with_generation(
+            max_tokens=args.max_tokens if args.max_tokens is not None else settings.max_tokens,
+            temperature=(
+                args.temperature if args.temperature is not None else settings.temperature
+            ),
+            top_p=args.top_p if args.top_p is not None else settings.top_p,
+        )
+    return settings
+
+
 def run_profile_eval(
     profile_key: str,
     samples: Sequence[VoiceLoopSample],
     *,
     args: argparse.Namespace,
 ) -> dict[str, Any]:
+    eval_llm_settings = resolve_eval_llm_settings(args)
+    config_llm_model = args.llm_model
+    if eval_llm_settings is not None and eval_llm_settings.backend == "remote":
+        config_llm_model = None
     config = resolve_voice_runtime_config(
         profile_key=profile_key,
         asr_model=args.asr_model,
-        llm_model=args.llm_model,
+        llm_model=config_llm_model,
         tts_voice=args.voice,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
@@ -409,6 +441,7 @@ def run_profile_eval(
     try:
         bundle = build_voice_runtime(
             config,
+            llm_settings=eval_llm_settings,
             secret_store=SecretStore(dotenv_path=REPO_ROOT / ".env"),
         )
     except (FileNotFoundError, TTSRuntimeUnavailableError, ImportError, RuntimeError, ValueError) as exc:
@@ -751,6 +784,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--asr-model", default=None)
     parser.add_argument("--llm-model", default=None)
+    parser.add_argument("--llm-backend", choices=("local", "remote"), default=None)
+    parser.add_argument("--llm-provider", default=None)
     parser.add_argument("--voice", default=None)
     parser.add_argument("--max-tokens", type=int, default=None)
     parser.add_argument("--temperature", type=float, default=None)

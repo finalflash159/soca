@@ -194,6 +194,9 @@ def test_backend_uses_real_scores_when_generate_supports_output_scores(monkeypat
     backend = QwenASRBackend(model_path, context="tech context")
 
     assert backend.supports_avg_logprob is True
+    assert backend.runtime_metadata()["actual_device"] == "cpu"
+    assert backend.runtime_metadata()["actual_dtype"] == "float32"
+    assert backend.runtime_metadata()["mps_cpu_fallback"] is False
 
     result = backend.transcribe(np.zeros(1600, dtype=np.float32))
 

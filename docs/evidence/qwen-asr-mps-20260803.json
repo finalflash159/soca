@@ -1,0 +1,164 @@
+{
+  "schema_version": 1,
+  "kind": "qwen_asr_mps_release_evidence",
+  "recorded_at": "2026-08-03",
+  "decision": "blocked",
+  "source": {
+    "raw_run_id": "20260803T004036Z-ac9c7c26",
+    "raw_artifact_root": "eval/results/qwen_asr_release/20260803T004036Z-ac9c7c26 (local, gitignored)",
+    "inference_config_sha256": "d2d38686c8afc7b4ba4bf42af6d1a21f6340ea7e25313b07ce93f9bd205049a5",
+    "release_gate_config_sha256": "d2d38686c8afc7b4ba4bf42af6d1a21f6340ea7e25313b07ce93f9bd205049a5",
+    "analysis_run_sha256": "8474a3a377dfd4b4a923d3a2b2d056dce484165ed9762aa2782a3992e295cd2c",
+    "manual_label_sha256": "52e042422f05fc976b0e582f499152ba0c65fbcb23ea7c0323581aa2820a0421",
+    "calibration_artifact_sha256": "05c7618bf056e94f26fd8d773d357cd360fe4a69f0cd6e3b9c3eee83de429ba1",
+    "dataset_manifests": {
+      "private_codeswitch": "aed1ccd96ed9d994412285f4dcff68ba119155be0effd7fa0d089fa635dde70d",
+      "fleurs_vi": "81de44e064d2925ca31ea5e911d560157e3b8e83319bdee66a750e3bab00978c",
+      "non_speech": "48b01f480e0020e2041a0f845011b90af4af035da1517c83664e1848882543b6"
+    },
+    "vault": "eval/fixtures/knowledge_vault"
+  },
+  "host": {
+    "platform": "macOS-15.7.4-arm64",
+    "cpu": "Apple M4 Pro",
+    "memory_bytes": 51539607552,
+    "python": "3.11.14",
+    "worker_lock_sha256": "bbf96f7b16c241afee13734ae8bfa2525420675f6db536934d9a746b94ec7f9f"
+  },
+  "artifacts": {
+    "qwen3_asr_0_6b": {
+      "role": "release",
+      "upstream_revision": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0",
+      "artifact_digest": "6b414993f01314a2466d5f0910de7dd34f1ef4814118b130dc800f0ed812f53e",
+      "calibration_identity_digest": "50d7f8f028eed690fa90a33fa00d8ed89d661cad8795242849a9e62d81ded0e6",
+      "execution": {"device": "mps", "dtype": "float16", "mps_cpu_fallback": false},
+      "quality": {
+        "fleurs_empty_wer": 0.1116315379,
+        "fleurs_production_catalog_wer": 0.1163153789,
+        "private_production_catalog_wer": 0.4623287671,
+        "private_production_catalog_cs_wer": 0.5365853659,
+        "private_production_catalog_term_recall": 0.4634146341,
+        "hard_negative_false_accept_rate": 0.0150375940,
+        "context_echo_false_accept_rate": 0.0,
+        "context_echo_false_reject_rate": 0.0,
+        "final_rtf_p95": 0.1286624697,
+        "automatic_and_manual_quality_gates": "pass"
+      },
+      "operational": {
+        "status": "completed",
+        "start_stop_count": 20,
+        "start_stop_failures": 0,
+        "startup_ms_median": 3680.945,
+        "startup_ms_p95": 3990.403,
+        "cold_inference_ms_p95": 690.659,
+        "partial_latency_ms_p95": 1018.165,
+        "partial_repeat_consistency_rate": 1.0,
+        "ipc_overhead_ms_p95": 2.142,
+        "orphan_process_count": 0,
+        "fallback_attempt_count": 0,
+        "peak_worker_rss_mb": 1243.438,
+        "model_disk_bytes": 1880619678,
+        "crash_probe": "typed QwenServiceCrashed"
+      }
+    },
+    "qwen3_asr_1_7b": {
+      "role": "reference",
+      "upstream_revision": "7278e1e70fe206f11671096ffdd38061171dd6e5",
+      "artifact_digest": "f407d3c4c532eb3927abd088bd456ef3b6f92ae7a80baeca27657e552607ed22",
+      "calibration_identity_digest": "6cc1519ad801c1e8a8adb8c2ea79410be8d27a73569926735b944593f7a878b2",
+      "execution": {"device": "mps", "dtype": "float16", "mps_cpu_fallback": false},
+      "quality": {
+        "fleurs_production_catalog_wer": 0.0858704137,
+        "private_production_catalog_wer": 0.3698630137,
+        "private_production_catalog_cs_wer": 0.4146341463,
+        "private_production_catalog_term_recall": 0.5853658537,
+        "context_echo_false_accept_rate": 0.0,
+        "context_echo_false_reject_rate": 0.0,
+        "quality_gates": "reference_pass"
+      },
+      "operational": {
+        "status": "completed",
+        "start_stop_count": 20,
+        "start_stop_failures": 0,
+        "startup_ms_median": 4228.574,
+        "startup_ms_p95": 4765.651,
+        "cold_inference_ms_p95": 1049.54,
+        "partial_latency_ms_p95": 1704.065,
+        "partial_repeat_consistency_rate": 1.0,
+        "ipc_overhead_ms_p95": 2.219,
+        "orphan_process_count": 0,
+        "fallback_attempt_count": 0,
+        "peak_worker_rss_mb": 987.859,
+        "model_disk_bytes": 4703114308,
+        "crash_probe": "typed QwenServiceCrashed",
+        "observed_warning": "Python resource_tracker reported one leaked semaphore at process shutdown; no orphan process or failed start-stop row was recorded. Root cause remains deferred for investigation."
+      }
+    }
+  },
+  "real_voice": {
+    "remote_release": {
+      "run_type": "real_voice_remote_llm_tts",
+      "raw_report": "eval/results/qwen_asr_release/20260803T004036Z-ac9c7c26/real_voice_remote_release/voice_loop/20260803_094329/report.json",
+      "sample_count": 8,
+      "profile": "qwen-release",
+      "provider": "openrouter",
+      "model": "google/gemini-3.5-flash-lite",
+      "asr": "qwen3_asr_0_6b/mps/float16",
+      "tts": "valtec_multispeaker/NF",
+      "status_ok_count": 8,
+      "used_llm_count": 7,
+      "reject_rate": 0.125,
+      "route_counts": {"free_chat": 4, "knowledge_llm": 3, "none": 1},
+      "peak_full_stack_rss_mb": 2876.641,
+      "ttfa_p95_ms": 5790.305,
+      "evidence_status": "pass_with_typed_uncertain_input_abstention"
+    },
+    "remote_reference": {
+      "run_type": "real_voice_remote_llm_tts",
+      "raw_report": "eval/results/qwen_asr_release/20260803T004036Z-ac9c7c26/real_voice_remote_reference/voice_loop/20260803_094445/report.json",
+      "sample_count": 8,
+      "profile": "qwen-reference",
+      "provider": "openrouter",
+      "model": "google/gemini-3.5-flash-lite",
+      "asr": "qwen3_asr_1_7b/mps/float16",
+      "tts": "valtec_multispeaker/NF",
+      "status_ok_count": 8,
+      "used_llm_count": 6,
+      "reject_rate": 0.125,
+      "route_counts": {"blocked": 1, "free_chat": 4, "knowledge_llm": 2, "none": 1},
+      "peak_full_stack_rss_mb": 2770.141,
+      "ttfa_p95_ms": 4558.154,
+      "evidence_status": "pass_with_typed_uncertain_input_and_blocked_action_paths"
+    },
+    "local_smoke": {
+      "run_type": "real_voice_local_smoke",
+      "sample_count": 2,
+      "profile": "qwen-release",
+      "llm": "arcee_vylinh_3b_q4_k_m",
+      "tts": "valtec_multispeaker/NF",
+      "status_ok_count": 2,
+      "peak_full_stack_rss_mb": 5859.0,
+      "evidence_status": "proportional_smoke_only"
+    }
+  },
+  "resource_evidence": {
+    "qwen_worker_repeated_mps": "measured",
+    "full_voice_remote_single_trajectory_matrix": "measured",
+    "full_voice_repeated_memory_pressure_matrix": "not measured",
+    "summary_worker_overlap": "not measured",
+    "warning_policy": "resource_tracker warning is retained as an explicit deferred blocker; it is not suppressed"
+  },
+  "decision_detail": {
+    "release_status": "blocked",
+    "reference_status": "reference-qualified-for-quality-and-mps-operational-evidence",
+    "rollout_allowed": false,
+    "blockers": [
+      "Repeated full-stack memory/pressure evidence with summary-worker overlap is still missing",
+      "The 1.7B operational run emitted one resource_tracker leaked-semaphore warning that needs root-cause verification",
+      "A remote tool-router generation failure was observed and logged as fail-closed during the release trajectory; the user-facing telemetry path should be audited before rollout"
+    ],
+    "no_silent_asr_fallback": true,
+    "production_default": "unchanged until the release gate is explicitly closed"
+  },
+  "raw_logs": "eval/results/qwen_asr_release/20260803T004036Z-ac9c7c26 (local, gitignored)"
+}

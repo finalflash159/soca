@@ -127,6 +127,10 @@ class QwenASRServiceClient:
                 child_environment.pop(name, None)
             child_environment["HF_HUB_OFFLINE"] = "1"
             child_environment["TRANSFORMERS_OFFLINE"] = "1"
+            if launch.spec.device == "mps":
+                # A production MPS worker must fail on an unsupported op rather
+                # than silently execute part of the model on the CPU.
+                child_environment["PYTORCH_ENABLE_MPS_FALLBACK"] = "0"
             self._process = subprocess.Popen(
                 [
                     str(executable),

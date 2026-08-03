@@ -313,6 +313,10 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
     logging.getLogger("transformers").setLevel(logging.ERROR)
     spec = get_qwen_artifact(args.artifact_key)
+    if spec.device == "mps":
+        # Keep direct server launches subject to the same no-CPU-fallback
+        # policy as launches through QwenASRServiceClient.
+        os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "0"
     launch = QwenServiceLaunch(
         spec=spec,
         model_path=args.model_path,

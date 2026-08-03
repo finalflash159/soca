@@ -484,6 +484,45 @@ class QwenArtifactStore:
                     self._make_writable(staging)
                     shutil.rmtree(staging)
 
+    def refresh_receipt(
+        self,
+        spec: QwenASRArtifactSpec,
+        *,
+        source_kind: ArtifactSourceKind,
+        health_probe: HealthProbe,
+        runtime_lock: Path,
+    ) -> ArtifactReceipt:
+        """Re-issue identity for unchanged local bytes after a spec change.
+
+        A device or dtype change intentionally changes the manifest digest. This
+        operation never downloads or replaces model files: it hashes the
+        existing generation, runs the supplied offline health probe, and then
+        writes a new private receipt only after both checks pass.
+        """
+        source = spec.mirror if source_kind is ArtifactSourceKind.MIRROR else spec.upstream
+        if source is None:
+            raise MirrorNotPinned("artifact mirror is not pinned")
+        if spec.runtime_lock_digest is None:
+            raise WorkerRuntimeInvalid("artifact does not pin a worker runtime lock")
+        try:
+            lock_digest = _sha256(runtime_lock)
+        except OSError as exc:
+            raise WorkerRuntimeInvalid("Qwen worker runtime lock is missing") from exc
+        if lock_digest != spec.runtime_lock_digest:
+            raise WorkerRuntimeInvalid("Qwen worker runtime lock digest does not match")
+
+        target = spec.model_path(self.root)
+        if not target.is_dir() or target.is_symlink():
+            raise ArtifactInvalid("cannot refresh a missing or indirect artifact generation")
+
+        with self.provision_lock():
+            self.verify_directory(spec, target, deep=True)
+            health = _sanitize_health(health_probe(target))
+            _private_directory(self.root / "receipts")
+            receipt = self._build_receipt(spec, source_kind, source, target, health)
+            self._write_receipt(spec.receipt_path(self.root), receipt)
+            return receipt
+
     def verify(
         self,
         spec: QwenASRArtifactSpec,

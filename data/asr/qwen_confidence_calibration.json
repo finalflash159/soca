@@ -1,52 +1,14 @@
 {
   "schema_version": 1,
   "calibrations": {
-    "45495742314cea1aa5a4b46e5cb107dba29c7a94538a332418d5cb3e7b667b57": {
+    "50d7f8f028eed690fa90a33fa00d8ed89d661cad8795242849a9e62d81ded0e6": {
       "identity": {
-        "artifact_digest": "ef7e0267457361962782405bf4554ca37de5951340f27cc424b7c88ea7601828",
+        "artifact_digest": "6b414993f01314a2466d5f0910de7dd34f1ef4814118b130dc800f0ed812f53e",
         "context_policy_digest": "4d8ca61b530b8f935fd8bc806370f8404db7720dbc293361b533e3823eb392bd",
         "context_echo_policy_digest": "dde5597078b164bcbfe64dbba4794eb2f7eb83fdc1fd0404a6bc24e28ef6acd8",
         "decode_strategy": "llm_decoder",
-        "device": "cpu",
-        "dtype": "float32",
-        "engine": "qwen_service",
-        "language": "Vietnamese",
-        "max_new_tokens": 128,
-        "model_key": "qwen3_asr_1_7b",
-        "runtime_lock_digest": "bbf96f7b16c241afee13734ae8bfa2525420675f6db536934d9a746b94ec7f9f",
-        "vad_policy_digest": "96c256c5003d2fa0e390782bfecfdf10fc27ce3b2918ad9c12ab962d25bb9ec0"
-      },
-      "recommended_thresholds": {
-        "min_avg_logprob": -0.20255678697784607,
-        "max_compression_ratio": 2.4,
-        "context_echo_min_contiguous_tokens": 4
-      },
-      "selection": {
-        "algorithm": "speech_lower_bound_and_compression_p99_v1",
-        "max_calibration_speech_false_reject_rate": 0.01,
-        "max_compression_ratio_floor": 2.4
-      },
-      "dataset_digests": {
-        "private_codeswitch": "aed1ccd96ed9d994412285f4dcff68ba119155be0effd7fa0d089fa635dde70d",
-        "fleurs_vi": "81de44e064d2925ca31ea5e911d560157e3b8e83319bdee66a750e3bab00978c",
-        "non_speech": "48b01f480e0020e2041a0f845011b90af4af035da1517c83664e1848882543b6"
-      },
-      "calibration_rows": {
-        "speech": 238,
-        "non_speech": 1202
-      },
-      "benchmark_config_digest": "17e82b812527f3cc82cf1de5f88a8f278a0d518005e13a8680b4864e81aaf7a2",
-      "run_id": "20260802T191341Z-5f4a990e",
-      "created_at_utc": "2026-08-02T21:16:23.237284+00:00"
-    },
-    "b3ec8279a31593ead05784680da236da3e01c30e0da90871717fd1c944362774": {
-      "identity": {
-        "artifact_digest": "21d13688aefbb05b7cc2b9efd48701753f36c209d0a7368334109572a32ab639",
-        "context_policy_digest": "4d8ca61b530b8f935fd8bc806370f8404db7720dbc293361b533e3823eb392bd",
-        "context_echo_policy_digest": "dde5597078b164bcbfe64dbba4794eb2f7eb83fdc1fd0404a6bc24e28ef6acd8",
-        "decode_strategy": "llm_decoder",
-        "device": "cpu",
-        "dtype": "float32",
+        "device": "mps",
+        "dtype": "float16",
         "engine": "qwen_service",
         "language": "Vietnamese",
         "max_new_tokens": 128,
@@ -55,7 +17,7 @@
         "vad_policy_digest": "96c256c5003d2fa0e390782bfecfdf10fc27ce3b2918ad9c12ab962d25bb9ec0"
       },
       "recommended_thresholds": {
-        "min_avg_logprob": -0.30610983234377587,
+        "min_avg_logprob": -0.31295127843385934,
         "max_compression_ratio": 2.4,
         "context_echo_min_contiguous_tokens": 4
       },
@@ -73,9 +35,47 @@
         "speech": 238,
         "non_speech": 1202
       },
-      "benchmark_config_digest": "17e82b812527f3cc82cf1de5f88a8f278a0d518005e13a8680b4864e81aaf7a2",
-      "run_id": "20260802T191341Z-5f4a990e",
-      "created_at_utc": "2026-08-02T21:16:23.194842+00:00"
+      "benchmark_config_digest": "d2d38686c8afc7b4ba4bf42af6d1a21f6340ea7e25313b07ce93f9bd205049a5",
+      "run_id": "20260803T004036Z-ac9c7c26",
+      "created_at_utc": "2026-08-03T02:40:38.367657+00:00"
+    },
+    "6cc1519ad801c1e8a8adb8c2ea79410be8d27a73569926735b944593f7a878b2": {
+      "identity": {
+        "artifact_digest": "f407d3c4c532eb3927abd088bd456ef3b6f92ae7a80baeca27657e552607ed22",
+        "context_policy_digest": "4d8ca61b530b8f935fd8bc806370f8404db7720dbc293361b533e3823eb392bd",
+        "context_echo_policy_digest": "dde5597078b164bcbfe64dbba4794eb2f7eb83fdc1fd0404a6bc24e28ef6acd8",
+        "decode_strategy": "llm_decoder",
+        "device": "mps",
+        "dtype": "float16",
+        "engine": "qwen_service",
+        "language": "Vietnamese",
+        "max_new_tokens": 128,
+        "model_key": "qwen3_asr_1_7b",
+        "runtime_lock_digest": "bbf96f7b16c241afee13734ae8bfa2525420675f6db536934d9a746b94ec7f9f",
+        "vad_policy_digest": "96c256c5003d2fa0e390782bfecfdf10fc27ce3b2918ad9c12ab962d25bb9ec0"
+      },
+      "recommended_thresholds": {
+        "min_avg_logprob": -0.2037214076780951,
+        "max_compression_ratio": 2.4,
+        "context_echo_min_contiguous_tokens": 4
+      },
+      "selection": {
+        "algorithm": "speech_lower_bound_and_compression_p99_v1",
+        "max_calibration_speech_false_reject_rate": 0.01,
+        "max_compression_ratio_floor": 2.4
+      },
+      "dataset_digests": {
+        "private_codeswitch": "aed1ccd96ed9d994412285f4dcff68ba119155be0effd7fa0d089fa635dde70d",
+        "fleurs_vi": "81de44e064d2925ca31ea5e911d560157e3b8e83319bdee66a750e3bab00978c",
+        "non_speech": "48b01f480e0020e2041a0f845011b90af4af035da1517c83664e1848882543b6"
+      },
+      "calibration_rows": {
+        "speech": 238,
+        "non_speech": 1202
+      },
+      "benchmark_config_digest": "d2d38686c8afc7b4ba4bf42af6d1a21f6340ea7e25313b07ce93f9bd205049a5",
+      "run_id": "20260803T004036Z-ac9c7c26",
+      "created_at_utc": "2026-08-03T02:40:38.410419+00:00"
     }
   }
 }
