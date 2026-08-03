@@ -7,6 +7,12 @@ repair layer (`core/repair.py` + `core/repair_prompts.vi.toml`) turns
 **technical codes** into **natural Vietnamese follow-up text**, with variants,
 randomization, no-repeat selection, and escalation.
 
+There are two producers of repair behavior. `VoicePipeline` handles an audio
+turn after ASR has run and returns an empty or rejected transcript. The TUI
+voice controller handles a recording window where VAD sees no speech at all.
+They share the catalog and user-facing vocabulary, but they do not share the
+same event class or compute path.
+
 The historical design context is preserved in the relevant `zplan/` plan; this
 page documents the current implementation and its typed repair events.
 
@@ -14,13 +20,18 @@ page documents the current implementation and its typed repair events.
 
 ```mermaid
 flowchart LR
-    TR[rejection_reason<br/>(no_speech, low_confidence...)] --> KIND[kind_for_reason]
+    TR["rejection_reason<br/>(no_speech, low_confidence, compression...)"] --> KIND[kind_for_reason]
     KIND --> LAD[attempt ladder]
-    LAD --> SEL[RepairCatalog.select<br/>random no-repeat]
+    LAD --> SEL["RepairCatalog.select<br/>random no-repeat"]
     SEL --> TXT[Vietnamese follow-up text]
     TXT --> TTS[(spoken through TTS)]
     TXT --> UI[(timeline: Follow-up)]
 ```
+
+The technical reason remains in metadata for diagnostics; it is never spoken
+verbatim. The selected catalog line is the user-facing text. A missing catalog
+slot or an invalid catalog is a startup/configuration error, not a request to
+invent a repair line dynamically.
 
 ## Categories (`RepairKind`)
 
@@ -60,39 +71,44 @@ Each call increments `attempt`, escalates the slot, and avoids repeating prompts
 
 ```mermaid
 flowchart LR
-    A1[attempt 1<br/>no_input.attempt_1<br/>playful reprompt] --> A2[attempt 2<br/>no_input.attempt_2<br/>microphone guidance] --> A3[attempt 3<br/>no_input.handover<br/>switch to chat]
+    A1["attempt 1<br/>no_input.attempt_1<br/>playful reprompt"] --> A2["attempt 2<br/>no_input.attempt_2<br/>microphone guidance"] --> A3["attempt 3<br/>no_input.handover<br/>switch to chat"]
 ```
 
 `RepairState` is mutable RAM-only state. It stores `no_input_attempts` and
-`recent_prompt_ids`. `reset()` runs after a successful turn.
+`recent_prompt_ids`. `plan_repair()` increments the attempt count, selects a
+fresh prompt when possible, and appends its prompt ID. `reset()` runs after a
+successful transcript turn and clears the escalation counter; recent prompt
+IDs remain bounded history for no-repeat selection.
 
 ### 2. Passive Silence: Calling Out When Nothing Is Happening
 
 Important distinction: **passive silence is not the same as no_input**.
 
-- **No input**: there is evidence that the user tried to speak, but the system
-  could not get reliable text. This goes through `plan_repair` inside the
-  **pipeline**.
+- **No input**: the recording produced an ASR result with no trusted text. This
+  goes through `plan_repair` inside the **pipeline**, so ASR has already run and
+  the resulting `repair` event includes the ASR technical reason.
 - **Passive silence**: VAD sees **no speech at all**. The TUI worker handles it
-  directly (`app/voice_controller.py`), skips ASR/LLM to save compute, and periodically
-  calls out playfully:
+  directly (`app/voice_controller.py`), skips ASR and LLM to save compute, and
+  periodically calls out playfully:
 
 ```mermaid
 flowchart TD
     REC[record window] --> VAD{VAD sees speech?}
-    VAD -->|yes| PIPE[run pipeline normally<br/>reset silence clock]
+    VAD -->|yes| PIPE["run pipeline normally<br/>reset silence clock"]
     VAD -->|no| SIL[silence_ms += window]
-    SIL --> LONG{silence &gt;= sleep_voice_at_ms<br/>(~5 minutes)?}
-    LONG -->|yes| SLEEP[session_inactive.sleep<br/>+ hand over to chat + stop loop]
-    LONG -->|no| DUE{call-out interval due?<br/>about every 20 seconds}
+    SIL --> LONG{"silence &gt;= sleep_voice_at_ms<br/>(~5 minutes)?"}
+    LONG -->|yes| SLEEP["session_inactive.sleep<br/>+ hand over to chat + stop loop"]
+    LONG -->|no| DUE{"call-out interval due?<br/>about every 20 seconds"}
     DUE -->|no| WAIT[keep listening]
-    DUE -->|yes| CALL[no_input.attempt_1<br/>alo - moshi moshi - annyeong<br/>cycle no-repeat → speak through TTS]
+    DUE -->|yes| CALL["no_input.attempt_1<br/>alo · moshi moshi · annyeong<br/>cycle no-repeat → speak through TTS"]
 ```
 
 Behavior:
 
-- During pure silence, SoCa **calls out periodically** about every 20 seconds,
-  cycling through multiple greetings without immediate repetition.
+- The first passive-silence check can call out immediately after the first empty
+  recording window. Later call-outs are spaced by
+  `_SILENCE_CALLOUT_INTERVAL_MS` (20 seconds by default), not by an ASR turn.
+  The catalog cycles through multiple greetings without immediate repetition.
 - Lines like "I did not hear that clearly" or "move closer to the mic" are only
   for speech-that-was-not-understood, not for pure silence.
 - After roughly **5 minutes** of full silence, the loop winds down: "I'll pause
@@ -102,16 +118,58 @@ Behavior:
 
 ### `plan_no_reply`: Pure Policy Ladder
 
-`plan_no_reply(silence_ms, expects_response, attempts_fired, timings)` is the
-pure policy ladder from the design: 45 s / 120 s / 300 s. It distinguishes
-"SoCa is waiting for a user reply" from "passive silence." It is tested, but the
-controller currently uses the simpler playful call-out loop above for voice UX.
+`plan_no_reply(silence_ms, expects_response, attempts_fired, timings)` is a
+pure, unit-tested policy ladder from the design: 45 s / 120 s / 300 s. It
+distinguishes "SoCa is waiting for a user reply" from "passive silence." The
+current production controller does **not** call this function; it uses
+`VoiceMonitorController._handle_passive_silence()` and the 20-second playful
+call-out behavior above. This function is retained as an independently tested
+policy primitive for a future controller integration, not as evidence that the
+45/120-second ladder is active in the TUI.
 
-## `repair` Event & Handover
+## Repair events, ordering and handover
 
-The pipeline emits `StreamingEvent(type="repair")` with
-`kind/action/attempt/technical_reason/handover_target` **before** sentence/TTS
-events. UI handling:
+### ASR-rejected pipeline turn
+
+`VoicePipeline.turn_streaming()` emits this sequence when ASR produces no
+trusted transcript:
+
+```text
+asr → repair → sentence* → tts/audio* → done
+```
+
+The `repair` event is a `StreamingEvent` and contains:
+
+| Field | Meaning |
+| --- | --- |
+| `text` | selected Vietnamese catalog variant |
+| `repair_kind` | `no_input` or `uncertain_input` |
+| `repair_action` | `reprompt`, `contextual_reprompt` or `handover_to_chat` |
+| `repair_attempt` | consecutive failed transcript count |
+| `technical_reason` | ASR reason such as `no_speech` or `low_confidence:-0.90` |
+| `handover_target` | `chat` only for the handover action, otherwise `null` |
+
+The event is emitted before sentence/TTS events so the UI can label the line as
+a follow-up rather than an error. This branch never calls the assistant LLM.
+
+### Passive-silence controller turn
+
+`VoiceMonitorController._handle_passive_silence()` does not create a
+`StreamingEvent`; it pushes `VoiceMonitorEvent` records directly to the TUI
+queue:
+
+```text
+repair → tts → playback_started → audio → done
+```
+
+Its metadata includes `technical_reason=passive_silence`, `silence_ms`,
+`repair_kind`, `repair_action`, `repair_attempt` and `handover_target`. It calls
+TTS directly, skips ASR/LLM, and sets `stop_event` after a
+`session_inactive.sleep` choice so the controller leaves voice and returns to
+chat. A normal call-out ends with `terminal_status=needs_clarification`; the
+sleep handover ends with `terminal_status=cancelled`.
+
+UI handling is the same at the presentation level:
 
 - CLI: `print_followup` prints `Follow-up: <text>` in a warm style, not as a red
   error.
@@ -136,5 +194,5 @@ sequenceDiagram
 | Situation                             | Detected In                                  | Spoken Line Source             | Mechanism                           |
 | ------------------------------------- | -------------------------------------------- | ------------------------------ | ----------------------------------- |
 | User spoke but ASR did not understand | `VoicePipeline` (empty/untrusted transcript) | `no_input` / `uncertain_input` | `plan_repair` escalation → handover |
-| Complete silence                      | TUI worker (VAD)                             | playful `no_input.attempt_1`   | periodic call-out → sleep           |
+| Complete silence                      | TUI worker (VAD)                             | `no_input.attempt_1` / `session_inactive.sleep` | periodic call-out → sleep + chat handover |
 | Guardrail blocked                     | `AssistantRuntime`                           | `guardrail_blocked`            | clear boundary, no jokes            |
