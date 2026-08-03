@@ -131,6 +131,12 @@ def run_gate(
     return {
         "schema_version": "soca-workflow-control-gate-v1",
         "artifact": metadata.to_dict(),
+        "llm": {
+            "backend": backend,
+            "provider": getattr(getattr(engine, "provider", None), "key", None),
+            "model": model or getattr(engine, "model", None) or getattr(engine, "model_key", ""),
+            "provider_called": backend == "remote" and goal_resolver.last_usage is not None,
+        },
         "result": {
             "terminal_status": run.terminal.status.value,
             "error_code": run.terminal.error_code,

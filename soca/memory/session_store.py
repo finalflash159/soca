@@ -32,8 +32,13 @@ def default_session_checkpoint_home() -> Path:
 
 class SessionCheckpointStore:
     def __init__(self, root: str | Path) -> None:
-        root_path = Path(root).expanduser().absolute()
-        _reject_symlink_ancestors(root_path)
+        requested_root = Path(root).expanduser().absolute()
+        if requested_root.is_symlink():
+            raise ValueError("session checkpoint root must not be a symlink")
+        # macOS exposes the temporary directory through /var -> /private/var.
+        # Normalize trusted parent aliases without allowing the configured root
+        # itself to redirect to another location.
+        root_path = requested_root.resolve()
         root_path.mkdir(mode=0o700, parents=True, exist_ok=True)
         if root_path.is_symlink() or not root_path.is_dir():
             raise ValueError("session checkpoint root must be a real directory")
@@ -218,12 +223,6 @@ def _check_expected_state(
         or _payload_digest(current) != expected_digest
     ):
         raise CheckpointConflictError("session checkpoint changed since it was read")
-
-
-def _reject_symlink_ancestors(path: Path) -> None:
-    for ancestor in (path, *path.parents):
-        if ancestor.is_symlink():
-            raise ValueError("session checkpoint root or parent must not be a symlink")
 
 
 __all__ = [
