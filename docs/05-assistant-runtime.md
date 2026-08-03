@@ -5,6 +5,10 @@ runtime serves voice through `VoicePipeline`, text through `soca ask/chat`, and
 the TUI chat mode. It does **not** contain ASR or TTS. Its scope is:
 guardrails → tools → knowledge/memory → LLM → output.
 
+![Controlled turn](assets/diagrams/controlled-turn.svg)
+
+Editable diagram source: [Lucid controlled turn](https://lucid.app/lucidchart/e56c8a9d-38cf-451c-ae56-6b8867f34774/view).
+
 ## Routing One Turn
 
 ```mermaid

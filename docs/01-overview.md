@@ -1,105 +1,95 @@
 # 01 — Overview
 
-## What SoCa Is
+## Product boundary
 
-**SoCa (Sơn Ca)** is a Vietnamese voice-assistant toolkit that runs **entirely on
-the user's machine**: microphone capture → automatic speech recognition (ASR) →
-runtime reasoning/response generation → text-to-speech (TTS) → speaker playback.
-There is no cloud component in the main runtime path.
+SoCa is a Vietnamese voice-assistant application with two presentation
+surfaces: command-line commands and an Ink/React terminal UI. The product is
+**local-first**, not local-only. Audio capture, VAD/AEC, ASR, TTS, knowledge,
+memory, indexing and session state are local. The LLM is local by default, but
+the user may explicitly select a remote provider; the selected chat and voice
+LLM then share that setting.
 
-The project is **research-heavy**: model choices are tested through small local
-bake-offs before they become a default path. See `BENCHMARKS.md` and `eval/`.
-
-## Goals
-
-| Goal                                                   | Design Consequence                                                                |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| Run offline on a personal machine, currently macOS ARM | Local backends: ONNX Runtime for ASR, llama.cpp for LLM, Torch/ONNX for TTS       |
-| Treat Vietnamese as first-class                        | RobustASR for PhoWhisper, Vietnamese TTS voices, Vietnamese repair, explicit ASR ablation tooling |
-| Low latency and a more natural conversational feel     | Token→sentence→TTS streaming, per-sentence guardrails, natural repair follow-ups  |
-| Easy model swapping and comparison                     | Registries, runtime profiles, and evaluation harnesses                            |
-| Two experiences: scriptable and visual                 | `soca voice/ask/chat` for CLI and `soca ui` for the Textual TUI                   |
-
-## High-Level Container Architecture
-
-```mermaid
-flowchart TB
-    subgraph User["User"]
-        Mic([🎙 Mic])
-        Spk([🔊 Speaker])
-        Term([⌨ Terminal])
-    end
-
-    subgraph App["App Layer — soca/app, soca/cli"]
-        CLI["CLI: voice / ask / chat / ui"]
-        TUI["Ink terminal UI (ui/ + soca engine)"]
-    end
-
-    subgraph Core["Core Layer — soca/core (facade)"]
-        VP["VoicePipeline<br/>(voice turn orchestration)"]
-        AR["AssistantRuntime<br/>(routing + guardrails)"]
-        REP["Repair layer"]
-        EP["Endpoint / VAD"]
-    end
-
-    subgraph Backends["Model Backends — soca/{asr,llm,tts,knowledge,memory,tools}"]
-        ASR["RobustASR + PhoWhisper ONNX"]
-        LLM["llama.cpp GGUF"]
-        TTS["TTS engines"]
-        KN["Markdown knowledge vault"]
-        MEM["Long-term + session memory"]
-        TL["Local tools (time, knowledge)"]
-    end
-
-    Mic --> CLI & TUI
-    Term --> CLI & TUI
-    CLI & TUI --> VP
-    VP --> EP --> ASR
-    VP --> AR --> LLM
-    AR --> KN & MEM & TL
-    ASR -. reject .-> REP --> TTS
-    VP --> TTS --> Spk
-    AR -. trace/usage .-> CLI & TUI
-```
-
-## Two Main Execution Paths
-
-1. **Voice loop** (`soca voice`, or TUI voice mode):
-   `mic → VAD → RobustASR → AssistantRuntime → TTS → speaker`, repeated
-   continuously. Details: [03 — voice-pipeline](./03-voice-pipeline.md).
-
-2. **Text turn** (`soca ask`, `soca chat`, TUI chat mode):
-   `text → AssistantRuntime → text/citations`. It uses the same runtime as voice
-   but skips ASR and TTS. Details:
-   [05 — assistant-runtime](./05-assistant-runtime.md).
-
-## Dependency Boundary
+The voice path is:
 
 ```text
-app  ─────────►  core  ─────────►  asr / llm / tts / knowledge / memory / tools
-(CLI, TUI)       (facade)          (model backends + utilities)
+microphone → endpoint/VAD → selected ASR → controlled assistant turn
+            → selected LLM/tools/knowledge/memory → streaming TTS → speaker
 ```
 
-- App code imports from `soca.core` and `soca.app.*`. It does not import
-  backends directly.
-- `soca/core/__init__.py` is the **public API**: it re-exports what the app
-  layer needs.
-- Backends know nothing about the app or TUI. They accept plain audio/text input
-  and return dataclasses.
+The text path removes only the audio edges:
 
-Reason: backend/model changes should not force app changes, and app surfaces can
-be tested with fake runtimes.
+```text
+text → controlled assistant turn → text answer + structured evidence/usage
+```
 
-## Current Status
+The [system map](./00-system-map.md) is the authoritative cross-module view.
 
-- ✅ Local voice loop runs (`soca voice`).
-- ✅ RobustASR: VAD, confidence guard, de-loop, and general hallucination heuristics.
-- ✅ ASR/LLM/TTS registries, profiles, and resolved runtime config.
-- ✅ AssistantRuntime: multi-stage guardrails, tool routing, knowledge+memory,
-  citations, trace, and streaming.
-- ✅ Textual TUI: status/chat/voice modes, live voice status bar, repair UX.
-- ✅ Conversation repair layer: Vietnamese catalog, no-reply, handover.
-- 🚧 Deeper eval harnesses for tools/citations/guardrails; ASR recalibration for
-  larger models; testing on ARM boards.
+## Goals and consequences
 
-See also: [02 — architecture](./02-architecture.md).
+| Goal | Current design consequence |
+| --- | --- |
+| Vietnamese speech that remains usable under noise and ASR uncertainty | VAD/AEC endpointing, selected ASR backend, confidence/de-loop guards and typed repair |
+| Natural multi-turn behavior without losing control | goal resolver and bounded controlled workflow before terminal output |
+| Accurate private-vault answers | revisioned Markdown catalog, hybrid retrieval, evidence gates and citations |
+| Memory without an unbounded prompt dump | working/core/archive layers, compaction and model-aware prompt admission |
+| Model experimentation without production ambiguity | registries, named profiles, capability metadata and explicit readiness |
+| Scriptable and visible operation | `soca ask/chat/voice/ui` plus NDJSON events rendered by Ink |
+
+## Execution surfaces
+
+| Surface | Entry point | Owns |
+| --- | --- | --- |
+| One text turn | `soca ask` | build a text runtime and execute one request |
+| Text session | `soca chat` | repeated turns and session memory |
+| CLI voice | `soca voice` | microphone loop, audio playback and repair presentation |
+| Ink UI | `soca ui` | setup, settings, chat/voice interaction and event projection |
+| Engine protocol | `soca engine` | NDJSON command/event boundary for the UI |
+
+The UI is not a second assistant implementation. It sends commands to
+`SocaEngine`, receives typed progress/retrieval/workflow/model events, and
+renders state. See [07 — Terminal UI](./07-tui.md).
+
+## Runtime containers
+
+```mermaid
+flowchart LR
+    User([User]) --> Surface[CLI or Ink UI]
+    Surface --> Engine[SocaEngine<br/>NDJSON command/event boundary]
+    Engine --> Core[soca/core<br/>AssistantRuntime + VoicePipeline]
+    Core --> Workflow[Controlled workflow<br/>goal → action → evidence → verify]
+    Workflow --> Local[Local capabilities<br/>ASR · TTS · knowledge · memory]
+    Workflow --> LLM[Selected LLM<br/>local by default, remote when explicit]
+    Local --> State[(Private vault, index, memory, session)]
+    LLM --> Answer[Grounded answer / typed terminal outcome]
+    Answer --> Surface
+```
+
+## Non-negotiable runtime behavior
+
+- A selected production model, provider or retrieval backend does not silently
+  change after failure. Bounded retries are visible; exhausted failures are
+  typed and exposed in readiness/terminal events.
+- A vault catalog can explain what exists and how notes relate. It cannot serve
+  as answer evidence; content answers require retrieved or explicitly read
+  passages.
+- Empty or insufficient evidence is a meaningful terminal state. The LLM is
+  instructed to abstain rather than fill the gap from general knowledge.
+- Remote use is a data-boundary decision. Transcript and assembled prompt
+  context leave the machine only for the provider selected by the user.
+- Benchmark, private-vault and raw provider artifacts remain outside Git unless
+  sanitized and reproducible.
+
+## Current implementation status
+
+- ✅ CLI, Ink UI and NDJSON engine share the runtime facade.
+- ✅ Local and explicit remote LLM settings are shared by chat and voice.
+- ✅ Qwen and PhoWhisper ASR profiles are explicit choices; production does not
+  auto-fallback between them.
+- ✅ Hybrid knowledge retrieval uses a revisioned catalog and dense generation
+  lifecycle; the selected production backend is recorded in docs and benchmarks.
+- ✅ Working/core/archive memory and model-aware context budgeting are exposed
+  through runtime events and slash commands.
+- ✅ Controlled workflow records goal, action, evidence and terminal outcome.
+- ⚠️ Device-specific audio gates and model qualification remain tied to the
+  named hardware/profile evidence in `BENCHMARKS.md`; unsupported combinations
+  must remain visible as unsupported rather than inferred ready.

@@ -11,6 +11,11 @@ answers. Three cooperating pieces sit behind the `AssistantRuntime` (see
 3. **Retrieved memory** — query-aware long-term memory ranked by relevance,
    recency, and importance. Episodic capture remains evaluator-only.
 
+![Knowledge index lifecycle](assets/diagrams/knowledge-lifecycle.svg)
+![Memory layers](assets/diagrams/memory-lifecycle.svg)
+
+Editable sources: [Lucid knowledge lifecycle](https://lucid.app/lucidchart/5f5447ff-ebee-4b82-b801-674f9815d737/view) and [Lucid memory lifecycle](https://lucid.app/lucidchart/3b8402d5-bba6-4dac-95ca-830aaaed0f62/view).
+
 Knowledge and memory reuse the **same retrieval implementation** but stay on
 **separate corpora and cache namespaces**, so a `knowledge.search` can never
 surface a private memory note.

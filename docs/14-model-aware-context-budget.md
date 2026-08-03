@@ -65,6 +65,22 @@ misses on some unanswerable/instruction-boundary cases; those are routing and
 evidence-gate work, not evidence that the context manifest overflowed. Raw
 transcripts and run logs remain outside the repository.
 
+### Calibration record
+
+The release calibration used a non-demo private-vault run and the deterministic
+matrix of 2,048, 4,096, 16,384 and 32,768-token context windows. Required input
+was preserved at every size, optional context was dropped by priority, output
+was clamped to model capability, and prompt hashes/provenance remained stable.
+The run passed `1078 passed, 3 skipped, 3 warnings`; Ruff, Pyright, UI
+typecheck, 49 Vitest tests and the UI build also passed at that revision.
+
+For the remote smoke, OpenRouter `google/gemini-3.5-flash-lite` reported a
+positive prompt-token delta of 16 tokens for free chat and 71–73 tokens for the
+knowledge route. The 128-token admission margin covered the observed delta.
+This calibrates admission safety only; it is not a retrieval-quality result.
+If a remote catalog is unavailable, the manifest keeps `context_window=null`
+and the runtime does not fabricate a hard limit.
+
 ## Non-goals
 
 This contract does not claim that the semantic router always selects a

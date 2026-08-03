@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1450" height="1120" viewBox="0 0 1450 1120" role="img" aria-labelledby="title desc">
+  <title id="title">SoCa knowledge and index lifecycle</title>
+  <desc id="desc">Vault changes are scanned, parsed into a catalog and chunks, embedded into a new dense generation, verified and published atomically, then retrieved through fusion and an evidence gate.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 7 7" refX="6" refY="3.5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L7 3.5L0 7z" fill="#263746"/></marker>
+    <marker id="loop-arrow" viewBox="0 0 7 7" refX="6" refY="3.5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L7 3.5L0 7z" fill="#99651d"/></marker>
+    <style>
+      rect{rx:0;ry:0}.bg{fill:#fff}.box{fill:#fff;stroke:#16202a;stroke-width:2.2}.local{fill:#fff;stroke:#486372;stroke-width:2.2}.decision{fill:#fff;stroke:#a16f2b;stroke-width:2.2}.title{font:700 27px Arial,sans-serif;fill:#16202a}.label{font:700 17px Arial,sans-serif;fill:#16202a}.small{font:14px Arial,sans-serif;fill:#31404d}.light{fill:#16202a}.edge{stroke:#263746;stroke-width:1.8;fill:none;marker-end:url(#arrow)}.loop{stroke:#99651d;stroke-width:1.8;stroke-dasharray:8 6;fill:none;marker-end:url(#loop-arrow)}.caption{font:italic 14px Arial,sans-serif;fill:#4d5d6c}
+    </style>
+  </defs>
+  <rect class="bg" width="1450" height="1120"/>
+  <text class="title" x="58" y="58">SoCa · knowledge index lifecycle</text>
+  <text class="caption" x="58" y="86">The vault has a revisioned build path and a separate query path; only a verified generation is readable.</text>
+
+  <g transform="translate(60,150)"><rect class="box" width="250" height="96"/><text class="label" x="125" y="42" text-anchor="middle">Vault</text><text class="small" x="125" y="68" text-anchor="middle">Markdown · headings · links</text></g>
+  <g transform="translate(390,150)"><rect class="decision" width="250" height="96"/><text class="label" x="125" y="42" text-anchor="middle">Scan changes</text><text class="small" x="125" y="68" text-anchor="middle">digest · mtime · add/update/delete</text></g>
+  <g transform="translate(720,150)"><rect class="box" width="250" height="96"/><text class="label" x="125" y="42" text-anchor="middle">Parse / chunk</text><text class="small" x="125" y="68" text-anchor="middle">catalog · chunks · evidence spans</text></g>
+
+  <g transform="translate(390,370)"><rect class="local" width="270" height="106"/><text class="label light" x="135" y="43" text-anchor="middle">SQLite catalog</text><text class="small light" x="135" y="70" text-anchor="middle">tree · tags · headings · links</text></g>
+  <g transform="translate(790,370)"><rect class="local" width="270" height="106"/><text class="label light" x="135" y="43" text-anchor="middle">Dense generation</text><text class="small light" x="135" y="70" text-anchor="middle">model identity · vectors · digest</text></g>
+  <g transform="translate(575,575)"><rect class="decision" width="300" height="106"/><text class="label" x="150" y="43" text-anchor="middle">Verify + publish</text><text class="small" x="150" y="70" text-anchor="middle">checksum · manifest · atomic pointer</text></g>
+  <g transform="translate(575,765)"><rect class="box" width="300" height="106"/><text class="label" x="150" y="43" text-anchor="middle">Retrieve</text><text class="small" x="150" y="70" text-anchor="middle">sparse · dense · fusion · rerank</text></g>
+  <g transform="translate(575,955)"><rect class="decision" width="300" height="106"/><text class="label" x="150" y="43" text-anchor="middle">Evidence gate</text><text class="small" x="150" y="70" text-anchor="middle">accept · reject · insufficient</text></g>
+
+  <path class="edge" d="M310 198H390"/><path class="edge" d="M640 198H720"/>
+  <path class="edge" d="M845 246C845 300 925 300 925 370"/><path class="edge" d="M815 246C815 300 525 300 525 370"/>
+  <path class="edge" d="M525 476C525 530 650 530 650 575"/><path class="edge" d="M925 476C925 530 800 530 800 575"/>
+  <path class="edge" d="M725 681V765"/><path class="edge" d="M725 871V955"/>
+  <path class="loop" d="M575 1008H40V110H515V150"/>
+  <text class="caption" x="230" y="615" text-anchor="middle" transform="rotate(-90 230 615)">watcher or explicit reindex starts the next revision</text>
+  <text class="small" x="58" y="1095">Failed publish keeps the prior verified generation. The catalog describes structure; answer content still comes from selected evidence, never from the tree alone.</text>
+</svg>

@@ -2,7 +2,7 @@
 
 PhoWhisper, like Whisper-style models in general, can sometimes **hallucinate
 text** on silence/noise or **loop indefinitely**. `RobustASR`
-(`asr/robust_asr.py`) wraps the model with a **four-stage production pipeline** that turns
+(`asr/robust_asr.py`) wraps the selected model with a **four-stage production pipeline** that turns
 raw output into a trusted transcript, or rejects cleanly with a clear technical
 reason.
 
@@ -81,6 +81,32 @@ ablation comparisons. It is never auto-loaded by `RobustASR`, the voice runtime,
 or runtime status. The ablation output records whether BoH was applied after
 the production pipeline so its metrics cannot be mistaken for production
 behavior.
+
+The production contract does not rely on a mined phrase list. BoH is useful as
+an isolated ablation and remains in evaluation code; it is not auto-loaded by
+`RobustASR`, the voice runtime or readiness reporting.
+
+## Measured evidence
+
+The robustness harness uses Vietnamese FLEURS speech and stratified non-speech:
+ESC-50/silence/white/pink noise plus speech-like babble made by overlapping
+FLEURS voices. The focused tiny run used 200 speech and 300 non-speech items on
+an M4 with CoreML/CPU. The full guard reduced hallucination from 100.0% raw to
+8.33% while false-reject stayed at 0.00% and WER stayed near 25.22%.
+
+The same focused items across PhoWhisper tiny, base, small, medium and large
+showed that WER reached its useful operating point at `small` while real-time
+factor continued to rise for larger models. The guard thresholds were tiny-
+calibrated in that sweep, so the larger-model column is a qualification probe,
+not a universal threshold decision. Full configurations, revisions, raw-log
+locations and limitations are retained in `BENCHMARKS.md` and the ignored
+evaluation result directories.
+
+![WER versus hallucination](assets/benchmarks/wer_vs_halluc_phowhisper_tiny.png)
+![Stage contribution](assets/benchmarks/stage_contribution_phowhisper_tiny.png)
+![Hallucination by subtype](assets/benchmarks/halluc_by_subtype_phowhisper_tiny.png)
+![Model-size WER and real-time factor](assets/benchmarks/model_sweep_wer_rtf.png)
+![Model-size hallucination comparison](assets/benchmarks/model_sweep_halluc.png)
 
 ## Why Reject Reasons Are Separate from User-Facing Speech
 
