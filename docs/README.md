@@ -66,6 +66,28 @@ map is [00-system-map](./00-system-map.md).
 - **No long-lived legacy path.** Once a replacement is validated and wired,
   the superseded production path is removed instead of hidden behind a flag.
 
+## Documentation completeness contract
+
+An implementation page is considered current only when it answers all of the
+following questions for the revision that owns the page:
+
+| Required question | What the page must identify |
+| --- | --- |
+| What is in scope? | Production responsibility, boundary and explicit non-goals |
+| How does data/control move? | Main flow, participating modules and state transitions |
+| What is the contract? | Public types, event/tool fields, inputs, outputs and invariants |
+| What happens when it fails? | Readiness states, typed errors, retry/timeout policy and operator action |
+| How is it operated? | Provisioning, commands, persistence, migration or recovery steps |
+| What proves it? | Tests, real-flow or benchmark evidence, data/model revision and known gaps |
+
+The numbered subsystem pages satisfy this contract at their own scope. The
+system map cross-links the code and tests; benchmark-heavy decisions keep raw
+measurements in `BENCHMARKS.md` or ignored local result roots. ADRs are
+intentionally shorter: they record one decision, evidence, consequences and
+rollback boundary, while the numbered page carries the operational detail.
+If a page cannot prove a required item, it must label that item `deferred`,
+`blocked` or `unsupported` rather than implying that the behavior exists.
+
 ## Reading paths
 
 - New contributor: 00 → 01 → 02 → 05 → 03.
