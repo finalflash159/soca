@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "suite": "platform-audio-release",
+  "gates": [
+    {
+      "id": "watcher_and_process_resume",
+      "required": true,
+      "timeout_seconds": 60,
+      "command": [
+        "uv",
+        "run",
+        "pytest",
+        "-q",
+        "tests/test_index_watcher_integration.py",
+        "tests/test_session_process_boundary.py"
+      ]
+    },
+    {
+      "id": "index_lifecycle",
+      "required": true,
+      "timeout_seconds": 120,
+      "command": [
+        "uv",
+        "run",
+        "python",
+        "eval/eval_index_lifecycle.py",
+        "--documents",
+        "24",
+        "--output",
+        "runs/platform_audio_release/index_lifecycle.json"
+      ],
+      "result_path": "runs/platform_audio_release/index_lifecycle.json",
+      "checks": [
+        {"path": ["documents"], "operator": "eq", "value": 24},
+        {"path": ["edit_embedded_rows"], "operator": "eq", "value": 1},
+        {"path": ["rename_reused_rows"], "operator": "eq", "value": 24}
+      ]
+    },
+    {
+      "id": "memory_lifecycle",
+      "required": true,
+      "timeout_seconds": 60,
+      "command": [
+        "uv",
+        "run",
+        "python",
+        "eval/eval_memory_lifecycle.py",
+        "--output",
+        "runs/platform_audio_release/memory_lifecycle.json"
+      ],
+      "result_path": "runs/platform_audio_release/memory_lifecycle.json",
+      "checks": [
+        {"path": ["episode_round_trip"], "operator": "eq", "value": true},
+        {"path": ["proposal_approved"], "operator": "eq", "value": true}
+      ]
+    },
+    {
+      "id": "remote_provider_transcript",
+      "required": true,
+      "timeout_seconds": 120,
+      "command": [
+        "uv",
+        "run",
+        "python",
+        "scripts/smoke_test_remote_llm.py",
+        "--provider",
+        "openrouter",
+        "--max-tokens",
+        "2048",
+        "--env-file",
+        ".env",
+        "--artifact",
+        "runs/platform_audio_release/openrouter.json"
+      ],
+      "result_path": "runs/platform_audio_release/openrouter.json",
+      "checks": [
+        {"path": ["receipts", 0, "provider_called"], "operator": "eq", "value": true},
+        {"path": ["receipts", 1, "provider_called"], "operator": "eq", "value": true},
+        {"path": ["receipts", 0, "terminal"], "operator": "eq", "value": "achieved"},
+        {"path": ["receipts", 1, "terminal"], "operator": "eq", "value": "achieved"}
+      ]
+    },
+    {
+      "id": "real_rag_grounding",
+      "required": true,
+      "timeout_seconds": 300,
+      "command": [
+        "uv",
+        "run",
+        "python",
+        "-m",
+        "eval.eval_grounding",
+        "--vault",
+        "eval/fixtures/real_rag_vault",
+        "--dataset",
+        "eval/prompts/p0/grounding_vi.jsonl",
+        "--variant",
+        "hybrid",
+        "--backend",
+        "aiteamvn_v2",
+        "--output",
+        "runs/platform_audio_release/grounding.json"
+      ],
+      "result_path": "runs/platform_audio_release/grounding.json",
+      "checks": [
+        {"path": ["answerable_retrieval_recall_at_5", "rate"], "operator": "gte", "value": 0.9},
+        {"path": ["answerable_accepted_evidence_recall_at_5", "rate"], "operator": "gte", "value": 0.9},
+        {"path": ["unanswerable_false_evidence_rate", "rate"], "operator": "lte", "value": 0.05}
+      ]
+    },
+    {
+      "id": "remote_knowledge_workflow",
+      "required": true,
+      "timeout_seconds": 180,
+      "command": [
+        "uv",
+        "run",
+        "python",
+        "eval/workflow_control_gate.py",
+        "--backend",
+        "remote",
+        "--model",
+        "google/gemini-2.5-flash-lite",
+        "--corpus",
+        "eval/fixtures/real_rag_vault",
+        "--dataset",
+        "eval/prompts/remediation_workflow_vi.jsonl",
+        "--query",
+        "Trong ghi chú của tôi có phần nào nói về ONNX Runtime? Hãy kiểm tra đúng nguồn rồi cho tôi biết.",
+        "--expect-terminal",
+        "achieved",
+        "--output",
+        "runs/platform_audio_release/workflow_onnx.json"
+      ],
+      "result_path": "runs/platform_audio_release/workflow_onnx.json",
+      "checks": [
+        {"path": ["llm", "backend"], "operator": "eq", "value": "remote"},
+        {"path": ["llm", "provider_called"], "operator": "eq", "value": true},
+        {"path": ["result", "terminal_status"], "operator": "eq", "value": "achieved"},
+        {"path": ["result", "executed_actions"], "operator": "gte", "value": 1},
+        {"path": ["result", "promise_without_action"], "operator": "eq", "value": 0},
+        {"path": ["result", "terminal_events"], "operator": "eq", "value": 1}
+      ]
+    },
+    {
+      "id": "summary_cold_process",
+      "required": true,
+      "timeout_seconds": 180,
+      "command": [
+        "uv",
+        "run",
+        "python",
+        "scripts/smoke_test_working_memory_real.py",
+        "--output",
+        "runs/platform_audio_release/summary.json"
+      ],
+      "result_path": "runs/platform_audio_release/summary.json",
+      "checks": [
+        {"path": ["final"], "operator": "eq", "value": "published"},
+        {"path": ["summary_published"], "operator": "eq", "value": true},
+        {"path": ["worker_telemetry", "worker_stopped"], "operator": "eq", "value": true},
+        {"path": ["checkpoint_round_trip"], "operator": "eq", "value": true},
+        {"path": ["render_round_trip"], "operator": "eq", "value": true}
+      ]
+    },
+    {
+      "id": "qwen_remote_voice_transcript",
+      "required": true,
+      "timeout_seconds": 180,
+      "command": [
+        "uv",
+        "run",
+        "python",
+        "eval/eval_voice_loop.py",
+        "--profile",
+        "qwen-release",
+        "--audio-dir",
+        "eval/audio/voice_loop_smoke",
+        "--limit",
+        "3",
+        "--vault",
+        "eval/fixtures/real_rag_vault",
+        "--no-memory",
+        "--llm-backend",
+        "remote",
+        "--llm-provider",
+        "openrouter",
+        "--llm-model",
+        "google/gemini-2.5-flash-lite",
+        "--max-tokens",
+        "2048",
+        "--output-dir",
+        "runs/platform_audio_release/voice_loop"
+      ],
+      "result_path": "runs/platform_audio_release/voice_loop/voice_loop/latest.json",
+      "checks": [
+        {"path": ["results", 0, "status"], "operator": "eq", "value": "ok"},
+        {"path": ["results", 0, "selected_llm", "backend"], "operator": "eq", "value": "remote"},
+        {"path": ["results", 0, "selected_llm", "provider"], "operator": "eq", "value": "openrouter"},
+        {"path": ["results", 0, "sample_count"], "operator": "gte", "value": 3},
+        {"path": ["results", 0, "error_rate"], "operator": "eq", "value": 0.0}
+      ]
+    }
+  ]
+}

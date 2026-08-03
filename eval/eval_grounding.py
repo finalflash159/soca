@@ -156,7 +156,7 @@ def run_benchmark(
         "variant": variant,
         "backend": backend,
         "case_count": len(rows),
-        "answerable_retrieval_recall_at_5": _wilson(recall, len(answerable)),
+        "answerable_retrieval_recall_at_5": _wilson(raw_recall, len(answerable)),
         "answerable_accepted_evidence_recall_at_5": _wilson(recall, len(answerable)),
         "answerable_raw_retrieval_recall_at_5": _wilson(raw_recall, len(answerable)),
         "unanswerable_false_evidence_rate": _wilson(false_evidence, len(unanswerable)),

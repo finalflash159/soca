@@ -70,4 +70,5 @@ def test_grounding_recall_uses_policy_accepted_paths(tmp_path: Path, monkeypatch
 
     assert "wiki/answer.md" in report["records"][0]["raw_paths"]
     assert "wiki/answer.md" not in report["records"][0]["accepted_paths"]
-    assert report["answerable_retrieval_recall_at_5"]["successes"] == 0
+    assert report["answerable_retrieval_recall_at_5"]["successes"] == 1
+    assert report["answerable_accepted_evidence_recall_at_5"]["successes"] == 0
