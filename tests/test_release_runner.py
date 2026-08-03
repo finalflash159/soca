@@ -97,3 +97,40 @@ def test_runner_records_checked_result_as_evidence(tmp_path: Path) -> None:
         "run/command.log",
         "result.json",
     }
+
+
+def test_runner_rejects_directory_declared_as_result_evidence(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    _manifest(
+        manifest,
+        [
+            sys.executable,
+            "-c",
+            "import pathlib; pathlib.Path('result.json').mkdir()",
+        ],
+        result_path="result.json",
+    )
+
+    report, _ = run_manifest(manifest, repo_root=tmp_path, output_dir=tmp_path / "run")
+
+    assert report["decision"]["status"] == "blocked"
+    assert report["gates"][0]["status"] == "fail"
+    assert report["gates"][0]["details"]["result_error"] == (
+        "result_path must point to a regular file"
+    )
+    assert all(item["path"] != "result.json" for item in report["gates"][0]["evidence"])
+
+
+def test_runner_rejects_result_path_outside_repository(tmp_path: Path) -> None:
+    manifest = tmp_path / "manifest.json"
+    _manifest(
+        manifest,
+        [sys.executable, "-c", "pass"],
+        result_path="../outside.json",
+    )
+
+    report, _ = run_manifest(manifest, repo_root=tmp_path, output_dir=tmp_path / "run")
+
+    assert report["decision"]["status"] == "blocked"
+    assert report["gates"][0]["status"] == "fail"
+    assert "stay inside repo_root" in report["gates"][0]["details"]["result_error"]

@@ -114,6 +114,27 @@ def _git_commit(repo_root: Path) -> str:
         return "unknown"
 
 
+def _repo_dirty(repo_root: Path) -> bool:
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo_root),
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except OSError:
+        return True
+    return result.returncode != 0 or bool(result.stdout.strip())
+
+
 def _require_string(value: object, *, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field} must be a non-empty string")
@@ -185,14 +206,7 @@ def build_report(
         "recorded_at_utc": datetime.now(UTC).isoformat(),
         "source": {
             "commit": _git_commit(repo_root),
-            "repo_dirty": bool(
-                subprocess.run(
-                    ["git", "-C", str(repo_root), "diff", "--quiet"],
-                    check=False,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                ).returncode
-            ),
+            "repo_dirty": _repo_dirty(repo_root),
         },
         "environment": {
             "python": sys.version.split()[0],
@@ -259,4 +273,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

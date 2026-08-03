@@ -36,6 +36,21 @@ def test_checkpoint_rejects_non_private_file(tmp_path: Path) -> None:
         store.load("chat-1")
 
 
+def test_checkpoint_rejects_symlinked_parent_directory(tmp_path: Path) -> None:
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    linked_parent = tmp_path / "linked-parent"
+    try:
+        linked_parent.symlink_to(real_parent, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"symlinks are unavailable: {exc}")
+
+    with pytest.raises(ValueError, match="parent must not be a symlink"):
+        SessionCheckpointStore(linked_parent / "sessions")
+
+    assert not (real_parent / "sessions").exists()
+
+
 def test_checkpoint_reads_legacy_working_payload(tmp_path: Path) -> None:
     memory = WorkingMemory(thread_id="legacy")
     turn = memory.begin_turn("cũ")

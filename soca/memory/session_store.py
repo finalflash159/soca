@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -33,14 +34,15 @@ def default_session_checkpoint_home() -> Path:
 class SessionCheckpointStore:
     def __init__(self, root: str | Path) -> None:
         requested_root = Path(root).expanduser().absolute()
-        if requested_root.is_symlink():
-            raise ValueError("session checkpoint root must not be a symlink")
+        _reject_symlink_ancestors(requested_root)
         # macOS exposes the temporary directory through /var -> /private/var.
-        # Normalize trusted parent aliases without allowing the configured root
-        # itself to redirect to another location.
+        # Normalize that one OS-owned alias only after every other configured
+        # ancestor has been checked without following it.
         root_path = requested_root.resolve()
         root_path.mkdir(mode=0o700, parents=True, exist_ok=True)
-        if root_path.is_symlink() or not root_path.is_dir():
+        _reject_symlink_ancestors(root_path)
+        root_stat = root_path.lstat()
+        if stat.S_ISLNK(root_stat.st_mode) or not stat.S_ISDIR(root_stat.st_mode):
             raise ValueError("session checkpoint root must be a real directory")
         os.chmod(root_path, 0o700)
         self.root = root_path
@@ -223,6 +225,22 @@ def _check_expected_state(
         or _payload_digest(current) != expected_digest
     ):
         raise CheckpointConflictError("session checkpoint changed since it was read")
+
+
+def _reject_symlink_ancestors(path: Path) -> None:
+    for ancestor in (path, *path.parents):
+        try:
+            metadata = ancestor.lstat()
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISLNK(metadata.st_mode):
+            continue
+        # `/var` is a documented macOS alias for `/private/var`. Resolving this
+        # one OS-owned parent is safe; arbitrary symlinked ancestors could
+        # redirect private checkpoints to an untrusted directory.
+        if ancestor == Path("/var") and ancestor.resolve() == Path("/private/var"):
+            continue
+        raise ValueError("session checkpoint root or parent must not be a symlink")
 
 
 __all__ = [

@@ -43,7 +43,15 @@ def _result_path(entry: dict[str, Any], *, repo_root: Path) -> Path | None:
         path = Path(declared)
         if path.is_absolute():
             raise ValueError(f"{entry.get('id', '<gate>')}: result_path must be repo-relative")
-        return (repo_root / path).resolve()
+        resolved_root = repo_root.resolve()
+        resolved = (resolved_root / path).resolve()
+        try:
+            resolved.relative_to(resolved_root)
+        except ValueError as exc:
+            raise ValueError(
+                f"{entry.get('id', '<gate>')}: result_path must stay inside repo_root"
+            ) from exc
+        return resolved
     if pattern is not None:
         if not isinstance(pattern, str) or not pattern.strip():
             raise ValueError(f"{entry.get('id', '<gate>')}: result_glob must be non-empty")
@@ -153,13 +161,26 @@ def run_manifest(
             if completed.returncode != 0:
                 status = GateStatus.FAIL
                 reason = "command returned a non-zero exit code"
-            result_path = _result_path(entry, repo_root=repo_root)
-            if result_path is None and ("result_path" in entry or "result_glob" in entry):
+            result_error: str | None = None
+            try:
+                result_path = _result_path(entry, repo_root=repo_root)
+            except ValueError as exc:
+                result_error = str(exc)
+            if result_error is not None:
+                status = GateStatus.FAIL
+                reason = "declared result evidence is invalid"
+                details["result_error"] = result_error
+            elif result_path is None and ("result_path" in entry or "result_glob" in entry):
                 status = GateStatus.FAIL
                 reason = "declared result evidence is missing"
                 details["result_error"] = "no result file matched the declaration"
             elif result_path is not None:
-                evidence_paths.append(result_path)
+                if "result_path" in entry and not result_path.is_file():
+                    status = GateStatus.FAIL
+                    reason = "declared result evidence is not a regular file"
+                    details["result_error"] = "result_path must point to a regular file"
+                else:
+                    evidence_paths.append(result_path)
                 if result_path.is_file() and entry.get("checks", []):
                     try:
                         result_payload = json.loads(result_path.read_text(encoding="utf-8"))

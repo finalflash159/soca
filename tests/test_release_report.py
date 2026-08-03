@@ -1,4 +1,5 @@
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -79,3 +80,24 @@ def test_passing_gate_without_evidence_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="requires evidence"):
         load_manifest(manifest, repo_root=Path.cwd())
 
+
+def test_release_report_marks_staged_and_untracked_files_dirty(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "test@example.com"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "Test"], check=True)
+    tracked = tmp_path / "tracked.txt"
+    tracked.write_text("initial\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "tracked.txt"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "commit", "-q", "-m", "initial"], check=True)
+
+    evidence = tmp_path / "evidence.json"
+    evidence.write_text('{"status":"pass"}\n', encoding="utf-8")
+    manifest = tmp_path / "manifest.json"
+    _write_manifest(manifest, evidence=str(evidence))
+    tracked.write_text("staged change\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "tracked.txt"], check=True)
+    (tmp_path / "untracked.txt").write_text("untracked\n", encoding="utf-8")
+
+    report = build_report(manifest=manifest, repo_root=tmp_path, suite="release")
+
+    assert report["source"]["repo_dirty"] is True
