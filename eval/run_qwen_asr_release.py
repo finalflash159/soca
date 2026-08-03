@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+import hashlib
 import json
 import sys
 from dataclasses import asdict
@@ -93,10 +94,16 @@ def run(
         run_dir.mkdir(parents=True, exist_ok=False)
         metadata = runtime_metadata(config, dataset_digests)
         metadata.update({"run_id": run_id, "status": "running", "vault": str(vault.resolve())})
+        _snapshot_config(config.source_path, run_dir, expected_digest=config.digest)
     else:
         run_dir = resume_run.resolve()
         metadata = _load_run_metadata(run_dir / "run.json")
         _verify_resume(metadata, config.digest, dataset_digests, vault.resolve())
+        _snapshot_config(
+            config.source_path,
+            run_dir,
+            expected_digest=str(metadata["benchmark_config_digest"]),
+        )
         run_id = str(metadata["run_id"])
         metadata.update(
             {
@@ -331,6 +338,18 @@ def _write_json(path: Path, payload: Any) -> None:
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def _snapshot_config(source: Path, run_dir: Path, *, expected_digest: str) -> None:
+    raw = source.read_bytes()
+    actual_digest = hashlib.sha256(raw).hexdigest()
+    if actual_digest != expected_digest:
+        raise click.ClickException("benchmark config changed while creating run evidence")
+    destination = run_dir / "benchmark_config.json"
+    if destination.exists() and destination.read_bytes() != raw:
+        raise click.ClickException("run benchmark config snapshot does not match run identity")
+    if not destination.exists():
+        destination.write_bytes(raw)
 
 
 if __name__ == "__main__":

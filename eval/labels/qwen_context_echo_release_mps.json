@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "source_run_id": "20260803T004036Z-ac9c7c26",
+  "source_benchmark_config_digest": "d2d38686c8afc7b4ba4bf42af6d1a21f6340ea7e25313b07ce93f9bd205049a5",
+  "review_protocol": {
+    "candidate_union": [
+      "context_token_set_overlap_at_least_0.5",
+      "shared_contiguous_context_span_at_least_3_tokens",
+      "exact_normalized_context_copy"
+    ],
+    "comparison": "paired_empty_context_and_production_catalog_decode",
+    "labels_exclude_transcripts": true
+  },
+  "selected_policy": {
+    "algorithm": "contiguous_context_span_v1",
+    "minimum_contiguous_tokens": 4
+  },
+  "artifacts": {
+    "qwen3_asr_0_6b": {
+      "reviewed_candidates": 12,
+      "labels": [
+        {"dataset": "non_speech", "item_id": "esc50:wav/esc50_0048.wav", "context_echo": true},
+        {"dataset": "non_speech", "item_id": "esc50:wav/esc50_0169.wav", "context_echo": true},
+        {"dataset": "non_speech", "item_id": "esc50:wav/esc50_0230.wav", "context_echo": false},
+        {"dataset": "non_speech", "item_id": "synthetic_babble:wav/babble_0007.wav", "context_echo": false},
+        {"dataset": "non_speech", "item_id": "synthetic_babble:wav/babble_0030.wav", "context_echo": false},
+        {"dataset": "non_speech", "item_id": "synthetic_babble:wav/babble_0044.wav", "context_echo": true},
+        {"dataset": "non_speech", "item_id": "synthetic_babble:wav/babble_0063.wav", "context_echo": true},
+        {"dataset": "non_speech", "item_id": "synthetic_babble:wav/babble_0099.wav", "context_echo": true},
+        {"dataset": "non_speech", "item_id": "synthetic_babble:wav/babble_0135.wav", "context_echo": false},
+        {"dataset": "non_speech", "item_id": "synthetic_babble:wav/babble_0197.wav", "context_echo": false},
+        {"dataset": "private_codeswitch", "item_id": "cs_012", "context_echo": false},
+        {"dataset": "private_codeswitch", "item_id": "cs_032", "context_echo": false}
+      ]
+    },
+    "qwen3_asr_1_7b": {
+      "reviewed_candidates": 14,
+      "labels": [
+        {"dataset": "non_speech", "item_id": "esc50:wav/esc50_0048.wav", "context_echo": true},
+        {"dataset": "non_speech", "item_id": "esc50:wav/esc50_0065.wav", "context_echo": true},
+        {"dataset": "non_speech", "item_id": "esc50:wav/esc50_0106.wav", "context_echo": true},
+        {"dataset": "non_speech", "item_id": "esc50:wav/esc50_0169.wav", "context_echo": true},
+        {"dataset": "non_speech", "item_id": "esc50:wav/esc50_0230.wav", "context_echo": false},
+        {"dataset": "non_speech", "item_id": "esc50:wav/esc50_0270.wav", "context_echo": true},
+        {"dataset": "non_speech", "item_id": "esc50:wav/esc50_0271.wav", "context_echo": true},
+        {"dataset": "non_speech", "item_id": "esc50:wav/esc50_0280.wav", "context_echo": true},
+        {"dataset": "non_speech", "item_id": "esc50:wav/esc50_0338.wav", "context_echo": true},
+        {"dataset": "non_speech", "item_id": "synthetic_babble:wav/babble_0004.wav", "context_echo": false},
+        {"dataset": "non_speech", "item_id": "synthetic_babble:wav/babble_0017.wav", "context_echo": false},
+        {"dataset": "non_speech", "item_id": "synthetic_babble:wav/babble_0173.wav", "context_echo": false},
+        {"dataset": "private_codeswitch", "item_id": "cs_012", "context_echo": false},
+        {"dataset": "private_codeswitch", "item_id": "cs_032", "context_echo": false}
+      ]
+    }
+  }
+}

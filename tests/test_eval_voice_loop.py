@@ -155,6 +155,23 @@ def test_parser_playback_and_first_clause_toggles() -> None:
     assert parser.parse_args(["--no-first-clause"]).first_clause is False
 
 
+def test_parser_accepts_explicit_remote_llm_selection() -> None:
+    args = eval_voice_loop.build_parser().parse_args(
+        [
+            "--llm-backend",
+            "remote",
+            "--llm-provider",
+            "openrouter",
+            "--llm-model",
+            "google/gemini-3.5-flash-lite",
+        ]
+    )
+
+    assert args.llm_backend == "remote"
+    assert args.llm_provider == "openrouter"
+    assert args.llm_model == "google/gemini-3.5-flash-lite"
+
+
 def test_summarize_handles_empty_and_values() -> None:
     assert summarize([])["median"] is None
 
