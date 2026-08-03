@@ -230,6 +230,20 @@ def execute(args: argparse.Namespace) -> Mapping[str, object]:
             "model_path": receipt.model_path,
             "runtime": runtime,
         }
+    if args.command == "refresh":
+        receipt = store.refresh_receipt(
+            spec,
+            source_kind=ArtifactSourceKind(args.source),
+            health_probe=build_health_probe(args.health_audio, spec),
+            runtime_lock=RUNTIME_LOCK,
+        )
+        return {
+            "artifact_key": spec.key,
+            "state": "provisioned",
+            "receipt_refreshed": True,
+            "model_path": receipt.model_path,
+            "runtime": runtime,
+        }
     if args.health_audio is None:
         raise QwenProvisionCommandError("install requires --health-audio with real 16 kHz mono speech")
     source_kind = ArtifactSourceKind(args.source)
@@ -274,6 +288,14 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--artifact", choices=("release", "reference"), required=True)
     verify.add_argument("--deep", action="store_true")
     verify.add_argument("--health-audio", type=Path)
+
+    refresh = subparsers.add_parser(
+        "refresh",
+        help="re-issue a receipt for existing bytes after a device/dtype change",
+    )
+    refresh.add_argument("--artifact", choices=("release", "reference"), required=True)
+    refresh.add_argument("--source", choices=("mirror", "upstream"), default="upstream")
+    refresh.add_argument("--health-audio", type=Path, required=True)
 
     inspect_parser = subparsers.add_parser("inspect")
     inspect_parser.add_argument("--artifact", choices=("release", "reference"))

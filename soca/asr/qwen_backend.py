@@ -8,6 +8,12 @@ from typing import Any
 import numpy as np
 
 from .qwen_artifacts import QwenArtifactPathError, validate_local_model_directory
+from .qwen_device import (
+    assert_model_matches,
+    synchronize,
+    torch_dtype,
+    validate_execution_request,
+)
 from .result import ASRResult
 
 SAMPLING_RATE = 16_000
@@ -87,6 +93,7 @@ class QwenASRBackend:
                 "environment with scripts/provision_qwen_runtime.py instead."
             ) from exc
 
+        validate_execution_request(torch, device=device, dtype=dtype)
         self.model_key = model_path.name
         self.context = context
         self.language = language
@@ -95,9 +102,14 @@ class QwenASRBackend:
         self._max_new_tokens = max_new_tokens
         self._engine = Qwen3ASRModel.from_pretrained(
             str(model_path),
-            dtype=torch.float32 if dtype == "float32" else torch.bfloat16,
+            dtype=torch_dtype(torch, dtype),
             device_map=device,
             max_new_tokens=max_new_tokens,
+        )
+        self._actual_device, self._actual_dtype = assert_model_matches(
+            model=self._engine.model,
+            device=device,
+            dtype=dtype,
         )
 
         eos = getattr(self._engine.model.generation_config, "eos_token_id", None)
@@ -184,6 +196,9 @@ class QwenASRBackend:
             "max_new_tokens": max_new_tokens,
             "device": self._device,
             "dtype": self._dtype,
+            "actual_device": self._actual_device,
+            "actual_dtype": self._actual_dtype,
+            "mps_cpu_fallback": False,
             "sampling_rate": SAMPLING_RATE,
             "context": self.context,
             "language": self.language,
@@ -199,6 +214,7 @@ class QwenASRBackend:
         plus output_scores=True. Has to be hand-rolled because the public
         transcribe() does not forward kwargs down to generate().
         """
+        import torch
         from qwen_asr.inference.utils import parse_asr_output
 
         engine = self._engine
@@ -221,6 +237,7 @@ class QwenASRBackend:
             max_new_tokens=max_new_tokens,
             output_scores=True,
         )
+        synchronize(torch, self._device)
         if getattr(output, "scores", None) is None:
             # A typed failure, not a fake 0.0.
             raise QwenLogprobUnavailable(

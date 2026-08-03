@@ -135,6 +135,32 @@ def test_install_is_idempotent_and_does_not_probe_twice(tmp_path: Path) -> None:
     assert calls == 1
 
 
+def test_refresh_receipt_revalidates_existing_bytes_after_device_change(tmp_path: Path) -> None:
+    spec, source, root = _fixture(tmp_path)
+    store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 3)
+    first = _install(
+        store,
+        spec,
+        source,
+        source_kind=ArtifactSourceKind.UPSTREAM,
+        health_probe=lambda _: {"transcript": "ok"},
+    )
+    mps_spec = replace(spec, device="mps", dtype="float16")
+
+    refreshed = store.refresh_receipt(
+        mps_spec,
+        source_kind=ArtifactSourceKind.UPSTREAM,
+        runtime_lock=source.parent / "uv.lock",
+        health_probe=lambda _: {"transcript": "ok on mps"},
+    )
+
+    assert refreshed.artifact_digest == mps_spec.digest
+    assert refreshed.artifact_digest != first.artifact_digest
+    assert mps_spec.model_path(root).is_dir()
+    assert stat.S_IMODE(mps_spec.receipt_path(root).stat().st_mode) == 0o600
+    assert store.verify(mps_spec, deep=False) == refreshed
+
+
 def test_wrong_hash_and_health_failure_never_activate(tmp_path: Path) -> None:
     spec, source, root = _fixture(tmp_path)
     config = source / "config.json"
