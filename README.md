@@ -134,7 +134,7 @@ Local remains the default. To use a remote provider explicitly:
 ```bash
 uv sync --extra llm-remote
 uv run soca ui
-# Settings → choose provider → paste key → choose model
+# type /settings → choose provider → paste key → choose model
 ```
 
 Keys are stored in the OS keyring when available and masked in the UI. The

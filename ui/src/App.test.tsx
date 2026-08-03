@@ -1,7 +1,7 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { App } from "./App.js";
+import { App, defaultSettingsReturnMode } from "./App.js";
 
 const harness = vi.hoisted(() => ({
   sent: [] as Array<Record<string, unknown>>,
@@ -296,6 +296,22 @@ describe("App slash command interaction", () => {
   beforeEach(() => {
     harness.sent.length = 0;
     harness.compactionPolls = 0;
+  });
+
+  it("returns bare setup to voice while keeping chat explicit", () => {
+    expect(defaultSettingsReturnMode("settings")).toBe("voice");
+    expect(defaultSettingsReturnMode("voice")).toBe("voice");
+    expect(defaultSettingsReturnMode("chat")).toBe("chat");
+    expect(defaultSettingsReturnMode("status")).toBe("chat");
+  });
+
+  it("opens the bare UI on the main chat surface, not settings", async () => {
+    const view = render(<App target="chat" setupFirst={false} noModel />);
+    await tick();
+
+    expect(view.lastFrame()).toContain("╭─chat");
+    expect(view.lastFrame()).not.toContain("Cài đặt LLM");
+    view.unmount();
   });
 
   it("filters and selects commands, then dismisses info on new input", async () => {

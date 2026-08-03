@@ -850,7 +850,7 @@ def ui(
     """Open the SoCa terminal UI (Ink) on top of `soca engine`.
 
     Quick form: soca ui [status|chat|voice] [profile]. Without a mode the UI
-    opens on the setup surface so the vault and runtime profiles are explicit.
+    opens on the main chat surface; use /settings to configure the runtime.
     """
     selected_vault = resolve_ui_vault(vault)
     if session_persistence != "ram_only" or session_id != "default" or resume_session:

@@ -37,12 +37,19 @@ import { ImeTextInput } from "./imeInput.js";
 export interface AppProps {
   /** The mode the user picked on the splash / CLI. */
   target: Mode;
+  /** Explicit chat/voice launches open setup first; bare UI opens main chat. */
+  setupFirst?: boolean;
   profile?: string;
   noModel?: boolean;
   vault?: string;
   sessionPersistence?: "ram_only" | "local_resumable";
   sessionId?: string;
   resumeSession?: boolean;
+}
+
+/** Settings returns to the surface that opened it; voice is explicit. */
+export function defaultSettingsReturnMode(target: Mode): "chat" | "voice" {
+  return target === "chat" || target === "status" ? "chat" : "voice";
 }
 
 // History flows into the terminal's own scrollback via <Static> (the
@@ -78,6 +85,7 @@ function Brand({ profile }: { profile: string }) {
 
 export function App({
   target,
+  setupFirst = true,
   profile,
   noModel = false,
   vault,
@@ -87,16 +95,15 @@ export function App({
 }: AppProps) {
   const { exit } = useApp();
   const rawInput = Boolean(useStdin().isRawModeSupported);
-  // Choosing chat/voice routes through Settings first so the user picks the LLM
-  // for this session; leaving Settings (Esc or picking a model) continues into
-  // that mode. status/settings targets open directly.
-  const gated = target === "chat" || target === "voice";
+  // Explicit chat/voice launches route through Settings first so the user can
+  // choose the runtime. Bare `soca ui` opens the main chat surface directly.
+  const gated = setupFirst && (target === "chat" || target === "voice");
   const initialMode: InteractiveMode = gated
     ? "settings"
     : target === "status"
       ? "chat"
       : target;
-  const homeMode: "chat" | "voice" = target === "voice" ? "voice" : "chat";
+  const homeMode = defaultSettingsReturnMode(target);
   const [state, dispatch] = useReducer(reduce, {
     ...initialState,
     mode: initialMode,
@@ -555,6 +562,7 @@ export function App({
       {state.mode === "settings" ? (
         <SettingsScreen
           config={state.llmConfig}
+          returnMode={settingsReturnMode}
           providers={state.llmProviders}
           profiles={state.profiles}
           activeProfile={state.profile}

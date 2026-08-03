@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { render } from "ink";
 import { App } from "./App.js";
+import { enterAlternateScreen } from "./terminalScreen.js";
 import type { Mode } from "./store.js";
 
 interface CliArgs {
@@ -61,13 +62,13 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 function Root({ args }: { args: CliArgs }) {
-  // A bare launch opens the setup surface first. It reports whether the
-  // repository Knowledge vault is initialized and keeps chat/voice behind the
-  // same explicit settings gate as the quick chat/voice forms.
-  const [target] = useState<Mode>(args.mode ?? "settings");
+  // Bare launch opens the main chat surface. Explicit chat/voice commands keep
+  // their runtime setup gate; `/settings` remains available from the UI.
+  const [target] = useState<Mode>(args.mode ?? "chat");
   return (
     <App
       target={target}
+      setupFirst={args.mode !== null}
       profile={args.profile}
       noModel={args.noModel}
       vault={args.vault}
@@ -79,4 +80,15 @@ function Root({ args }: { args: CliArgs }) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-render(<Root args={args} />, { exitOnCtrlC: true });
+const leaveAlternateScreen = enterAlternateScreen(process.stdout);
+let cleanedUp = false;
+const cleanupTerminal = () => {
+  if (cleanedUp) return;
+  cleanedUp = true;
+  process.removeListener("exit", cleanupTerminal);
+  leaveAlternateScreen();
+};
+process.once("exit", cleanupTerminal);
+
+const ink = render(<Root args={args} />, { exitOnCtrlC: true });
+void ink.waitUntilExit().finally(cleanupTerminal);
