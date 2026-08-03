@@ -1,0 +1,491 @@
+{
+  "schema_version": 1,
+  "purpose": "Values plotted in docs/assets/benchmarks/*.png. Every entry is copied from a run already recorded in BENCHMARKS.md or docs/evidence/, and carries the section it came from so a figure can never drift away from its source silently.",
+  "regenerate": "uv run python scripts/plot_benchmarks.py",
+  "asr_production": {
+    "source": "BENCHMARKS.md section 2.1 (paired production run 2026-07-30) and section 2.2 (Qwen matrix 2026-08-03)",
+    "disposition": {
+      "run": "phowhisper_small production RobustASR, CoreML with CPU provider",
+      "groups": [
+        {
+          "label": "50 non-speech clips\n(ESC-50 + synthetic)",
+          "correct_label": "rejected",
+          "correct": 45,
+          "wrong_label": "leaked as text",
+          "wrong": 5
+        },
+        {
+          "label": "30 FLEURS-vi utterances\n(real speech)",
+          "correct_label": "accepted",
+          "correct": 30,
+          "wrong_label": "falsely rejected",
+          "wrong": 0
+        }
+      ],
+      "note": "All five leaked rows were speech_like; pure-noise hallucination was 0/45."
+    },
+    "wer_comparison": {
+      "warning": "Different slices and different decode paths. This ranks the options that exist, it is not a controlled comparison.",
+      "candidates": [
+        {
+          "label": "PhoWhisper-small\n(shipped)",
+          "wer": 0.1639,
+          "n": 30,
+          "slice": "30 FLEURS-vi, production RobustASR",
+          "shipped": true,
+          "slice_short": "30 utts · RobustASR"
+        },
+        {
+          "label": "Qwen3-ASR 0.6B\n(blocked)",
+          "wer": 0.1163,
+          "n": null,
+          "slice": "pinned FLEURS-vi manifest, MPS",
+          "shipped": false,
+          "slice_short": "pinned manifest · MPS"
+        },
+        {
+          "label": "Qwen3-ASR 1.7B\n(reference)",
+          "wer": 0.0859,
+          "n": null,
+          "slice": "pinned FLEURS-vi manifest, MPS",
+          "shipped": false,
+          "slice_short": "pinned manifest · MPS"
+        }
+      ]
+    }
+  },
+  "asr_hallucination_ablation": {
+    "source": "BENCHMARKS.md appendix A.1 (anti-hallucination ablation, run 2026-05-21)",
+    "model": "PhoWhisper-tiny ONNX (39M)",
+    "speech_n": 200,
+    "noise_n": 50,
+    "speech_dataset": "FLEURS vi_vn test",
+    "noise_dataset": "ESC-50 + synthetic silence/white/pink noise",
+    "configs": [
+      {
+        "label": "Raw ASR",
+        "hallucination_rate": 1.0,
+        "wer": 0.2545
+      },
+      {
+        "label": "De-loop",
+        "hallucination_rate": 1.0,
+        "wer": 0.2462
+      },
+      {
+        "label": "BoH",
+        "hallucination_rate": 1.0,
+        "wer": 0.2545
+      },
+      {
+        "label": "De-loop\n+ BoH",
+        "hallucination_rate": 1.0,
+        "wer": 0.2462
+      },
+      {
+        "label": "VAD",
+        "hallucination_rate": 0.02,
+        "wer": 0.2522
+      },
+      {
+        "label": "VAD + de-loop\n+ BoH + heur.",
+        "hallucination_rate": 0.0,
+        "wer": 0.2522
+      }
+    ],
+    "boh_detail": {
+      "note": "Hallucination rate is measured as non-empty output on noise, which structurally favours VAD and under-credits BoH.",
+      "noise_modified_by_boh": 0.54,
+      "noise_emptied_by_boh": 0.44,
+      "speech_false_positive_rate": 0.0
+    }
+  },
+  "qwen_release_matrix": {
+    "source": "docs/evidence/qwen-asr-mps-20260803.json",
+    "run": "20260803T004036Z-ac9c7c26, Apple M4 Pro, MPS/float16, no CPU fallback",
+    "quality": {
+      "metrics": [
+        "FLEURS-vi WER",
+        "private code-switch WER",
+        "private term recall"
+      ],
+      "lower_is_better": [
+        true,
+        true,
+        false
+      ],
+      "qwen3_asr_0_6b": [
+        0.1163153789,
+        0.5365853659,
+        0.4634146341
+      ],
+      "qwen3_asr_1_7b": [
+        0.0858704137,
+        0.4146341463,
+        0.5853658537
+      ]
+    },
+    "latency": {
+      "metrics": [
+        "partial caption\np95",
+        "startup\np95",
+        "cold inference\np95"
+      ],
+      "qwen3_asr_0_6b": [
+        1018.165,
+        3990.403,
+        690.659
+      ],
+      "qwen3_asr_1_7b": [
+        1704.065,
+        4765.651,
+        1049.54
+      ],
+      "gate_partial_latency_ms": 2000.0,
+      "gate_applies_to_index": 0
+    },
+    "footprint": {
+      "metrics": [
+        "worker peak RSS\n(MB, recorded)",
+        "model on disk\n(MiB)"
+      ],
+      "qwen3_asr_0_6b": [
+        1243.438,
+        1793.5
+      ],
+      "qwen3_asr_1_7b": [
+        987.859,
+        4485.2
+      ]
+    }
+  },
+  "retrieval_pareto": {
+    "source": "BENCHMARKS.md section 5.2 (embedding and fusion selection, run 20260730-tvpl-fusion-final)",
+    "corpus": "TVPL, 10,576 docs / 13,230 chunks",
+    "queries": 1000,
+    "label_offsets_note": "dx/dy are label offsets in typographic points, chosen by hand because eight of the nine candidates land in one dense cluster around 70 ms. They affect nothing but label placement.",
+    "candidates": [
+      {
+        "label": "BM25",
+        "recall_at_5": 0.70015,
+        "ndcg_at_10": 0.627799,
+        "p95_ms": 0.383,
+        "family": "sparse",
+        "dx": 0,
+        "dy": 12,
+        "ha": "center"
+      },
+      {
+        "label": "FastEmbed dense",
+        "recall_at_5": 0.847233,
+        "ndcg_at_10": 0.774562,
+        "p95_ms": 3.845,
+        "family": "dense",
+        "dx": 0,
+        "dy": 12,
+        "ha": "center"
+      },
+      {
+        "label": "BM25+FastEmbed RRF",
+        "recall_at_5": 0.798317,
+        "ndcg_at_10": 0.73433,
+        "p95_ms": 4.216,
+        "family": "fusion",
+        "dx": 0,
+        "dy": -20,
+        "ha": "center"
+      },
+      {
+        "label": "BM25+AITeamVN linear 0.75",
+        "recall_at_5": 0.916067,
+        "ndcg_at_10": 0.848716,
+        "p95_ms": 71.019,
+        "family": "production",
+        "dx": -10,
+        "dy": 20,
+        "ha": "right"
+      },
+      {
+        "label": "AITeamVN dense",
+        "recall_at_5": 0.907867,
+        "ndcg_at_10": 0.83783,
+        "p95_ms": 80.682,
+        "family": "dense",
+        "dx": 16,
+        "dy": 12,
+        "ha": "left"
+      },
+      {
+        "label": "BM25+BGE-M3 linear 0.75",
+        "recall_at_5": 0.895317,
+        "ndcg_at_10": 0.824377,
+        "p95_ms": 68.821,
+        "family": "fusion",
+        "dx": 26,
+        "dy": 2,
+        "ha": "left"
+      },
+      {
+        "label": "BGE-M3 dense",
+        "recall_at_5": 0.893867,
+        "ndcg_at_10": 0.827176,
+        "p95_ms": 69.557,
+        "family": "dense",
+        "dx": 26,
+        "dy": -14,
+        "ha": "left"
+      },
+      {
+        "label": "BM25+AITeamVN linear 0.50",
+        "recall_at_5": 0.883317,
+        "ndcg_at_10": 0.820615,
+        "p95_ms": 70.788,
+        "family": "fusion",
+        "dx": -26,
+        "dy": -10,
+        "ha": "right"
+      },
+      {
+        "label": "BM25+AITeamVN RRF",
+        "recall_at_5": 0.8404,
+        "ndcg_at_10": 0.777105,
+        "p95_ms": 70.92,
+        "family": "fusion",
+        "dx": 22,
+        "dy": 0,
+        "ha": "left"
+      }
+    ]
+  },
+  "turn_taking": {
+    "source": "BENCHMARKS.md section 4.2 (turn-taking, run 2026-07-25)",
+    "scenarios": 120,
+    "within_turn_pause_ms": 800,
+    "policies": {
+      "fixed (700 ms silence)": {
+        "cut_in_rate": 1.0,
+        "premature_close_rate": 0.617,
+        "median_over_wait_ms": 704
+      },
+      "p_based (Smart Turn v3.2)": {
+        "cut_in_rate": 0.033,
+        "premature_close_rate": 0.183,
+        "median_over_wait_ms": 1312
+      }
+    },
+    "barge_in": {
+      "source": "BENCHMARKS.md section 4.1 (barge-in)",
+      "runs": [
+        {
+          "label": "Real echo\n(AEC-Challenge, 300 pairs)",
+          "false_interrupt": 0.027,
+          "detection": 0.947
+        },
+        {
+          "label": "Synth VN over real RIR\n(240 scenarios)",
+          "false_interrupt": 0.025,
+          "detection": 0.925
+        }
+      ]
+    }
+  },
+  "tts": {
+    "source": "BENCHMARKS.md sections 3.1 and 3.2 (Valtec release gates + first-clause A/B)",
+    "release_gates": [
+      {
+        "metric": "Latency p50",
+        "measured": 271.0,
+        "gate": 300.0,
+        "unit": "ms",
+        "lower_is_better": true
+      },
+      {
+        "metric": "Latency p95",
+        "measured": 416.4,
+        "gate": 550.0,
+        "unit": "ms",
+        "lower_is_better": true
+      },
+      {
+        "metric": "RTF p50",
+        "measured": 0.07,
+        "gate": 0.12,
+        "unit": "",
+        "lower_is_better": true
+      },
+      {
+        "metric": "Loopback CER",
+        "measured": 0.134,
+        "gate": 0.15,
+        "unit": "",
+        "lower_is_better": true
+      }
+    ],
+    "first_clause_ab": {
+      "prompts": 8,
+      "prompts_helped": 7,
+      "deltas": [
+        {
+          "label": "time to first sentence\n(text side)",
+          "p50_ms": 184,
+          "min_ms": 0,
+          "max_ms": 453
+        },
+        {
+          "label": "tts_ready\n(text + Valtec synthesis)",
+          "p50_ms": 395,
+          "min_ms": -14,
+          "max_ms": 928
+        }
+      ]
+    }
+  },
+  "evidence_floor": {
+    "source": "BENCHMARKS.md section 5.5 (evidence-floor recalibration)",
+    "corpus": "XQuAD Vietnamese grounding split: 12 answerable, 8 deliberately unanswerable",
+    "operating_points": [
+      {
+        "label": "floor 0.85\n(carried over from FastEmbed)",
+        "answerable_recovered": 1,
+        "false_evidence": 0,
+        "warm_p95_ms": 95.4
+      },
+      {
+        "label": "floor 0.52\n(production)",
+        "answerable_recovered": 11,
+        "false_evidence": 0,
+        "warm_p95_ms": 95.2
+      }
+    ],
+    "answerable_total": 12,
+    "unanswerable_total": 8,
+    "score_landmarks": {
+      "strongest_unsupported_top_dense": 0.5042,
+      "weakest_retained_answerable": 0.5377,
+      "unrecovered_answerable": 0.4629
+    },
+    "wilson_95_upper_bound_false_evidence": 0.3244
+  },
+  "retrieval_reranker": {
+    "source": "BENCHMARKS.md, reranking measured and rejected (run 20260730-aiteamvn-prod-reranker-confirmation)",
+    "domains": [
+      {
+        "domain": "ViRe EduCoQA (50 queries)",
+        "points": [
+          {
+            "label": "base",
+            "recall_at_5": 0.46,
+            "p95_ms": 80
+          },
+          {
+            "label": "+VN reranker top-10",
+            "recall_at_5": 0.48,
+            "p95_ms": 2351
+          },
+          {
+            "label": "+BGE reranker top-10",
+            "recall_at_5": 0.5,
+            "p95_ms": 2401
+          },
+          {
+            "label": "+BGE reranker top-20",
+            "recall_at_5": 0.56,
+            "p95_ms": 4679
+          }
+        ]
+      },
+      {
+        "domain": "ViRe ALQAC (50 queries)",
+        "points": [
+          {
+            "label": "base",
+            "recall_at_5": 0.96,
+            "p95_ms": 90
+          },
+          {
+            "label": "+VN reranker top-10",
+            "recall_at_5": 1.0,
+            "p95_ms": 1604
+          },
+          {
+            "label": "+BGE reranker top-10",
+            "recall_at_5": 1.0,
+            "p95_ms": 1747
+          },
+          {
+            "label": "+BGE reranker top-20",
+            "recall_at_5": 1.0,
+            "p95_ms": 3324
+          }
+        ]
+      }
+    ]
+  },
+  "routing_margin_sweep": {
+    "source": "BENCHMARKS.md, capability routing (held-out test, FastEmbed multilingual-e5-small, threshold 0.58)",
+    "held_out_rows": 24,
+    "points": [
+      {
+        "margin": 0.0,
+        "disposition_accuracy": 0.7917,
+        "selected": true
+      },
+      {
+        "margin": 0.02,
+        "disposition_accuracy": 0.4583,
+        "selected": false
+      },
+      {
+        "margin": 0.04,
+        "disposition_accuracy": 0.4167,
+        "selected": false
+      }
+    ]
+  },
+  "summary_bakeoff": {
+    "source": "BENCHMARKS.md appendix A (P4.1 public probe, 40 records per candidate)",
+    "metrics_note": "Schema validity is a hard gate; the three similarity metrics are reported together because no single one decided the winner.",
+    "candidates": [
+      {
+        "label": "Qwen3-0.6B\nQ8_0",
+        "schema": 0.775,
+        "token_f1": 0.2522,
+        "rouge_l": 0.1719,
+        "cosine": 0.6759,
+        "winner": false
+      },
+      {
+        "label": "Qwen3-1.7B\nQ8_0",
+        "schema": 0.975,
+        "token_f1": 0.2667,
+        "rouge_l": 0.1728,
+        "cosine": 0.6746,
+        "winner": false
+      },
+      {
+        "label": "Qwen2.5-3B-Instr\nQ4_K_M",
+        "schema": 1.0,
+        "token_f1": 0.2707,
+        "rouge_l": 0.1899,
+        "cosine": 0.6655,
+        "winner": false
+      },
+      {
+        "label": "Qwen3-4B\nQ4_K_M",
+        "schema": 1.0,
+        "token_f1": 0.2524,
+        "rouge_l": 0.1705,
+        "cosine": 0.6331,
+        "winner": false
+      },
+      {
+        "label": "Qwen3-4B-Instr-2507\nQ4_K_M",
+        "schema": 1.0,
+        "token_f1": 0.269,
+        "rouge_l": 0.1713,
+        "cosine": 0.6876,
+        "winner": true
+      }
+    ]
+  }
+}
