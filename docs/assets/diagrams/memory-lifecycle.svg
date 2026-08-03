@@ -5,7 +5,7 @@
     <marker id="arrow" viewBox="0 0 7 7" refX="6" refY="3.5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L7 3.5L0 7z" fill="#263746"/></marker>
     <marker id="loop-arrow" viewBox="0 0 7 7" refX="6" refY="3.5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L7 3.5L0 7z" fill="#99651d"/></marker>
     <style>
-      rect{rx:0;ry:0}.bg{fill:#fff}.box{fill:#fff;stroke:#16202a;stroke-width:2.2}.local{fill:#fff;stroke:#486372;stroke-width:2.2}.decision{fill:#fff;stroke:#a16f2b;stroke-width:2.2}.title{font:700 27px Arial,sans-serif;fill:#16202a}.label{font:700 17px Arial,sans-serif;fill:#16202a}.small{font:14px Arial,sans-serif;fill:#31404d}.light{fill:#16202a}.edge{stroke:#263746;stroke-width:1.8;fill:none;marker-end:url(#arrow)}.loop{stroke:#99651d;stroke-width:1.8;stroke-dasharray:8 6;fill:none;marker-end:url(#loop-arrow)}.caption{font:italic 14px Arial,sans-serif;fill:#4d5d6c}
+      rect{rx:0;ry:0}.bg{fill:#fff}.box{fill:#e2e8ec;stroke:#16202a;stroke-width:2.2}.local{fill:#c9dde3;stroke:#486372;stroke-width:2.2}.decision{fill:#efc36f;stroke:#a16f2b;stroke-width:2.2}.title{font:700 27px Arial,sans-serif;fill:#16202a}.label{font:700 17px Arial,sans-serif;fill:#16202a}.small{font:14px Arial,sans-serif;fill:#31404d}.light{fill:#16202a}.edge{stroke:#263746;stroke-width:1.8;fill:none;marker-end:url(#arrow)}.loop{stroke:#99651d;stroke-width:1.8;stroke-dasharray:8 6;fill:none;marker-end:url(#loop-arrow)}.caption{font:italic 14px Arial,sans-serif;fill:#4d5d6c}
     </style>
   </defs>
   <rect class="bg" width="1400" height="1040"/>

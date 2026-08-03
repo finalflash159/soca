@@ -14,7 +14,7 @@ answers. Three cooperating pieces sit behind the `AssistantRuntime` (see
 ![Knowledge index lifecycle](assets/diagrams/knowledge-lifecycle.svg)
 ![Memory layers](assets/diagrams/memory-lifecycle.svg)
 
-Editable sources: [Lucid knowledge lifecycle](https://lucid.app/lucidchart/5f5447ff-ebee-4b82-b801-674f9815d737/view) and [Lucid memory lifecycle](https://lucid.app/lucidchart/3b8402d5-bba6-4dac-95ca-830aaaed0f62/view).
+Editable sources: [Lucid knowledge lifecycle](https://lucid.app/lucidchart/7fed0060-ee54-4fe4-8846-511b464f3a1e/view) and [Lucid memory lifecycle](https://lucid.app/lucidchart/11a7f978-d7a2-4106-a40c-b33d82f314ed/view).
 
 Knowledge and memory reuse the **same retrieval implementation** but stay on
 **separate corpora and cache namespaces**, so a `knowledge.search` can never

@@ -7,7 +7,7 @@ guardrails → tools → knowledge/memory → LLM → output.
 
 ![Controlled turn](assets/diagrams/controlled-turn.svg)
 
-Editable diagram source: [Lucid controlled turn](https://lucid.app/lucidchart/e56c8a9d-38cf-451c-ae56-6b8867f34774/view).
+Editable diagram source: [Lucid controlled turn](https://lucid.app/lucidchart/2a0f7744-4b8d-4b2d-89ec-af974a3f0fa0/view).
 
 ## Routing One Turn
 

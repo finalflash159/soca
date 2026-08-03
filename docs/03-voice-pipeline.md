@@ -7,7 +7,7 @@ to speaker. Main code: `core/endpoint.py`, `core/pipeline.py`,
 
 ![Voice pipeline](assets/diagrams/voice-pipeline.svg)
 
-Editable diagram source: [Lucid voice pipeline](https://lucid.app/lucidchart/21a10a4a-6658-48de-bc3f-d2416b06e181/view).
+Editable diagram source: [Lucid voice pipeline](https://lucid.app/lucidchart/c962c397-6528-40ef-838a-1a4af0a562b5/view).
 
 ## One Voice Turn at a Glance
 
