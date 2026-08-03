@@ -65,8 +65,8 @@ def write_vault(root: Path) -> None:
     )
     memory = root / "memory"
     memory.mkdir()
-    (memory / "profile.md").write_text(
-        "# Profile\n\nNgười dùng thích câu trả lời tiếng Việt rõ ràng.",
+    (memory / "core.json").write_text(
+        '{"schema_version":1,"items":[]}',
         encoding="utf-8",
     )
 

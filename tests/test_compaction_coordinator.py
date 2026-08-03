@@ -4,7 +4,12 @@ from typing import Any, cast
 
 from soca.memory.compaction_coordinator import WorkingMemoryCompactionCoordinator
 from soca.memory.summary import LocalSummaryWorkerProcess
-from soca.memory.working import CompactionJob, WorkingMemory, WorkingSummaryArtifact
+from soca.memory.working import (
+    CompactionJob,
+    WorkingMemory,
+    WorkingMemoryPolicy,
+    WorkingSummaryArtifact,
+)
 
 
 class _ImmediateWorker:
@@ -46,7 +51,24 @@ def test_manual_and_auto_use_same_coordinator_and_do_not_fake_summary() -> None:
     result = coordinator.request(manual=True)
     assert result.status == "trim_only"
     assert memory.snapshot.pending_compaction is False
-    assert coordinator.status().status == "idle"
+    assert coordinator.status().status == "trim_only"
+
+
+def test_background_summary_without_worker_is_unavailable_not_trimmed() -> None:
+    memory = WorkingMemory(
+        token_counter=lambda _: 15_000,
+        policy=WorkingMemoryPolicy(mode="background_summary"),
+    )
+    for index in range(6):
+        turn = memory.begin_turn(f"user {index}")
+        memory.finish_turn(turn.sequence, f"assistant {index}")
+    coordinator = WorkingMemoryCompactionCoordinator(memory)
+
+    result = coordinator.request()
+
+    assert result.status == "unavailable"
+    assert result.detail == "summary_worker_not_configured"
+    assert len(memory.snapshot.turns) == 6
 
 
 def test_manual_compaction_reports_before_and_after_tokens() -> None:

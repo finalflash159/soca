@@ -26,7 +26,9 @@ class InvalidManifestError(ValueError):
     pass
 
 
-def default_index_home() -> Path:
+def default_index_home(vault: Path | None = None) -> Path:
+    if vault is not None:
+        return vault.expanduser().resolve() / ".soca" / "knowledge_index"
     configured = os.environ.get("XDG_CONFIG_HOME")
     if configured:
         base = Path(configured).expanduser()

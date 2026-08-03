@@ -44,9 +44,6 @@ flowchart TD
 | `CLARIFICATION`    | Router cannot safely identify a local corpus                      | No         |
 | `FREE_CHAT`        | Normal chat answer without knowledge                            | Yes        |
 
-> `LLM_FALLBACK` is the old alias of `FREE_CHAT`, kept for compatibility with
-> tests and reports.
-
 ## Tool Routing: Deterministic First
 
 `RuntimeToolRouter` (Protocol) and `DefaultRuntimeToolRouter` decide **before the
@@ -115,7 +112,7 @@ sentences so audio reaches the speaker faster.
 
 ```mermaid
 flowchart LR
-    F[TurnFrame] --> M[_build_memory_context<br/>bounded working/profile]
+    F[TurnFrame] --> M[_build_memory_context<br/>bounded working/core]
     F --> R[semantic retrieval source decision]
     R --> K[_build_knowledge_context<br/>selected markdown vault]
     R --> A[_build_archive_memory_context<br/>selected memory archive]
@@ -126,7 +123,7 @@ flowchart LR
 ```
 
 - **Working memory**: complete user→delivered-assistant turns, bounded by the
-  4K working policy. The TUI shares it across voice ↔ chat. It is RAM-only by
+  configured working policy. The TUI shares it across voice ↔ chat. It is RAM-only by
   default; the versioned private checkpoint store is opt-in wiring.
 - **Archive memory**: never retrieved implicitly. It enters a prompt only after
   the semantic source decision selects `memory`; its citations use `[M#]`.

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "items": [
+    {
+      "id": "language-and-style",
+      "value": "Ưu tiên tiếng Việt; thuật ngữ kỹ thuật có thể kèm English; câu trả lời ngắn gọn, rõ ràng và thân thiện.",
+      "approved_at": "2026-01-01T00:00:00Z",
+      "sensitivity": "normal",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "provenance": "fixture"
+    },
+    {
+      "id": "coding-preferences",
+      "value": "Ví dụ code ưu tiên Python; ghi chú Markdown; chạy pytest trước pull request; cần citation nguồn thật.",
+      "approved_at": "2026-01-01T00:00:00Z",
+      "sensitivity": "normal",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "provenance": "fixture"
+    }
+  ]
+}

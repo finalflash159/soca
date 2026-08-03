@@ -8,10 +8,15 @@ import pytest
 
 from soca.core import AssistantRuntime, RuntimeOptions, RuntimeRoute
 from soca.core.tool_routing import EvidenceCompletionDecision, ToolRouterDecision
-from soca.core.workflow.legacy_adapter import terminal_from_runtime_result
-from soca.knowledge import KnowledgeContextBuilder, KnowledgeDocument, KnowledgeHit
+from soca.core.workflow.runtime_events import terminal_from_runtime_result
+from soca.knowledge import (
+    KnowledgeCitation,
+    KnowledgeContextBuilder,
+    KnowledgeDocument,
+    KnowledgeHit,
+)
 from soca.llm import LLMResult
-from soca.memory import MemoryContextBuilder, MemoryProfileResult, RetrievedMemory, SessionMemory
+from soca.memory import MemoryContextBuilder, MemoryRetrievalResult, RetrievedMemory, SessionMemory
 from soca.tools import (
     KnowledgeReadTool,
     KnowledgeSearchTool,
@@ -25,7 +30,7 @@ from soca.tools import (
 class FakeLongTermMemory:
     text: str = "- Người dùng thích giải thích kỹ bằng tiếng Việt."
 
-    def read_profile(self) -> str:
+    def read_core(self) -> str:
         return self.text
 
 
@@ -93,10 +98,10 @@ class FailingMemorySource(FakeKnowledgeSource):
 
 
 class FakeRetrievedMemory:
-    def read_profile(self) -> str:
+    def read_core(self) -> str:
         return ""
 
-    def retrieve_profile(self, query: str) -> MemoryProfileResult:
+    def retrieve_archive(self, query: str) -> MemoryRetrievalResult:
         hit = KnowledgeHit(
             document=KnowledgeDocument(
                 id="memory/decision.md",
@@ -107,7 +112,7 @@ class FakeRetrievedMemory:
             score=0.9,
             snippet="Chọn TTS local vì riêng tư.",
         )
-        return MemoryProfileResult(
+        return MemoryRetrievalResult(
             text=hit.snippet,
             hits=(hit,),
             mode="retrieved",
@@ -115,12 +120,12 @@ class FakeRetrievedMemory:
 
 
 class EmptyRetrievedMemory:
-    def read_profile(self) -> str:
+    def read_core(self) -> str:
         return ""
 
-    def retrieve_profile(self, query: str) -> MemoryProfileResult:
+    def retrieve_archive(self, query: str) -> MemoryRetrievalResult:
         del query
-        return MemoryProfileResult(
+        return MemoryRetrievalResult(
             text="",
             mode="retrieved",
             evidence_status="insufficient",
@@ -652,6 +657,10 @@ def test_empty_knowledge_search_passes_empty_context_to_llm() -> None:
     assert "No local knowledge notes found." in llm.calls[0]["user_msg"]
     assert "grounding" in llm.calls[0]["user_msg"]
     assert "chưa đủ thông tin" in result.response_text
+    assert result.blocked is False
+    assert result.trace.answer_policy == "abstain"
+    assert result.trace.workflow_status == "insufficient_evidence"
+    assert result.trace.citation_count == 0
 
 
 def test_empty_memory_search_passes_abstention_policy_to_llm() -> None:
@@ -695,7 +704,7 @@ def test_runtime_does_not_search_memory_archive_without_a_memory_access_plan() -
     result = runtime.run_text_turn("TTS")
 
     assert result.trace is not None
-    assert result.trace.memory_mode == "blob"
+    assert result.trace.memory_mode == "none"
     assert result.trace.memory_degraded_reason == ""
 
 
@@ -847,8 +856,24 @@ def test_goal_completion_budget_exhaustion_is_not_reported_as_achieved() -> None
 
     assert result.trace is not None
     assert result.trace.evidence_completion_status == "budget_exhausted"
+    assert result.trace.workflow_status == "budget_exhausted"
+    assert "budget_exhausted" in result.response_text
     assert terminal.status.value == "budget_exhausted"
     assert terminal.goal_status.value == "failed"
+
+
+def test_terminal_receipt_uses_citation_paths_as_evidence_ids() -> None:
+    from soca.core.turn import RuntimeResult
+
+    result = RuntimeResult(
+        response_text="Theo [K1] ...",
+        route=RuntimeRoute.KNOWLEDGE_LLM,
+        citations=(KnowledgeCitation("wiki/bayes.md", "Bayes"),),
+    )
+
+    terminal = terminal_from_runtime_result(result)
+
+    assert terminal.evidence_ids == ("wiki/bayes.md",)
 
 
 def test_goal_completion_preserves_all_pages_of_a_bounded_exact_read() -> None:
@@ -954,6 +979,7 @@ def test_metadata_can_request_knowledge_context_for_llm() -> None:
     memory_builder = MemoryContextBuilder(
         long_term=FakeLongTermMemory(),
         session=session,
+        core=FakeLongTermMemory(),
     )
     llm = SpyLLM(text="Theo [K1], protein hỗ trợ duy trì cơ bắp.")
     runtime = AssistantRuntime(

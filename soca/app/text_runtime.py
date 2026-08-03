@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, cast
+from typing import NoReturn, Protocol, cast
 
 from rich.console import Console
 from rich.panel import Panel
@@ -20,7 +20,6 @@ from soca.core.answer_validation import (
 )
 from soca.core.knowledge_setup import build_knowledge_runtime_setup
 from soca.core.memory_setup import (
-    MemoryMode,
     MemoryRuntimeConfig,
     build_memory_runtime_setup,
 )
@@ -38,6 +37,7 @@ from soca.core.usage import TurnUsage
 from soca.core.workflow import ActiveGoalStore, GoalCheckpointStore
 from soca.knowledge.factory import DenseBackend, RetrievalConfig, RetrievalMode
 from soca.knowledge.retrievers.dense import EmbeddingModel, FastEmbedModel
+from soca.knowledge.vault import default_vault_root
 from soca.llm import LLMEngine, LocalLlamaCppLLM
 from soca.llm.factory import SecretReader, build_llm_engine
 from soca.llm.registry import LLM_MODEL_REGISTRY
@@ -65,7 +65,7 @@ class TextRuntimeConfig:
     profile_key: str = DEFAULT_VOICE_RUNTIME_PROFILE_KEY
     llm_model: str = field(default_factory=default_text_llm_model_key)
     llm_model_is_override: bool = False
-    vault: Path = Path.home() / "KnowledgeVault"
+    vault: Path = field(default_factory=default_vault_root)
     no_memory: bool = False
     no_llm: bool = False
     max_tokens: int = DEFAULT_MAX_TOKENS
@@ -74,8 +74,8 @@ class TextRuntimeConfig:
     knowledge_limit: int = 3
     knowledge_retrieval_mode: str = "hybrid"
     knowledge_dense_backend: str = "aiteamvn_v2"
-    memory_chars: int = 64_000
-    profile_chars: int = 900
+    memory_context_chars: int = 64_000
+    memory_item_chars: int = 900
     session_chars: int = 60_000
     session_turns: int = 6
     turn_chars: int = 500
@@ -90,7 +90,6 @@ class TextRuntimeConfig:
     semantic_router_threshold: float = 0.58
     semantic_router_margin: float = 0.0
     semantic_router_examples: Path | None = field(default_factory=default_semantic_router_examples)
-    memory_mode: MemoryMode = "retrieved"
     memory_limit: int = 3
     memory_retrieval_mode: str = "chunk_sparse"
     memory_dense_backend: str = "aiteamvn_v2"
@@ -110,8 +109,8 @@ def resolve_text_runtime_config(
     temperature: float = 0.2,
     top_p: float = 0.95,
     knowledge_limit: int = 3,
-    memory_chars: int = 64_000,
-    profile_chars: int = 900,
+    memory_context_chars: int = 64_000,
+    memory_item_chars: int = 900,
     session_chars: int = 60_000,
     session_turns: int = 6,
     turn_chars: int = 500,
@@ -126,7 +125,6 @@ def resolve_text_runtime_config(
     semantic_router_threshold: float = 0.58,
     semantic_router_margin: float = 0.0,
     semantic_router_examples: str | Path | None = None,
-    memory_mode: str = "retrieved",
     memory_limit: int = 3,
     memory_retrieval_mode: str = "chunk_sparse",
     memory_dense_backend: str = "aiteamvn_v2",
@@ -145,7 +143,7 @@ def resolve_text_runtime_config(
         profile_key=profile_key,
         llm_model=llm_model or profile.llm_model,
         llm_model_is_override=llm_model is not None,
-        vault=Path(vault or Path.home() / "KnowledgeVault").expanduser().resolve(),
+        vault=Path(vault or default_vault_root()).expanduser().resolve(),
         no_memory=no_memory,
         no_llm=no_llm,
         max_tokens=max_tokens,
@@ -154,8 +152,8 @@ def resolve_text_runtime_config(
         knowledge_limit=knowledge_limit,
         knowledge_retrieval_mode=profile.knowledge_retrieval_mode,
         knowledge_dense_backend=profile.knowledge_dense_backend,
-        memory_chars=memory_chars,
-        profile_chars=profile_chars,
+        memory_context_chars=memory_context_chars,
+        memory_item_chars=memory_item_chars,
         session_chars=session_chars,
         session_turns=session_turns,
         turn_chars=turn_chars,
@@ -174,7 +172,6 @@ def resolve_text_runtime_config(
             if semantic_router_examples is not None
             else default_semantic_router_examples()
         ),
-        memory_mode=cast(MemoryMode, memory_mode),
         memory_limit=memory_limit,
         memory_retrieval_mode=memory_retrieval_mode,
         memory_dense_backend=memory_dense_backend,
@@ -191,6 +188,29 @@ class TextRuntimeBundle:
     llm_status: str
     knowledge_status: str
     memory_status: str
+    owns_session_memory: bool = False
+
+    def close(self) -> None:
+        """Release retrieval watchers and the answer engine owned by the bundle."""
+        failures: list[tuple[str, Exception]] = []
+        try:
+            self.runtime.close()
+        except Exception as exc:  # noqa: BLE001 - aggregate cleanup failures
+            failures.append(("runtime", exc))
+        close_llm = getattr(getattr(self.runtime, "llm", None), "close", None)
+        if callable(close_llm):
+            try:
+                close_llm()
+            except Exception as exc:  # noqa: BLE001 - aggregate cleanup failures
+                failures.append(("llm", exc))
+        if self.owns_session_memory and self.session_memory is not None:
+            try:
+                self.session_memory.close()
+            except Exception as exc:  # noqa: BLE001 - aggregate cleanup failures
+                failures.append(("session_memory", exc))
+        if failures:
+            details = "; ".join(f"{name}: {error}" for name, error in failures)
+            raise RuntimeError(f"Text runtime cleanup failed: {details}") from failures[0][1]
 
 
 class LLMFactory(Protocol):
@@ -238,6 +258,7 @@ def build_text_runtime(
     knowledge_status = "disabled:not_found"
     tools: list[Tool] = []
     manifest_provider: Callable[[], str] | None = None
+    owned_context_sources: list[object] = []
 
     if vault.is_dir():
         knowledge = build_knowledge_runtime_setup(
@@ -249,6 +270,7 @@ def build_text_runtime(
             ),
         )
         knowledge_builder = knowledge.builder
+        owned_context_sources.append(knowledge.source)
         tools.extend([knowledge.inspect_tool, knowledge.search_tool, knowledge.read_tool])
 
         def provide_manifest() -> str:
@@ -278,11 +300,50 @@ def build_text_runtime(
 
     runtime_session_memory = None
     memory_builder = None
+    owns_session_memory = session_memory is None
+    created_llm: LLMEngine | None = None
+
+    def rollback_build() -> tuple[tuple[str, Exception], ...]:
+        failures: list[tuple[str, Exception]] = []
+        for source in reversed(owned_context_sources):
+            close = getattr(source, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception as exc:  # noqa: BLE001 - preserve all startup failures
+                    failures.append(("context", exc))
+        if created_llm is not None:
+            cancel = getattr(created_llm, "cancel", None)
+            if callable(cancel):
+                try:
+                    cancel()
+                except Exception as exc:  # noqa: BLE001 - preserve all startup failures
+                    failures.append(("llm_cancel", exc))
+            close = getattr(created_llm, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception as exc:  # noqa: BLE001 - preserve all startup failures
+                    failures.append(("llm", exc))
+        if owns_session_memory and runtime_session_memory is not None:
+            try:
+                runtime_session_memory.close()
+            except Exception as exc:  # noqa: BLE001 - preserve all startup failures
+                failures.append(("session_memory", exc))
+        return tuple(failures)
+
+    def abort_build(error: BaseException) -> NoReturn:
+        failures = rollback_build()
+        if failures:
+            details = "; ".join(f"{name}: {failure}" for name, failure in failures)
+            raise RuntimeError(f"Text runtime startup cleanup failed: {details}") from error
+        raise error
+
     if config.no_memory:
         memory_status = "disabled"
     else:
         # Session memory is RAM-only and must work even without a vault so
-        # `soca chat` keeps multi-turn context. Long-term profile memory is the
+        # `soca chat` keeps multi-turn context. Archive memory is the
         # only part that needs the vault on disk.
         runtime_session_memory = (
             session_memory
@@ -305,25 +366,29 @@ def build_text_runtime(
                 resume=config.session_resume,
             )
         )
-        memory_setup = build_memory_runtime_setup(
-            vault,
-            session=runtime_session_memory,
-            config=MemoryRuntimeConfig(
-                mode=config.memory_mode,
-                top_k=config.memory_limit,
-                context_chars=config.memory_chars,
-                profile_chars=config.profile_chars,
-                retrieval_mode=cast(RetrievalMode, config.memory_retrieval_mode),
-                dense_backend=cast(DenseBackend, config.memory_dense_backend),
-                recency_weight=config.memory_recency_weight,
-                importance_weight=config.memory_importance_weight,
-                relevance_weight=1.0
-                - config.memory_recency_weight
-                - config.memory_importance_weight,
-                recency_half_life_days=config.memory_recency_half_life_days,
-            ),
-        )
+        try:
+            memory_setup = build_memory_runtime_setup(
+                vault,
+                session=runtime_session_memory,
+                config=MemoryRuntimeConfig(
+                    top_k=config.memory_limit,
+                    context_chars=config.memory_context_chars,
+                    memory_item_chars=config.memory_item_chars,
+                    retrieval_mode=cast(RetrievalMode, config.memory_retrieval_mode),
+                    dense_backend=cast(DenseBackend, config.memory_dense_backend),
+                    recency_weight=config.memory_recency_weight,
+                    importance_weight=config.memory_importance_weight,
+                    relevance_weight=1.0
+                    - config.memory_recency_weight
+                    - config.memory_importance_weight,
+                    recency_half_life_days=config.memory_recency_half_life_days,
+                ),
+            )
+        except Exception as exc:
+            abort_build(exc)
         memory_builder = memory_setup.builder
+        if memory_setup.long_term is not None:
+            owned_context_sources.append(memory_setup.long_term)
         memory_status = memory_setup.status
         tools.append(MemorySearchTool(memory_builder, max_limit=config.knowledge_limit))
 
@@ -331,13 +396,17 @@ def build_text_runtime(
         llm = None
         llm_status = "disabled"
     else:
-        llm = engine_factory(
-            selected_settings,
-            secret_store or SecretStore(),
-            local_factory=llm_factory or LocalLlamaCppLLM,
-            n_threads=config.llm_threads,
-            n_gpu_layers=config.llm_gpu_layers,
-        )
+        try:
+            llm = engine_factory(
+                selected_settings,
+                secret_store or SecretStore(),
+                local_factory=llm_factory or LocalLlamaCppLLM,
+                n_threads=config.llm_threads,
+                n_gpu_layers=config.llm_gpu_layers,
+            )
+            created_llm = llm
+        except Exception as exc:
+            abort_build(exc)
         if selected_settings.backend == "remote":
             llm_status = f"enabled:{selected_settings.provider_key}:{selected_settings.model_id}"
         else:
@@ -361,47 +430,54 @@ def build_text_runtime(
     if router_config.semantic.enabled and router_embedding_model is None:
         try:
             router_embedding_model = FastEmbedModel(allow_download=False)
-        except (ImportError, FileNotFoundError, OSError, RuntimeError, ValueError):
-            router_embedding_model = None
-    tool_router = build_runtime_tool_router(
-        llm=llm,
-        tool_runtime=tool_runtime,
-        deterministic=deterministic_router,
-        config=router_config,
-        embedding_model=router_embedding_model,
-        voice=False,
-        vault_manifest_provider=manifest_provider,
-    )
-    runtime = AssistantRuntime(
-        llm=llm,
-        tool_runtime=tool_runtime,
-        tool_router=tool_router,
-        knowledge_builder=knowledge_builder,
-        memory_builder=memory_builder,
-        options=RuntimeOptions(
-            max_tokens=config.max_tokens,
-            temperature=config.temperature,
-            top_p=config.top_p,
-            knowledge_limit=config.knowledge_limit,
-            model_context_window=model_context_window,
-            model_max_output_tokens=selected_settings.model_max_output_tokens,
-        ),
-        active_goal_store=active_goal_store
-        or (
-            ActiveGoalStore(
-                checkpoint_store=GoalCheckpointStore(default_session_checkpoint_home() / "goals"),
-                session_id=config.session_id,
-            )
-            if config.session_persistence == "local_resumable"
-            else None
-        ),
-    )
+        except Exception as exc:
+            abort_build(exc)
+    try:
+        tool_router = build_runtime_tool_router(
+            llm=llm,
+            tool_runtime=tool_runtime,
+            deterministic=deterministic_router,
+            config=router_config,
+            embedding_model=router_embedding_model,
+            voice=False,
+            vault_manifest_provider=manifest_provider,
+        )
+        runtime = AssistantRuntime(
+            llm=llm,
+            tool_runtime=tool_runtime,
+            tool_router=tool_router,
+            knowledge_builder=knowledge_builder,
+            memory_builder=memory_builder,
+            options=RuntimeOptions(
+                max_tokens=config.max_tokens,
+                temperature=config.temperature,
+                top_p=config.top_p,
+                knowledge_limit=config.knowledge_limit,
+                turn_workflow="controlled",
+                model_context_window=model_context_window,
+                model_max_output_tokens=selected_settings.model_max_output_tokens,
+            ),
+            active_goal_store=active_goal_store
+            or (
+                ActiveGoalStore(
+                    checkpoint_store=GoalCheckpointStore(
+                        default_session_checkpoint_home() / "goals"
+                    ),
+                    session_id=config.session_id,
+                )
+                if config.session_persistence == "local_resumable"
+                else None
+            ),
+        )
+    except Exception as exc:
+        abort_build(exc)
     return TextRuntimeBundle(
         runtime=runtime,
         session_memory=runtime_session_memory,
         llm_status=llm_status,
         knowledge_status=knowledge_status,
         memory_status=memory_status,
+        owns_session_memory=owns_session_memory,
     )
 
 
@@ -430,11 +506,16 @@ def run_text_ask(
     )
 
     user_text, metadata = normalize_text_turn(text)
-    result = bundle.runtime.run_text_turn(user_text, source="cli", metadata=metadata)
-    render_text_result(console, result, show_trace=show_trace)
-    if show_usage:
-        print_turn_usage(console, TurnUsage.from_runtime_result(result))
-    return result
+    try:
+        result = bundle.runtime.run_text_turn(user_text, source="cli", metadata=metadata)
+        render_text_result(console, result, show_trace=show_trace)
+        if show_usage:
+            print_turn_usage(console, TurnUsage.from_runtime_result(result))
+        return result
+    finally:
+        close = getattr(bundle, "close", None)
+        if callable(close):
+            close()
 
 
 def render_text_result(

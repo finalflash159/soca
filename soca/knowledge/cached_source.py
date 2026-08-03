@@ -6,8 +6,7 @@ from typing import Literal
 
 from soca.knowledge.base import KnowledgeHit
 from soca.knowledge.catalog import CatalogIndexSnapshot
-from soca.knowledge.index.models import VaultIndex
-from soca.knowledge.index.vault_index import VaultIndexer, VaultIndexStore
+from soca.knowledge.index.vault_index import VaultIndexStore
 from soca.knowledge.indexing.coordinator import IndexCoordinator
 from soca.knowledge.indexing.identity import CorpusSpec
 from soca.knowledge.indexing.status import IndexStatus
@@ -32,7 +31,6 @@ class CachedMarkdownVaultKnowledgeSource(MarkdownVaultKnowledgeSource):
         include_globs: tuple[str, ...] = DEFAULT_INCLUDE_GLOBS,
         max_file_bytes: int = 256 * 1024,
         scoring: SearchScoringConfig | None = None,
-        lifecycle: Literal["legacy", "v2"] = "legacy",
         corpus_kind: Literal["knowledge", "memory"] = "knowledge",
     ) -> None:
         super().__init__(
@@ -44,71 +42,44 @@ class CachedMarkdownVaultKnowledgeSource(MarkdownVaultKnowledgeSource):
             scoring=scoring,
         )
         store = VaultIndexStore(index_home=index_home)
-        self._indexer = VaultIndexer(self, store)
-        self._index: VaultIndex | None = None
-        self._sparse_index: VaultIndex | None = None
-        self._sparse: SparseDocumentRetriever | None = None
         self._index_lock = RLock()
-        if lifecycle not in {"legacy", "v2"}:
-            raise ValueError("unknown index lifecycle")
-        self._lifecycle = lifecycle
-        self._coordinator = (
-            IndexCoordinator(
-                self,
-                spec=CorpusSpec(
-                    vault_path=self.root,
-                    kind=corpus_kind,
-                    include_globs=include_globs,
-                    exclude_dirs=exclude_dirs,
-                    exclude_files=exclude_files,
-                    max_file_bytes=max_file_bytes,
-                ),
-                index_home=store.index_home,
-                model=None,
-            )
-            if lifecycle == "v2"
-            else None
+        self._coordinator = IndexCoordinator(
+            self,
+            spec=CorpusSpec(
+                vault_path=self.root,
+                kind=corpus_kind,
+                include_globs=include_globs,
+                exclude_dirs=exclude_dirs,
+                exclude_files=exclude_files,
+                max_file_bytes=max_file_bytes,
+            ),
+            index_home=store.index_home,
+            model=None,
         )
 
     @property
     def retrieval_mode(self) -> str:
         return "cached_sparse"
 
-    def _refresh_index(
-        self,
-    ) -> tuple[VaultIndex, SparseDocumentRetriever]:
-        with self._index_lock:
-            index = self._indexer.refresh(previous=self._index)
-            self._index = index
-            if self._sparse_index is not index:
-                self._sparse = SparseDocumentRetriever(
-                    index.documents,
-                    self.scoring,
-                )
-                self._sparse_index = index
-            assert self._sparse is not None
-            return index, self._sparse
-
     def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
-        if self._lifecycle == "v2":
-            assert self._coordinator is not None
+        with self._index_lock:
             snapshot = self._coordinator.snapshot()
             sparse = SparseDocumentRetriever(snapshot.sparse_index.documents, self.scoring)
             return sparse.search(query, limit=limit)
-        _, sparse = self._refresh_index()
-        return sparse.search(query, limit=limit)
 
     def catalog_index_snapshot(self) -> CatalogIndexSnapshot:
-        if self._lifecycle == "v2":
-            assert self._coordinator is not None
+        with self._index_lock:
             snapshot = self._coordinator.snapshot()
             return CatalogIndexSnapshot(
                 revision=snapshot.revision,
                 index=snapshot.sparse_index,
             )
-        index, _ = self._refresh_index()
-        return CatalogIndexSnapshot(revision=0, index=index)
 
     @property
     def index_status(self) -> IndexStatus | None:
-        return self._coordinator.status() if self._coordinator is not None else None
+        return self._coordinator.status()
+
+    def build_index(self, *, dense: bool = False) -> object:
+        if dense:
+            raise ValueError("cached_sparse does not have a dense index")
+        return self._coordinator.build_blocking(dense=False)

@@ -1,3 +1,10 @@
+"""Research-only consented episode persistence primitives.
+
+The production runtime does not create or retrieve episodic memory. Keeping
+this evaluator outside ``soca.memory`` prevents an un-wired capture path from
+being importable as a production memory backend.
+"""
+
 from __future__ import annotations
 
 import json
@@ -38,7 +45,10 @@ class MemoryEpisode:
             raise ValueError("episode summary is invalid")
         if len(self.retained_facts) > MAX_ITEMS or len(self.unresolved_items) > MAX_ITEMS:
             raise ValueError("episode item count is too large")
-        if any(not item.strip() or len(item) > 1_000 for item in (*self.retained_facts, *self.unresolved_items)):
+        if any(
+            not item.strip() or len(item) > 1_000
+            for item in (*self.retained_facts, *self.unresolved_items)
+        ):
             raise ValueError("episode item is invalid")
         created = _utc(self.created_at)
         ended = _utc(self.ended_at)
@@ -165,7 +175,15 @@ def _encode_episode(episode: MemoryEpisode) -> bytes:
 def _decode_episode(payload: object) -> MemoryEpisode:
     if not isinstance(payload, dict):
         raise ValueError("episode root must be an object")
-    required = {"id", "created_at", "ended_at", "summary", "retained_facts", "unresolved_items", "schema_version"}
+    required = {
+        "id",
+        "created_at",
+        "ended_at",
+        "summary",
+        "retained_facts",
+        "unresolved_items",
+        "schema_version",
+    }
     if set(payload) != required:
         raise ValueError("episode schema is invalid")
     return MemoryEpisode(
@@ -180,7 +198,9 @@ def _decode_episode(payload: object) -> MemoryEpisode:
 
 
 def _canonical_json(payload: object) -> bytes:
-    return (json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    return (
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode("utf-8")
 
 
 __all__ = ["EPISODE_SCHEMA_VERSION", "EpisodeStore", "MemoryEpisode"]

@@ -29,7 +29,7 @@ def _normalise(text: str) -> str:
 
 
 def approximate_tokens(text: str) -> int:
-    """Conservative deterministic fallback until a local tokenizer is supplied."""
+    """Conservative deterministic estimator used when no tokenizer is supplied."""
     if not text.strip():
         return 0
     return max(1, (len(text.encode("utf-8")) + 3) // 4)
@@ -231,8 +231,9 @@ class WorkingMemorySnapshot:
 class WorkingMemory:
     """Conversation state with generation-CAS compaction publication.
 
-    ``trim_only`` is a valid degraded mode: it preserves the hard prompt cap
-    without silently pretending that an extractive/regex summary is truthful.
+    ``trim_only`` is an explicit no-LLM policy: it preserves the hard prompt cap
+    without pretending that an extractive/regex summary is truthful. It is not
+    selected by a failed background-summary worker.
     """
 
     def __init__(
@@ -353,7 +354,7 @@ class WorkingMemory:
         return True
 
     def trim_only(self) -> None:
-        """Deterministic fallback when no approved local summary model is ready."""
+        """Keep only the bounded recent window for an explicit no-LLM session."""
         if self._pending_compaction:
             self._pending_compaction = False
         self._enforce_hard_limit(target=self.policy.target_tokens)

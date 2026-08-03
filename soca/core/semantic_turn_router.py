@@ -40,16 +40,6 @@ class SemanticTurnExample:
     sources: tuple[str, ...] = ()
     handler: str | None = None
 
-    @property
-    def route(self) -> TurnDisposition:
-        return self.disposition
-
-    @property
-    def tool(self) -> str | None:
-        """Compatibility alias for pre-P1 callers; the schema calls this handler."""
-        return self.handler
-
-
 def _normalize_text(text: str) -> str:
     return " ".join(text.strip().split())
 
@@ -139,16 +129,11 @@ class SemanticTurnRouter:
             self.last_tier = "none"
             self.last_decision = ToolRouterDecision(reason="empty_input")
             return None
-        try:
-            vector = np.asarray(self._embedding_model.embed_query(normalized), dtype=np.float32)
-            norm = float(np.linalg.norm(vector))
-            if vector.ndim != 1 or norm <= 1e-12 or not np.isfinite(vector).all():
-                raise ValueError("invalid query embedding")
-            scores = self._vectors @ (vector / norm)
-        except (OSError, RuntimeError, ValueError):
-            self.last_tier = "none"
-            self.last_decision = ToolRouterDecision(reason="embedding_unavailable")
-            return None
+        vector = np.asarray(self._embedding_model.embed_query(normalized), dtype=np.float32)
+        norm = float(np.linalg.norm(vector))
+        if vector.ndim != 1 or norm <= 1e-12 or not np.isfinite(vector).all():
+            raise RuntimeError("semantic_query_embedding_invalid")
+        scores = self._vectors @ (vector / norm)
 
         by_disposition: dict[str, float] = {}
         for example, raw_score in zip(self._examples, scores, strict=True):
@@ -305,7 +290,7 @@ def build_semantic_turn_router(
         if example.disposition != "direct_tool":
             enabled.append(example)
             continue
-        tool = tool_runtime.get(example.tool or "")
+        tool = tool_runtime.get(example.handler or "")
         if tool is not None and tool.spec.enabled:
             enabled.append(example)
     if not enabled:

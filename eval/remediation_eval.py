@@ -77,7 +77,7 @@ def validate_audit_inventory(
             not isinstance(item_id, str)
             or not item_id
             or item_id in item_ids
-            or status not in {"characterized", "expected_failure"}
+            or status not in {"characterized", "expected_failure", "fixed"}
             or not isinstance(gate, str)
             or not gate
             or not isinstance(evidence, list)
@@ -110,6 +110,7 @@ def validate_audit_inventory(
         "item_count": len(items),
         "characterized_count": sum(item["status"] == "characterized" for item in items),
         "expected_failure_count": sum(item["status"] == "expected_failure" for item in items),
+        "fixed_count": sum(item["status"] == "fixed" for item in items),
         "runtime_case_count": len(referenced_cases),
     }
 

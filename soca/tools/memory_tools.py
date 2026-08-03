@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import Any, cast
-from uuid import uuid4
+from typing import Any
 
 from soca.memory.context import MemoryContextBuilder
-from soca.memory.proposals import MemoryProposal, ProposalKind, ProposalStore
 from soca.tools.base import (
     InvalidToolInput,
     SideEffectLevel,
@@ -112,67 +109,4 @@ class MemorySearchTool:
         )
 
 
-class MemoryProposeNoteTool:
-    """Create a pending, immutable proposal; approval writes the markdown note."""
-
-    def __init__(self, store: ProposalStore) -> None:
-        self.store = store
-
-    @property
-    def spec(self) -> ToolSpec:
-        return ToolSpec(
-            name="memory.propose_note",
-            description=(
-                "Create a pending memory note proposal. It never writes an approved note; "
-                "the user must approve it separately."
-            ),
-            input_schema=object_schema(
-                properties={
-                    "kind": {
-                        "type": "string",
-                        "enum": ["preference", "stable_fact", "project", "correction"],
-                    },
-                    "statement": {"type": "string"},
-                    "evidence_excerpt": {"type": "string"},
-                    "confidence": {"type": "number"},
-                    "source_episode_id": {"type": "string"},
-                },
-                required=["kind", "statement", "evidence_excerpt"],
-            ),
-            side_effect=SideEffectLevel.LOCAL_STATE,
-            workflow_capability="memory_propose_note",
-        )
-
-    def run(self, arguments: dict[str, Any]) -> ToolResult:
-        proposal_id = str(uuid4())
-        source_episode_id = str(arguments.get("source_episode_id") or uuid4())
-        kind_value = str(arguments["kind"])
-        if kind_value not in {"preference", "stable_fact", "project", "correction"}:
-            raise InvalidToolInput("unknown_proposal_kind")
-        kind = cast(ProposalKind, kind_value)
-        proposal = MemoryProposal(
-            id=proposal_id,
-            kind=kind,
-            statement=str(arguments["statement"]).strip(),
-            evidence_excerpt=str(arguments["evidence_excerpt"]).strip(),
-            confidence=float(arguments.get("confidence", 0.8)),
-            source_episode_id=source_episode_id,
-            created_at=datetime.now(UTC),
-        )
-        self.store.put(proposal)
-        return ToolResult(
-            name=self.spec.name,
-            ok=True,
-            content=(
-                f"Đã tạo proposal memory đang chờ duyệt: {proposal_id}. "
-                "Chưa ghi note chính thức; cần approve proposal này trước."
-            ),
-            data={
-                "proposal_id": proposal_id,
-                "status": "pending",
-                "source_episode_id": source_episode_id,
-            },
-        )
-
-
-__all__ = ["MemorySearchTool", "MemoryProposeNoteTool"]
+__all__ = ["MemorySearchTool"]

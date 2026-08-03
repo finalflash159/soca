@@ -122,6 +122,7 @@ def test_audit_inventory_is_machine_readable_and_references_known_cases() -> Non
 
     assert summary["item_count"] >= 50
     assert summary["expected_failure_count"] > 0
+    assert summary["fixed_count"] > 0
     assert summary["runtime_case_count"] == len(cases)
 
 

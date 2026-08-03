@@ -96,7 +96,7 @@ def test_hybrid_factory_failure_is_explicit_and_does_not_fallback(
 def test_memory_hybrid_factory_failure_does_not_fallback(tmp_path: Path, monkeypatch) -> None:
     memory = tmp_path / "memory"
     memory.mkdir()
-    (memory / "profile.md").write_text("# Memory\nSparse fallback.", encoding="utf-8")
+    (memory / "archive-note.md").write_text("# Memory\nArchive note.", encoding="utf-8")
 
     import soca.knowledge.factory as factory
     from soca.core.memory_setup import MemoryRuntimeConfig, build_memory_runtime_setup
@@ -117,3 +117,103 @@ def test_memory_hybrid_factory_failure_does_not_fallback(tmp_path: Path, monkeyp
             ),
             index_home=tmp_path / "index",
         )
+
+
+def test_knowledge_setup_closes_source_when_runtime_assembly_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import soca.core.knowledge_setup as setup_module
+
+    class Source:
+        retrieval_mode = "hybrid"
+
+        def __init__(self) -> None:
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    source = Source()
+    monkeypatch.setattr(setup_module, "build_knowledge_source", lambda *args, **kwargs: source)
+    monkeypatch.setattr(
+        setup_module,
+        "KnowledgeCatalog",
+        lambda provider: (_ for _ in ()).throw(RuntimeError("catalog failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="catalog failed"):
+        build_knowledge_runtime_setup(tmp_path, knowledge_limit=3)
+
+    assert source.close_calls == 1
+
+
+def test_memory_setup_closes_source_when_runtime_assembly_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import soca.core.memory_setup as setup_module
+    from soca.memory import SessionMemory
+
+    (tmp_path / "memory").mkdir()
+
+    class Source:
+        retrieval_mode = "hybrid"
+
+        def __init__(self) -> None:
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    source = Source()
+    monkeypatch.setattr(setup_module, "build_retrieval_source", lambda *args, **kwargs: source)
+    monkeypatch.setattr(
+        setup_module,
+        "CoreMemoryStore",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("core failed")),
+    )
+
+    with pytest.raises(RuntimeError, match="core failed"):
+        setup_module.build_memory_runtime_setup(
+            tmp_path,
+            session=SessionMemory(summary_enabled=False),
+            config=setup_module.MemoryRuntimeConfig(retrieval_mode="hybrid"),
+            index_home=tmp_path / "index",
+        )
+
+    assert source.close_calls == 1
+
+
+def test_factory_closes_source_when_watcher_start_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import soca.knowledge.factory as factory
+
+    class Source:
+        retrieval_mode = "hybrid"
+
+        def __init__(self, *args, **kwargs) -> None:
+            self.close_calls = 0
+
+        def activate_watcher(self, *, interval_seconds: float) -> None:
+            del interval_seconds
+            raise RuntimeError("watcher failed")
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    source = Source()
+    monkeypatch.setattr(factory, "HybridKnowledgeSource", lambda *args, **kwargs: source)
+    monkeypatch.setattr(factory, "_build_model", lambda backend: FakeEmbeddingModel())
+
+    with pytest.raises(RuntimeError, match="watcher failed"):
+        factory.build_retrieval_source(
+            tmp_path,
+            include_globs=("wiki/**/*.md",),
+            config=RetrievalConfig(mode="hybrid"),
+            index_home=tmp_path / "index",
+        )
+
+    assert source.close_calls == 1

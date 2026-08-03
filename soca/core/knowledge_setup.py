@@ -39,20 +39,33 @@ def build_knowledge_runtime_setup(
         config=resolved_config,
         index_home=index_home,
     )
-    effective_mode = str(getattr(source, "retrieval_mode", resolved_config.mode))
-    relevance_policy = RelevancePolicy.for_retrieval_mode(effective_mode)
-    catalog = KnowledgeCatalog(cast(CatalogIndexProvider, source))
-    return KnowledgeRuntimeSetup(
-        source=source,
-        catalog=catalog,
-        builder=KnowledgeContextBuilder(
-            source,
-            max_hits=knowledge_limit,
-            relevance_policy=relevance_policy,
+    try:
+        effective_mode = str(getattr(source, "retrieval_mode", resolved_config.mode))
+        relevance_policy = RelevancePolicy.for_retrieval_mode(effective_mode)
+        catalog = KnowledgeCatalog(cast(CatalogIndexProvider, source))
+        return KnowledgeRuntimeSetup(
+            source=source,
             catalog=catalog,
-        ),
-        inspect_tool=KnowledgeInspectTool(catalog),
-        search_tool=KnowledgeSearchTool(source, max_limit=knowledge_limit),
-        read_tool=KnowledgeReadTool(source),
-        status=f"enabled:{effective_mode}",
-    )
+            builder=KnowledgeContextBuilder(
+                source,
+                max_hits=knowledge_limit,
+                relevance_policy=relevance_policy,
+                catalog=catalog,
+            ),
+            inspect_tool=KnowledgeInspectTool(catalog),
+            search_tool=KnowledgeSearchTool(
+                source,
+                max_limit=knowledge_limit,
+                relevance_policy=relevance_policy,
+            ),
+            read_tool=KnowledgeReadTool(source),
+            status=f"enabled:{effective_mode}",
+        )
+    except Exception:
+        close = getattr(source, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception as cleanup_exc:  # noqa: BLE001 - preserve cleanup failure
+                raise RuntimeError("knowledge runtime setup cleanup failed") from cleanup_exc
+        raise

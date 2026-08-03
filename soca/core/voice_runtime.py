@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 import time
 from collections.abc import Callable
@@ -36,7 +35,6 @@ from soca.asr.voice_backend import PhoWhisperVoiceBackend
 from soca.config import LlmSettings, SecretStore, load_settings
 from soca.core.knowledge_setup import build_knowledge_runtime_setup
 from soca.core.memory_setup import (
-    MemoryMode,
     MemoryRuntimeConfig,
     build_memory_runtime_setup,
 )
@@ -61,6 +59,7 @@ from soca.core.turn_taking import partial_interval_from_cost
 from soca.core.workflow import ActiveGoalStore, GoalCheckpointStore
 from soca.knowledge.factory import DenseBackend, RetrievalConfig, RetrievalMode
 from soca.knowledge.retrievers.dense import FastEmbedModel
+from soca.knowledge.vault import default_vault_root
 from soca.llm import LLMEngine
 from soca.llm.factory import SecretReader, build_llm_engine
 from soca.llm.registry import LLM_MODEL_REGISTRY
@@ -73,8 +72,6 @@ from soca.memory import (
 )
 from soca.tools import MemorySearchTool, Tool, ToolRuntime
 from soca.tts import VALTEC_TTS_CONFIG, TTSEngine, create_tts_engine
-
-LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -97,8 +94,8 @@ class ResolvedVoiceRuntimeConfig:
     pcm_crossfade_ms: float
     vault: Path
     no_memory: bool = False
-    memory_chars: int = 64_000
-    profile_chars: int = 900
+    memory_context_chars: int = 64_000
+    memory_item_chars: int = 900
     session_chars: int = 60_000
     session_turns: int = 6
     turn_chars: int = 500
@@ -116,7 +113,6 @@ class ResolvedVoiceRuntimeConfig:
     semantic_router_threshold: float = 0.58
     semantic_router_margin: float = 0.0
     semantic_router_examples: Path | None = None
-    memory_mode: MemoryMode = "retrieved"
     memory_limit: int = 3
     memory_retrieval_mode: str = "chunk_sparse"
     memory_dense_backend: str = "aiteamvn_v2"
@@ -151,6 +147,7 @@ class VoiceRuntimeBundle:
     partial_interval_ms: int = 800  # partial cadence seed (handles device variance)
     partial_enabled: bool = True  # False when the device is too slow for partials
     llm_settings: LlmSettings | None = None
+    owns_session_memory: bool = False
     _close_lock: Lock = field(default_factory=Lock, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
 
@@ -174,25 +171,35 @@ class VoiceRuntimeBundle:
         with self._close_lock:
             if self._closed:
                 return
+            failures: list[tuple[str, Exception]] = []
+            close_runtime = getattr(self.assistant_runtime, "close", None)
+            if callable(close_runtime):
+                try:
+                    close_runtime()
+                except Exception as exc:  # noqa: BLE001 - cleanup boundary
+                    failures.append(("runtime", exc))
+            for name, component in (
+                ("ASR", self.asr),
+                ("LLM", self.llm),
+                ("TTS", self.tts),
+            ):
+                close = getattr(component, "close", None)
+                if not callable(close):
+                    continue
+                try:
+                    close()
+                except Exception as exc:  # noqa: BLE001 - cleanup boundary
+                    failures.append((name, exc))
+            if self.owns_session_memory and self.session_memory is not None:
+                try:
+                    self.session_memory.close()
+                except Exception as exc:  # noqa: BLE001 - cleanup boundary
+                    failures.append(("session_memory", exc))
+
+            if failures:
+                details = "; ".join(f"{name}: {error}" for name, error in failures)
+                raise RuntimeError(f"Voice runtime cleanup failed: {details}") from failures[0][1]
             self._closed = True
-
-        failures: list[tuple[str, Exception]] = []
-        for name, component in (
-            ("ASR", self.asr),
-            ("LLM", self.llm),
-            ("TTS", self.tts),
-        ):
-            close = getattr(component, "close", None)
-            if not callable(close):
-                continue
-            try:
-                close()
-            except Exception as exc:  # noqa: BLE001 - cleanup boundary
-                failures.append((name, exc))
-
-        if failures:
-            details = "; ".join(f"{name}: {error}" for name, error in failures)
-            raise RuntimeError(f"Voice runtime cleanup failed: {details}") from failures[0][1]
 
 
 @dataclass(frozen=True)
@@ -231,8 +238,8 @@ def resolve_voice_runtime_config(
     first_clause_enabled: bool | None = None,
     vault: str | Path | None = None,
     no_memory: bool = False,
-    memory_chars: int = 64_000,
-    profile_chars: int = 900,
+    memory_context_chars: int = 64_000,
+    memory_item_chars: int = 900,
     session_chars: int = 60_000,
     session_turns: int = 6,
     turn_chars: int = 500,
@@ -250,7 +257,6 @@ def resolve_voice_runtime_config(
     semantic_router_threshold: float = 0.58,
     semantic_router_margin: float = 0.0,
     semantic_router_examples: str | Path | None = None,
-    memory_mode: str = "retrieved",
     memory_limit: int = 3,
     memory_retrieval_mode: str = "chunk_sparse",
     memory_dense_backend: str = "aiteamvn_v2",
@@ -311,10 +317,10 @@ def resolve_voice_runtime_config(
         first_clause_max_scan_chars=profile.first_clause_max_scan_chars,
         pcm_crossfade_enabled=profile.pcm_crossfade_enabled,
         pcm_crossfade_ms=profile.pcm_crossfade_ms,
-        vault=Path(vault or Path.home() / "KnowledgeVault").expanduser().resolve(),
+        vault=Path(vault or default_vault_root()).expanduser().resolve(),
         no_memory=no_memory,
-        memory_chars=memory_chars,
-        profile_chars=profile_chars,
+        memory_context_chars=memory_context_chars,
+        memory_item_chars=memory_item_chars,
         session_chars=session_chars,
         session_turns=session_turns,
         turn_chars=turn_chars,
@@ -336,7 +342,6 @@ def resolve_voice_runtime_config(
             if semantic_router_examples is not None
             else default_semantic_turn_examples()
         ),
-        memory_mode=cast(MemoryMode, memory_mode),
         memory_limit=memory_limit,
         memory_retrieval_mode=memory_retrieval_mode,
         memory_dense_backend=memory_dense_backend,
@@ -405,43 +410,55 @@ class _VoiceRuntimeStartupResources:
     llm: Any | None = None
     tts: Any | None = None
     owned_session_memory: SessionMemory | None = None
+    context_sources: list[object] = field(default_factory=list)
 
     def release(self) -> None:
         self.asr = None
         self.llm = None
         self.tts = None
         self.owned_session_memory = None
+        self.context_sources.clear()
 
-    def rollback(self) -> None:
+    def rollback(self) -> tuple[tuple[str, Exception], ...]:
+        failures: list[tuple[str, Exception]] = []
         close_tts = getattr(self.tts, "close", None)
         if callable(close_tts):
             try:
                 close_tts()
-            except Exception:
-                LOGGER.exception("Voice runtime TTS startup rollback failed")
+            except Exception as exc:  # noqa: BLE001 - preserve startup cleanup failure
+                failures.append(("TTS", exc))
         cancel = getattr(self.llm, "cancel", None)
         if callable(cancel):
             try:
                 cancel()
-            except Exception:
-                LOGGER.exception("Voice runtime LLM startup rollback failed")
+            except Exception as exc:  # noqa: BLE001 - preserve startup cleanup failure
+                failures.append(("LLM cancel", exc))
         close_llm = getattr(self.llm, "close", None)
         if callable(close_llm):
             try:
                 close_llm()
-            except Exception:
-                LOGGER.exception("Voice runtime LLM close during startup rollback failed")
+            except Exception as exc:  # noqa: BLE001 - preserve startup cleanup failure
+                failures.append(("LLM", exc))
         if self.asr is not None:
             try:
                 self.asr.close()
-            except Exception:
-                LOGGER.exception("Voice runtime ASR startup rollback failed")
+            except Exception as exc:  # noqa: BLE001 - preserve startup cleanup failure
+                failures.append(("ASR", exc))
+        for source in reversed(self.context_sources):
+            close_source = getattr(source, "close", None)
+            if not callable(close_source):
+                continue
+            try:
+                close_source()
+            except Exception as exc:  # noqa: BLE001 - preserve startup cleanup failure
+                failures.append(("context", exc))
         if self.owned_session_memory is not None:
             try:
                 self.owned_session_memory.close()
-            except Exception:
-                LOGGER.exception("Voice runtime session startup rollback failed")
+            except Exception as exc:  # noqa: BLE001 - preserve startup cleanup failure
+                failures.append(("session_memory", exc))
         self.release()
+        return tuple(failures)
 
 
 def build_voice_runtime(
@@ -464,8 +481,11 @@ def build_voice_runtime(
             active_goal_store=active_goal_store,
             startup_resources=resources,
         )
-    except Exception:
-        resources.rollback()
+    except Exception as exc:
+        failures = resources.rollback()
+        if failures:
+            details = "; ".join(f"{name}: {failure}" for name, failure in failures)
+            raise RuntimeError(f"Voice runtime startup cleanup failed: {details}") from exc
         raise
     resources.release()
     return bundle
@@ -531,6 +551,7 @@ def _build_voice_runtime_components(
         )
         knowledge_builder = knowledge.builder
         knowledge_catalog = knowledge.catalog
+        startup_resources.context_sources.append(knowledge.source)
         tools.extend([knowledge.inspect_tool, knowledge.search_tool, knowledge.read_tool])
 
         def provide_manifest() -> str:
@@ -572,10 +593,9 @@ def _build_voice_runtime_components(
             config.vault,
             session=session_memory,
             config=MemoryRuntimeConfig(
-                mode=config.memory_mode,
                 top_k=config.memory_limit,
-                context_chars=config.memory_chars,
-                profile_chars=config.profile_chars,
+                context_chars=config.memory_context_chars,
+                memory_item_chars=config.memory_item_chars,
                 retrieval_mode=cast(RetrievalMode, config.memory_retrieval_mode),
                 dense_backend=cast(DenseBackend, config.memory_dense_backend),
                 recency_weight=config.memory_recency_weight,
@@ -587,6 +607,8 @@ def _build_voice_runtime_components(
             ),
         )
         memory_builder = memory_setup.builder
+        if memory_setup.long_term is not None:
+            startup_resources.context_sources.append(memory_setup.long_term)
         memory_status = memory_setup.status
         tools.append(MemorySearchTool(memory_builder, max_limit=config.knowledge_limit))
 
@@ -609,12 +631,7 @@ def _build_voice_runtime_components(
     tool_runtime = ToolRuntime(tools)
     router_embedding_model = None
     if config.semantic_router_enabled:
-        try:
-            router_embedding_model = FastEmbedModel(allow_download=False)
-        except (ImportError, FileNotFoundError, OSError, RuntimeError, ValueError):
-            # ``build_runtime_tool_router`` records its deterministic fallback;
-            # voice must remain usable when the optional local embedder is absent.
-            router_embedding_model = None
+        router_embedding_model = FastEmbedModel(allow_download=False)
 
     tool_router = build_runtime_tool_router(
         llm=llm,
@@ -647,6 +664,7 @@ def _build_voice_runtime_components(
             temperature=selected_settings.temperature,
             top_p=selected_settings.top_p,
             knowledge_limit=knowledge_limit,
+            turn_workflow="controlled",
             model_context_window=model_context_window,
             model_max_output_tokens=selected_settings.model_max_output_tokens,
         ),
@@ -675,6 +693,7 @@ def _build_voice_runtime_components(
         first_clause_max_scan_chars=config.first_clause_max_scan_chars,
         pcm_crossfade_ms=(config.pcm_crossfade_ms if config.pcm_crossfade_enabled else 0.0),
     )
+    owns_session_memory = startup_resources.owned_session_memory is session_memory
     return VoiceRuntimeBundle(
         config=config,
         detector=detector,
@@ -688,6 +707,7 @@ def _build_voice_runtime_components(
         session_memory=session_memory if not config.no_memory else None,
         turn_detector=turn_detector,
         llm_settings=selected_settings,
+        owns_session_memory=owns_session_memory,
     )
 
 

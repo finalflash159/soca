@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from soca.memory.episodes import EpisodeStore, MemoryEpisode
+from eval.experimental.memory_lifecycle import EpisodeStore, MemoryEpisode
 
 
 def test_episode_round_trip_uses_secure_files(tmp_path) -> None:

@@ -284,21 +284,21 @@ def test_background_summary_failure_never_trims_source_history() -> None:
         memory.append("user", "z" * 10_000)
 
 
-def test_memory_context_builder_combines_profile_and_session():
+def test_memory_context_builder_combines_core_and_session():
     class FakeLongTermMemory:
-        def read_profile(self) -> str:
+        def read_core(self) -> str:
             return "- Người dùng thích câu trả lời ngắn gọn."
 
     session = SessionMemory()
     session.append("user", "Tôi muốn ăn sáng lành mạnh.")
 
     context = MemoryContextBuilder(
-        long_term=FakeLongTermMemory(),
+        core=FakeLongTermMemory(),
         session=session,
         max_chars=300,
     ).build()
 
-    assert "Long-term memory:" in context.prompt_text
+    assert "Core memory:" in context.prompt_text
     assert "Người dùng thích câu trả lời ngắn gọn" in context.prompt_text
     assert "Recent conversation:" in context.prompt_text
     assert "Tôi muốn ăn sáng lành mạnh" in context.prompt_text

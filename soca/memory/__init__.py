@@ -1,8 +1,8 @@
-from soca.memory.access import ArchiveMode, MemoryAccessPlan, MemoryArchiveMode
+from soca.memory.access import MemoryAccessPlan, MemoryArchiveMode
 from soca.memory.assembler import PromptContextAssembler
 from soca.memory.base import (
     LongTermMemorySource,
-    MemoryProfileResult,
+    MemoryRetrievalResult,
     MemoryRole,
     MemoryTurn,
     QueryAwareLongTermMemorySource,
@@ -10,13 +10,9 @@ from soca.memory.base import (
 )
 from soca.memory.commands import MemoryCommandResult, MemoryCommands
 from soca.memory.compaction_coordinator import CompactionResult, WorkingMemoryCompactionCoordinator
-from soca.memory.composite import CompositeMemoryConfig, CompositeMemorySource
 from soca.memory.context import MemoryContext, MemoryContextBuilder
 from soca.memory.core import CoreMemoryItem, CoreMemoryStore
-from soca.memory.episodes import EpisodeStore, MemoryEpisode
-from soca.memory.longterm import MarkdownLongTermMemory
 from soca.memory.proposals import MemoryProposal, ProposalStore
-from soca.memory.reflection import BackgroundReflection, ReflectionConfig, ReflectionService
 from soca.memory.retrieved import RetrievedMemory, RetrievedMemoryConfig
 from soca.memory.scoring import MemoryHit, MemoryScore, MemoryScoreConfig
 from soca.memory.session import (
@@ -42,11 +38,9 @@ from soca.memory.working import (
 
 __all__ = [
     "LongTermMemorySource",
-    "ArchiveMode",
     "MemoryArchiveMode",
     "MemoryAccessPlan",
     "PromptContextAssembler",
-    "MarkdownLongTermMemory",
     "MemoryContext",
     "MemoryContextBuilder",
     "CoreMemoryItem",
@@ -55,23 +49,16 @@ __all__ = [
     "MemoryCommands",
     "CompactionResult",
     "WorkingMemoryCompactionCoordinator",
-    "CompositeMemoryConfig",
-    "CompositeMemorySource",
     "WorkingMemory",
     "MemoryCapacityError",
-    "EpisodeStore",
-    "MemoryEpisode",
     "MemoryProposal",
     "ProposalStore",
-    "MemoryProfileResult",
+    "MemoryRetrievalResult",
     "MemoryHit",
     "MemoryScore",
     "MemoryScoreConfig",
     "RetrievedMemory",
     "RetrievedMemoryConfig",
-    "BackgroundReflection",
-    "ReflectionConfig",
-    "ReflectionService",
     "MemoryRole",
     "MemoryTurn",
     "QueryAwareLongTermMemorySource",

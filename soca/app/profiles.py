@@ -23,6 +23,7 @@ from soca.core.profiles import (
     VOICE_RUNTIME_PROFILES,
     validate_voice_runtime_profiles,
 )
+from soca.knowledge.vault import default_vault_root
 from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.tts import VALTEC_TTS_CONFIG
 from soca.tts.valtec.artifacts import (
@@ -30,7 +31,7 @@ from soca.tts.valtec.artifacts import (
     resolve_valtec_onnx_artifacts,
 )
 
-DEFAULT_VAULT = Path.home() / "KnowledgeVault"
+DEFAULT_VAULT = default_vault_root()
 
 
 @dataclass(frozen=True)

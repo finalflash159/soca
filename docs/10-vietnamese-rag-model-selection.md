@@ -6,9 +6,9 @@ choice: the failure happened before answer generation, in candidate retrieval.
 
 ## Incident
 
-The default text knowledge source was `cached_sparse`. Its lexical scorer
+The previous text knowledge source was `cached_sparse`. Its lexical scorer
 returned the highest-scoring documents even when the query's distinctive terms
-were absent from the vault. With the real `~/KnowledgeVault`, the query
+were absent from the vault. With the active `Knowledge` vault, the query
 `Ghi chú nói định lý Bayes thế nào?` returned nutrition notes although the
 vault contains no Bayes note.
 
@@ -34,15 +34,14 @@ uv run python scripts/download_eval_embedding.py aiteamvn_v2 --local-files-only
 ```
 
 The canonical model ID is `AITeamVN/Vietnamese_Embedding_v2`. The provisioning
-helper has one explicit mirror fallback (`thanhtantran/Vietnamese_Embedding_v2`)
-because the canonical snapshot was incomplete in this machine's cache. The
-saved eval model still uses the candidate key `aiteamvn_v2`, so the production
-retriever cannot accidentally consume a remote model by ID.
+helper records the exact upstream revision and fails when that revision is not
+available. The saved eval model still uses the candidate key `aiteamvn_v2`, so
+the production retriever cannot accidentally consume a remote model by ID.
 
 The reranker is provisioned separately for research and is not silently made a
 production dependency.
 
-## Phase 5 production bake-off
+## Production retrieval bake-off
 
 The release decision is based on public/sanitized retrieval corpora, not the
 small SoCa demo vault:

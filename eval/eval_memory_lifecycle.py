@@ -9,7 +9,8 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from soca.memory import EpisodeStore, MemoryCommands, MemoryEpisode, MemoryProposal, ProposalStore
+from eval.experimental.memory_lifecycle import EpisodeStore, MemoryEpisode
+from soca.memory import MemoryCommands, MemoryProposal, ProposalStore
 
 
 def evaluate(root: Path) -> dict[str, str | bool]:

@@ -8,7 +8,7 @@ from soca.core.llm_tool_router import (
     _build_prompt,
 )
 from soca.core.route_catalog import source_profile, validate_route_fields
-from soca.core.runtime import AssistantRuntime
+from soca.core.runtime import AssistantRuntime, RuntimeOptions
 from soca.core.tool_routing import (
     ToolRouterConfig,
     build_evidence_completion_schema,
@@ -93,12 +93,12 @@ def test_route_schema_binds_each_handler_to_its_argument_contract() -> None:
 
 
 def test_evidence_completion_contract_binds_continuation_to_a_tool_schema() -> None:
-    tools = ToolRuntime([ReadOnlySearchTool()])
+    tools = ToolRuntime([ReadOnlyInspectTool(), ReadOnlySearchTool()])
     schema = build_evidence_completion_schema(tools.list_specs(include_disabled=False))
     search_branch = next(
         branch
         for branch in schema["oneOf"]
-        if branch["properties"]["status"].get("const") == "continue"
+        if branch["properties"]["handler"].get("const") == "knowledge.search"
     )
 
     assert search_branch["properties"]["arguments"]["required"] == ["query"]
@@ -111,6 +111,13 @@ def test_evidence_completion_contract_binds_continuation_to_a_tool_schema() -> N
     assert decision.status == "continue"
     assert decision.call is not None
     assert decision.call.arguments["query"] == "attention"
+
+    inspect_branch = next(
+        branch
+        for branch in schema["oneOf"]
+        if branch["properties"].get("handler", {}).get("const") == "knowledge.inspect"
+    )
+    assert inspect_branch["properties"]["arguments"]["required"] == []
 
 
 def test_evidence_completion_contract_does_not_offer_memory_actions() -> None:
@@ -196,6 +203,7 @@ def test_llm_unresolved_route_does_not_terminally_block_the_answer_model() -> No
         llm=_FakeRouterLLM("should not answer"),
         tool_runtime=ToolRuntime([ReadOnlyInspectTool()]),
         tool_router=router,
+        options=RuntimeOptions(turn_workflow="shadow"),
     ).run_text_turn("cái đó thế nào rồi?")
 
     assert result.route == RuntimeRoute.FREE_CHAT

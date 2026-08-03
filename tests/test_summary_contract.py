@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -16,6 +18,7 @@ from soca.memory.summary import (
     default_summary_model_root,
     execute_summary_job,
     summary_context_window,
+    summary_model_error,
 )
 from soca.memory.working import WorkingMemory
 
@@ -156,7 +159,23 @@ def test_unprovisioned_summary_worker_never_auto_downloads_or_stays_loaded(tmp_p
     )
     assert worker.start(job) is False
     assert worker.status.state == "idle"
+    assert worker.status.detail == "summary_model_missing_or_symlink"
     assert default_summary_model_root().name == "summary"
+
+
+def test_summary_model_verification_checks_private_size_and_checksum(tmp_path) -> None:
+    path = tmp_path / "summary.gguf"
+    path.write_bytes(b"verified")
+    spec = replace(
+        SUMMARY_MODEL_REGISTRY["qwen3_1_7b_q8_0"],
+        expected_bytes=8,
+        expected_sha256=hashlib.sha256(b"verified").hexdigest(),
+    )
+    path.chmod(0o600)
+
+    assert summary_model_error(path, spec) is None
+    path.write_bytes(b"tampered")
+    assert summary_model_error(path, spec) == "summary_model_checksum_mismatch"
 
 
 def test_production_summary_selection_and_revised_release_gate(tmp_path, monkeypatch) -> None:

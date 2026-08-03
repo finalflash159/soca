@@ -126,7 +126,34 @@ def test_retrieval_modes_keep_separate_score_distributions() -> None:
 
     assert sparse.min_lexical_coverage == 0.65
     assert sparse.min_dense_score == 0.55
-    assert hybrid == sparse
+    assert hybrid.min_lexical_coverage == 0.95
+    assert hybrid.min_dense_score == 0.52
+
+
+def test_hybrid_does_not_admit_sparse_rank_without_query_coverage() -> None:
+    assessment = assess_relevance(
+        "lượng tử topological superconductors",
+        (
+            KnowledgeHit(
+                document=KnowledgeDocument(
+                    "wiki/tts.md",
+                    "wiki/tts.md",
+                    "Quyết định TTS",
+                    "SoCa chọn Valtec ONNX làm baseline.",
+                ),
+                score=0.8,
+                snippet="SoCa chọn Valtec ONNX làm baseline.",
+                retrieval_backend="hybrid",
+                sparse_score=0.8,
+                dense_score=0.40,
+                fusion_score=0.8,
+            ),
+        ),
+        policy=RelevancePolicy.for_retrieval_mode("hybrid"),
+    )
+
+    assert assessment.status == "insufficient"
+    assert assessment.accepted_hits == ()
 
 
 def test_generic_lexical_overlap_is_not_enough_when_sparse_score_is_weak() -> None:

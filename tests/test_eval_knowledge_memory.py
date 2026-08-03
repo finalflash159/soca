@@ -41,5 +41,5 @@ def test_memory_context_includes_profile_and_recent_session() -> None:
     sample = evaluate_case(case)
 
     assert sample.passed is True
-    assert sample.details["profile_chars"] > 0
+    assert sample.details["memory_chars"] > 0
     assert sample.details["session_chars"] > 0

@@ -24,10 +24,6 @@ from random import Random
 
 _CATALOG_PATH = Path(__file__).with_name("repair_prompts.vi.toml")
 
-# Ultimate fallback if the catalog is missing a slot — never crash the voice loop.
-DEFAULT_REPAIR_TEXT = "Mình chưa nghe rõ. Bạn nói lại giúp mình nha."
-
-
 class RepairKind(Enum):
     NO_INPUT = "no_input"
     UNCERTAIN_INPUT = "uncertain_input"
@@ -112,11 +108,8 @@ class RepairCatalog:
         key = f"{kind.value}.{slot}"
         repair_slot = self._slots.get(key)
         if repair_slot is None or not repair_slot.variants:
-            return RepairChoice(
-                text=DEFAULT_REPAIR_TEXT,
-                prompt_id=f"{key}#default",
-                kind=kind,
-                action=RepairAction.REPROMPT,
+            raise LookupError(
+                f"repair catalog is missing a non-empty slot: {key}"
             )
 
         indexed = list(enumerate(repair_slot.variants))
@@ -252,12 +245,15 @@ def default_repair_catalog() -> RepairCatalog:
     """Lazily-loaded shared catalog used by the production voice pipeline."""
     global _DEFAULT_CATALOG
     if _DEFAULT_CATALOG is None:
-        _DEFAULT_CATALOG = RepairCatalog.from_toml()
+        catalog = RepairCatalog.from_toml()
+        errors = catalog.validate()
+        if errors:
+            raise ValueError("invalid repair catalog: " + "; ".join(errors))
+        _DEFAULT_CATALOG = catalog
     return _DEFAULT_CATALOG
 
 
 __all__ = [
-    "DEFAULT_REPAIR_TEXT",
     "RepairAction",
     "RepairCatalog",
     "RepairChoice",

@@ -11,6 +11,7 @@ import hashlib
 import json
 import multiprocessing as mp
 import os
+import stat
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,6 +73,32 @@ class SummaryModelSpec:
             append_no_think=self.append_no_think,
             strip_reasoning=self.append_no_think,
         )
+
+
+def summary_model_error(path: Path, spec: SummaryModelSpec) -> str | None:
+    """Verify the selected local weight before a worker can load it."""
+    if path.is_symlink() or not path.exists():
+        return "summary_model_missing_or_symlink"
+    try:
+        metadata = path.stat()
+    except OSError:
+        return "summary_model_stat_failed"
+    if not stat.S_ISREG(metadata.st_mode):
+        return "summary_model_not_regular_file"
+    if metadata.st_size != spec.expected_bytes:
+        return "summary_model_size_mismatch"
+    if metadata.st_mode & 0o077:
+        return "summary_model_permissions_not_private"
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as source:
+            for block in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(block)
+    except OSError:
+        return "summary_model_read_failed"
+    if digest.hexdigest() != spec.expected_sha256:
+        return "summary_model_checksum_mismatch"
+    return None
 
 
 @dataclass(frozen=True)
@@ -442,25 +469,27 @@ class LocalSummaryWorkerProcess:
         self._connection: object | None = None
         self._generation: int | None = None
         self._started_at: float | None = None
+        self._start_error: str = ""
 
     @property
     def status(self) -> SummaryWorkerStatus:
         if self._process is None:
-            return SummaryWorkerStatus("idle")
+            return SummaryWorkerStatus("idle", detail=self._start_error)
         if self._process.is_alive():
             return SummaryWorkerStatus("running", self._generation)
         return SummaryWorkerStatus("finished", self._generation)
 
     def start(self, job: CompactionJob) -> bool:
-        if self._process is not None and self._process.is_alive():
-            return False
+        self._start_error = ""
+        if self._process is not None:
+            if self._process.is_alive():
+                return False
+            self._reap_process(self._process)
+            self._close_connection()
         path = self.spec.path(self.model_root)
-        if (
-            path.is_symlink()
-            or not path.is_file()
-            or path.stat().st_size != self.spec.expected_bytes
-            or path.stat().st_mode & 0o077
-        ):
+        model_error = summary_model_error(path, self.spec)
+        if model_error is not None:
+            self._start_error = model_error
             return False
         parent, child = mp.Pipe(duplex=False)
         process = mp.Process(
@@ -476,7 +505,13 @@ class LocalSummaryWorkerProcess:
             daemon=True,
             name="soca-summary-worker",
         )
-        process.start()
+        try:
+            process.start()
+        except (OSError, RuntimeError) as exc:
+            child.close()
+            parent.close()
+            self._start_error = f"summary_worker_start_failed:{type(exc).__name__}"
+            return False
         child.close()
         self._process = process
         self._connection = parent
@@ -509,14 +544,10 @@ class LocalSummaryWorkerProcess:
         connection.close()
         self._connection = None
         process = self._process
-        if process is not None:
-            process.join(timeout=1.0)
-            if process.is_alive():
-                process.terminate()
-                process.join(timeout=1.0)
+        worker_stopped = self._reap_process(process) if process is not None else True
         if isinstance(payload, dict):
             payload["exit_code"] = process.exitcode if process is not None else None
-            payload["worker_stopped"] = process is not None and not process.is_alive()
+            payload["worker_stopped"] = worker_stopped
         self._process = None
         self._generation = None
         self._started_at = None
@@ -531,16 +562,37 @@ class LocalSummaryWorkerProcess:
         if process is None:
             return False
         was_alive = process.is_alive()
-        if was_alive:
-            process.terminate()
-        process.join(timeout=1.0)
-        if self._connection is not None:
-            self._connection.close()  # type: ignore[union-attr]
+        self._reap_process(process, terminate=was_alive)
+        self._close_connection()
         self._process = None
-        self._connection = None
         self._generation = None
         self._started_at = None
         return was_alive
+
+    def close(self) -> None:
+        """Release the process and IPC endpoint even if no poll occurred."""
+        self.cancel()
+
+    def _close_connection(self) -> None:
+        connection = self._connection
+        if connection is None:
+            return
+        connection.close()  # type: ignore[union-attr]
+        self._connection = None
+
+    @staticmethod
+    def _reap_process(
+        process: mp.Process,
+        *,
+        terminate: bool = False,
+    ) -> bool:
+        if terminate and process.is_alive():
+            process.terminate()
+        process.join(timeout=1.0)
+        if process.is_alive():
+            process.kill()
+            process.join(timeout=1.0)
+        return not process.is_alive()
 
 
 def build_production_summary_worker(
@@ -580,4 +632,5 @@ __all__ = [
     "production_summary_model_spec",
     "prompt_fingerprint",
     "SummaryWorkerStatus",
+    "summary_model_error",
 ]

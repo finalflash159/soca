@@ -5,9 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-MemoryArchiveMode = Literal["none", "semantic", "episodic", "both"]
-# Compatibility alias for callers that only need the archive/not-archive boundary.
-ArchiveMode = MemoryArchiveMode
+MemoryArchiveMode = Literal["none", "semantic"]
 
 
 @dataclass(frozen=True)
@@ -21,7 +19,7 @@ class MemoryAccessPlan:
     def __post_init__(self) -> None:
         if not isinstance(self.include_core, bool) or not isinstance(self.include_working, bool):
             raise ValueError("memory access flags must be boolean")
-        if self.archive_mode not in {"none", "semantic", "episodic", "both"}:
+        if self.archive_mode not in {"none", "semantic"}:
             raise ValueError("unknown memory archive mode")
         if self.archive_mode == "none" and self.archive_query is not None:
             raise ValueError("archive_query requires an archive mode")
@@ -31,4 +29,4 @@ class MemoryAccessPlan:
             raise ValueError("memory access reason must not be empty")
 
 
-__all__ = ["ArchiveMode", "MemoryArchiveMode", "MemoryAccessPlan"]
+__all__ = ["MemoryArchiveMode", "MemoryAccessPlan"]

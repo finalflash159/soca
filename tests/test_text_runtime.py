@@ -80,7 +80,6 @@ def test_text_runtime_does_not_register_removed_memory_write_tool(tmp_path: Path
     (tmp_path / "memory").mkdir()
     bundle = build_text_runtime(_config(tmp_path, no_llm=True, no_memory=False))
     assert bundle.runtime.tool_runtime.get("memory.search") is not None
-    assert bundle.runtime.tool_runtime.get("memory.propose_note") is None
 
 
 def test_text_runtime_uses_shared_source_and_k_query_returns_citation(
@@ -118,14 +117,16 @@ def test_text_runtime_uses_shared_source_and_k_query_returns_citation(
     assert [citation.path for citation in result.citations] == ["wiki/protein.md"]
 
 
-def test_session_memory_records_turn_without_vault(tmp_path: Path) -> None:
+def test_no_evidence_memory_request_without_vault_returns_empty_evidence(tmp_path: Path) -> None:
     bundle = build_text_runtime(_config(tmp_path / "absent", no_memory=False))
 
-    # A deterministic memory tool turn still appends to session memory.
-    bundle.runtime.run_text_turn("memory: something", source="test")
+    result = bundle.runtime.run_text_turn("memory: something", source="test")
 
     assert bundle.session_memory is not None
-    assert [turn.role for turn in bundle.session_memory.turns] == ["user", "assistant"]
+    assert result.blocked is False
+    assert result.trace is not None and result.trace.used_llm is False
+    assert result.response_text == "Mình chưa tìm thấy ghi chú phù hợp trong memory."
+    assert bundle.session_memory.turns == ()
 
 
 def test_text_runtime_uses_injected_session_memory(tmp_path: Path) -> None:
@@ -136,8 +137,10 @@ def test_text_runtime_uses_injected_session_memory(tmp_path: Path) -> None:
     )
 
     assert bundle.session_memory is shared
-    bundle.runtime.run_text_turn("memory: something", source="test")
-    assert len(shared.turns) == 2
+    result = bundle.runtime.run_text_turn("memory: something", source="test")
+    assert result.blocked is False
+    assert result.trace is not None and result.trace.used_llm is False
+    assert shared.turns == ()
 
 
 def test_text_runtime_uses_persisted_remote_selection(monkeypatch, tmp_path: Path) -> None:

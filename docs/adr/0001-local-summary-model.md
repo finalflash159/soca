@@ -11,12 +11,13 @@ Enable background summary by default at 15,000 approximate working-memory
 tokens, with target/high/hard limits of 12,000/15,000/16,384.
 The structured summary artifact and decoder output are each capped at 2,048
 tokens. The prompt tells the model to shorten before the decoder cap, and the
-worker gets one repair pass before falling back without deleting raw history.
+worker gets one bounded repair pass. A failed repair never deletes raw history.
 
 The worker uses dynamic 4K–32K context, runs in a single-job subprocess, and
 unloads after publication. The application must not auto-download its weight
 or send compaction data to a remote answer provider. If the verified private
-weight is unavailable, runtime falls back to `trim_only`.
+weight is unavailable, compaction reports an explicit unavailable state and
+keeps the original turns. `trim_only` is an explicit no-LLM policy only.
 
 ## Evidence
 
@@ -44,7 +45,8 @@ reproduction commands are in
 - Chat, voice, and the UI engine use the same production summary selection.
 - Compaction is asynchronous and can take about 45 seconds at the measured 15K
   boundary; the current session remains available while it runs.
-- `trim_only` remains the failure mode, not the normal mode.
+- A missing or failed summary worker is observable and does not change memory
+  policy; `trim_only` exists only for an explicit no-LLM session.
 - The next design should emit typed, ID-addressed state deltas and merge them
   deterministically; it must not add keyword/regex content rules.
 - The 84%/92%/8% weak areas remain explicit technical debt and the v2 suites

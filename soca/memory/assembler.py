@@ -63,7 +63,7 @@ class PromptContextAssembler:
         )
         evidence_context = archive if archive is not None and archive_text else core_working
         return MemoryContext(
-            profile_text=core_working.core_text if plan.include_core else "",
+            memory_text=core_working.core_text if plan.include_core else "",
             session_text=core_working.session_text if plan.include_working else "",
             prompt_text=prompt_text,
             hits=core_working.hits + archive_hits,

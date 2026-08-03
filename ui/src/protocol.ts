@@ -1,7 +1,7 @@
 // Wire types for the `soca engine` NDJSON protocol (see soca/app/engine.py).
 
 export const PROTOCOL_VERSION = 2;
-export const SUPPORTED_PROTOCOL_VERSIONS = [1, 2] as const;
+export const SUPPORTED_PROTOCOL_VERSIONS = [PROTOCOL_VERSION] as const;
 
 export interface EngineCommand {
   cmd:
@@ -9,6 +9,9 @@ export interface EngineCommand {
     | "chat"
     | "voice_start"
     | "voice_stop"
+    | "voice_profile_select"
+    | "knowledge_init"
+    | "knowledge_index"
     | "memory"
     | "memory_compact"
     | "context"
@@ -24,6 +27,7 @@ export interface EngineCommand {
     | "quit";
   text?: string;
   max_turns?: number | null;
+  profile?: string;
   provider?: string;
   query?: string;
   key?: string;
@@ -75,7 +79,7 @@ export interface RouterTraceEvent {
 
 export interface MemoryTraceEvent {
   event: "memory_trace";
-  mode: "blob" | "retrieved" | "degraded";
+  mode: "none" | "retrieved" | "degraded";
   degraded_reason?: string;
   hits: Array<{
     id: string;
@@ -320,7 +324,28 @@ export interface StatusEvent {
     documents: number;
     chunks: number;
   } | null;
+  knowledge_vault?: {
+    path: string;
+    initialized: boolean;
+    index_home: string;
+  };
   runtime_components?: RuntimeComponentStatus[];
+}
+
+export interface KnowledgeSetupEvent {
+  event: "knowledge_setup";
+  action: "init" | "index";
+  status: "running" | "ready" | "failed" | "busy";
+  vault: string;
+  detail: string;
+  error_code?: string;
+  created_dirs?: number;
+  created_files?: number;
+  skipped_files?: number;
+  revision?: number;
+  documents?: number;
+  chunks?: number;
+  dense_state?: string;
 }
 
 export interface RuntimeComponentStatus {
@@ -514,6 +539,7 @@ export type EngineEvent =
   | WorkflowEvent
   | ChatEvent
   | StatusEvent
+  | KnowledgeSetupEvent
   | MemoryEvent
   | ContextEvent
   | MemoryCompactionEvent
@@ -555,6 +581,7 @@ export function parseEngineEvent(line: string): EngineEvent | null {
       "turn_terminal",
       "chat",
       "status",
+      "knowledge_setup",
       "memory",
       "context",
       "memory_compaction",
@@ -578,18 +605,8 @@ export function parseEngineEvent(line: string): EngineEvent | null {
       !isWorkflowEvent(parsed as Record<string, unknown>)
     )
       return null;
-    return adaptLegacyEvent(parsed as Record<string, unknown>) as unknown as EngineEvent;
+    return parsed as EngineEvent;
   } catch {
     return null;
   }
-}
-
-export function adaptLegacyEvent(event: Record<string, unknown>): Record<string, unknown> {
-  if (event.event !== "hello" || typeof event.version !== "number") return event;
-  if (event.protocol_version !== undefined) return event;
-  return {
-    ...event,
-    protocol_version: event.version,
-    supported_versions: [event.version],
-  };
 }

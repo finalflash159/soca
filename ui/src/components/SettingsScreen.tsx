@@ -1,14 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useInput, useStdin, useStdout } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import SelectInput from "ink-select-input";
-import type { LlmConfigEvent, RemoteModelEvent } from "../protocol.js";
-import type { LlmProviderStatus } from "../store.js";
+import type {
+  KnowledgeSetupEvent,
+  LlmConfigEvent,
+  RemoteModelEvent,
+} from "../protocol.js";
+import type {
+  KnowledgeIndexStatus,
+  KnowledgeVaultStatus,
+  LlmProviderStatus,
+  StatusProfile,
+} from "../store.js";
 import { COLOR, ICON } from "../theme.js";
 import { ImeTextInput } from "../imeInput.js";
-import { Panel } from "./Primitives.js";
+import { Panel, Spinner } from "./Primitives.js";
 
 type FocusTarget =
   | "resume"
+  | "knowledge"
+  | "asr"
   | "providers"
   | "key"
   | "search"
@@ -33,6 +44,11 @@ interface PendingSelection {
 export interface SettingsScreenProps {
   config: LlmConfigEvent | null;
   providers: LlmProviderStatus[];
+  profiles?: StatusProfile[];
+  activeProfile?: string;
+  knowledgeVault?: KnowledgeVaultStatus | null;
+  knowledgeIndex?: KnowledgeIndexStatus | null;
+  knowledgeSetup?: KnowledgeSetupEvent | null;
   catalog: RemoteModelEvent[];
   catalogProvider: string;
   keyPendingProvider: string | null;
@@ -46,10 +62,13 @@ export interface SettingsScreenProps {
     max_tokens: number;
     reasoning_enabled: boolean;
   }) => void;
+  onProfileSelect?: (profile: string) => void;
+  onKnowledgeInit?: () => void;
+  onKnowledgeIndex?: () => void;
   onExit: () => void;
 }
 
-const LOCAL_FALLBACK_MODEL = "arcee_vylinh_3b_q4_k_m";
+const DEFAULT_LOCAL_MODEL = "arcee_vylinh_3b_q4_k_m";
 export const MIN_MAX_TOKENS = 2_048;
 export const MAX_MAX_TOKENS = 500_000;
 
@@ -151,6 +170,11 @@ function savedSummary(
 export function SettingsScreen({
   config,
   providers,
+  profiles = [],
+  activeProfile = "",
+  knowledgeVault = null,
+  knowledgeIndex = null,
+  knowledgeSetup = null,
   catalog,
   catalogProvider,
   keyPendingProvider,
@@ -158,22 +182,40 @@ export function SettingsScreen({
   onRequestModels,
   onSetKey,
   onSelect,
+  onProfileSelect = () => undefined,
+  onKnowledgeInit = () => undefined,
+  onKnowledgeIndex = () => undefined,
   onExit,
 }: SettingsScreenProps) {
-  const rawInput = Boolean(useStdin().isRawModeSupported);
   const { stdout } = useStdout();
   const panelWidth = Math.max(24, Math.min(88, (stdout?.columns ?? 80) - 2));
   const configProvider =
     config?.backend === "remote" ? config.provider : "local";
+  const initialFocus: FocusTarget =
+    knowledgeVault !== null
+      ? !knowledgeVault.initialized
+        ? "knowledge"
+        : profiles.length > 0
+          ? "asr"
+          : config
+            ? "resume"
+            : "providers"
+      : config
+        ? "resume"
+        : "providers";
   const [selectedProviderKey, setSelectedProviderKey] =
     useState(configProvider);
-  const [focus, setFocus] = useState<FocusTarget>("providers");
+  const [focus, setFocus] = useState<FocusTarget>(initialFocus);
   const [apiKey, setApiKey] = useState("");
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState<PendingSelection | null>(null);
   const [maxTokens, setMaxTokens] = useState("4096");
   const [reasoningEnabled, setReasoningEnabled] = useState(false);
+  const [selectedProfileKey, setSelectedProfileKey] = useState(activeProfile);
+  const [profileNotice, setProfileNotice] = useState("");
   const touched = useRef(false);
+  const profileTouched = useRef(false);
+  const setupFocusApplied = useRef(false);
 
   useEffect(() => {
     if (touched.current || !config) return;
@@ -182,8 +224,31 @@ export function SettingsScreen({
     );
     setMaxTokens(String(config.max_tokens));
     setReasoningEnabled(config.reasoning_enabled ?? false);
-    setFocus("resume");
+    if (!setupFocusApplied.current) setFocus("resume");
   }, [config]);
+
+  useEffect(() => {
+    if (profileTouched.current) return;
+    if (activeProfile && profiles.some((profile) => profile.key === activeProfile)) {
+      setSelectedProfileKey(activeProfile);
+    } else if (profiles[0]) {
+      setSelectedProfileKey(profiles[0].key);
+    }
+  }, [activeProfile, profiles]);
+
+  useEffect(() => {
+    if (setupFocusApplied.current || knowledgeVault === null) return;
+    setupFocusApplied.current = true;
+    setFocus(
+      !knowledgeVault.initialized
+        ? "knowledge"
+        : profiles.length > 0
+          ? "asr"
+          : config
+            ? "resume"
+            : "providers",
+    );
+  }, [config, knowledgeVault, profiles.length]);
 
   const choices = choicesFrom(providers);
   const selectedIndex = Math.max(
@@ -191,6 +256,11 @@ export function SettingsScreen({
     choices.findIndex((choice) => choice.key === selectedProviderKey),
   );
   const selectedProvider = choices[selectedIndex] ?? choices[0];
+  const selectedProfileIndex = Math.max(
+    0,
+    profiles.findIndex((profile) => profile.key === selectedProfileKey),
+  );
+  const selectedProfile = profiles[selectedProfileIndex] ?? profiles[0];
   const isLocal = selectedProvider?.key === "local";
   const keyPending = selectedProvider?.key === keyPendingProvider;
   const visibleCatalog =
@@ -269,6 +339,39 @@ export function SettingsScreen({
     setQuery("");
   }
 
+  function moveProfileSelection(delta: number): void {
+    if (profiles.length === 0) return;
+    profileTouched.current = true;
+    const next = profiles[
+      (selectedProfileIndex + delta + profiles.length) % profiles.length
+    ];
+    if (!next) return;
+    setSelectedProfileKey(next.key);
+    setProfileNotice("");
+  }
+
+  function applyProfileSelection(): void {
+    if (!selectedProfile) return;
+    if (selectedProfile.status !== "ok") {
+      setProfileNotice(
+        `${selectedProfile.key} chưa sẵn sàng: ${selectedProfile.status}`,
+      );
+      return;
+    }
+    if (selectedProfile.key === activeProfile) {
+      setProfileNotice(`${selectedProfile.key} đang được sử dụng.`);
+      return;
+    }
+    setProfileNotice(`Đang áp dụng ${selectedProfile.key}…`);
+    onProfileSelect(selectedProfile.key);
+  }
+
+  function applyKnowledgeAction(): void {
+    if (knowledgeSetup?.status === "running") return;
+    if (!knowledgeVault?.initialized) onKnowledgeInit();
+    else onKnowledgeIndex();
+  }
+
   function beginGeneration(selection: PendingSelection): void {
     setPending(selection);
     setMaxTokens(String(config?.max_tokens ?? 4096));
@@ -283,7 +386,7 @@ export function SettingsScreen({
         backend: "local",
         provider: config?.provider ?? "openrouter",
         model:
-          config?.backend === "local" ? config.model : LOCAL_FALLBACK_MODEL,
+          config?.backend === "local" ? config.model : DEFAULT_LOCAL_MODEL,
         info: null,
       });
       return;
@@ -318,12 +421,15 @@ export function SettingsScreen({
           setFocus("providers");
         else if (editingGeneration)
           setFocus(pending?.backend === "remote" ? "search" : "providers");
+        else if (focus === "knowledge") setFocus("asr");
+        else if (focus === "asr") setFocus(config ? "resume" : "providers");
         else if (focus === "resume") setFocus("providers");
         else onExit();
         return;
       }
       if (focus === "resume") {
-        if (key.return) onExit();
+        if (key.return || input === "\r" || input === "\n") onExit();
+        else if (input === "a") setFocus("asr");
         else if (
           input === "e" ||
           key.downArrow ||
@@ -335,6 +441,18 @@ export function SettingsScreen({
         }
         return;
       }
+      if (focus === "knowledge") {
+        if (key.downArrow || key.tab) setFocus("asr");
+        else if (key.return) applyKnowledgeAction();
+        return;
+      }
+      if (focus === "asr") {
+        if (key.upArrow || input === "k") moveProfileSelection(-1);
+        else if (key.downArrow || input === "j") moveProfileSelection(1);
+        else if (key.tab) setFocus("providers");
+        else if (key.return) applyProfileSelection();
+        return;
+      }
       if (focus === "key" && key.delete) {
         setApiKey("");
         return;
@@ -344,6 +462,10 @@ export function SettingsScreen({
         return;
       }
       if (focus === "providers") {
+        if (input === "a") {
+          setFocus("asr");
+          return;
+        }
         if (key.leftArrow || key.upArrow || input === "h" || input === "k") {
           moveSelection(-1);
         } else if (
@@ -387,7 +509,6 @@ export function SettingsScreen({
         }
       }
     },
-    { isActive: rawInput },
   );
 
   return (
@@ -398,6 +519,52 @@ export function SettingsScreen({
       <Text color={COLOR.warn}>
         {ICON.err} Remote gửi transcript đến provider bên thứ ba.
       </Text>
+
+      <Box marginTop={1}>
+        <Panel
+          title="Knowledge Vault"
+          subtitle={focus === "knowledge" ? "đang setup" : undefined}
+          variant={
+            knowledgeSetup?.status === "running"
+              ? "busy"
+              : focus === "knowledge"
+                ? "focus"
+                : "idle"
+          }
+          width={panelWidth}
+        >
+          {knowledgeVault === null ? (
+            <Text color={COLOR.muted}>đang kiểm tra vault…</Text>
+          ) : (
+            <Box flexDirection="column">
+              <Text color={knowledgeVault.initialized ? COLOR.good : COLOR.warn}>
+                {knowledgeVault.initialized
+                  ? `${ICON.on} đã init · ${knowledgeVault.path}`
+                  : `${ICON.off} chưa init · ${knowledgeVault.path}`}
+              </Text>
+              <Text color={COLOR.muted} wrap="truncate-end">
+                index/db/vector: {knowledgeVault.index_home}
+              </Text>
+              {knowledgeSetup?.status === "running" ? (
+                <Spinner label={knowledgeSetup.detail} color={COLOR.warn} />
+              ) : knowledgeSetup?.status === "failed" ? (
+                <Text color={COLOR.bad}>
+                  {`${ICON.err} ${knowledgeSetup.error_code ? `${knowledgeSetup.error_code}: ` : ""}${knowledgeSetup.detail}`}
+                </Text>
+              ) : knowledgeVault.initialized && knowledgeIndex ? (
+                <Text color={COLOR.text}>
+                  {`${knowledgeIndex.documents} docs · ${knowledgeIndex.chunks} chunks · dense ${knowledgeIndex.dense_state}`}
+                </Text>
+              ) : null}
+              <Text color={focus === "knowledge" ? COLOR.alt : COLOR.muted}>
+                {knowledgeVault.initialized
+                  ? "Enter index lại vault · Tab chọn ASR"
+                  : "Enter init vault · Tab chọn ASR"}
+              </Text>
+            </Box>
+          )}
+        </Panel>
+      </Box>
 
       {config ? (
         <Box marginTop={1}>
@@ -441,7 +608,9 @@ export function SettingsScreen({
       </Box>
       <Text color={COLOR.muted}>
         {focus === "providers"
-          ? "←/→ chọn provider · Enter mở · r đổi key · Esc thoát"
+          ? "←/→ chọn provider · a chọn ASR · Enter mở · r đổi key · Esc thoát"
+          : focus === "asr"
+            ? "↑/↓ chọn ASR · Enter áp dụng · Tab sang LLM · Esc quay lại"
           : focus === "key"
             ? "dán API key · Enter xác thực · Delete xóa hết · Esc quay lại"
             : focus === "search"
@@ -450,8 +619,46 @@ export function SettingsScreen({
                 ? "↑/↓ chọn · Enter cấu hình model · Esc quay lại"
                 : editingGeneration
                   ? "Enter tiếp tục/xác nhận · Esc quay lại"
-                  : ""}
+              : ""}
       </Text>
+
+      <Box marginTop={1}>
+        <Panel
+          title="Voice ASR"
+          subtitle={focus === "asr" ? "đang chọn" : undefined}
+          variant={focus === "asr" ? "focus" : "idle"}
+          width={panelWidth}
+        >
+          {profiles.length === 0 ? (
+            <Text color={COLOR.muted}>đang kiểm tra các profile runtime…</Text>
+          ) : (
+            <Box flexDirection="column">
+              {profiles.map((profile, index) => {
+                const selected = index === selectedProfileIndex;
+                const ready = profile.status === "ok";
+                return (
+                  <Text
+                    key={profile.key}
+                    color={selected && focus === "asr" ? COLOR.accent : COLOR.text}
+                    bold={selected}
+                  >
+                    {`${selected && focus === "asr" ? ICON.pointer : " "} ${profile.key} · ${profile.asr} · `}
+                    <Text color={ready ? COLOR.good : COLOR.warn}>
+                      {ready ? "sẵn sàng" : profile.status}
+                    </Text>
+                  </Text>
+                );
+              })}
+              <Text color={COLOR.muted}>
+                {activeProfile
+                  ? `Đang dùng: ${activeProfile} · a hoặc Tab để chọn profile.`
+                  : "a hoặc Tab để chọn profile."}
+              </Text>
+            </Box>
+          )}
+        </Panel>
+      </Box>
+      {profileNotice ? <Text color={COLOR.warn}>{profileNotice}</Text> : null}
 
       {editingGeneration && pending ? (
         <Box marginTop={1} flexDirection="column">

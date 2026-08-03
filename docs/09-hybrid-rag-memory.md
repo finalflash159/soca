@@ -1,15 +1,15 @@
-# 09 — Hybrid RAG, Tool Router & Retrieved Memory
+# Hybrid RAG, Tool Router & Retrieved Memory
 
-This is the **P2 knowledge layer**: how SoCa turns a Markdown vault into grounded
+This is the knowledge layer: how SoCa turns a Markdown vault into grounded
 answers. Three cooperating pieces sit behind the `AssistantRuntime` (see
 [05 — assistant-runtime](./05-assistant-runtime.md)):
 
-1. **Hybrid retrieval** — sparse (BM25) and dense (ONNX embeddings) fused with
-   Reciprocal Rank Fusion, over a transactional v2 vault index.
+1. **Hybrid retrieval** — sparse BM25 and dense embeddings fused by the
+   benchmarked linear profile, over a transactional v2 vault index.
 2. **Capability policy** — deterministic overrides followed by an open-set
    semantic disposition/source decision; retrieval is not an executable tool.
 3. **Retrieved memory** — query-aware long-term memory ranked by relevance,
-   recency, and importance, with consent-gated episodic capture.
+   recency, and importance. Episodic capture remains evaluator-only.
 
 Knowledge and memory reuse the **same retrieval implementation** but stay on
 **separate corpora and cache namespaces**, so a `knowledge.search` can never
@@ -29,9 +29,9 @@ flowchart TD
     KS --> HS[HybridKnowledgeSource]
     HS --> SP[sparse_chunk BM25]
     HS --> DE[dense ONNX embeddings]
-    SP --> RRF[RRF fusion]
-    DE --> RRF
-    RRF --> CTX[grounded context + citations]
+    SP --> F[linear fusion · dense 0.75]
+    DE --> F
+    F --> CTX[grounded context + citations]
     Q -.query-aware.-> MEM[RetrievedMemory]
     MEM --> CTX
     CTX --> LLM[LLM answer]
@@ -52,9 +52,10 @@ The retriever stack lives in `soca/knowledge/`:
 | Factory + config | `factory.py` (`build_retrieval_source`) |
 
 `build_retrieval_source(vault, include_globs, config=RetrievalConfig(mode=...))`
-selects `cached_sparse`, `chunk_sparse`, or `hybrid`; production defaults to
-`hybrid`, lifecycle v2/schema v3, BM25 plus
-`AITeamVN/Vietnamese_Embedding_v2`, linear fusion with dense weight `0.75`.
+selects the explicit benchmark/evaluation profile `cached_sparse`, the sparse
+diagnostic profile `chunk_sparse`, or production `hybrid`. Production defaults
+to lifecycle v2/schema v3, BM25 plus `AITeamVN/Vietnamese_Embedding_v2`, and
+linear fusion with dense weight `0.75`.
 There is no standalone production dense mode. Sparse sync is transactional and
 `search()`/`retrieve()` never embeds documents. A query loads only the active
 READY generation whose corpus revision and complete embedding fingerprint
@@ -69,23 +70,16 @@ Production min-max normalizes sparse and dense candidate scores independently,
 then computes `0.25 × sparse + 0.75 × dense`. RRF, FastEmbed, BGE-M3,
 rerankers and ANN backends remain benchmark/research variants only.
 
-Historical pre-guard numbers on real XQuAD-Vietnamese (1,193 questions) are in
-[BENCHMARKS.md → P2.1](../BENCHMARKS.md). The current guarded model comparison,
-including the migrated local vault incident regression, is in
-[BENCHMARKS.md → P2.1.1](../BENCHMARKS.md).
+Historical and current numbers on real Vietnamese retrieval corpora are in
+[BENCHMARKS.md → Knowledge retrieval](../BENCHMARKS.md#6-knowledge-retrieval).
 
 ### Active local knowledge vault
 
-The product runtime now queries the migrated local vault at
-`~/KnowledgeVault/wiki/`. It contains two knowledge areas:
-
-- learning notes: Bayes and ONNX Runtime;
-- life/project notes: the TTS decision, hybrid RAG architecture, a clearly
-  synthetic food ledger, and health safety boundaries.
-
-The synthetic finance note remains explicitly marked as non-personal data. The
-health note is a disclaimer-only guardrail. These notes are in the real local
-vault and are not committed to the repository.
+The product runtime queries the configured private vault, not a repository demo
+fixture. The vault path, corpus revision, document/chunk counts and dense index
+readiness are exposed by `/status`; private note contents and index payloads are
+never committed to the repository. Demo fixtures remain smoke/evaluation data
+and are not release evidence.
 
 ### Voice capability policy
 
@@ -94,10 +88,13 @@ Chat and voice construct the same semantic policy from
 The old ASR-only `RetrievalIntentGate` and `voice_knowledge_mode` path have
 been removed. A transcript is routed once, regardless of whether it came from
 text or ASR; retrieval then selects Knowledge/Memory and the runtime performs
-the same evidence and answer policy. If the local embedder is unavailable,
-both surfaces fail closed to deterministic explicit commands. The semantic
-router remains disable-able with the shared `--no-semantic-router` flag for
-diagnostics; this P3 wiring does not claim a new calibration-quality result.
+the same evidence and answer policy. When semantic routing is explicitly
+enabled, its pinned local embedder is a readiness dependency: if it is missing
+or invalid, construction fails and the surface is not ready. It does not
+silently fall back to deterministic routing. The semantic router remains
+disable-able with the shared `--no-semantic-router` flag for diagnostics. A
+disabled router is an explicit diagnostic configuration, not a production
+fallback.
 
 ## Tool router cascade
 
@@ -120,8 +117,8 @@ flowchart LR
 | Config/schema | `core/tool_routing.py`         | Frozen config, robust JSON parser, decision schema   |
 | Deterministic | `core/runtime.py`              | Explicit prefixes, scoped read paths, no NL guessing |
 | Semantic      | `core/semantic_turn_router.py` | disposition + multi-source examples, threshold/margin |
-| LLM           | `core/llm_tool_router.py`      | Prompt JSON or JSON-schema, one repair, fallback     |
-| Cascade       | `core/router_cascade.py`       | Short-circuits deterministic → semantic; LLM routing is explicit-only |
+| LLM           | `core/llm_tool_router.py`      | Prompt JSON or JSON-schema, one typed repair         |
+| Cascade       | `core/router_cascade.py`       | Short-circuits deterministic → semantic → LLM        |
 | Construction  | `core/router_setup.py`         | `build_runtime_tool_router(...)`                     |
 
 Invariants worth remembering:
@@ -138,9 +135,10 @@ Invariants worth remembering:
 - **Safety stays in guardrails.** Prompt injection, path traversal, schema,
   side-effect, and unsupported realtime-claim checks remain guardrail
   responsibilities; they are not capability classifiers.
-- **Structured output is an optimization, not a requirement.** Remote uses JSON
+- **Structured output is an explicit provider capability.** Remote uses JSON
   schema with `require_parameters=true`; local `llama.cpp` uses a JSON-schema →
-  GBNF grammar. Both fall back to prompted JSON when unavailable.
+  GBNF grammar. An unavailable requested structured-output mode is reported as
+  a typed routing failure; the runtime does not silently change response mode.
 - Router latency is timed end-to-end into
   `RuntimeTrace.stage_latencies_ms["tool_router"]`.
 
@@ -154,12 +152,11 @@ The stack is in `soca/memory/`:
 | Query-aware retrieval | `retrieved.py` (`RetrievedMemory`)          |
 | Search tool          | `tools/memory_tools.py` (`memory.search`)   |
 | Ranking signals      | `scoring.py` (relevance/recency/importance) |
-| Blob fallback + profile | `longterm.py` (`MarkdownLongTermMemory`)  |
-| Profile + episode merge | `composite.py`                            |
-| Working-memory summary | `compaction.py`                           |
-| Episodic store       | `episodes.py`                               |
+| Approved always-on memory | `core.py` (`CoreMemoryStore`) |
+| Deferred episodic evaluator | `eval/experimental/memory_lifecycle.py` |
+| Working-memory summary | `compaction_coordinator.py`               |
 | Proposals + approval  | `proposals.py`, `commands.py`              |
-| Background reflection | `reflection.py`                            |
+| Background reflection | not wired in production                   |
 | Safe frontmatter parse | `frontmatter.py`                          |
 | Setup + wiring       | `core/memory_setup.py`                      |
 
@@ -168,12 +165,13 @@ or `memory:` override; it is not run for ordinary smalltalk/free-chat turns.
 `MemoryContextBuilder.build(..., include_archive=False)` contributes only the
 always-on bounded working/core context. Archive snippets become `[M#]`
 grounded context only when selected. Production setup uses `memory/core.json`
-for explicitly approved core items; `memory/profile.md` is not promoted into
-core automatically. The compatibility builder still accepts an old profile
-source when no core store is supplied by a test/legacy adapter.
+for explicitly approved core items and Markdown notes under `memory/` for
+retrieved archive evidence. There is no unbounded always-on archive payload.
 
-`MemoryAccessPlan` records core/working inclusion, archive mode (`none`,
-`semantic`, `episodic`, or `both`), archive query, and reason.
+`MemoryAccessPlan` records core/working inclusion, archive mode (`none` or
+`semantic`), archive query, and reason. The production runtime provisions
+semantic archive retrieval only; episodic capture remains an evaluator-only
+research surface outside the production memory package.
 `PromptContextAssembler` combines already-selected blocks and never searches a
 corpus, so archive access remains visible in the runtime policy.
 
@@ -208,8 +206,9 @@ clears the active goal while retaining the last run record for diagnostics.
 
 Durable memory is never written automatically.
 
-- Episodic summaries persist **only** when `episodic_memory_enabled=true` and the
-  user has given explicit consent; raw transcripts are never stored.
+- Episodic capture is not wired into the production chat/voice runtime. Any
+  future episodic writer must require explicit consent and never store raw
+  transcripts; the current code keeps only the typed research primitives.
 - Proposal and approval primitives (`proposals.py`, `commands.py`) are retained
   for an explicitly provisioned future capture workflow; no production chat or
   voice runtime currently creates a proposal or writes durable memory.
@@ -220,7 +219,7 @@ Durable memory is never written automatically.
   permissions; `private/`, dot-directories, and symlinks are never indexed.
 
 See the memory lifecycle and compaction numbers in
-[BENCHMARKS.md → P2.3](../BENCHMARKS.md).
+[BENCHMARKS.md → Working-memory summarization](../BENCHMARKS.md#7-working-memory-summarization).
 
 ## Corpus isolation
 

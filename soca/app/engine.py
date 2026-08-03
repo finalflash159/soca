@@ -40,6 +40,7 @@ from soca.core.context_budget import (
     Utf8TokenCounter,
     capability_from_values,
 )
+from soca.core.profiles import get_voice_runtime_profile
 from soca.core.usage import SessionUsage, TurnUsage
 from soca.core.voice_runtime import build_voice_runtime
 from soca.core.workflow import (
@@ -53,13 +54,18 @@ from soca.core.workflow import (
     TurnNode,
     WorkflowEventStream,
 )
-from soca.core.workflow.legacy_adapter import terminal_from_runtime_result
 from soca.core.workflow.protocol import (
     CURRENT_PROTOCOL_VERSION,
-    adapt_legacy_command,
     protocol_hello,
     workflow_event_to_protocol,
 )
+from soca.core.workflow.runtime_events import terminal_from_runtime_result
+from soca.knowledge.index.persistence import default_index_home
+from soca.knowledge.indexing.coordinator import IndexCoordinator
+from soca.knowledge.indexing.identity import CorpusSpec
+from soca.knowledge.indexing.models import load_model
+from soca.knowledge.markdown_vault import MarkdownVaultKnowledgeSource
+from soca.knowledge.vault import init_knowledge_vault
 from soca.llm.factory import DEFAULT_LLM_ENGINE_FACTORY, EngineBuilder
 from soca.llm.providers import (
     PRICING_TABLE_AS_OF,
@@ -72,7 +78,7 @@ from soca.llm.providers import (
 )
 from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.memory import (
-    MarkdownLongTermMemory,
+    CoreMemoryStore,
     MemoryCommands,
     ProposalStore,
     SessionCheckpointStore,
@@ -121,9 +127,11 @@ def _memory_protocol_mode(
 ) -> str:
     if degraded_reason or mode == "degraded":
         return "degraded"
-    if mode == "retrieved" or (mode == "blob" and isinstance(hit_count, int) and hit_count > 0):
+    if mode == "retrieved":
         return "retrieved"
-    return "blob"
+    if mode == "degraded":
+        return "degraded"
+    return "none"
 
 
 def _progress_phase_for_stage(stage: str) -> str:
@@ -331,15 +339,15 @@ class SocaEngine:
         self.voice_player = voice_player
         self.warmup_voice = warmup_voice
         self.llm_settings_saver = llm_settings_saver
-        self._settings_warning: str | None = None
+        self._settings_error: str | None = None
         try:
             self.llm_settings = llm_settings_loader()
         except ValueError:
-            LOGGER.warning(
-                "Ignoring invalid persisted LLM settings; using local defaults", exc_info=True
-            )
+            LOGGER.warning("Persisted LLM settings are invalid; runtime is not ready", exc_info=True)
             self.llm_settings = DEFAULT_SETTINGS
-            self._settings_warning = "Không thể đọc cấu hình LLM đã lưu; đang dùng Local mặc định."
+            self._settings_error = (
+                "Cấu hình LLM đã lưu không hợp lệ; runtime bị khóa cho đến khi bạn lưu cấu hình mới."
+            )
         self.secret_store = secret_store or SecretStore()
         self.catalog_fetcher = catalog_fetcher
         self.llm_engine_factory = llm_engine_factory
@@ -351,6 +359,8 @@ class SocaEngine:
         self._catalog_inflight: set[tuple[str, str]] = set()
         self._catalog_threads: set[threading.Thread] = set()
         self._key_validation_tokens: dict[str, str] = {}
+        self._knowledge_job_lock = threading.Lock()
+        self._knowledge_job_thread: threading.Thread | None = None
 
         self.session_memory = self._create_session_memory()
         self.active_goal_store = ActiveGoalStore(
@@ -373,6 +383,7 @@ class SocaEngine:
         self._last_prompt_manifest: dict[str, Any] | None = None
         self._progress_lock = threading.Lock()
         self._progress_contexts: dict[str, _TurnProgressContext] = {}
+        self._shutdown = False
 
     # --- lifecycle --------------------------------------------------------------
 
@@ -393,12 +404,11 @@ class SocaEngine:
             }
         self.writer.emit(protocol_hello(profile=self.profile, no_model=self.no_model, stack=stack))
         self._cmd_context()
-        if self._settings_warning is not None:
-            self._error(self._settings_warning)
+        if self._settings_error is not None:
+            self._error(self._settings_error, code="llm_settings_invalid")
 
     def dispatch(self, command: dict[str, Any]) -> bool:
         """Handle one command; return False when the engine should exit."""
-        command = adapt_legacy_command(command)
         cmd = command.get("cmd")
         if cmd == "quit":
             return False
@@ -435,21 +445,41 @@ class SocaEngine:
             self._cmd_voice_start(int(max_turns) if isinstance(max_turns, int) else None)
         elif cmd == "voice_stop":
             self._cmd_voice_stop()
+        elif cmd == "voice_profile_select":
+            self._cmd_voice_profile_select(command)
+        elif cmd == "knowledge_init":
+            self._cmd_knowledge_init()
+        elif cmd == "knowledge_index":
+            self._cmd_knowledge_index()
         else:
             self._error(f"unknown command: {cmd!r}")
         return True
 
     def shutdown(self) -> None:
-        self._cmd_voice_stop()
-        if self.text_bundle is not None:
-            llm = getattr(self.text_bundle.runtime, "llm", None)
-            cancel = getattr(llm, "cancel", None)
-            if callable(cancel):
-                cancel()
+        if self._shutdown:
+            return
+        cleanup_failed = self._cmd_voice_stop()
+        if not self._dispose_text_bundle():
+            cleanup_failed = True
         if self._chat_thread is not None:
             self._chat_thread.join(timeout=10.0)
+            if self._chat_thread.is_alive():
+                cleanup_failed = True
+                self._error("chat thread did not stop", code="chat_thread_stop_timeout")
         for thread in self._voice_threads:
             thread.join(timeout=5.0)
+            if thread.is_alive():
+                cleanup_failed = True
+                self._error("voice thread did not stop", code="voice_thread_stop_timeout")
+        knowledge_thread = self._knowledge_job_thread
+        if knowledge_thread is not None:
+            knowledge_thread.join(timeout=30.0)
+            if knowledge_thread.is_alive():
+                cleanup_failed = True
+                self._error(
+                    "knowledge index thread did not stop",
+                    code="knowledge_index_stop_timeout",
+                )
         # Fake fetchers finish immediately in tests; real HTTP fetches are
         # bounded below the UI termination grace period. Threads are daemonized
         # so a slow provider cannot keep the process alive forever.
@@ -457,12 +487,178 @@ class SocaEngine:
             catalog_threads = tuple(self._catalog_threads)
         for thread in catalog_threads:
             thread.join(timeout=1.0)
+            if thread.is_alive():
+                cleanup_failed = True
+                self._error("model catalog fetch did not stop", code="catalog_thread_stop_timeout")
+        if self.text_bundle is not None:
+            if not self._dispose_text_bundle():
+                cleanup_failed = True
         if self.session_memory is not None:
-            self.session_memory.close()
+            try:
+                self.session_memory.close()
+            except Exception as exc:  # noqa: BLE001 - expose cleanup failure
+                cleanup_failed = True
+                self._error(
+                    "session memory cleanup failed",
+                    code="session_cleanup_failed",
+                    detail=type(exc).__name__,
+                )
+        if cleanup_failed:
+            return
+        self._shutdown = True
         self.writer.emit({"event": "bye"})
+
+    def _dispose_text_bundle(self) -> bool:
+        """Close the current text runtime before a configuration mutation.
+
+        A runtime owns the provider engine and retrieval watchers it built.  A
+        configuration refresh must not discard that owner without closing it;
+        otherwise every model/key change leaks a provider client and index
+        watcher.  Keep the bundle attached when close fails so a later
+        operator retry can observe and repeat the failed cleanup.
+        """
+        bundle = self.text_bundle
+        if bundle is None:
+            return True
+        try:
+            bundle.close()
+        except Exception as exc:  # noqa: BLE001 - lifecycle boundary
+            self._error(
+                "text runtime cleanup failed",
+                code="runtime_cleanup_failed",
+                detail=type(exc).__name__,
+            )
+            return False
+        self.text_bundle = None
+        return True
 
     def _error(self, message: str, **extra: Any) -> None:
         self.writer.emit({"event": "engine_error", "message": message, **extra})
+
+    def _emit_knowledge_setup(self, action: str, status: str, detail: str, **extra: Any) -> None:
+        self.writer.emit(
+            {
+                "event": "knowledge_setup",
+                "action": action,
+                "status": status,
+                "vault": str(self.text_config.vault),
+                "detail": detail,
+                **extra,
+            }
+        )
+
+    def _cmd_knowledge_init(self) -> None:
+        try:
+            result = init_knowledge_vault(self.text_config.vault)
+        except (OSError, ValueError) as exc:
+            self._emit_knowledge_setup(
+                "init",
+                "failed",
+                str(exc),
+                error_code="knowledge_init_failed",
+            )
+            return
+        self._emit_knowledge_setup(
+            "init",
+            "ready",
+            f"{len(result.created_dirs)} thư mục mới · {len(result.created_files)} file mới",
+            created_dirs=len(result.created_dirs),
+            created_files=len(result.created_files),
+            skipped_files=len(result.skipped_files),
+        )
+        self._cmd_status()
+
+    def _cmd_knowledge_index(self) -> None:
+        vault = self.text_config.vault
+        if not (vault / "wiki").is_dir():
+            self._emit_knowledge_setup(
+                "index",
+                "failed",
+                "Vault chưa được init; hãy chạy Init vault trước.",
+                error_code="knowledge_not_initialized",
+            )
+            return
+        if not self._knowledge_job_lock.acquire(blocking=False):
+            self._emit_knowledge_setup(
+                "index",
+                "busy",
+                "Index đang chạy.",
+                error_code="knowledge_index_busy",
+            )
+            return
+
+        def run() -> None:
+            try:
+                self._emit_knowledge_setup("index", "running", "Đang quét và tạo embedding…")
+                reader = MarkdownVaultKnowledgeSource(
+                    vault,
+                    include_globs=("wiki/**/*.md",),
+                )
+                spec = CorpusSpec(vault_path=vault)
+                coordinator = IndexCoordinator(
+                    reader,
+                    spec=spec,
+                    index_home=default_index_home(vault),
+                    model=load_model("aiteamvn-v2", allow_download=False),
+                )
+                report = coordinator.build_blocking(dense=True, verify_content=True)
+                status = coordinator.status().as_dict()
+                self._emit_knowledge_setup(
+                    "index",
+                    "ready",
+                    f"Đã index {status['documents']} tài liệu · {status['chunks']} chunks.",
+                    revision=report.sparse.revision,
+                    documents=status["documents"],
+                    chunks=status["chunks"],
+                    dense_state=status["dense_state"],
+                )
+                self._cmd_status()
+            except ImportError as exc:
+                self._emit_knowledge_setup(
+                    "index",
+                    "failed",
+                    str(exc),
+                    error_code="embedding_dependency_missing",
+                )
+            except FileNotFoundError as exc:
+                self._emit_knowledge_setup(
+                    "index",
+                    "failed",
+                    str(exc),
+                    error_code="embedding_model_missing",
+                )
+            except OSError as exc:
+                self._emit_knowledge_setup(
+                    "index",
+                    "failed",
+                    str(exc),
+                    error_code="knowledge_index_io_error",
+                )
+            except RuntimeError as exc:
+                self._emit_knowledge_setup(
+                    "index",
+                    "failed",
+                    str(exc),
+                    error_code="knowledge_index_runtime_error",
+                )
+            except ValueError as exc:
+                self._emit_knowledge_setup(
+                    "index",
+                    "failed",
+                    str(exc),
+                    error_code="knowledge_index_invalid",
+                )
+            finally:
+                self._knowledge_job_lock.release()
+                self._knowledge_job_thread = None
+
+        thread = threading.Thread(
+            target=run,
+            daemon=True,
+            name="soca-knowledge-index",
+        )
+        self._knowledge_job_thread = thread
+        thread.start()
 
     # --- status -----------------------------------------------------------------
 
@@ -485,6 +681,13 @@ class SocaEngine:
             for item in collect_runtime_profile_readiness()
         ]
         knowledge_index: dict[str, Any] | None = None
+        vault = self.text_config.vault
+        knowledge_vault = {
+            "path": str(vault),
+            "initialized": (vault / "wiki").is_dir()
+            and (vault / "memory" / "core.json").is_file(),
+            "index_home": str(default_index_home(vault)),
+        }
         embedding_ready = False
         try:
             embedding_ready = model_is_provisioned("aiteamvn-v2")
@@ -492,7 +695,7 @@ class SocaEngine:
                 model_fingerprint("aiteamvn-v2") if embedding_ready else None
             )
             knowledge_index = (
-                IndexCatalog(default_index_home())
+                IndexCatalog(default_index_home(self.text_config.vault))
                 .status(
                     CorpusSpec(vault_path=self.text_config.vault),
                     embedding_fingerprint=embedding_fingerprint,
@@ -505,6 +708,7 @@ class SocaEngine:
             {
                 "event": "status",
                 "profiles": profiles,
+                "knowledge_vault": knowledge_vault,
                 "knowledge_index": knowledge_index,
                 "runtime_components": self._runtime_component_statuses(
                     embedding_ready=embedding_ready,
@@ -538,6 +742,8 @@ class SocaEngine:
         settings = self.llm_settings
         if self.no_model:
             add("chat_llm", "Chat LLM", "disabled", "engine started with --no-model")
+        elif self._settings_error is not None:
+            add("chat_llm", "Chat LLM", "invalid", self._settings_error)
         elif settings.backend == "remote":
             key_state = "ready" if self.secret_store.has_key(settings.provider_key) else "missing"
             add(
@@ -563,6 +769,13 @@ class SocaEngine:
             add("smart_turn", "SmartTurn", "disabled", "adaptive endpoint unavailable")
             add("vad", "VAD", "disabled", "voice runtime not configured")
             add("asr_guards", "ASR guards", "disabled", "voice runtime not configured")
+        elif self._settings_error is not None:
+            add("voice_asr", "Voice ASR", "blocked", "LLM settings invalid")
+            add("voice_llm", "Voice LLM", "invalid", self._settings_error)
+            add("tts", "TTS", "blocked", "LLM settings invalid")
+            add("smart_turn", "SmartTurn", "blocked", "LLM settings invalid")
+            add("vad", "VAD", "blocked", "LLM settings invalid")
+            add("asr_guards", "ASR guards", "blocked", "LLM settings invalid")
         else:
             configured_asr = asr_readiness(self.voice_config.asr)
             add(
@@ -657,7 +870,7 @@ class SocaEngine:
                     "summary",
                     "Working summary",
                     summary_state,
-                    f"local · {summary_spec.key} · lazy",
+                    f"local · {summary_spec.key} · lazy · checksum on use",
                 )
             else:
                 summary_state = "ready" if summary_path.is_file() else "missing"
@@ -665,13 +878,13 @@ class SocaEngine:
                     "summary",
                     "Working summary",
                     summary_state,
-                    f"local · {summary_spec.key} · lazy",
+                    f"local · {summary_spec.key} · lazy · checksum on use",
                 )
             add(
                 "memory",
                 "Archive memory",
                 "configured",
-                f"{self.text_config.memory_mode}/{self.text_config.memory_retrieval_mode}"
+                f"retrieved/{self.text_config.memory_retrieval_mode}"
                 f" · session {self.session_memory.persistence}",
             )
 
@@ -820,13 +1033,15 @@ class SocaEngine:
             provider = get_provider(settings.provider_key)
             self._error(f"Chưa có API key cho {provider.label}.")
             return
+        if not self._dispose_text_bundle():
+            return
         try:
             self.llm_settings_saver(settings)
         except ValueError as exc:
             self._error(str(exc))
             return
         self.llm_settings = settings
-        self.text_bundle = None
+        self._settings_error = None
         self._invalidate_voice_runtime()
         self._last_prompt_manifest = None
         self._emit_llm_config()
@@ -855,6 +1070,8 @@ class SocaEngine:
             "pricing_as_of": PRICING_TABLE_AS_OF,
             "pricing": active_model,
             "context_length": self._model_context_length(),
+            "runtime_ready": self._settings_error is None,
+            "settings_error": self._settings_error,
         }
         self.writer.emit(payload)
         self._cmd_context()
@@ -1028,13 +1245,15 @@ class SocaEngine:
         )
         if refreshed == settings:
             return
+        if not self._dispose_text_bundle():
+            LOGGER.error("Refusing to refresh model capabilities while text runtime is open")
+            return
         try:
             self.llm_settings_saver(refreshed)
         except ValueError:
             LOGGER.warning("Could not persist refreshed model capabilities", exc_info=True)
             return
         self.llm_settings = refreshed
-        self.text_bundle = None
         self._invalidate_voice_runtime()
         self._last_prompt_manifest = None
 
@@ -1050,10 +1269,21 @@ class SocaEngine:
     ) -> None:
         if not self._key_validation_is_current(provider.key, fingerprint):
             return
+        if self._voice_is_active():
+            self._emit_key_status(
+                provider.key,
+                ok=False,
+                message="Không thể đổi API key khi voice đang chạy; hãy dừng voice trước.",
+            )
+            return
+        if not self._dispose_text_bundle():
+            self._emit_key_status(
+                provider.key,
+                ok=False,
+                message="Không thể đóng text runtime hiện tại để đổi API key.",
+            )
+            return
         self.secret_store.set_key(provider.key, api_key)
-        # A runtime may have captured the previous key when a chat was already
-        # initialized; force the next turn to rebuild with this key.
-        self.text_bundle = None
         self._invalidate_voice_runtime()
         self._emit_key_status(
             provider.key,
@@ -1289,10 +1519,10 @@ class SocaEngine:
         if not vault.is_dir():
             return ""
         try:
-            return MarkdownLongTermMemory(
+            return CoreMemoryStore(
                 vault,
-                max_chars=self.text_config.profile_chars,
-            ).read_profile()
+                max_chars=self.text_config.memory_item_chars,
+            ).read_core()
         except (OSError, UnicodeError, ValueError):
             return ""
 
@@ -1689,6 +1919,8 @@ class SocaEngine:
     def _ensure_text_bundle(self) -> TextRuntimeBundle:
         if self.text_bundle is not None:
             return self.text_bundle
+        if self._settings_error is not None:
+            raise RuntimeError("llm_settings_invalid")
         self.writer.emit({"event": "chat", "type": "loading", "text": "building text runtime"})
         runtime_config = dataclasses.replace(
             self.text_config,
@@ -1736,9 +1968,9 @@ class SocaEngine:
         return {
             "event": "memory_trace",
             "mode": _memory_protocol_mode(
-                trace.get("memory_mode", "blob")
+                trace.get("memory_mode", "none")
                 if isinstance(trace, dict)
-                else getattr(trace, "memory_mode", "blob"),
+                else getattr(trace, "memory_mode", "none"),
                 trace.get("memory_degraded_reason", "")
                 if isinstance(trace, dict)
                 else getattr(trace, "memory_degraded_reason", ""),
@@ -1812,7 +2044,61 @@ class SocaEngine:
 
     # --- voice ------------------------------------------------------------------
 
+    def _cmd_voice_profile_select(self, command: dict[str, Any]) -> None:
+        """Apply one ready voice profile without rebuilding session memory."""
+        if self.voice_config is None:
+            self._error(
+                "voice profile unavailable: no voice runtime config",
+                code="voice_profile_unavailable",
+            )
+            return
+        if self._voice_is_active():
+            self._error(
+                "Không thể đổi ASR khi voice đang chạy; hãy dừng voice trước.",
+                code="voice_profile_change_while_active",
+            )
+            return
+        profile_key = command.get("profile")
+        if not isinstance(profile_key, str) or not profile_key:
+            self._error("voice profile phải là chuỗi.", code="voice_profile_invalid")
+            return
+        try:
+            profile = get_voice_runtime_profile(profile_key)
+            from soca.app.profiles import asr_readiness
+
+            readiness = asr_readiness(profile.asr)
+        except (KeyError, ValueError, RuntimeError) as exc:
+            self._error(
+                "voice profile không hợp lệ",
+                code="voice_profile_invalid",
+                detail=str(exc),
+            )
+            return
+        if not readiness.ok:
+            self._error(
+                "voice profile chưa sẵn sàng",
+                code="voice_profile_not_ready",
+                profile=profile_key,
+                asr=profile.asr_model,
+                readiness=readiness.status,
+                detail=readiness.detail,
+            )
+            return
+        if not self._invalidate_voice_runtime():
+            return
+        self.voice_config = dataclasses.replace(
+            self.voice_config,
+            profile_key=profile_key,
+            asr=profile.asr,
+        )
+        self.profile = profile_key
+        self.hello()
+        self._cmd_status()
+
     def _cmd_voice_start(self, max_turns: int | None) -> None:
+        if self._settings_error is not None:
+            self._error(self._settings_error, code="llm_settings_invalid")
+            return
         if self.no_model:
             self._error("voice unavailable: engine started with --no-model")
             return
@@ -2021,11 +2307,23 @@ class SocaEngine:
             LOGGER.warning("proposal telemetry unavailable", exc_info=True)
             return None
 
-    def _cmd_voice_stop(self) -> None:
+    def _cmd_voice_stop(self) -> bool:
+        cleanup_failed = False
         if self.voice_stop_event is not None:
             self.voice_stop_event.set()
         if self.voice_controller is not None:
-            self.voice_controller.stop()
+            try:
+                self.voice_controller.stop()
+            except Exception as exc:  # noqa: BLE001 - surface teardown failure in protocol
+                cleanup_failed = True
+                self._error(
+                    "voice runtime cleanup failed",
+                    code="voice_runtime_cleanup_failed",
+                    detail=type(exc).__name__,
+                )
+            else:
+                self.voice_controller = None
+        return cleanup_failed
 
     def _voice_is_active(self) -> bool:
         stop_event = self.voice_stop_event
@@ -2035,18 +2333,27 @@ class SocaEngine:
             and any(thread.is_alive() for thread in self._voice_threads)
         )
 
-    def _invalidate_voice_runtime(self) -> None:
+    def _invalidate_voice_runtime(self) -> bool:
         """Drop an idle voice bundle so the next start sees current settings."""
         if self._voice_is_active():
             # A background catalog refresh may race with a voice start.  Keep
             # the active bundle unchanged; the command-level mutation guard
             # prevents intentional hot-swaps and the next idle refresh will
             # rebuild from the persisted settings.
-            return
+            return True
         controller = self.voice_controller
         if controller is not None:
-            controller.stop()
+            try:
+                controller.stop()
+            except Exception as exc:  # noqa: BLE001 - lifecycle boundary
+                self._error(
+                    "voice runtime cleanup failed",
+                    code="voice_runtime_cleanup_failed",
+                    detail=type(exc).__name__,
+                )
+                return False
         self.voice_controller = None
+        return True
 
     def _selected_voice_settings(self) -> LlmSettings:
         settings = self.llm_settings

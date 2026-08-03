@@ -13,14 +13,7 @@ from .events import (
 )
 
 CURRENT_PROTOCOL_VERSION = PROTOCOL_VERSION
-SUPPORTED_PROTOCOL_VERSIONS = (1, 2)
-
-
-def adapt_legacy_command(command: dict[str, Any]) -> dict[str, Any]:
-    """Normalize a v1 command without changing its meaning."""
-    normalized = dict(command)
-    normalized.pop("protocol_version", None)
-    return normalized
+SUPPORTED_PROTOCOL_VERSIONS = (CURRENT_PROTOCOL_VERSION,)
 
 
 def protocol_hello(*, profile: str, no_model: bool, stack: dict[str, Any]) -> dict[str, Any]:

@@ -13,6 +13,7 @@ from threading import Event
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from soca.app.voice_controller import VoiceMonitorController
 from soca.asr.selection import ASRSelection
@@ -344,9 +345,10 @@ def test_voice_stop_keeps_teardown_observable_when_component_close_fails() -> No
     )
     controller.bundle = bundle
 
-    controller.stop()
+    with pytest.raises(RuntimeError, match="native close failed"):
+        controller.stop()
 
-    assert controller.bundle is None
+    assert controller.bundle is bundle
 
 
 def test_voice_loop_reuses_one_runtime_and_closes_it_once() -> None:

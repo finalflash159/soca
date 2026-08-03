@@ -13,10 +13,10 @@ class MemoryTurn:
 
 
 @dataclass(frozen=True)
-class MemoryProfileResult:
+class MemoryRetrievalResult:
     text: str
     hits: tuple[object, ...] = ()
-    mode: str = "blob"
+    mode: str = "none"
     degraded_reason: str = ""
     evidence_status: str = "insufficient"
     evidence_reason: str = "no_hits"
@@ -32,13 +32,13 @@ class MemoryProfileResult:
 
 
 class LongTermMemorySource(Protocol):
-    def read_profile(self) -> str:
+    def read_core(self) -> str:
         ...
 
 
 @runtime_checkable
 class QueryAwareLongTermMemorySource(Protocol):
-    def retrieve_profile(self, query: str) -> MemoryProfileResult:
+    def retrieve_archive(self, query: str) -> MemoryRetrievalResult:
         ...
 
 

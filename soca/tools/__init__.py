@@ -17,14 +17,13 @@ from soca.tools.knowledge_tools import (
     KnowledgeReadTool,
     KnowledgeSearchTool,
 )
-from soca.tools.memory_tools import MemoryProposeNoteTool, MemorySearchTool
+from soca.tools.memory_tools import MemorySearchTool
 
 __all__ = [
     "KnowledgeInspectTool",
     "KnowledgeReadTool",
     "KnowledgeSearchTool",
     "InvalidToolInput",
-    "MemoryProposeNoteTool",
     "MemorySearchTool",
     "SideEffectLevel",
     "Tool",

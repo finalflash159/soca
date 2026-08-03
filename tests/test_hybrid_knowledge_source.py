@@ -115,6 +115,7 @@ def test_hybrid_keeps_two_chunks_from_one_document_as_distinct_hits(tmp_path: Pa
         config=HybridConfig(per_retriever_limit=10),
     )
 
+    source.build_index()
     hits = source.search("nutrition", limit=10)
 
     assert hits
@@ -141,6 +142,7 @@ def test_custom_lexical_fusion_aggregates_chunks_at_document_boundary(
         ),
     )
 
+    source.build_index()
     hits = source.search("protein", limit=10)
 
     paths = [hit.document.path for hit in hits]
@@ -179,6 +181,7 @@ def test_custom_lexical_fusion_preserves_the_query_local_passage(
         ),
     )
 
+    source.build_index()
     hits = source.search("unfinished needle", limit=5)
 
     assert hits[0].document.path == "wiki/weekly.md"
@@ -195,6 +198,7 @@ def test_dense_retrieval_is_not_blocked_by_a_lexical_miss(tmp_path: Path) -> Non
         config=HybridConfig(sparse_enabled=False, dense_enabled=True),
     )
 
+    source.build_index()
     batch = source.retrieve("khái niệm không xuất hiện trong vault", limit=2)
 
     assert batch.hits
@@ -216,7 +220,7 @@ def test_dense_construction_failure_raises_in_hybrid_mode(
     )
 
     with pytest.raises(DenseUnavailableError, match="index refresh failed"):
-        source.retrieve("bayes", limit=5)
+        source.build_index()
 
 
 def test_dense_only_failure_raises_explicit_error(tmp_path: Path) -> None:
@@ -229,7 +233,7 @@ def test_dense_only_failure_raises_explicit_error(tmp_path: Path) -> None:
     )
 
     with pytest.raises(DenseUnavailableError, match="index refresh failed"):
-        source.retrieve("bayes", limit=5)
+        source.build_index()
 
 
 def test_dense_query_failure_raises_instead_of_using_sparse(tmp_path: Path) -> None:
@@ -241,7 +245,7 @@ def test_dense_query_failure_raises_instead_of_using_sparse(tmp_path: Path) -> N
         model=FakeEmbeddingModel(),
         config=HybridConfig(),
     )
-    source.retrieve("bayes", limit=5)
+    source.build_index()
     source._model = FakeEmbeddingModel(fail_queries=True)  # type: ignore[attr-defined]
 
     with pytest.raises(DenseUnavailableError, match="query failed"):

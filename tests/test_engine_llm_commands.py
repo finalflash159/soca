@@ -312,6 +312,10 @@ def test_llm_select_persists_requested_generation_and_caps_effective_output() ->
 
 
 def test_llm_select_invalidates_the_lazy_text_runtime() -> None:
+    class Bundle:
+        def close(self) -> None:
+            return None
+
     saved: list[LlmSettings] = []
     engine = SocaEngine(
         voice_config=None,
@@ -324,7 +328,7 @@ def test_llm_select_invalidates_the_lazy_text_runtime() -> None:
         secret_store=FakeSecrets({"groq": "sk-existing-1234"}),
         catalog_fetcher=_catalog,
     )
-    engine.text_bundle = object()  # type: ignore[assignment]
+    engine.text_bundle = Bundle()  # type: ignore[assignment]
 
     engine.dispatch(
         {

@@ -137,7 +137,7 @@ export function App({
     });
     engine.send({ cmd: "llm_providers" });
     engine.send({ cmd: "llm_config" });
-    if (target === "status") engine.send({ cmd: "status" });
+    engine.send({ cmd: "status" });
     // A voice target opens in Settings first; the listening loop starts on
     // leaveSettings, not here.
     return () => engine.stop();
@@ -556,6 +556,11 @@ export function App({
         <SettingsScreen
           config={state.llmConfig}
           providers={state.llmProviders}
+          profiles={state.profiles}
+          activeProfile={state.profile}
+          knowledgeVault={state.knowledgeVault}
+          knowledgeIndex={state.knowledgeIndex}
+          knowledgeSetup={state.knowledgeSetup}
           catalog={state.llmCatalog}
           catalogProvider={state.llmCatalogProvider}
           keyPendingProvider={state.llmKeyPendingProvider}
@@ -582,6 +587,11 @@ export function App({
               reasoning_enabled,
             })
           }
+          onProfileSelect={(selectedProfile) =>
+            engine?.send({ cmd: "voice_profile_select", profile: selectedProfile })
+          }
+          onKnowledgeInit={() => engine?.send({ cmd: "knowledge_init" })}
+          onKnowledgeIndex={() => engine?.send({ cmd: "knowledge_index" })}
           onExit={leaveSettings}
         />
       ) : null}
@@ -634,55 +644,6 @@ export function App({
         llm={llm}
         remote={state.llmConfig?.backend === "remote"}
       />
-    </Box>
-  );
-}
-
-export function Splash({ onDone }: { onDone: (mode: Mode) => void }) {
-  const rawInput = Boolean(useStdin().isRawModeSupported);
-  useInput(
-    (char, key) => {
-      if (key.return) onDone("chat");
-      else if (char === "v") onDone("voice");
-      else if (char === "s") onDone("settings");
-    },
-    { isActive: rawInput },
-  );
-  const { stdout } = useStdout();
-  return (
-    <Box
-      height={Math.max(1, (stdout?.rows ?? 24) - 1)}
-      flexDirection="column"
-      justifyContent="center"
-      alignItems="center"
-    >
-      <Bird />
-      <Box marginTop={1}>
-        <Wordmark />
-      </Box>
-      <Box marginTop={1}>
-        <Text color={COLOR.text}>
-          Trợ lý giọng nói tiếng Việt — chạy hoàn toàn trên máy bạn.
-        </Text>
-      </Box>
-      <Box>
-        <Text color={COLOR.muted}>asr · llm · tts · barge-in, không cloud</Text>
-      </Box>
-      <Box marginTop={1}>
-        <Text>
-          <Text color={COLOR.alt}>↵</Text>
-          <Text color={COLOR.muted}> chat</Text>
-          <Text color={COLOR.muted}>{`  ${ICON.dot}  `}</Text>
-          <Text color={COLOR.alt}>v</Text>
-          <Text color={COLOR.muted}> voice</Text>
-          <Text color={COLOR.muted}>{`  ${ICON.dot}  `}</Text>
-          <Text color={COLOR.alt}>s</Text>
-          <Text color={COLOR.muted}> cài đặt</Text>
-          <Text color={COLOR.muted}>{`  ${ICON.dot}  `}</Text>
-          <Text color={COLOR.alt}>^c</Text>
-          <Text color={COLOR.muted}> thoát</Text>
-        </Text>
-      </Box>
     </Box>
   );
 }

@@ -18,7 +18,7 @@ class FakeIndexCoordinator:
             "jobs": [],
         }
 
-    def sync_sparse(self, *, verify_content: bool) -> object:
+    def migrate_legacy(self, *, verify_content: bool) -> object:
         assert verify_content is True
         return SimpleNamespace(
             revision=3,

@@ -37,6 +37,7 @@ from soca.knowledge.indexing.models import (
 from soca.knowledge.indexing.watcher import IndexWatcher
 from soca.knowledge.markdown_vault import MarkdownVaultKnowledgeSource
 from soca.knowledge.retrievers.dense import default_model_home
+from soca.knowledge.vault import default_vault_root
 from soca.llm.registry import DEFAULT_LLM_MODEL_KEY, LLM_MODEL_REGISTRY
 from soca.memory import SessionPersistence
 
@@ -53,7 +54,7 @@ def resolve_ui_vault(vault: Path | None) -> Path:
     configured = os.environ.get(UI_VAULT_ENV, "").strip()
     if configured:
         return Path(configured).expanduser().resolve()
-    return (Path.home() / "KnowledgeVault").resolve()
+    return default_vault_root()
 
 
 def run_module(module: str, *args: str) -> None:
@@ -96,7 +97,7 @@ def _index_context(
     return IndexCoordinator(
         reader,
         spec=spec,
-        index_home=index_home or default_index_home(),
+        index_home=index_home or default_index_home(vault),
         model=model,
     )
 
@@ -115,7 +116,7 @@ def knowledge_index_group() -> None:
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
+    default=default_vault_root(),
     show_default=True,
 )
 @click.option(
@@ -155,7 +156,7 @@ def knowledge_index_status(
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
+    default=default_vault_root(),
     show_default=True,
 )
 @click.option(
@@ -220,7 +221,7 @@ def _run_index_build(
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
+    default=default_vault_root(),
     show_default=True,
 )
 @click.option(
@@ -243,7 +244,7 @@ def knowledge_index_rebuild(vault: Path, corpus: str, index_home: Path | None) -
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
+    default=default_vault_root(),
     show_default=True,
 )
 @click.option(
@@ -271,7 +272,7 @@ def knowledge_index_verify(
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
+    default=default_vault_root(),
     show_default=True,
 )
 @click.option(
@@ -291,7 +292,7 @@ def knowledge_index_gc(vault: Path, corpus: str, index_home: Path | None, apply:
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
+    default=default_vault_root(),
     show_default=True,
 )
 @click.option(
@@ -308,7 +309,7 @@ def knowledge_index_inspect(vault: Path, corpus: str, index_home: Path | None) -
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
+    default=default_vault_root(),
     show_default=True,
 )
 @click.option(
@@ -318,7 +319,7 @@ def knowledge_index_inspect(vault: Path, corpus: str, index_home: Path | None) -
 def knowledge_index_migrate(vault: Path, corpus: str, index_home: Path | None) -> None:
     """Import a valid v1 sparse snapshot and reconcile it with the vault."""
     coordinator = _index_context(vault, corpus, index_home=index_home)
-    result = coordinator.sync_sparse(verify_content=True)
+    result = coordinator.migrate_legacy(verify_content=True)
     click.echo(
         json.dumps(
             {
@@ -336,7 +337,7 @@ def knowledge_index_migrate(vault: Path, corpus: str, index_home: Path | None) -
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
+    default=default_vault_root(),
     show_default=True,
 )
 @click.option(
@@ -362,7 +363,7 @@ def knowledge_index_rollback(vault: Path, corpus: str, index_home: Path | None) 
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
+    default=default_vault_root(),
     show_default=True,
 )
 @click.option(
@@ -491,7 +492,7 @@ def knowledge_model_remove(key: str, apply: bool) -> None:
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
+    default=default_vault_root(),
     show_default=True,
     help="Knowledge vault root to check.",
 )
@@ -529,18 +530,18 @@ def profiles_command(show_paths: bool) -> None:
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
+    default=default_vault_root(),
     show_default=True,
-    help="Knowledge vault root containing wiki/ and memory/profile.md.",
+    help="Knowledge vault root containing wiki/ and memory/core.json or archive notes.",
 )
-@click.option("--no-memory", is_flag=True, help="Disable profile/session memory.")
+@click.option("--no-memory", is_flag=True, help="Disable core/archive/session memory.")
 @click.option("--no-llm", is_flag=True, help="Run tool/guardrail-only without loading LLM.")
 @click.option("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS, show_default=True)
 @click.option("--temperature", type=float, default=0.2, show_default=True)
 @click.option("--top-p", type=float, default=0.95, show_default=True)
 @click.option("--knowledge-limit", type=int, default=3, show_default=True)
-@click.option("--memory-chars", type=int, default=64_000, show_default=True)
-@click.option("--profile-chars", type=int, default=900, show_default=True)
+@click.option("--memory-context-chars", type=int, default=64_000, show_default=True)
+@click.option("--memory-item-chars", type=int, default=900, show_default=True)
 @click.option("--session-chars", type=int, default=60_000, show_default=True)
 @click.option("--session-turns", type=int, default=6, show_default=True)
 @click.option("--turn-chars", type=int, default=500, show_default=True)
@@ -571,12 +572,6 @@ def profiles_command(show_paths: bool) -> None:
 @click.option("--semantic-router-threshold", type=float, default=0.58, show_default=True)
 @click.option("--semantic-router-margin", type=float, default=0.0, show_default=True)
 @click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None)
-@click.option(
-    "--memory-mode",
-    type=click.Choice(["blob", "retrieved"]),
-    default="retrieved",
-    show_default=True,
-)
 @click.option("--memory-limit", type=int, default=3, show_default=True)
 @click.option(
     "--memory-retrieval",
@@ -603,8 +598,8 @@ def ask(
     temperature: float,
     top_p: float,
     knowledge_limit: int,
-    memory_chars: int,
-    profile_chars: int,
+    memory_context_chars: int,
+    memory_item_chars: int,
     session_chars: int,
     session_turns: int,
     turn_chars: int,
@@ -617,7 +612,6 @@ def ask(
     semantic_router_threshold: float,
     semantic_router_margin: float,
     semantic_router_examples: Path | None,
-    memory_mode: str,
     memory_limit: int,
     memory_retrieval: str,
     memory_dense_backend: str,
@@ -636,8 +630,8 @@ def ask(
         temperature=temperature,
         top_p=top_p,
         knowledge_limit=knowledge_limit,
-        memory_chars=memory_chars,
-        profile_chars=profile_chars,
+        memory_context_chars=memory_context_chars,
+        memory_item_chars=memory_item_chars,
         session_chars=session_chars,
         session_turns=session_turns,
         turn_chars=turn_chars,
@@ -650,7 +644,6 @@ def ask(
         semantic_router_threshold=semantic_router_threshold,
         semantic_router_margin=semantic_router_margin,
         semantic_router_examples=semantic_router_examples,
-        memory_mode=memory_mode,
         memory_limit=memory_limit,
         memory_retrieval_mode=memory_retrieval,
         memory_dense_backend=memory_dense_backend,
@@ -675,18 +668,18 @@ def ask(
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
+    default=default_vault_root(),
     show_default=True,
-    help="Knowledge vault root containing wiki/ and memory/profile.md.",
+    help="Knowledge vault root containing wiki/ and memory/core.json or archive notes.",
 )
-@click.option("--no-memory", is_flag=True, help="Disable profile/session memory.")
+@click.option("--no-memory", is_flag=True, help="Disable core/archive/session memory.")
 @click.option("--no-llm", is_flag=True, help="Run tool/guardrail-only without loading LLM.")
 @click.option("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS, show_default=True)
 @click.option("--temperature", type=float, default=0.2, show_default=True)
 @click.option("--top-p", type=float, default=0.95, show_default=True)
 @click.option("--knowledge-limit", type=int, default=3, show_default=True)
-@click.option("--memory-chars", type=int, default=64_000, show_default=True)
-@click.option("--profile-chars", type=int, default=900, show_default=True)
+@click.option("--memory-context-chars", type=int, default=64_000, show_default=True)
+@click.option("--memory-item-chars", type=int, default=900, show_default=True)
 @click.option("--session-chars", type=int, default=60_000, show_default=True)
 @click.option("--session-turns", type=int, default=6, show_default=True)
 @click.option("--turn-chars", type=int, default=500, show_default=True)
@@ -717,12 +710,6 @@ def ask(
 @click.option("--semantic-router-threshold", type=float, default=0.58, show_default=True)
 @click.option("--semantic-router-margin", type=float, default=0.0, show_default=True)
 @click.option("--semantic-router-examples", type=click.Path(path_type=Path), default=None)
-@click.option(
-    "--memory-mode",
-    type=click.Choice(["blob", "retrieved"]),
-    default="retrieved",
-    show_default=True,
-)
 @click.option("--memory-limit", type=int, default=3, show_default=True)
 @click.option(
     "--memory-retrieval",
@@ -752,8 +739,8 @@ def chat(
     temperature: float,
     top_p: float,
     knowledge_limit: int,
-    memory_chars: int,
-    profile_chars: int,
+    memory_context_chars: int,
+    memory_item_chars: int,
     session_chars: int,
     session_turns: int,
     turn_chars: int,
@@ -766,7 +753,6 @@ def chat(
     semantic_router_threshold: float,
     semantic_router_margin: float,
     semantic_router_examples: Path | None,
-    memory_mode: str,
     memory_limit: int,
     memory_retrieval: str,
     memory_dense_backend: str,
@@ -785,8 +771,8 @@ def chat(
         temperature=temperature,
         top_p=top_p,
         knowledge_limit=knowledge_limit,
-        memory_chars=memory_chars,
-        profile_chars=profile_chars,
+        memory_context_chars=memory_context_chars,
+        memory_item_chars=memory_item_chars,
         session_chars=session_chars,
         session_turns=session_turns,
         turn_chars=turn_chars,
@@ -799,7 +785,6 @@ def chat(
         semantic_router_threshold=semantic_router_threshold,
         semantic_router_margin=semantic_router_margin,
         semantic_router_examples=semantic_router_examples,
-        memory_mode=memory_mode,
         memory_limit=memory_limit,
         memory_retrieval_mode=memory_retrieval,
         memory_dense_backend=memory_dense_backend,
@@ -837,7 +822,7 @@ def chat(
     default=None,
     help=(
         "Knowledge vault root for the UI session. Overrides SOCA_VAULT; "
-        "unset uses ~/KnowledgeVault."
+        "unset uses the repository Knowledge vault."
     ),
 )
 @click.option(
@@ -865,7 +850,7 @@ def ui(
     """Open the SoCa terminal UI (Ink) on top of `soca engine`.
 
     Quick form: soca ui [status|chat|voice] [profile]. Without a mode the UI
-    opens on the splash screen.
+    opens on the setup surface so the vault and runtime profiles are explicit.
     """
     selected_vault = resolve_ui_vault(vault)
     if session_persistence != "ram_only" or session_id != "default" or resume_session:
@@ -901,8 +886,8 @@ def build_text_runtime_config(
     temperature: float,
     top_p: float,
     knowledge_limit: int,
-    memory_chars: int,
-    profile_chars: int,
+    memory_context_chars: int,
+    memory_item_chars: int,
     session_chars: int,
     session_turns: int,
     turn_chars: int,
@@ -915,7 +900,6 @@ def build_text_runtime_config(
     semantic_router_threshold: float = 0.58,
     semantic_router_margin: float = 0.0,
     semantic_router_examples: Path | None = None,
-    memory_mode: str = "retrieved",
     memory_limit: int = 3,
     memory_retrieval_mode: str = "chunk_sparse",
     memory_dense_backend: str = "aiteamvn_v2",
@@ -931,8 +915,8 @@ def build_text_runtime_config(
             temperature=temperature,
             top_p=top_p,
             knowledge_limit=knowledge_limit,
-            memory_chars=memory_chars,
-            profile_chars=profile_chars,
+            memory_context_chars=memory_context_chars,
+            memory_item_chars=memory_item_chars,
             session_chars=session_chars,
             session_turns=session_turns,
             turn_chars=turn_chars,
@@ -945,7 +929,6 @@ def build_text_runtime_config(
             semantic_router_threshold=semantic_router_threshold,
             semantic_router_margin=semantic_router_margin,
             semantic_router_examples=semantic_router_examples,
-            memory_mode=memory_mode,
             memory_limit=memory_limit,
             memory_retrieval_mode=memory_retrieval_mode,
             memory_dense_backend=memory_dense_backend,
@@ -982,7 +965,7 @@ def _launch_ink_ui(
         reason = "Node.js chưa cài" if node is None else "ui/dist chưa build"
         raise click.ClickException(
             f"Ink UI chưa sẵn sàng ({reason}). Build bằng: cd ui && npm install && "
-            "npm run build — hoặc dùng bản cũ: soca ui --legacy"
+            "npm run build"
         )
     args = [node, str(bundle)]
     if mode:
@@ -1013,11 +996,11 @@ def _launch_ink_ui(
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
+    default=default_vault_root(),
     show_default=True,
-    help="Knowledge vault root containing wiki/ and memory/profile.md.",
+    help="Knowledge vault root containing wiki/ and memory/core.json or archive notes.",
 )
-@click.option("--no-memory", is_flag=True, help="Disable profile/session memory.")
+@click.option("--no-memory", is_flag=True, help="Disable core/archive/session memory.")
 @click.option(
     "--no-model",
     is_flag=True,
@@ -1077,8 +1060,8 @@ def engine(
         temperature=0.2,
         top_p=0.95,
         knowledge_limit=3,
-        memory_chars=64_000,
-        profile_chars=900,
+        memory_context_chars=64_000,
+        memory_item_chars=900,
         session_chars=60_000,
         session_turns=6,
         turn_chars=500,
@@ -1135,13 +1118,13 @@ def engine(
 @click.option(
     "--vault",
     type=click.Path(path_type=Path),
-    default=Path.home() / "KnowledgeVault",
+    default=default_vault_root(),
     show_default=True,
-    help="Knowledge vault root containing wiki/ and memory/profile.md.",
+    help="Knowledge vault root containing wiki/ and memory/core.json or archive notes.",
 )
-@click.option("--no-memory", is_flag=True, help="Disable profile/session memory.")
-@click.option("--memory-chars", type=int, default=64_000, hidden=True)
-@click.option("--profile-chars", type=int, default=900, hidden=True)
+@click.option("--no-memory", is_flag=True, help="Disable core/archive/session memory.")
+@click.option("--memory-context-chars", type=int, default=64_000, hidden=True)
+@click.option("--memory-item-chars", type=int, default=900, hidden=True)
 @click.option("--session-chars", type=int, default=60_000, hidden=True)
 @click.option("--session-turns", type=int, default=6, hidden=True)
 @click.option("--turn-chars", type=int, default=500, hidden=True)
@@ -1170,9 +1153,6 @@ def engine(
 @click.option("--semantic-router-margin", type=float, default=0.0, hidden=True)
 @click.option(
     "--semantic-router-examples", type=click.Path(path_type=Path), default=None, hidden=True
-)
-@click.option(
-    "--memory-mode", type=click.Choice(["blob", "retrieved"]), default="retrieved", hidden=True
 )
 @click.option("--memory-limit", type=int, default=3, hidden=True)
 @click.option(
@@ -1235,8 +1215,8 @@ def voice(
     max_record_ms: int | None,
     vault: Path,
     no_memory: bool,
-    memory_chars: int,
-    profile_chars: int,
+    memory_context_chars: int,
+    memory_item_chars: int,
     session_chars: int,
     session_turns: int,
     turn_chars: int,
@@ -1249,7 +1229,6 @@ def voice(
     semantic_router_threshold: float,
     semantic_router_margin: float,
     semantic_router_examples: Path | None,
-    memory_mode: str,
     memory_limit: int,
     memory_retrieval: str,
     memory_dense_backend: str,
@@ -1282,8 +1261,8 @@ def voice(
             top_p=top_p,
             vault=vault,
             no_memory=no_memory,
-            memory_chars=memory_chars,
-            profile_chars=profile_chars,
+            memory_context_chars=memory_context_chars,
+            memory_item_chars=memory_item_chars,
             session_chars=session_chars,
             session_turns=session_turns,
             turn_chars=turn_chars,
@@ -1296,7 +1275,6 @@ def voice(
             semantic_router_threshold=semantic_router_threshold,
             semantic_router_margin=semantic_router_margin,
             semantic_router_examples=semantic_router_examples,
-            memory_mode=memory_mode,
             memory_limit=memory_limit,
             memory_retrieval_mode=memory_retrieval,
             memory_dense_backend=memory_dense_backend,

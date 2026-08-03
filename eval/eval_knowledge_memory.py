@@ -117,7 +117,7 @@ class EvalKnowledgeSource:
 
 
 class FakeLongTermMemory:
-    def read_profile(self) -> str:
+    def read_core(self) -> str:
         return (
             "- Người dùng thích giải thích chi tiết bằng tiếng Việt.\n"
             "- Người dùng thích các bước rõ ràng và có ví dụ ngắn."
@@ -241,7 +241,8 @@ def evaluate_memory_context(case: KnowledgeMemoryCase) -> KnowledgeMemorySample:
     session = SessionMemory()
     session.append("user", "Hôm nay tôi muốn ăn gì cho đủ năng lượng?")
     session.append("assistant", "Bạn có thể bắt đầu với bữa sáng có protein và trái cây.")
-    context = MemoryContextBuilder(long_term=FakeLongTermMemory(), session=session).build()
+    source = FakeLongTermMemory()
+    context = MemoryContextBuilder(core=source, long_term=source, session=session).build()
     checks = {
         "prompt_contains": all(text in context.prompt_text for text in case.expected_prompt_contains),
         "prompt_forbidden": all(
@@ -256,7 +257,7 @@ def evaluate_memory_context(case: KnowledgeMemoryCase) -> KnowledgeMemorySample:
         checks=checks,
         details={
             "prompt_chars": len(context.prompt_text),
-            "profile_chars": len(context.profile_text),
+            "memory_chars": len(context.memory_text),
             "session_chars": len(context.session_text),
         },
         latency_ms=(time.perf_counter() - started) * 1000,

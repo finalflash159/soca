@@ -1,20 +1,20 @@
-{"id":"pref-language-001","slice":"preference","query":"Tôi thích được giải thích bằng ngôn ngữ nào?","expected_paths":["memory/profile.md"],"expected_contains":["tiếng Việt"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-language-002","slice":"preference","query":"What language should explanations use?","expected_paths":["memory/profile.md"],"expected_contains":["tiếng Việt"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-style-001","slice":"preference","query":"Tôi muốn câu trả lời có đặc điểm gì?","expected_paths":["memory/profile.md"],"expected_contains":["ngắn gọn"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-style-002","slice":"preference","query":"Preferred answer style","expected_paths":["memory/profile.md"],"expected_contains":["ngắn gọn"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-003","slice":"preference","query":"Tôi thích ví dụ code bằng ngôn ngữ nào?","expected_paths":["memory/profile.md"],"expected_contains":["Python"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-004","slice":"preference","query":"Do I prefer concise explanations?","expected_paths":["memory/profile.md"],"expected_contains":["ngắn gọn"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-005","slice":"preference","query":"Tôi muốn có citation không?","expected_paths":["memory/profile.md"],"expected_contains":["citation"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-006","slice":"preference","query":"What tone should SoCa use?","expected_paths":["memory/profile.md"],"expected_contains":["thân thiện"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-007","slice":"preference","query":"Tôi thích output dạng markdown nào?","expected_paths":["memory/profile.md"],"expected_contains":["Markdown"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-008","slice":"preference","query":"How should code comments be written?","expected_paths":["memory/profile.md"],"expected_contains":["English"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-009","slice":"preference","query":"Tôi thích test chạy bằng lệnh nào?","expected_paths":["memory/profile.md"],"expected_contains":["pytest"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-010","slice":"preference","query":"Tôi có muốn dữ liệu giả không?","expected_paths":["memory/profile.md"],"expected_contains":["real"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-011","slice":"preference","query":"Do not use which knowledge manager?","expected_paths":["memory/profile.md"],"expected_contains":["ByteRover"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-012","slice":"preference","query":"Tôi muốn commit message thế nào?","expected_paths":["memory/profile.md"],"expected_contains":["unscoped"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-013","slice":"preference","query":"Which branch naming convention is preferred?","expected_paths":["memory/profile.md"],"expected_contains":["branch"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-014","slice":"preference","query":"Tôi có muốn review trước commit không?","expected_paths":["memory/profile.md"],"expected_contains":["review"],"forbidden_contains":["distractor-canary"]}
-{"id":"pref-015","slice":"preference","query":"Preferred language for code and comments","expected_paths":["memory/profile.md"],"expected_contains":["English"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-language-001","slice":"preference","query":"Tôi thích được giải thích bằng ngôn ngữ nào?","expected_paths":["memory/core.json"],"expected_contains":["tiếng Việt"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-language-002","slice":"preference","query":"What language should explanations use?","expected_paths":["memory/core.json"],"expected_contains":["tiếng Việt"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-style-001","slice":"preference","query":"Tôi muốn câu trả lời có đặc điểm gì?","expected_paths":["memory/core.json"],"expected_contains":["ngắn gọn"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-style-002","slice":"preference","query":"Preferred answer style","expected_paths":["memory/core.json"],"expected_contains":["ngắn gọn"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-003","slice":"preference","query":"Tôi thích ví dụ code bằng ngôn ngữ nào?","expected_paths":["memory/core.json"],"expected_contains":["Python"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-004","slice":"preference","query":"Do I prefer concise explanations?","expected_paths":["memory/core.json"],"expected_contains":["ngắn gọn"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-005","slice":"preference","query":"Tôi muốn có citation không?","expected_paths":["memory/core.json"],"expected_contains":["citation"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-006","slice":"preference","query":"What tone should SoCa use?","expected_paths":["memory/core.json"],"expected_contains":["thân thiện"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-007","slice":"preference","query":"Tôi thích output dạng markdown nào?","expected_paths":["memory/core.json"],"expected_contains":["Markdown"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-008","slice":"preference","query":"How should code comments be written?","expected_paths":["memory/core.json"],"expected_contains":["English"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-009","slice":"preference","query":"Tôi thích test chạy bằng lệnh nào?","expected_paths":["memory/core.json"],"expected_contains":["pytest"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-010","slice":"preference","query":"Tôi có muốn dữ liệu giả không?","expected_paths":["memory/core.json"],"expected_contains":["real"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-011","slice":"preference","query":"Do not use which knowledge manager?","expected_paths":["memory/core.json"],"expected_contains":["ByteRover"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-012","slice":"preference","query":"Tôi muốn commit message thế nào?","expected_paths":["memory/core.json"],"expected_contains":["unscoped"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-013","slice":"preference","query":"Which branch naming convention is preferred?","expected_paths":["memory/core.json"],"expected_contains":["branch"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-014","slice":"preference","query":"Tôi có muốn review trước commit không?","expected_paths":["memory/core.json"],"expected_contains":["review"],"forbidden_contains":["distractor-canary"]}
+{"id":"pref-015","slice":"preference","query":"Preferred language for code and comments","expected_paths":["memory/core.json"],"expected_contains":["English"],"forbidden_contains":["distractor-canary"]}
 {"id":"project-001","slice":"project","query":"Dự án dùng engine nào?","expected_paths":["memory/project.md"],"expected_contains":["SoCa"],"forbidden_contains":["distractor-canary"]}
 {"id":"project-002","slice":"project","query":"Tôi đang xây phần memory nào?","expected_paths":["memory/project.md"],"expected_contains":["memory"],"forbidden_contains":["distractor-canary"]}
 {"id":"project-003","slice":"project","query":"What is the current project milestone?","expected_paths":["memory/project.md"],"expected_contains":["P2"],"forbidden_contains":["distractor-canary"]}

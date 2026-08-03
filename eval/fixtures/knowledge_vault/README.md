@@ -6,14 +6,27 @@ nhìn người viết, journal theo ngày, decision có lý do, finance có actu
 và health có safety boundary. Nó không đại diện cho dữ liệu cá nhân thật và không
 được dùng làm benchmark chất lượng retrieval/release.
 
-Corpus có bốn lát chính:
+Corpus có các lát chính:
 
 - `wiki/learning/`: ghi chú DSA, systems, ML, DL, LLM, serving và fundamentals.
 - `wiki/life/decisions/`: các quyết định cá nhân có lý do và thời điểm.
 - `wiki/life/journal/`: nhật ký và weekly review mẫu.
 - `wiki/life/finance/`: kế hoạch chi tiêu mẫu.
 - `wiki/life/health/`: thông tin sức khỏe phổ thông có ranh giới an toàn.
+- `wiki/xquad_vi/`: 48 bài đọc tiếng Việt từ XQuAD, có provenance và digest
+  trong `SOURCE_MANIFEST.json`; đây là public reference slice để demo truy vấn
+  đa chủ đề, không phải dữ liệu cá nhân.
 
 Các note có metadata, liên kết chéo, lịch sử/ngữ cảnh, ví dụ, câu hỏi follow-up,
 planned-vs-actual distinction, tài liệu nguồn và hard negative tự nhiên để việc
 demo không chỉ là tìm đúng một keyword.
+
+Public slice được đồng bộ bằng:
+
+```text
+uv run python scripts/seed_showcase_public_slice.py
+```
+
+Khi muốn chạy demo trong vault runtime, copy nội dung fixture này vào vault đã
+được UI khởi tạo. Index và vector không nằm trong fixture; chúng được tạo tại
+`Knowledge/.soca/knowledge_index/` sau thao tác `Index vault`.

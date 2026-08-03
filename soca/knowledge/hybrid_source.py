@@ -8,9 +8,8 @@ from typing import Literal
 
 from soca.knowledge.base import KnowledgeDocument, KnowledgeHit
 from soca.knowledge.catalog import CatalogIndexSnapshot
-from soca.knowledge.index.dense_persistence import DenseIndexStore
 from soca.knowledge.index.models import VaultIndex
-from soca.knowledge.index.vault_index import VaultIndexer, VaultIndexStore
+from soca.knowledge.index.vault_index import VaultIndexStore
 from soca.knowledge.indexing.coordinator import IndexCoordinator
 from soca.knowledge.indexing.identity import CorpusSpec
 from soca.knowledge.indexing.status import DenseState, IndexStatus
@@ -24,7 +23,7 @@ from soca.knowledge.markdown_vault import (
 )
 from soca.knowledge.retriever import RankedHit
 from soca.knowledge.retrievers.bm25 import Bm25ChunkRetriever
-from soca.knowledge.retrievers.dense import DenseIndex, DenseRetriever, EmbeddingModel
+from soca.knowledge.retrievers.dense import DenseRetriever, EmbeddingModel
 from soca.knowledge.retrievers.linear import linear_score_fusion
 from soca.knowledge.retrievers.rrf import reciprocal_rank_fusion
 from soca.knowledge.retrievers.sparse_chunk import SparseChunkRetriever
@@ -138,7 +137,6 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
         include_globs: tuple[str, ...] = DEFAULT_INCLUDE_GLOBS,
         max_file_bytes: int = 256 * 1024,
         scoring: SearchScoringConfig | None = None,
-        lifecycle: Literal["legacy", "v2"] = "legacy",
         corpus_kind: Literal["knowledge", "memory"] = "knowledge",
     ) -> None:
         super().__init__(
@@ -150,74 +148,27 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
             scoring=scoring,
         )
         vault_store = VaultIndexStore(index_home=index_home)
-        self._vault_indexer = VaultIndexer(self, vault_store)
-        self._dense_store = DenseIndexStore(vault_store.manifest_path_for(self.root).parent)
         self._model = model
         self._config = config or HybridConfig()
-        self._vault_index: VaultIndex | None = None
-        self._dense_index: DenseIndex | None = None
-        self._last_dense_failure_reason = ""
         self._sparse_index: VaultIndex | None = None
         self._sparse: (
             SparseChunkRetriever | SparseDocumentRetriever | Bm25ChunkRetriever | None
         ) = None
         self._index_lock = RLock()
         self._watcher: IndexWatcher | None = None
-        if lifecycle not in {"legacy", "v2"}:
-            raise ValueError("unknown index lifecycle")
-        self._lifecycle = lifecycle
-        self._coordinator = (
-            IndexCoordinator(
-                self,
-                spec=CorpusSpec(
-                    vault_path=self.root,
-                    kind=corpus_kind,
-                    include_globs=include_globs,
-                    exclude_dirs=exclude_dirs,
-                    exclude_files=exclude_files,
-                    max_file_bytes=max_file_bytes,
-                ),
-                index_home=vault_store.index_home,
-                model=model,
-            )
-            if lifecycle == "v2"
-            else None
+        self._coordinator = IndexCoordinator(
+            self,
+            spec=CorpusSpec(
+                vault_path=self.root,
+                kind=corpus_kind,
+                include_globs=include_globs,
+                exclude_dirs=exclude_dirs,
+                exclude_files=exclude_files,
+                max_file_bytes=max_file_bytes,
+            ),
+            index_home=vault_store.index_home,
+            model=model,
         )
-
-    def _refresh_indexes(
-        self,
-    ) -> tuple[
-        VaultIndex,
-        DenseIndex | None,
-        SparseChunkRetriever | SparseDocumentRetriever | Bm25ChunkRetriever | None,
-    ]:
-        with self._index_lock:
-            self._last_dense_failure_reason = ""
-            vault_index = self._vault_indexer.refresh(previous=self._vault_index)
-            dense_index = self._dense_index
-            self._ensure_dense_model_available()
-            if self._config.dense_enabled and self._model is not None and vault_index.chunks:
-                try:
-                    dense_index = self._dense_store.refresh(
-                        vault_index.chunks,
-                        source_digest=vault_index.content_digest,
-                        model=self._model,
-                        previous=self._dense_index,
-                    )
-                except (OSError, RuntimeError, ValueError) as exc:
-                    raise DenseUnavailableError("dense index refresh failed") from exc
-            else:
-                dense_index = None
-
-            sparse = None
-            if self._config.sparse_enabled:
-                if self._sparse_index is not vault_index:
-                    self._sparse = self._new_sparse_retriever(vault_index)
-                    self._sparse_index = vault_index
-                sparse = self._sparse
-            self._vault_index = vault_index
-            self._dense_index = dense_index
-            return vault_index, dense_index, sparse
 
     @property
     def retrieval_mode(self) -> str:
@@ -232,62 +183,10 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
             raise ValueError("limit must be positive")
         if not query.strip():
             return RetrievalBatch((), None)
+        if self._config.dense_enabled and self._model is None:
+            raise DenseUnavailableError("hybrid retrieval has no model")
 
-        if self._lifecycle == "v2":
-            return self._retrieve_v2(query, limit=limit)
-
-        vault_index, dense_index, sparse = self._refresh_indexes()
-        sparse_hits: list[RankedHit] = []
-        dense_hits: list[RankedHit] = []
-        sparse_scores: dict[str, float] = {}
-        sparse_document_hits: dict[str, KnowledgeHit] = {}
-        sparse_state = "ready" if sparse is not None else "absent"
-        dense_state = self._legacy_dense_state(dense_index, vault_index)
-        unavailable_reason = self._last_dense_failure_reason
-        if unavailable_reason:
-            dense_state = "unavailable"
-        retriever_limit = max(limit, self._config.per_retriever_limit)
-        if sparse is not None:
-            if isinstance(sparse, SparseDocumentRetriever):
-                document_hits = sparse.search(query, limit=retriever_limit)
-                sparse_document_hits = {
-                    hit.document.path: hit for hit in document_hits
-                }
-                sparse_hits = [
-                    RankedHit(hit.document.path, rank, hit.score)
-                    for rank, hit in enumerate(document_hits, start=1)
-                ]
-            else:
-                sparse_hits = sparse.rank(query, limit=retriever_limit)
-            sparse_scores = {hit.chunk_id: hit.score for hit in sparse_hits}
-
-        max_dense_score: float | None = None
-        if self._config.dense_enabled and dense_index is not None and self._model is not None:
-            try:
-                dense_ranking = DenseRetriever(
-                    dense_index,
-                    self._model,
-                ).rank_with_score(query, limit=retriever_limit)
-            except (OSError, RuntimeError, ValueError) as exc:
-                raise DenseUnavailableError("dense query failed") from exc
-            else:
-                dense_hits = list(dense_ranking.hits)
-                max_dense_score = dense_ranking.max_score
-
-        dense_score_map = self._document_dense_scores(vault_index, dense_hits)
-        return self._build_batch(
-            vault_index,
-            self._fuse(vault_index, sparse_hits, dense_hits)[:limit],
-            max_dense_score,
-            sparse_scores=sparse_scores,
-            dense_scores=dense_score_map,
-            sparse_hits=sparse_hits,
-            sparse_document_hits=sparse_document_hits,
-            dense_hits=dense_hits,
-            sparse_state=sparse_state,
-            dense_state=dense_state,
-            unavailable_reason=unavailable_reason,
-        )
+        return self._retrieve_v2(query, limit=limit)
 
     def _retrieve_v2(self, query: str, *, limit: int) -> RetrievalBatch:
         assert self._coordinator is not None
@@ -364,16 +263,15 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
 
     @property
     def index_status(self) -> IndexStatus | None:
-        return self._coordinator.status() if self._coordinator is not None else None
+        return self._coordinator.status()
 
     def build_index(self, *, dense: bool = True) -> object:
-        if self._coordinator is None:
-            raise RuntimeError("index lifecycle v2 is required for explicit builds")
-        return self._coordinator.build_blocking(dense=dense)
+        try:
+            return self._coordinator.build_blocking(dense=dense)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise DenseUnavailableError("dense index refresh failed") from exc
 
     def activate_watcher(self, *, interval_seconds: float = 2.0) -> None:
-        if self._coordinator is None:
-            raise RuntimeError("index lifecycle v2 is required for watcher")
         if self._model is None:
             raise DenseUnavailableError("hybrid retrieval has no model")
         if self._watcher is not None:
@@ -512,32 +410,16 @@ class HybridKnowledgeSource(MarkdownVaultKnowledgeSource):
             ),
         )
 
-    def _legacy_dense_state(
-        self,
-        dense_index: DenseIndex | None,
-        vault_index: VaultIndex,
-    ) -> str:
-        if not self._config.dense_enabled:
-            return "absent"
-        if self._model is None:
-            return "missing"
-        if not vault_index.chunks:
-            return "absent"
-        return "ready" if dense_index is not None else "unavailable"
-
     def search(self, query: str, limit: int = 5) -> list[KnowledgeHit]:
         return list(self.retrieve(query, limit=limit).hits)
 
     def catalog_index_snapshot(self) -> CatalogIndexSnapshot:
-        if self._lifecycle == "v2":
-            assert self._coordinator is not None
+        with self._index_lock:
             snapshot = self._coordinator.snapshot()
             return CatalogIndexSnapshot(
                 revision=snapshot.revision,
                 index=snapshot.sparse_index,
             )
-        vault_index, _, _ = self._refresh_indexes()
-        return CatalogIndexSnapshot(revision=0, index=vault_index)
 
     def _new_sparse_retriever(
         self,

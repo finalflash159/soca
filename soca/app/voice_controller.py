@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import logging
 import random
 import threading
 import time
@@ -64,8 +63,6 @@ class VoiceRuntimeBuilder(Protocol):
 
 VoiceRecorder = Callable[..., np.ndarray]
 VoiceEventQueue = Queue[VoiceMonitorEvent | None]
-
-LOGGER = logging.getLogger(__name__)
 
 # How often SoCa playfully calls out while nobody is speaking (ms of silence
 # between greetings). Spaced so it feels like a gentle "alo?", not a nag.
@@ -184,7 +181,16 @@ class VoiceMonitorController:
                 )
             )
         finally:
-            self.stop()
+            try:
+                self.stop()
+            except Exception as exc:  # noqa: BLE001 - expose cleanup through the queue
+                queue.put(
+                    VoiceMonitorEvent(
+                        "error",
+                        str(exc),
+                        metadata={"phase": "cleanup", "traceback": traceback.format_exc()},
+                    )
+                )
             queue.put(None)
 
     def stop(self) -> None:
@@ -193,15 +199,22 @@ class VoiceMonitorController:
             cancel = getattr(bundle.llm, "cancel", None)
             if callable(cancel):
                 cancel()
-        self.player.stop()
+        failures: list[tuple[str, Exception]] = []
+        try:
+            self.player.stop()
+        except Exception as exc:  # noqa: BLE001 - continue closing runtime components
+            failures.append(("audio", exc))
         if bundle is not None:
             try:
                 bundle.close()
-            except Exception:  # noqa: BLE001 - shutdown must complete
-                LOGGER.exception("Voice runtime cleanup failed during controller stop")
-            finally:
+            except Exception as exc:  # noqa: BLE001 - continue deterministic teardown
+                failures.append(("runtime", exc))
+            else:
                 if self.bundle is bundle:
                     self.bundle = None
+        if failures:
+            details = "; ".join(f"{name}: {error}" for name, error in failures)
+            raise RuntimeError(f"Voice controller cleanup failed: {details}") from failures[0][1]
 
     def _ensure_bundle(self, queue: VoiceEventQueue) -> VoiceRuntimeBundle:
         if self.bundle is not None:
@@ -263,12 +276,17 @@ class VoiceMonitorController:
                 )
             failures = [result for result in warmup_results if not result.ok]
             if failures:
+                cleanup_error: Exception | None = None
                 try:
                     self.bundle.close()
-                except Exception:  # noqa: BLE001 - preserve warmup failure
-                    LOGGER.exception("Voice runtime cleanup failed after warmup error")
+                except Exception as exc:  # noqa: BLE001 - preserve warmup and cleanup failure
+                    cleanup_error = exc
                 finally:
                     self.bundle = None
+                if cleanup_error is not None:
+                    raise RuntimeError(
+                        f"Voice warmup failed and cleanup failed: {cleanup_error}"
+                    ) from cleanup_error
                 raise VoiceRuntimeWarmupError(tuple(failures))
             self._warmed_up = True
 
@@ -434,7 +452,7 @@ class VoiceMonitorController:
 
         speech_timestamps = getattr(bundle.detector, "speech_timestamps", None)
         if speech_timestamps is None:
-            # Unit tests often use a plain object detector. Keep legacy behavior
+            # Unit tests often use a plain object detector. Keep test-double behavior
             # there: non-empty fake audio is treated as speech.
             return True
 

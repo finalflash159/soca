@@ -6,7 +6,7 @@ from soca.memory import (
     MemoryAccessPlan,
     MemoryContext,
     MemoryContextBuilder,
-    MemoryProfileResult,
+    MemoryRetrievalResult,
     PromptContextAssembler,
     SessionMemory,
 )
@@ -16,12 +16,12 @@ class _MemorySource:
     def __init__(self) -> None:
         self.retrieve_calls = 0
 
-    def read_profile(self) -> str:
+    def read_core(self) -> str:
         return "người dùng thích câu trả lời rõ ràng"
 
-    def retrieve_profile(self, query: str) -> MemoryProfileResult:
+    def retrieve_archive(self, query: str) -> MemoryRetrievalResult:
         self.retrieve_calls += 1
-        return MemoryProfileResult(
+        return MemoryRetrievalResult(
             text=f"archive evidence for: {query}",
             mode="retrieved",
             evidence_status="supported",
@@ -34,7 +34,7 @@ def test_normal_context_does_not_search_archive_and_archive_is_explicit() -> Non
     session = SessionMemory(summary_enabled=False)
     session.append("user", "xin chào")
     session.append("assistant", "chào bạn")
-    builder = MemoryContextBuilder(long_term=source, session=session)
+    builder = MemoryContextBuilder(core=source, long_term=source, session=session)
 
     core = builder.build("TTS", include_archive=False)
 
@@ -79,10 +79,10 @@ def test_assembler_rejects_archive_without_explicit_plan() -> None:
         raise AssertionError("archive must require an explicit access plan")
 
 
-def test_core_store_is_separate_from_archive_profile(tmp_path) -> None:
+def test_core_store_is_separate_from_archive_notes(tmp_path) -> None:
     memory_dir = tmp_path / "memory"
     memory_dir.mkdir()
-    (memory_dir / "profile.md").write_text("old archive profile", encoding="utf-8")
+    (memory_dir / "archive-note.md").write_text("old archive note", encoding="utf-8")
     (memory_dir / "core.json").write_text(
         '{"schema_version":1,"items":[{"id":"language","value":"Tiếng Việt",'
         '"approved_at":"2026-01-01T00:00:00Z","sensitivity":"normal",'
@@ -91,7 +91,7 @@ def test_core_store_is_separate_from_archive_profile(tmp_path) -> None:
     )
 
     core = CoreMemoryStore(tmp_path)
-    assert core.read_profile() == "- [language] Tiếng Việt"
+    assert core.read_core() == "- [language] Tiếng Việt"
 
 
 def test_invalid_core_degrades_without_blocking_working_memory(tmp_path) -> None:
@@ -116,7 +116,7 @@ def test_assembler_reserves_space_for_selected_archive_evidence() -> None:
     citation = KnowledgeCitation("memory/a.md", "A", 1, 1, "memory")
     core = MemoryContextBuilder(session=SessionMemory()).build()
     archive = MemoryContext(
-        profile_text="",
+        memory_text="",
         session_text="",
         prompt_text="[M1] memory/a.md\nMemory: TTS choice",
         hits=(hit,),
@@ -127,7 +127,7 @@ def test_assembler_reserves_space_for_selected_archive_evidence() -> None:
         archive_text="[M1] memory/a.md\nMemory: TTS choice",
     )
     core = MemoryContext(
-        profile_text="",
+        memory_text="",
         session_text="Recent conversation:\n" + "x" * 180,
         prompt_text="Recent conversation:\n" + "x" * 180,
         core_text="",

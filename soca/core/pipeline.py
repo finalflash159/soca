@@ -28,8 +28,8 @@ from soca.core.repair import (
     RepairAction,
     RepairCatalog,
     RepairChoice,
-    RepairKind,
     RepairState,
+    default_repair_catalog,
     plan_repair,
 )
 from soca.core.streaming import StreamingEvent, audio_duration_ms
@@ -49,8 +49,8 @@ class PipelineResult:
     asr_result: Any | None = None
     llm_result: Any | None = None
     runtime_result: Any | None = None
-    # User-facing follow-up for a rejected turn. Kept
-    # alongside the legacy rejected/rejection_reason fields for back-compat.
+    # User-facing follow-up metadata for a rejected turn. The boolean and
+    # reason fields remain part of the public pipeline result contract.
     repair_kind: str = ""
     repair_action: str = ""
     repair_attempt: int = 0
@@ -65,7 +65,6 @@ class VoicePipeline:
         tts: Any,
         assistant_runtime: Any | None = None,
         metrics: MetricsLogger | None = None,
-        reject_response: str = "[laughter] Moshi moshi? Có ai đó hăm?",
         repair_catalog: RepairCatalog | None = None,
         first_clause_enabled: bool = True,
         first_clause_min_chars: int = 12,
@@ -78,10 +77,10 @@ class VoicePipeline:
         self.tts = tts
         self.assistant_runtime = assistant_runtime
         self.metrics = metrics or MetricsLogger()
-        # Deterministic single-string fallback (used when no catalog is wired,
-        # e.g. unit tests). Production injects ``repair_catalog`` for variety.
-        self.reject_response = reject_response
-        self.repair_catalog = repair_catalog
+        # The canonical catalog is a required runtime resource. A missing or
+        # malformed catalog must fail startup, never turn into a hardcoded
+        # spoken fallback.
+        self.repair_catalog = repair_catalog or default_repair_catalog()
         if first_clause_min_chars < 1:
             raise ValueError("first_clause_min_chars must be positive")
         if first_clause_min_words < 1:
@@ -100,13 +99,6 @@ class VoicePipeline:
 
     def _plan_repair(self, rejection_reason: str) -> RepairChoice:
         """Plan one repair line for an empty/rejected ASR turn."""
-        if self.repair_catalog is None:
-            return RepairChoice(
-                text=self.reject_response,
-                prompt_id="legacy.reject_response",
-                kind=RepairKind.NO_INPUT,
-                action=RepairAction.REPROMPT,
-            )
         return plan_repair(
             self.repair_catalog,
             rejection_reason=rejection_reason,
@@ -272,27 +264,18 @@ class VoicePipeline:
                 "constructing VoicePipeline for streaming."
             )
 
-        if hasattr(self.assistant_runtime, "stream_text_turn"):
-            yield from self._turn_streaming_runtime_stream(
-                transcript,
-                rejection_reason,
-                asr_alternatives=asr_alternatives,
-                turn_start_time=t0,
-                sink=sink,
-                min_sentence_chars=min_sentence_chars,
-                first_sentence_min_chars=first_sentence_min_chars,
-                interrupt_event=interrupt_event,
-            )
-        else:
-            yield from self._turn_streaming_runtime_blocking(
-                transcript,
-                rejection_reason,
-                asr_alternatives=asr_alternatives,
-                turn_start_time=t0,
-                sink=sink,
-                min_sentence_chars=min_sentence_chars,
-                interrupt_event=interrupt_event,
-            )
+        if not callable(getattr(self.assistant_runtime, "stream_text_turn", None)):
+            raise TypeError("assistant_runtime must implement stream_text_turn")
+        yield from self._turn_streaming_runtime_stream(
+            transcript,
+            rejection_reason,
+            asr_alternatives=asr_alternatives,
+            turn_start_time=t0,
+            sink=sink,
+            min_sentence_chars=min_sentence_chars,
+            first_sentence_min_chars=first_sentence_min_chars,
+            interrupt_event=interrupt_event,
+        )
 
     def _runtime_summary_event(self, runtime_result: Any) -> StreamingEvent:
         """Build the ``runtime`` summary event from a completed RuntimeResult."""
@@ -322,7 +305,7 @@ class VoicePipeline:
                     getattr(trace, "stage_latencies_ms", {}).get("tool_router", 0.0)
                 ),
                 "memory_hit_count": len(getattr(trace, "memory_hits", ()) or ()),
-                "memory_mode": getattr(trace, "memory_mode", "blob"),
+                "memory_mode": getattr(trace, "memory_mode", "none"),
                 "memory_degraded_reason": getattr(trace, "memory_degraded_reason", ""),
                 "evidence_status": getattr(trace, "evidence_status", "not_requested"),
                 "evidence_completion_status": getattr(
@@ -359,66 +342,6 @@ class VoicePipeline:
                 "prompt_manifest": getattr(trace, "prompt_manifest", None),
                 "provider_trace": dict(getattr(trace, "provider_trace", {}) or {}),
                 "llm_error": dict(getattr(trace, "llm_error", {}) or {}),
-            },
-        )
-
-    def _turn_streaming_runtime_blocking(
-        self,
-        transcript: str,
-        rejection_reason: str,
-        *,
-        asr_alternatives: tuple[str, ...] = (),
-        turn_start_time: float,
-        sink: AudioSink,
-        min_sentence_chars: int,
-        interrupt_event: threading.Event | None = None,
-    ) -> Iterator[StreamingEvent]:
-        """Legacy path for runtimes without a streaming API.
-
-        The whole response is generated before TTS starts; TTS synthesis and
-        playback are still pipelined across sentences.
-        """
-        with self.metrics.stage("runtime"):
-            runtime = self.assistant_runtime
-            if runtime is None:
-                raise RuntimeError("assistant runtime is not configured")
-            runtime_result = runtime.run_text_turn(
-                transcript,
-                source="asr",
-                metadata=_runtime_input_metadata(rejection_reason, asr_alternatives),
-            )
-
-        response_text = getattr(runtime_result, "response_text", "").strip()
-        yield self._runtime_summary_event(runtime_result)
-
-        chunks = chunk_text_for_tts(response_text, min_chars=min_sentence_chars)
-        for sentence in chunks:
-            yield StreamingEvent(
-                type="sentence",
-                text=sentence,
-                metadata={"delivery": "final", "terminal": True},
-            )
-
-        yield from self._stream_tts_playback(
-            chunks,
-            sink=sink,
-            turn_start_time=turn_start_time,
-            interrupt_event=interrupt_event,
-        )
-
-        yield StreamingEvent(
-            type="done",
-            text=response_text,
-            latency_ms=(time.perf_counter() - turn_start_time) * 1000,
-            metadata={
-                "rejected": False,
-                "terminal_status": _runtime_terminal_status(
-                    runtime_result,
-                    interrupted=False,
-                ),
-                "runtime_blocked": bool(getattr(runtime_result, "blocked", False)),
-                "runtime_route": getattr(getattr(runtime_result, "route", None), "value", ""),
-                "stage_latencies_ms": self.metrics.snapshot(),
             },
         )
 
@@ -728,7 +651,7 @@ class _TTSPlaybackPump:
             metadata=metadata,
         )
 
-    def _play_legacy(self, first: _PlaybackChunk) -> None:
+    def _play_direct_sink(self, first: _PlaybackChunk) -> None:
         item: _PlaybackChunk | object = first
         while item is not self._DONE:
             assert isinstance(item, _PlaybackChunk)
@@ -753,7 +676,7 @@ class _TTSPlaybackPump:
                     {
                         "playback_latency_ms": playback.latency_ms,
                         "crossfade_ms": 0.0,
-                        "crossfade_fallback": "legacy_sink",
+                        "crossfade_fallback": "direct_sink",
                     }
                 )
                 self._event_queue.put(self._audio_event(item, playback, metadata))
@@ -920,7 +843,7 @@ class _TTSPlaybackPump:
             if callable(begin_playback) and self._crossfade_ms > 0.0:
                 self._play_session(first, begin_playback)
             else:
-                self._play_legacy(first)
+                self._play_direct_sink(first)
         except Exception as exc:
             self._event_queue.put(StreamingEvent(type="error", text=str(exc)))
         finally:

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { render } from "ink";
-import { App, Splash } from "./App.js";
+import { App } from "./App.js";
 import type { Mode } from "./store.js";
 
 interface CliArgs {
@@ -61,10 +61,10 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 function Root({ args }: { args: CliArgs }) {
-  // Cold launch shows the main UI (splash). Picking chat/voice there routes
-  // through Settings first (handled in <App>), then into that mode.
-  const [target, setTarget] = useState<Mode | null>(args.mode);
-  if (target === null) return <Splash onDone={setTarget} />;
+  // A bare launch opens the setup surface first. It reports whether the
+  // repository Knowledge vault is initialized and keeps chat/voice behind the
+  // same explicit settings gate as the quick chat/voice forms.
+  const [target] = useState<Mode>(args.mode ?? "settings");
   return (
     <App
       target={target}
