@@ -43,6 +43,6 @@
   <text class="small light" x="720" y="1058" text-anchor="middle">OpenAI · Gemini · OpenRouter · Groq · transcript/prompt boundary</text>
 
   <path class="edge" d="M310 259H450"/><path class="edge" d="M280 399H440"/><path class="edge" d="M290 539H430"/><path class="edge" d="M280 679H420"/>
-  <path class="edge" d="M770 259H910"/><path class="edge" d="M780 399H850V410H910"/><path class="edge" d="M790 539H850V550H910"/><path class="edge" d="M800 679H910"/>
-  <path class="remote-edge" d="M780 399H850V950H720V990"/>
+  <path class="edge" d="M770 259H910"/><path class="edge" d="M780 399H910"/><path class="edge" d="M790 539H910"/><path class="edge" d="M800 679H910"/>
+  <path class="remote-edge" d="M440 399H390V950H720V990"/>
 </svg>

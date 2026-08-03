@@ -24,7 +24,7 @@
   <g transform="translate(955,870)"><path class="data" d="M0 0H230V72L210 96H0Z"/><text class="label" x="115" y="42" text-anchor="middle">Speaker</text><text class="small" x="115" y="68" text-anchor="middle">barge-in armed</text></g>
   <g transform="translate(60,650)"><path class="decision" d="M135 0L270 50L135 100L0 50Z"/><text class="label" x="135" y="42" text-anchor="middle">Barge-in controller</text><text class="small" x="135" y="68" text-anchor="middle">stop playback → capture</text></g>
 
-  <path class="edge" d="M250 205H390"/><path class="edge" d="M610 205H730"/><path class="edge" d="M900 258V390"/><path class="edge" d="M770 448H920"/><path class="edge" d="M1070 506V650"/><path class="edge" d="M1070 758V870"/><path class="edge" d="M330 448H430"/>
+  <path class="edge" d="M250 205H390"/><path class="edge" d="M610 205H730"/><path class="edge" d="M900 258V320H600V390"/><path class="edge" d="M770 448H920"/><path class="edge" d="M1070 506V650"/><path class="edge" d="M1070 758V870"/><path class="edge" d="M330 448H430"/>
   <path class="loop" d="M955 918H380V700H330"/>
   <path class="loop" d="M195 650H40V110H555V160"/>
   <text class="caption" x="520" y="1030" text-anchor="middle">barge-in stops playback and returns control to capture</text>
