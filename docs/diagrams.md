@@ -23,7 +23,7 @@ production paths rather than presenting a decorative overview:
 
 | View | Required coverage | Code anchors |
 | --- | --- | --- |
-| System boundary | TUI, microphone, engine, assistant runtime, workflow, guardrails, ASR, TTS, knowledge, memory, private state and remote LLM boundary | `soca/app/engine.py`, `soca/core/runtime.py`, `soca/core/workflow.py` |
+| System boundary | TUI, microphone, audio path, assistant runtime, context/tools, one LLM slot, TTS, knowledge and memory | `soca/app/engine.py`, `soca/core/runtime.py`, `soca/core/workflow.py` |
 | Controlled turn | Goal admission, capability choice, plan, action/tool execution, evidence, synthesis, verification, bounded repair and terminal outcome | `soca/core/workflow.py`, `soca/core/runtime.py` |
 | Voice pipeline | Mic frames, VAD/AEC, selected ASR service, context/tools, text/voice-parity runtime, selected LLM, streamed TTS, speaker and barge-in | `soca/core/voice_runtime.py`, `soca/asr/`, `soca/tts/` |
 | Knowledge lifecycle | Vault digest, parse/chunk, catalog, dense generation, verify/publish, retrieval fusion/rerank, evidence gate, watcher and explicit reindex | `soca/knowledge/`, `soca/tools/knowledge_tools.py` |

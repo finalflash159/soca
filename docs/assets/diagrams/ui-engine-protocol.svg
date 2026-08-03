@@ -18,8 +18,8 @@
   <g transform="translate(830,480)"><rect class="box" width="360" height="132"/><text class="label" x="180" y="47" text-anchor="middle">Assistant / voice runtime</text><text class="small" x="180" y="78" text-anchor="middle">workflow · tools · models</text><text class="small" x="180" y="103" text-anchor="middle">typed terminal outcome</text></g>
   <g transform="translate(370,750)"><path class="document" d="M0 0H360V86L336 112H0Z"/><text class="label" x="180" y="45" text-anchor="middle">Typed event stream</text><text class="small" x="180" y="74" text-anchor="middle">progress · retrieval · workflow</text><text class="small" x="180" y="96" text-anchor="middle">usage · error · terminal</text></g>
 
-  <path class="edge" d="M380 243H575"/><path class="edge" d="M875 243H1070"/><path class="edge" d="M1220 306V480"/>
-  <path class="edge" d="M1010 612V700H730V750"/><path class="edge" d="M370 806H40V243H80"/>
+  <path class="edge" d="M380 243H575"/><path class="edge" d="M875 243H1070"/><path class="edge" d="M1220 306V390H1010V480"/>
+  <path class="edge" d="M1010 612V700H550V750"/><path class="edge" d="M370 806H40V243H80"/>
   <text class="caption" x="880" y="690" text-anchor="middle">one event schema keeps UI state truthful; UI does not re-run routing</text>
   <text class="small" x="58" y="970">The process boundary carries no secret key or private raw transcript beyond the selected runtime contract. Startup and terminal failures are explicit events.</text>
 </svg>
