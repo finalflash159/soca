@@ -47,6 +47,28 @@ If a capability is unknown, the request omits that provider parameter rather
 than guessing. The prompt admission layer still refuses a known required
 overflow. Details are in [model-aware context budget](14-model-aware-context-budget.md).
 
+### One request lifecycle
+
+For each chat or voice-transcript turn, the provider boundary performs the
+following work:
+
+1. resolve the persisted provider/model selection and secret without echoing
+   the key into NDJSON, logs or receipts;
+2. obtain the model capability record and build the shared prompt manifest;
+3. clamp the requested output to the model-advertised limit and resolve
+   reasoning according to provider/model capability;
+4. send the request through the selected adapter with the retry ledger and
+   explicit provider-routing options;
+5. normalize usage, finish reason, latency and errors into the common runtime
+   result; and
+6. close or cancel the stream when the UI/voice controller stops the turn.
+
+The same lifecycle is used for chat and voice after ASR. Voice adds the local
+ASR/TTS edges around it; it does not create a second remote-provider policy.
+This is also why a remote setting is visible in both runtime status sections.
+Changing settings affects the next turn, while an in-flight request remains
+bound to the provider/model that started it.
+
 ## Request reliability
 
 `RemoteOpenAILLM` owns one bounded retry ledger. It retries only transient

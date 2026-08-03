@@ -35,6 +35,40 @@ flowchart TD
 | **3 · De-loop**           | Removes consecutive repeated spans                    | `"tôi tôi tôi tôi..."` becomes `"tôi"`                                                        |
 | **4 · Heuristics**        | Final safety net: chars/sec ratio, abnormal length... | Catches cases that pass the previous stages                                                   |
 
+## Admission order and runtime consequence
+
+The stages are ordered deliberately. A stage may reject a turn, but it never
+silently repairs the transcript and sends that repaired text to the assistant:
+
+1. The audio contract is checked before decoding: the runtime supplies the
+   selected profile's sample rate and mono channel shape.
+2. VAD decides whether there is enough speech to spend ASR compute. A
+   `no_speech` result stops here; no ASR model, LLM, knowledge tool or memory
+   search is called for that turn.
+3. ASR produces `raw_text` and model diagnostics. Empty output becomes a typed
+   `empty_asr` rejection.
+4. Confidence and compression checks inspect the raw model result. They run
+   before de-looping so the trace preserves the signal that caused rejection.
+5. De-looping and heuristics clean only an otherwise admissible result. If
+   cleanup leaves no text, the result is rejected rather than treated as a
+   successful empty answer.
+
+An accepted `text` enters the normal assistant pipeline. A rejected result has
+`text == ""` and is handed to the conversation-repair layer; the repair text
+is a follow-up prompt, not an ASR transcript. The UI receives both the
+technical rejection metadata and the natural Vietnamese repair event. This is
+why a bad/noisy audio turn cannot accidentally become a free-chat LLM request.
+
+The production contract is therefore fail-closed at the ASR boundary:
+
+| Result state | Assistant LLM | User-facing behavior |
+| --- | --- | --- |
+| accepted transcript | may run, subject to routing/evidence | normal turn |
+| `no_speech` or `empty_asr` | not called | no-input repair |
+| confidence/compression rejection | not called | uncertain-input repair |
+| heuristic rejection | not called | repair with technical reason in trace |
+| ASR backend/startup failure | not called | typed readiness/runtime failure |
+
 ## Result & Trace (`RobustASRResult`)
 
 The result keeps **intermediate text from every stage** for debugging:
@@ -72,6 +106,13 @@ classDiagram
 - **Confidence guard** is keyed by model. `confidence_guard_status` explains
   whether the calibrated profile is enabled or skipped because the profile is
   missing or mismatched. This prevents applying thresholds to the wrong model.
+
+Calibration is an artifact identity, not a global threshold. The selected ASR
+model, calibration revision, audio preprocessing contract and threshold values
+must agree before the production profile is ready. A missing or mismatched
+calibration is visible as unready; the runtime does not disable the guard or
+borrow thresholds from another model. Recalibration is an operator action and
+produces a new evidence record before the profile can be promoted.
 
 ## Experimental BoH evaluation
 

@@ -19,7 +19,7 @@ explicitly choose another compatible configuration.
 
 ![System overview](assets/diagrams/system-overview.svg)
 
-Editable Lucid source: [SoCa system overview](https://lucid.app/lucidchart/af2f189a-cef9-4f2e-9ba0-259eef98487c/view).
+Editable Lucid source for the current system-flow reference: [SoCa system overview](https://lucid.app/lucidchart/89bdaa6f-62e0-4396-a158-974025fe32af/view). The README keeps the reviewed three-boundary projection of that flow.
 
 ## Runtime surfaces and boundaries
 

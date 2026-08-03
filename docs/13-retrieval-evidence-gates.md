@@ -40,6 +40,31 @@ Production hybrid uses the pinned `Vietnamese_Embedding_v2` distribution with
 dense floor `0.52` and sparse coverage `0.95`; sparse-only profiles are
 evaluation tools, not production fallbacks.
 
+### From hit to admitted evidence
+
+The retrieval result is not automatically prompt context. The runtime applies
+the following typed sequence:
+
+```text
+backend snapshot
+  → retrieve candidates
+  → normalize backend-local diagnostics
+  → apply the calibrated relevance policy
+  → select bounded, non-duplicate passages
+  → build citations and evidence decision
+  → admit context to the selected LLM
+```
+
+The snapshot pins the vault revision, index generation, embedding fingerprint
+and retrieval backend. The relevance policy then evaluates each backend using
+its own score semantics. The selector limits evidence per document and keeps
+line ranges so a citation can be rendered independently from the answer text.
+If the snapshot is stale, missing or failed, the result is an unavailable
+backend state; it is not converted into a lexical-only answer. If the snapshot
+is healthy but every candidate is below the floor, the result is an empty
+evidence decision and the LLM receives the explicit empty-context grounding
+instruction.
+
 ## Context and citations
 
 `KnowledgeContextBuilder` converts retrieval results into bounded context with a
@@ -83,6 +108,15 @@ message; it does not release the uncited original.
 Streaming validates the complete text after streaming. The controlled workflow
 keeps progress/acknowledgement events separate from the terminal answer; a
 failed verification is surfaced rather than replaced by an unvalidated answer.
+
+### Citation presentation boundary
+
+Citation identity and answer prose are separate protocol fields. The runtime
+keeps the selected evidence list (`K1`, `K2`, … or `M1`, `M2`, …) in the
+structured result and the UI renders a source block after the answer. The
+speech/text sanitization boundary removes internal labels from spoken output
+but does not remove the source receipt from the UI trace. A model cannot create
+a new source ID: labels must belong to the evidence set for that turn.
 
 ## Showcase corpus boundary
 
