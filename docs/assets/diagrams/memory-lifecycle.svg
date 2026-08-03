@@ -1,31 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1040" viewBox="0 0 1400 1040" role="img" aria-labelledby="title desc">
-  <title id="title">SoCa memory lifecycle</title>
+  <title id="title">Memory layers</title>
   <desc id="desc">Working, core and archive memory are separate sources that enter a budgeted prompt builder; compaction summarizes working memory and retains recent turns.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 7 7" refX="6" refY="3.5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L7 3.5L0 7z" fill="#263746"/></marker>
     <marker id="loop-arrow" viewBox="0 0 7 7" refX="6" refY="3.5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L7 3.5L0 7z" fill="#99651d"/></marker>
     <style>
-      rect{rx:0;ry:0}.bg{fill:#fff}.box{fill:#fff;stroke:#16202a;stroke-width:2.2}.local{fill:#fff;stroke:#486372;stroke-width:2.2}.decision{fill:#fff;stroke:#a16f2b;stroke-width:2.2}.title{font:700 27px Arial,sans-serif;fill:#16202a}.label{font:700 17px Arial,sans-serif;fill:#16202a}.small{font:14px Arial,sans-serif;fill:#31404d}.light{fill:#16202a}.edge{stroke:#263746;stroke-width:1.8;fill:none;marker-end:url(#arrow)}.loop{stroke:#99651d;stroke-width:1.8;stroke-dasharray:8 6;fill:none;marker-end:url(#loop-arrow)}.caption{font:italic 14px Arial,sans-serif;fill:#4d5d6c}
+      rect{rx:0;ry:0}.bg{fill:#fff}.box{fill:#e2e8ec;stroke:#16202a;stroke-width:2.2}.local{fill:#c9dde3;stroke:#486372;stroke-width:2.2}.decision{fill:#efc36f;stroke:#a16f2b;stroke-width:2.2}.document{fill:#e2e8ec;stroke:#16202a;stroke-width:2.2}.title{font:700 27px Arial,sans-serif;fill:#16202a}.label{font:700 17px Arial,sans-serif;fill:#16202a}.small{font:14px Arial,sans-serif;fill:#31404d}.light{fill:#16202a}.edge{stroke:#263746;stroke-width:1.8;fill:none;marker-end:url(#arrow)}.loop{stroke:#99651d;stroke-width:1.8;stroke-dasharray:8 6;fill:none;marker-end:url(#loop-arrow)}.caption{font:italic 14px Arial,sans-serif;fill:#4d5d6c}
     </style>
   </defs>
   <rect class="bg" width="1400" height="1040"/>
-  <text class="title" x="58" y="58">SoCa · memory layers</text>
+  <text class="title" x="58" y="58">Memory layers</text>
   <text class="caption" x="58" y="86">Memory has different retention rules; the prompt builder admits only the current access plan within budget.</text>
 
-  <g transform="translate(70,180)"><rect class="box" width="330" height="116"/><text class="label" x="165" y="43" text-anchor="middle">Working memory</text><text class="small" x="165" y="70" text-anchor="middle">recent turns + published summary</text><text class="small" x="165" y="94" text-anchor="middle">always available within budget</text></g>
-  <g transform="translate(70,400)"><rect class="local" width="330" height="116"/><text class="label light" x="165" y="43" text-anchor="middle">Core memory</text><text class="small light" x="165" y="70" text-anchor="middle">approved durable facts</text><text class="small light" x="165" y="94" text-anchor="middle">proposal-gated persistence</text></g>
-  <g transform="translate(70,620)"><rect class="local" width="330" height="116"/><text class="label light" x="165" y="43" text-anchor="middle">Archive memory</text><text class="small light" x="165" y="70" text-anchor="middle">episodic / procedural records</text><text class="small light" x="165" y="94" text-anchor="middle">query-selected on demand</text></g>
+  <g transform="translate(70,180)"><path class="box" d="M0 18C0 6 330 6 330 18V98C330 110 0 110 0 98Z"/><ellipse class="box" cx="165" cy="18" rx="165" ry="12"/><text class="label" x="165" y="53" text-anchor="middle">Working memory</text><text class="small" x="165" y="78" text-anchor="middle">recent turns + published summary</text><text class="small" x="165" y="101" text-anchor="middle">always available within budget</text></g>
+  <g transform="translate(70,400)"><path class="local" d="M0 18C0 6 270 6 270 18V82C270 94 0 94 0 82Z"/><ellipse class="local" cx="135" cy="18" rx="135" ry="12"/><text class="label light" x="135" y="47" text-anchor="middle">Core memory</text><text class="small light" x="135" y="70" text-anchor="middle">approved durable facts</text><text class="small light" x="135" y="89" text-anchor="middle">proposal-gated persistence</text></g>
+  <g transform="translate(70,620)"><path class="local" d="M0 18C0 6 290 6 290 18V86C290 98 0 98 0 86Z"/><ellipse class="local" cx="145" cy="18" rx="145" ry="12"/><text class="label light" x="145" y="49" text-anchor="middle">Archive memory</text><text class="small light" x="145" y="72" text-anchor="middle">episodic / procedural records</text><text class="small light" x="145" y="91" text-anchor="middle">query-selected on demand</text></g>
 
-  <g transform="translate(560,180)"><rect class="decision" width="300" height="116"/><text class="label" x="150" y="43" text-anchor="middle">Compaction coordinator</text><text class="small" x="150" y="70" text-anchor="middle">summary model · 15K boundary</text><text class="small" x="150" y="94" text-anchor="middle">keep recent turns · typed failure</text></g>
+  <g transform="translate(540,165)"><path class="decision" d="M170 0L340 73L170 146L0 73Z"/><text class="label" x="170" y="54" text-anchor="middle">Compaction coordinator</text><text class="small" x="170" y="79" text-anchor="middle">summary model · 15K boundary</text><text class="small" x="170" y="103" text-anchor="middle">keep recent turns · typed failure</text></g>
   <g transform="translate(940,455)"><rect class="box" width="360" height="142"/><text class="label" x="180" y="47" text-anchor="middle">Prompt context builder</text><text class="small" x="180" y="78" text-anchor="middle">working · core · archive · knowledge</text><text class="small" x="180" y="103" text-anchor="middle">model-window budget + provenance</text></g>
-  <g transform="translate(560,850)"><rect class="box" width="300" height="96"/><text class="label" x="150" y="40" text-anchor="middle">Memory proposals</text><text class="small" x="150" y="67" text-anchor="middle">review before durable promotion</text></g>
+  <g transform="translate(560,850)"><path class="document" d="M0 0H300V70L276 96H0Z"/><text class="label" x="150" y="40" text-anchor="middle">Memory proposals</text><text class="small" x="150" y="67" text-anchor="middle">review before durable promotion</text></g>
 
-  <path class="edge" d="M400 220H520V238H560"/>
+  <path class="edge" d="M400 220H500V238H540"/>
   <path class="edge" d="M400 280H470V475H940"/>
-  <path class="edge" d="M400 458H500V500H940"/>
-  <path class="edge" d="M400 678H500V545H940"/>
-  <path class="loop" d="M710 180H470V140H250V180"/>
+  <path class="edge" d="M340 447H500V500H940"/>
+  <path class="edge" d="M360 669H500V545H940"/>
+  <path class="loop" d="M710 165H470V140H250V180"/>
   <text class="caption" x="470" y="120" text-anchor="middle">summary replaces only the compacted prefix</text>
-  <path class="edge" d="M710 296V850"/>
+  <path class="edge" d="M710 311V850"/>
   <text class="small" x="70" y="1000">Manual/automatic compaction is bounded; failure keeps original history. Archive is not injected unconditionally, and core requires approval.</text>
 </svg>

@@ -16,7 +16,7 @@ ui/ (Ink)  ── commands (stdin) ──▶  soca engine (Python)
 
 ![UI and engine protocol](assets/diagrams/ui-engine-protocol.svg)
 
-Editable diagram source: [Lucid UI protocol](https://lucid.app/lucidchart/4e2fd950-01a6-47ff-8fe8-9e08dd8d0090/view).
+Editable diagram source: [Lucid UI protocol](https://lucid.app/lucidchart/133d6a9f-ff1d-4269-b56d-275b8193b689/view).
 
 ## Chạy
 

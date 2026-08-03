@@ -1,31 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1250" height="1320" viewBox="0 0 1250 1320" role="img" aria-labelledby="title desc">
-  <title id="title">SoCa controlled turn loop</title>
+  <title id="title">One controlled turn</title>
   <desc id="desc">A bounded workflow from input through goal resolution, capability selection, planning, action, evidence assessment, synthesis, verification and finalization, with explicit retry and repair lanes.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 7 7" refX="6" refY="3.5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L7 3.5L0 7z" fill="#263746"/></marker>
     <marker id="loop-arrow" viewBox="0 0 7 7" refX="6" refY="3.5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L7 3.5L0 7z" fill="#99651d"/></marker>
     <style>
-      rect{rx:0;ry:0}.bg{fill:#fff}.box{fill:#fff;stroke:#16202a;stroke-width:2.2}.decision{fill:#fff;stroke:#a16f2b;stroke-width:2.2}.terminal{fill:#fff;stroke:#2f6b58;stroke-width:2.2}.title{font:700 27px Arial,sans-serif;fill:#16202a}.label{font:700 17px Arial,sans-serif;fill:#16202a}.small{font:14px Arial,sans-serif;fill:#31404d}.light{fill:#16202a}.edge{stroke:#263746;stroke-width:1.8;fill:none;marker-end:url(#arrow)}.loop{stroke:#99651d;stroke-width:1.8;stroke-dasharray:8 6;fill:none;marker-end:url(#loop-arrow)}.caption{font:italic 14px Arial,sans-serif;fill:#4d5d6c}
+      rect{rx:0;ry:0}.bg{fill:#fff}.box{fill:#e2e8ec;stroke:#16202a;stroke-width:2.2}.data{fill:#d9efc7;stroke:#5d8348;stroke-width:2.2}.decision{fill:#efc36f;stroke:#a16f2b;stroke-width:2.2}.document{fill:#e2e8ec;stroke:#16202a;stroke-width:2.2}.terminal{fill:#acd2ba;stroke:#2f6b58;stroke-width:2.2}.title{font:700 27px Arial,sans-serif;fill:#16202a}.label{font:700 17px Arial,sans-serif;fill:#16202a}.small{font:14px Arial,sans-serif;fill:#31404d}.light{fill:#16202a}.edge{stroke:#263746;stroke-width:1.8;fill:none;marker-end:url(#arrow)}.loop{stroke:#99651d;stroke-width:1.8;stroke-dasharray:8 6;fill:none;marker-end:url(#loop-arrow)}.caption{font:italic 14px Arial,sans-serif;fill:#4d5d6c}
     </style>
   </defs>
   <rect class="bg" width="1250" height="1320"/>
-  <text class="title" x="58" y="58">SoCa · one controlled turn</text>
+  <text class="title" x="58" y="58">One controlled turn</text>
   <text class="caption" x="58" y="86">The main path is vertical. Revision and repair use separate side lanes and remain bounded.</text>
 
-  <g transform="translate(390,130)"><rect class="box" width="360" height="86"/><text class="label" x="180" y="39" text-anchor="middle">Input</text><text class="small" x="180" y="65" text-anchor="middle">text or transcript</text></g>
-  <g transform="translate(390,260)"><rect class="box" width="360" height="86"/><text class="label" x="180" y="39" text-anchor="middle">Resolve goal</text><text class="small" x="180" y="65" text-anchor="middle">admit · clarify · resolve entities</text></g>
-  <g transform="translate(390,390)"><rect class="box" width="360" height="86"/><text class="label" x="180" y="39" text-anchor="middle">Choose capability</text><text class="small" x="180" y="65" text-anchor="middle">chat · knowledge · memory · action</text></g>
-  <g transform="translate(390,520)"><rect class="decision" width="360" height="86"/><text class="label" x="180" y="39" text-anchor="middle">Plan / authorize</text><text class="small" x="180" y="65" text-anchor="middle">policy · side effect · budget</text></g>
-  <g transform="translate(390,650)"><rect class="box" width="360" height="86"/><text class="label" x="180" y="39" text-anchor="middle">Execute action</text><text class="small" x="180" y="65" text-anchor="middle">typed tool or selected LLM</text></g>
-  <g transform="translate(390,780)"><rect class="decision" width="360" height="86"/><text class="label" x="180" y="39" text-anchor="middle">Assess evidence</text><text class="small" x="180" y="65" text-anchor="middle">sufficient · empty · conflicting</text></g>
-  <g transform="translate(390,910)"><rect class="box" width="360" height="86"/><text class="label" x="180" y="39" text-anchor="middle">Synthesize</text><text class="small" x="180" y="65" text-anchor="middle">grounded response + citations</text></g>
-  <g transform="translate(390,1040)"><rect class="decision" width="360" height="86"/><text class="label" x="180" y="39" text-anchor="middle">Verify answer</text><text class="small" x="180" y="65" text-anchor="middle">goal · evidence · format · safety</text></g>
-  <g transform="translate(390,1170)"><rect class="terminal" width="360" height="86"/><text class="label light" x="180" y="39" text-anchor="middle">Finalize</text><text class="small light" x="180" y="65" text-anchor="middle">answer · clarification · typed failure</text></g>
+  <g><polygon class="data" points="420,130 720,130 700,216 440,216"/><text class="label" x="570" y="169" text-anchor="middle">Input</text><text class="small" x="570" y="195" text-anchor="middle">text or transcript</text></g>
+  <g transform="translate(420,260)"><rect class="box" width="300" height="86"/><text class="label" x="150" y="39" text-anchor="middle">Resolve goal</text><text class="small" x="150" y="65" text-anchor="middle">admit · clarify · resolve entities</text></g>
+  <g><polygon class="decision" points="570,390 735,433 570,476 405,433"/><text class="label" x="570" y="429" text-anchor="middle">Choose capability</text><text class="small" x="570" y="451" text-anchor="middle">chat · knowledge · memory · action</text></g>
+  <g><polygon class="decision" points="570,520 710,563 570,606 430,563"/><text class="label" x="570" y="559" text-anchor="middle">Plan / authorize</text><text class="small" x="570" y="581" text-anchor="middle">policy · side effect · budget</text></g>
+  <g transform="translate(420,650)"><rect class="box" width="300" height="86"/><text class="label" x="150" y="39" text-anchor="middle">Execute action</text><text class="small" x="150" y="65" text-anchor="middle">typed tool or selected LLM</text></g>
+  <g><polygon class="decision" points="570,780 735,823 570,866 405,823"/><text class="label" x="570" y="819" text-anchor="middle">Assess evidence</text><text class="small" x="570" y="841" text-anchor="middle">sufficient · empty · conflicting</text></g>
+  <g><path class="document" d="M410 910H730V985L704 996H436L410 985Z"/><text class="label" x="570" y="949" text-anchor="middle">Synthesize</text><text class="small" x="570" y="975" text-anchor="middle">grounded response + citations</text></g>
+  <g><polygon class="decision" points="570,1040 720,1083 570,1126 420,1083"/><text class="label" x="570" y="1079" text-anchor="middle">Verify answer</text><text class="small" x="570" y="1101" text-anchor="middle">goal · evidence · format · safety</text></g>
+  <g transform="translate(425,1170)"><rect class="terminal" width="290" height="86"/><text class="label light" x="145" y="39" text-anchor="middle">Finalize</text><text class="small light" x="145" y="65" text-anchor="middle">answer · clarification · typed failure</text></g>
 
   <path class="edge" d="M570 216V260"/><path class="edge" d="M570 346V390"/><path class="edge" d="M570 476V520"/><path class="edge" d="M570 606V650"/><path class="edge" d="M570 736V780"/><path class="edge" d="M570 866V910"/><path class="edge" d="M570 996V1040"/><path class="edge" d="M570 1126V1170"/>
-  <path class="loop" d="M750 823H900Q920 823 920 803V583Q920 563 900 563H750"/>
+  <path class="loop" d="M735 823H900Q920 823 920 803V583Q920 563 900 563H710"/>
   <text class="caption" x="1035" y="700" text-anchor="middle">insufficient evidence · revise query</text>
-  <path class="loop" d="M390 1083H220Q200 1083 200 1063V713Q200 693 220 693H390"/>
+  <path class="loop" d="M420 1083H220Q200 1083 200 1063V713Q200 693 220 693H420"/>
   <text class="caption" x="105" y="900" text-anchor="middle" transform="rotate(-90 105 900)">verification repair returns to action</text>
   <text class="small" x="58" y="1290">RetryLedger bounds action and evidence-completion retries. Exhaustion is observable and typed; production never silently changes model or backend.</text>
 </svg>

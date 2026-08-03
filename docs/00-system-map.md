@@ -19,7 +19,7 @@ explicitly choose another compatible configuration.
 
 ![System overview](assets/diagrams/system-overview.svg)
 
-Editable Lucid source: [SoCa system overview](https://lucid.app/lucidchart/1ab09027-f3f2-42c2-95bc-7d53e8b1977f/view).
+Editable Lucid source: [SoCa system overview](https://lucid.app/lucidchart/af2f189a-cef9-4f2e-9ba0-259eef98487c/view).
 
 ## Runtime surfaces and boundaries
 

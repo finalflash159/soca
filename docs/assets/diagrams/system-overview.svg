@@ -1,48 +1,48 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1450" height="1130" viewBox="0 0 1450 1130" role="img" aria-labelledby="title desc">
-  <title id="title">SoCa system overview</title>
+  <title id="title">System overview</title>
   <desc id="desc">Local-first Vietnamese voice assistant boundaries, runtime, private state, local capabilities and optional remote language model.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 7 7" refX="6" refY="3.5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L7 3.5L0 7z" fill="#263746"/></marker>
     <marker id="remote-arrow" viewBox="0 0 7 7" refX="6" refY="3.5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L7 3.5L0 7z" fill="#8f4d37"/></marker>
     <style>
-      rect{rx:0;ry:0}.bg{fill:#fff}.group{fill:#fff;stroke:#243444;stroke-width:2.4}.box{fill:#fff;stroke:#16202a;stroke-width:2.2}.local{fill:#fff;stroke:#486372;stroke-width:2.2}.remote{fill:#fff;stroke:#8f4d37;stroke-width:2.2}.title{font:700 26px Arial,sans-serif;fill:#16202a}.label{font:700 18px Arial,sans-serif;fill:#16202a}.small{font:14px Arial,sans-serif;fill:#31404d}.light{fill:#16202a}.edge{stroke:#263746;stroke-width:1.8;fill:none;marker-end:url(#arrow)}.remote-edge{stroke:#8f4d37;stroke-width:1.8;stroke-dasharray:7 6;fill:none;marker-end:url(#remote-arrow)}.caption{font:italic 14px Arial,sans-serif;fill:#4d5d6c}
+      rect{rx:0;ry:0}.bg{fill:#fff}.group{fill:#fff;stroke:#243444;stroke-width:2.4}.box{fill:#e2e8ec;stroke:#16202a;stroke-width:2.2}.data{fill:#d9efc7;stroke:#5d8348;stroke-width:2.2}.local{fill:#c9dde3;stroke:#486372;stroke-width:2.2}.remote{fill:#d8987d;stroke:#8f4d37;stroke-width:2.2}.title{font:700 26px Arial,sans-serif;fill:#16202a}.label{font:700 18px Arial,sans-serif;fill:#16202a}.small{font:14px Arial,sans-serif;fill:#31404d}.light{fill:#16202a}.edge{stroke:#263746;stroke-width:1.8;fill:none;marker-end:url(#arrow)}.remote-edge{stroke:#8f4d37;stroke-width:1.8;stroke-dasharray:7 6;fill:none;marker-end:url(#remote-arrow)}.caption{font:italic 14px Arial,sans-serif;fill:#4d5d6c}
     </style>
   </defs>
   <rect class="bg" width="1450" height="1130"/>
-  <text class="title" x="58" y="58">SoCa · local-first runtime boundary</text>
+  <text class="title" x="58" y="58">System overview</text>
   <text class="caption" x="58" y="86">The diagram keeps user surface, orchestration, local capabilities, storage and remote LLM boundary explicit.</text>
 
   <rect class="group" x="40" y="140" width="300" height="720"/>
   <text class="label" x="70" y="180">User surface</text>
-  <rect class="box" x="70" y="220" width="240" height="78"/><text class="label" x="190" y="267" text-anchor="middle">Chat / voice</text>
-  <rect class="box" x="70" y="360" width="240" height="78"/><text class="label" x="190" y="407" text-anchor="middle">TUI</text>
-  <rect class="box" x="70" y="500" width="240" height="78"/><text class="label" x="190" y="547" text-anchor="middle">Microphone</text>
-  <rect class="box" x="70" y="640" width="240" height="78"/><text class="label" x="190" y="687" text-anchor="middle">Speaker</text>
+  <path class="data" d="M70 220H310V276L290 298H70Z"/><text class="label" x="190" y="267" text-anchor="middle">Chat / voice</text>
+  <rect class="box" x="100" y="360" width="180" height="78"/><text class="label" x="190" y="407" text-anchor="middle">TUI</text>
+  <path class="data" d="M90 500H290V556L272 578H90Z"/><text class="label" x="190" y="547" text-anchor="middle">Microphone</text>
+  <path class="data" d="M100 640H280V696L262 718H100Z"/><text class="label" x="190" y="687" text-anchor="middle">Speaker</text>
   <text class="small" x="190" y="785" text-anchor="middle">input · output · settings</text>
 
   <rect class="group" x="380" y="140" width="460" height="720"/>
   <text class="label" x="410" y="180">Application runtime</text>
-  <rect class="box" x="410" y="220" width="400" height="78"/><text class="label" x="610" y="267" text-anchor="middle">SocaEngine · NDJSON</text>
-  <rect class="box" x="410" y="360" width="400" height="78"/><text class="label" x="610" y="407" text-anchor="middle">AssistantRuntime</text>
-  <rect class="box" x="410" y="500" width="400" height="78"/><text class="label" x="610" y="547" text-anchor="middle">Controlled workflow</text>
+  <rect class="box" x="450" y="220" width="320" height="78"/><text class="label" x="610" y="267" text-anchor="middle">SocaEngine · NDJSON</text>
+  <rect class="box" x="440" y="360" width="340" height="78"/><text class="label" x="610" y="407" text-anchor="middle">AssistantRuntime</text>
+  <rect class="box" x="430" y="500" width="360" height="78"/><text class="label" x="610" y="547" text-anchor="middle">Controlled workflow</text>
   <text class="small" x="610" y="600" text-anchor="middle">goal · capability · action · evidence · verify</text>
-  <rect class="box" x="410" y="640" width="400" height="78"/><text class="label" x="610" y="687" text-anchor="middle">Guardrails · streaming · events</text>
+  <rect class="box" x="420" y="640" width="380" height="78"/><text class="label" x="610" y="687" text-anchor="middle">Guardrails · streaming · events</text>
   <text class="small" x="610" y="785" text-anchor="middle">one selected runtime configuration</text>
 
   <rect class="group" x="880" y="140" width="520" height="820"/>
   <text class="label" x="910" y="180">Local capabilities and state</text>
   <rect class="local" x="910" y="220" width="460" height="100"/><text class="label light" x="1140" y="262" text-anchor="middle">ASR · VAD · AEC</text><text class="small light" x="1140" y="290" text-anchor="middle">selected audio path</text>
-  <rect class="local" x="910" y="360" width="460" height="100"/><text class="label light" x="1140" y="402" text-anchor="middle">Knowledge index</text><text class="small light" x="1140" y="430" text-anchor="middle">catalog · sparse · dense</text>
-  <rect class="local" x="910" y="500" width="460" height="100"/><text class="label light" x="1140" y="542" text-anchor="middle">Memory stores</text><text class="small light" x="1140" y="570" text-anchor="middle">core · working · archive</text>
+  <path class="local" d="M910 378C910 366 1370 366 1370 378V442C1370 454 910 454 910 442Z"/><ellipse class="local" cx="1140" cy="378" rx="230" ry="12"/><text class="label light" x="1140" y="414" text-anchor="middle">Knowledge index</text><text class="small light" x="1140" y="440" text-anchor="middle">catalog · sparse · dense</text>
+  <path class="local" d="M910 518C910 506 1370 506 1370 518V582C1370 594 910 594 910 582Z"/><ellipse class="local" cx="1140" cy="518" rx="230" ry="12"/><text class="label light" x="1140" y="554" text-anchor="middle">Memory stores</text><text class="small light" x="1140" y="580" text-anchor="middle">core · working · archive</text>
   <rect class="local" x="910" y="640" width="460" height="100"/><text class="label light" x="1140" y="682" text-anchor="middle">TTS · barge-in</text><text class="small light" x="1140" y="710" text-anchor="middle">streamed speech</text>
-  <rect class="local" x="910" y="780" width="460" height="100"/><text class="label light" x="1140" y="822" text-anchor="middle">Private state and model assets</text><text class="small light" x="1140" y="850" text-anchor="middle">vault · index generations · settings · weights</text>
+  <path class="local" d="M910 798C910 786 1370 786 1370 798V862C1370 874 910 874 910 862Z"/><ellipse class="local" cx="1140" cy="798" rx="230" ry="12"/><text class="label light" x="1140" y="834" text-anchor="middle">Private state and model assets</text><text class="small light" x="1140" y="860" text-anchor="middle">vault · index generations · settings · weights</text>
   <text class="small" x="1140" y="920" text-anchor="middle">never an implicit provider/backend fallback</text>
 
   <rect class="remote" x="470" y="990" width="500" height="100"/>
   <text class="label light" x="720" y="1030" text-anchor="middle">Selected remote LLM, when explicitly enabled</text>
   <text class="small light" x="720" y="1058" text-anchor="middle">OpenAI · Gemini · OpenRouter · Groq · transcript/prompt boundary</text>
 
-  <path class="edge" d="M310 259H410"/><path class="edge" d="M310 399H410"/><path class="edge" d="M310 539H410"/><path class="edge" d="M310 679H410"/>
-  <path class="edge" d="M810 259H910"/><path class="edge" d="M810 399H850V410H910"/><path class="edge" d="M810 539H850V550H910"/><path class="edge" d="M810 679H910"/>
-  <path class="remote-edge" d="M810 399H850V950H720V990"/>
+  <path class="edge" d="M310 259H450"/><path class="edge" d="M280 399H440"/><path class="edge" d="M290 539H430"/><path class="edge" d="M280 679H420"/>
+  <path class="edge" d="M770 259H910"/><path class="edge" d="M780 399H850V410H910"/><path class="edge" d="M790 539H850V550H910"/><path class="edge" d="M800 679H910"/>
+  <path class="remote-edge" d="M780 399H850V950H720V990"/>
 </svg>

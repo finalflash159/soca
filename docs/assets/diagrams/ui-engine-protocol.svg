@@ -1,25 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1450" height="1020" viewBox="0 0 1450 1020" role="img" aria-labelledby="title desc">
-  <title id="title">SoCa UI and engine protocol</title>
+  <title id="title">UI and engine protocol</title>
   <desc id="desc">The Ink UI sends commands over NDJSON to SocaEngine and receives typed progress, retrieval, workflow and terminal events.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 7 7" refX="6" refY="3.5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L7 3.5L0 7z" fill="#263746"/></marker>
     <style>
-      rect{rx:0;ry:0}.bg{fill:#fff}.box{fill:#fff;stroke:#16202a;stroke-width:2.2}.local{fill:#fff;stroke:#486372;stroke-width:2.2}.decision{fill:#fff;stroke:#a16f2b;stroke-width:2.2}.title{font:700 27px Arial,sans-serif;fill:#16202a}.label{font:700 17px Arial,sans-serif;fill:#16202a}.small{font:14px Arial,sans-serif;fill:#31404d}.light{fill:#16202a}.edge{stroke:#263746;stroke-width:1.8;fill:none;marker-end:url(#arrow)}.caption{font:italic 14px Arial,sans-serif;fill:#4d5d6c}
+      rect{rx:0;ry:0}.bg{fill:#fff}.box{fill:#e2e8ec;stroke:#16202a;stroke-width:2.2}.data{fill:#d9efc7;stroke:#5d8348;stroke-width:2.2}.local{fill:#c9dde3;stroke:#486372;stroke-width:2.2}.decision{fill:#efc36f;stroke:#a16f2b;stroke-width:2.2}.document{fill:#e2e8ec;stroke:#16202a;stroke-width:2.2}.display{fill:#e4ddff;stroke:#635dff;stroke-width:2.2}.title{font:700 27px Arial,sans-serif;fill:#16202a}.label{font:700 17px Arial,sans-serif;fill:#16202a}.small{font:14px Arial,sans-serif;fill:#31404d}.light{fill:#16202a}.edge{stroke:#263746;stroke-width:1.8;fill:none;marker-end:url(#arrow)}.caption{font:italic 14px Arial,sans-serif;fill:#4d5d6c}
     </style>
   </defs>
   <rect class="bg" width="1450" height="1020"/>
-  <text class="title" x="58" y="58">SoCa · UI ↔ engine protocol</text>
+  <text class="title" x="58" y="58">UI ↔ engine protocol</text>
   <text class="caption" x="58" y="86">Commands travel inward; typed progress, retrieval, workflow, usage and terminal events travel back.</text>
 
-  <g transform="translate(80,180)"><rect class="box" width="300" height="126"/><text class="label" x="150" y="47" text-anchor="middle">Ink + React UI</text><text class="small" x="150" y="76" text-anchor="middle">chat · voice · slash commands</text><text class="small" x="150" y="101" text-anchor="middle">settings · progress · sources</text></g>
-  <g transform="translate(575,180)"><rect class="decision" width="300" height="126"/><text class="label" x="150" y="47" text-anchor="middle">NDJSON protocol</text><text class="small" x="150" y="76" text-anchor="middle">commands in · events out</text><text class="small" x="150" y="101" text-anchor="middle">typed, serialized payload</text></g>
+  <g transform="translate(80,180)"><path class="display" d="M0 0H300V102L276 126H0Z"/><text class="label" x="150" y="47" text-anchor="middle">Ink + React UI</text><text class="small" x="150" y="76" text-anchor="middle">chat · voice · slash commands</text><text class="small" x="150" y="101" text-anchor="middle">settings · progress · sources</text></g>
+  <g transform="translate(575,180)"><path class="data" d="M22 0H300V126H22L0 102V24Z"/><text class="label" x="150" y="47" text-anchor="middle">NDJSON protocol</text><text class="small" x="150" y="76" text-anchor="middle">commands in · events out</text><text class="small" x="150" y="101" text-anchor="middle">typed, serialized payload</text></g>
   <g transform="translate(1070,180)"><rect class="local" width="300" height="126"/><text class="label light" x="150" y="47" text-anchor="middle">SocaEngine</text><text class="small light" x="150" y="76" text-anchor="middle">session · settings · lifecycle</text><text class="small light" x="150" y="101" text-anchor="middle">runtime orchestration</text></g>
 
   <g transform="translate(830,480)"><rect class="box" width="360" height="132"/><text class="label" x="180" y="47" text-anchor="middle">Assistant / voice runtime</text><text class="small" x="180" y="78" text-anchor="middle">workflow · tools · models</text><text class="small" x="180" y="103" text-anchor="middle">typed terminal outcome</text></g>
-  <g transform="translate(370,750)"><rect class="box" width="360" height="112"/><text class="label" x="180" y="45" text-anchor="middle">Typed event stream</text><text class="small" x="180" y="74" text-anchor="middle">progress · retrieval · workflow</text><text class="small" x="180" y="96" text-anchor="middle">usage · error · terminal</text></g>
+  <g transform="translate(370,750)"><path class="document" d="M0 0H360V86L336 112H0Z"/><text class="label" x="180" y="45" text-anchor="middle">Typed event stream</text><text class="small" x="180" y="74" text-anchor="middle">progress · retrieval · workflow</text><text class="small" x="180" y="96" text-anchor="middle">usage · error · terminal</text></g>
 
   <path class="edge" d="M380 243H575"/><path class="edge" d="M875 243H1070"/><path class="edge" d="M1220 306V480"/>
-  <path class="edge" d="M1010 612V700H730V750"/><path class="edge" d="M370 806H190Q170 806 170 786V326Q170 306 190 306H230"/>
+  <path class="edge" d="M1010 612V700H730V750"/><path class="edge" d="M370 806H40V243H80"/>
   <text class="caption" x="880" y="690" text-anchor="middle">one event schema keeps UI state truthful; UI does not re-run routing</text>
   <text class="small" x="58" y="970">The process boundary carries no secret key or private raw transcript beyond the selected runtime contract. Startup and terminal failures are explicit events.</text>
 </svg>

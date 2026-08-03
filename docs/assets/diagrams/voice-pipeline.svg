@@ -1,31 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1450" height="1120" viewBox="0 0 1450 1120" role="img" aria-labelledby="title desc">
-  <title id="title">SoCa voice pipeline</title>
+  <title id="title">Voice pipeline</title>
   <desc id="desc">Audio enters through VAD and AEC, is transcribed by the selected ASR, passes through the assistant runtime and selected LLM, uses knowledge and memory context, then streams to TTS and the speaker with barge-in control.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 7 7" refX="6" refY="3.5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L7 3.5L0 7z" fill="#263746"/></marker>
     <marker id="loop-arrow" viewBox="0 0 7 7" refX="6" refY="3.5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L7 3.5L0 7z" fill="#99651d"/></marker>
     <style>
-      rect{rx:0;ry:0}.bg{fill:#fff}.box{fill:#fff;stroke:#16202a;stroke-width:2.2}.local{fill:#fff;stroke:#486372;stroke-width:2.2}.decision{fill:#fff;stroke:#a16f2b;stroke-width:2.2}.title{font:700 27px Arial,sans-serif;fill:#16202a}.label{font:700 17px Arial,sans-serif;fill:#16202a}.small{font:14px Arial,sans-serif;fill:#31404d}.light{fill:#16202a}.edge{stroke:#263746;stroke-width:1.8;fill:none;marker-end:url(#arrow)}.loop{stroke:#99651d;stroke-width:1.8;stroke-dasharray:8 6;fill:none;marker-end:url(#loop-arrow)}.caption{font:italic 14px Arial,sans-serif;fill:#4d5d6c}
+      rect{rx:0;ry:0}.bg{fill:#fff}.box{fill:#e2e8ec;stroke:#16202a;stroke-width:2.2}.data{fill:#d9efc7;stroke:#5d8348;stroke-width:2.2}.local{fill:#c9dde3;stroke:#486372;stroke-width:2.2}.decision{fill:#efc36f;stroke:#a16f2b;stroke-width:2.2}.document{fill:#e2e8ec;stroke:#16202a;stroke-width:2.2}.title{font:700 27px Arial,sans-serif;fill:#16202a}.label{font:700 17px Arial,sans-serif;fill:#16202a}.small{font:14px Arial,sans-serif;fill:#31404d}.light{fill:#16202a}.edge{stroke:#263746;stroke-width:1.8;fill:none;marker-end:url(#arrow)}.loop{stroke:#99651d;stroke-width:1.8;stroke-dasharray:8 6;fill:none;marker-end:url(#loop-arrow)}.caption{font:italic 14px Arial,sans-serif;fill:#4d5d6c}
     </style>
   </defs>
   <rect class="bg" width="1450" height="1120"/>
-  <text class="title" x="58" y="58">SoCa · voice pipeline</text>
+  <text class="title" x="58" y="58">Voice pipeline</text>
   <text class="caption" x="58" y="86">The selected ASR and LLM are explicit. Runtime context, streaming TTS and barge-in remain observable.</text>
 
-  <g transform="translate(70,160)"><rect class="box" width="250" height="98"/><text class="label" x="125" y="43" text-anchor="middle">Microphone</text><text class="small" x="125" y="70" text-anchor="middle">audio frames</text></g>
-  <g transform="translate(430,160)"><rect class="local" width="250" height="98"/><text class="label light" x="125" y="43" text-anchor="middle">VAD · AEC</text><text class="small light" x="125" y="70" text-anchor="middle">speech gate · echo control</text></g>
-  <g transform="translate(790,160)"><rect class="local" width="300" height="98"/><text class="label light" x="150" y="43" text-anchor="middle">Selected ASR service</text><text class="small light" x="150" y="70" text-anchor="middle">Qwen or PhoWhisper · partial/final</text></g>
+  <g transform="translate(70,160)"><path class="data" d="M0 0H180V60L162 80H0Z"/><text class="label" x="90" y="36" text-anchor="middle">Microphone</text><text class="small" x="90" y="59" text-anchor="middle">audio frames</text></g>
+  <g transform="translate(390,160)"><rect class="local" width="220" height="90"/><text class="label light" x="110" y="40" text-anchor="middle">VAD · AEC</text><text class="small light" x="110" y="65" text-anchor="middle">speech gate · echo control</text></g>
+  <g transform="translate(730,160)"><rect class="local" width="340" height="98"/><text class="label light" x="170" y="43" text-anchor="middle">Selected ASR service</text><text class="small light" x="170" y="70" text-anchor="middle">Qwen or PhoWhisper · partial/final</text></g>
 
   <g transform="translate(430,390)"><rect class="box" width="340" height="116"/><text class="label" x="170" y="43" text-anchor="middle">Assistant runtime</text><text class="small" x="170" y="72" text-anchor="middle">goal · capability · action · verify</text><text class="small" x="170" y="96" text-anchor="middle">text/voice parity</text></g>
   <g transform="translate(920,390)"><rect class="box" width="300" height="116"/><text class="label" x="150" y="43" text-anchor="middle">Selected LLM</text><text class="small" x="150" y="72" text-anchor="middle">local or remote provider</text><text class="small" x="150" y="96" text-anchor="middle">streamed answer clauses</text></g>
-  <g transform="translate(60,390)"><rect class="local" width="270" height="116"/><text class="label light" x="135" y="43" text-anchor="middle">Context + tools</text><text class="small light" x="135" y="72" text-anchor="middle">knowledge · memory · guardrails</text><text class="small light" x="135" y="96" text-anchor="middle">evidence enters prompt</text></g>
+  <g transform="translate(60,390)"><path class="document" d="M0 0H270V90L246 116H0Z"/><text class="label" x="135" y="43" text-anchor="middle">Context + tools</text><text class="small" x="135" y="72" text-anchor="middle">knowledge · memory · guardrails</text><text class="small" x="135" y="96" text-anchor="middle">evidence enters prompt</text></g>
 
-  <g transform="translate(920,650)"><rect class="local" width="300" height="108"/><text class="label light" x="150" y="43" text-anchor="middle">TTS</text><text class="small light" x="150" y="70" text-anchor="middle">first-clause / sentence stream</text></g>
-  <g transform="translate(920,870)"><rect class="box" width="300" height="96"/><text class="label" x="150" y="42" text-anchor="middle">Speaker</text><text class="small" x="150" y="68" text-anchor="middle">barge-in armed</text></g>
-  <g transform="translate(60,650)"><rect class="decision" width="270" height="100"/><text class="label" x="135" y="42" text-anchor="middle">Barge-in controller</text><text class="small" x="135" y="68" text-anchor="middle">stop playback → capture</text></g>
+  <g transform="translate(945,650)"><rect class="local" width="250" height="108"/><text class="label light" x="125" y="43" text-anchor="middle">TTS</text><text class="small light" x="125" y="70" text-anchor="middle">first-clause / sentence stream</text></g>
+  <g transform="translate(955,870)"><path class="data" d="M0 0H230V72L210 96H0Z"/><text class="label" x="115" y="42" text-anchor="middle">Speaker</text><text class="small" x="115" y="68" text-anchor="middle">barge-in armed</text></g>
+  <g transform="translate(60,650)"><path class="decision" d="M135 0L270 50L135 100L0 50Z"/><text class="label" x="135" y="42" text-anchor="middle">Barge-in controller</text><text class="small" x="135" y="68" text-anchor="middle">stop playback → capture</text></g>
 
-  <path class="edge" d="M320 209H430"/><path class="edge" d="M680 209H790"/><path class="edge" d="M940 258V390"/><path class="edge" d="M770 448H920"/><path class="edge" d="M1070 506V650"/><path class="edge" d="M1070 758V870"/><path class="edge" d="M330 448H430"/>
-  <path class="loop" d="M920 918H380V700H330"/>
+  <path class="edge" d="M250 205H390"/><path class="edge" d="M610 205H730"/><path class="edge" d="M900 258V390"/><path class="edge" d="M770 448H920"/><path class="edge" d="M1070 506V650"/><path class="edge" d="M1070 758V870"/><path class="edge" d="M330 448H430"/>
+  <path class="loop" d="M955 918H380V700H330"/>
   <path class="loop" d="M195 650H40V110H555V160"/>
   <text class="caption" x="520" y="1030" text-anchor="middle">barge-in stops playback and returns control to capture</text>
   <text class="small" x="58" y="1080">Voice shares provider/model settings with chat. Production has one selected route; failures are explicit, with no silent ASR or LLM fallback.</text>
