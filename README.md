@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Vietnamese voice assistant · offline-first by default</strong><br>
-  Local audio, ASR, TTS, knowledge, and memory · optional local or remote LLM
+  Local audio, ASR, TTS, knowledge and memory · optional local or remote LLM
 </p>
 
 <p align="center">
@@ -18,135 +18,107 @@
   </a>
 </p>
 
-Audio capture, ASR, TTS, knowledge, and memory stay local. The LLM is local by
-default; an explicitly selected remote provider is used by both chat and voice and
-receives the transcript and prompt context.
+SoCa is a Vietnamese voice assistant that runs on your machine. Audio capture,
+VAD/AEC, ASR, TTS, knowledge retrieval, memory, indexing and session state stay
+local. The LLM is local by default. If you explicitly select OpenAI, Gemini,
+OpenRouter or Groq, that provider is used by both chat and voice and receives the
+transcript plus assembled prompt context.
 
-SoCa is a research-heavy personal project. Every model in the product path had to
-win a local bake-off before it became a default, and every release decision is
-backed by a recorded, hashed run — including the ones that came out **negative**.
-Those live in [BENCHMARKS.md](BENCHMARKS.md) alongside the good results.
+> **Status: working system, not a finished product.** The text runtime, voice
+> loop, TUI, retrieval and memory run end to end. Current release blockers and
+> negative measurements are recorded in [BENCHMARKS.md](BENCHMARKS.md); they are
+> not hidden behind a green summary.
 
-> **Status: working system, not a finished product.** The voice loop, text runtime,
-> TUI, retrieval, and memory all run end to end. Three release gates are currently
-> **open**: groundedness on the real vault fails its threshold, the Qwen3-ASR
-> upgrade is blocked on memory evidence, and no measurement has ever been taken on
-> real microphone hardware or on an ARM single-board computer. See
-> [open blockers](BENCHMARKS.md#10-open-blockers) — they are listed, not buried.
+## What SoCa does
 
----
+- **Voice loop:** microphone → VAD/AEC → selected ASR → assistant runtime →
+  streaming TTS → speaker.
+- **Turn-taking:** Smart Turn endpointing, WebRTC AEC3 and barge-in for duplex
+  audio.
+- **Robust ASR:** VAD, confidence/compression guards, de-looping and typed
+  rejection reasons. Rejected speech becomes a Vietnamese repair prompt instead
+  of an invented transcript.
+- **Controlled assistant runtime:** goal resolution, typed capability routing,
+  bounded tool/workflow steps, evidence verification and one terminal outcome.
+- **Hybrid Vietnamese RAG:** BM25 plus `AITeamVN/Vietnamese_Embedding_v2` over a
+  local Markdown vault, with revisioned indexes and explicit evidence gates.
+- **Layered memory:** working session memory, approved core memory and
+  query-selected archive memory. Working memory compacts at the configured
+  high-water mark through an isolated local summary worker.
+- **Two surfaces:** `soca ask`/`soca chat` for text and `soca ui` for the Ink
+  terminal UI over a headless NDJSON engine.
 
-## What works today
-
-- **Voice loop** (CLI and TUI): mic → VAD → `RobustASR` → `AssistantRuntime` → TTS
-  → speaker, continuously.
-- **Barge-in and turn-taking**: a single duplex audio stream with WebRTC AEC3 lets
-  you interrupt the assistant mid-sentence. Endpointing uses Smart Turn v3.2, which
-  cut interruptions of the *user* from 100% to 3.3% against a fixed silence timer
-  ([measured](BENCHMARKS.md#52-turn-taking-120-scenarios-800-ms-within-turn-pause)).
-- **`RobustASR`**: VAD, de-looping, a calibrated confidence guard, and hallucination
-  heuristics turn flaky Whisper output into either trusted text or a clean reject
-  with a typed reason. On the production model it rejects 45 of 50 non-speech clips
-  while falsely rejecting **zero** real utterances.
-- **Assistant runtime**: a bounded controlled workflow with staged guardrails,
-  deterministic → semantic → LLM tool routing, hybrid retrieval, citations, and one
-  typed terminal state per run. A failed verification is surfaced as blocked — it is
-  never converted into a confident-sounding answer.
-- **Hybrid Vietnamese RAG**: BM25 + `AITeamVN/Vietnamese_Embedding_v2` with linear
-  fusion, over a local Markdown vault, with a transactional index (atomic generation
-  swap, incremental reconcile, explicit rollback).
-- **Working memory**: session memory with automatic compaction at 15K tokens via a
-  local summary model in an isolated worker process.
-- **Text runtime**: `soca ask` / `soca chat` — the same runtime with no mic or TTS.
-- **Ink TUI**: `soca ui` with status / chat / voice / settings modes over a headless
-  NDJSON engine.
-- **Remote LLM providers (opt-in)**: swap the core LLM for OpenAI / Groq /
-  OpenRouter / Gemini from the settings screen. Local stays the default; an
-  explicitly selected provider is used by both chat and voice.
-- **Conversation repair**: ASR rejects and guardrail blocks become natural
-  Vietnamese follow-ups with variants, no-repeat, and escalation to chat — not raw
-  error text read aloud.
-
-Detailed system design lives in [`docs/`](docs/README.md).
-
----
+The production stack has no silent provider, model, router, retrieval-backend or
+ASR fallback. Retries are bounded and observable; an exhausted production
+failure is typed and visible. Changing the selected component is an explicit
+operator action.
 
 ## Architecture
 
-The shortest accurate mental model is still a left-to-right flow. The detailed
-boundary view follows it for readers who need storage, provider, and event
-ownership:
-
 ```mermaid
 flowchart LR
-    Mic[/Microphone/] --> Capture[VAD + AEC]
-    Capture --> ASR[RobustASR]
-    ASR -->|transcript| RT[AssistantRuntime]
+    MIC[/Microphone/] --> AUDIO[VAD + AEC]
+    AUDIO --> ASR[Selected ASR]
+    ASR -->|transcript| RT[Assistant runtime]
     RT --> WF[Controlled workflow]
-    WF --> RAG[(Knowledge index)]
-    WF --> MEM[(Working · core · archive)]
+    WF --> KNOW[(Knowledge index)]
+    WF --> MEM[(Working · core · archive memory)]
     WF --> LLM{Selected LLM}
     LLM --> TTS[TTS]
-    TTS --> Spk[/Speaker/]
-    ASR -. typed reject .-> Repair[Repair layer]
-    Repair -.-> TTS
+    TTS --> SPK[/Speaker/]
+    ASR -. typed reject .-> REPAIR[Repair layer]
+    REPAIR -.-> TTS
     RT -. progress · usage .-> UI[[CLI · Ink TUI]]
-    LLM -. explicit remote .-> Remote[OpenAI · Gemini · OpenRouter · Groq]
+    LLM -. explicit remote only .-> REMOTE[OpenAI · Gemini · OpenRouter · Groq]
 ```
 
-Detailed boundary view:
+The UI is a presentation layer. `SocaEngine` owns the NDJSON process boundary;
+`soca/core` owns orchestration and contracts; backend packages own models,
+indexes, memory and tools. The UI never loads model weights or reconstructs
+routing logic.
 
 ![SoCa system overview](docs/assets/diagrams/system-overview.svg)
 
-The editable Lucid source for the flow above and the focused subsystem diagrams
-are catalogued in [the architecture diagram register](docs/diagrams.md).
-
-Dependency rule: `app` (CLI/TUI) → `soca.core` (facade) → backends
-(`asr` / `llm` / `tts` / `knowledge` / `memory` / `tools`). Details:
-[docs/02-architecture.md](docs/02-architecture.md).
-
-**Design commitments that shaped the code:**
-
-- **No silent fallback, anywhere.** A missing model, a stale index generation, a
-  failed worker, or an absent calibration raises visibly. The runtime never quietly
-  downgrades to a smaller model or a weaker retrieval path.
-- **Immutable data.** Turn results are frozen dataclasses; updates create copies.
-- **Fail-closed readiness.** Missing confidence calibration blocks a profile
-  *before* its model loads, rather than disabling the guard.
-- **Evidence separates from speech.** Technical rejects go through the repair layer
-  so the user hears Vietnamese, not a stack trace.
-
----
+Read the [architecture diagram register](docs/diagrams.md) for the reviewed
+Lucid sources and focused subsystem diagrams. The canonical implementation map
+is [`docs/00-system-map.md`](docs/00-system-map.md).
 
 ## Quickstart
 
-SoCa needs **Python 3.11** and [`uv`](https://docs.astral.sh/uv/).
+Requirements: **Python 3.11** and [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
-# 1) Environment
+# Install the application and development/evaluation dependencies.
 uv sync --extra dev --extra eval --extra rag
-# Optional: rebuild llama-cpp-python with Apple Metal
+
+# Optional: build llama.cpp with Apple Metal support.
 CMAKE_ARGS="-DGGML_METAL=on" FORCE_CMAKE=1 \
   uv pip install --force-reinstall --no-cache-dir llama-cpp-python
 
-# 2) Local models for the default profile
+# Provision the default local runtime.
 uv run python scripts/download_phowhisper.py --model phowhisper_small
 uv run python scripts/download_llm.py --model arcee_vylinh_3b_q4_k_m
 uv run python scripts/download_valtec_onnx.py
 uv run python scripts/download_smart_turn.py
 uv run soca knowledge model install aiteamvn-v2
 
-# 3) A local Markdown knowledge vault
+# Create and index a local Markdown vault.
 uv run python scripts/init_knowledge_vault.py ./Knowledge
 uv run soca knowledge index build --vault ./Knowledge
 
-# 4) Run
-uv run soca voice                        # CLI voice loop
-uv run soca ask "mấy giờ rồi?" --trace    # one text turn, no mic/TTS
-uv run soca ui voice                     # Ink TUI (build first: cd ui && npm i && npm run build)
+# Run one of the application surfaces.
+uv run soca voice
+uv run soca ask "ghi chú của tôi nói gì về attention" --trace
+uv run soca ui voice
 ```
 
-Check what is registered without loading a single model:
+Build the UI once before the first TUI run:
+
+```bash
+cd ui && npm install && npm run build
+```
+
+Check configuration and registered artifacts without loading every model:
 
 ```bash
 uv run soca status
@@ -155,244 +127,137 @@ uv run soca asr-models
 uv run soca llm-models
 ```
 
-**Optional — remote LLM providers.** Local stays the default; an explicitly
-persisted provider/model selection is shared by chat and voice:
+### Optional remote LLM
+
+Local remains the default. To use a remote provider explicitly:
 
 ```bash
-uv sync --extra llm-remote     # openai client + keyring for secure key storage
-uv run soca ui                 # Settings → pick provider → paste key → choose model
+uv sync --extra llm-remote
+uv run soca ui
+# Settings → choose provider → paste key → choose model
 ```
 
-Keys are stored in the OS keyring, never auto-written to `.env`, and masked in the
-UI; the chosen backend persists in `~/.config/soca/llm.json`. **Remote sends your
-transcript to a third party.** Precedence and read rules:
-[docs/16-llm-providers.md](docs/16-llm-providers.md).
-
-The runtime reads local Markdown only — notes under `./Knowledge/wiki/` and
-retrieved archive notes under `./Knowledge/memory/`. Explicitly approved
-always-on memory lives in `./Knowledge/memory/core.json`; generated SQLite and
-vector generations live privately under `./Knowledge/.soca/`. There is no
-unbounded archive payload in production. It never auto-writes long-term memory,
-and vault contents are never committed.
-
----
+Keys are stored in the OS keyring when available and masked in the UI. The
+selected provider/model persists in `~/.config/soca/llm.json`; the key is never
+written to that file or echoed through NDJSON. Remote mode sends the transcript
+and assembled prompt to the selected third party. Details:
+[LLM providers and settings](docs/16-llm-providers.md).
 
 ## Runtime profiles
 
-A profile binds one ASR, one LLM, and one TTS voice into a named runtime.
+A profile binds one explicit ASR, LLM and TTS configuration. The `baseline`
+profile is the only production default; Qwen profiles are explicit selections,
+not automatic fallbacks.
 
-| Profile | ASR | LLM | TTS | Purpose |
-| --- | --- | --- | --- | --- |
-| **`baseline`** | `phowhisper_small` | `arcee_vylinh_3b_q4_k_m` | Valtec / NF | The only production default |
-| `qwen-release` | `qwen3_asr_0_6b` | `arcee_vylinh_3b_q4_k_m` | Valtec / NF | Explicit release candidate — **[blocked](BENCHMARKS.md#32-qwen3-asr-release-qualification--decision-blocked)** |
-| `qwen-reference` | `qwen3_asr_1_7b` | `arcee_vylinh_3b_q4_k_m` | Valtec / NF | Explicit quality reference / demo |
-
-The Qwen profiles are **never** automatic fallbacks — not for each other, not for
-PhoWhisper. Selecting one is always an explicit act.
+| Profile | ASR | LLM | Use |
+| --- | --- | --- | --- |
+| `baseline` | `phowhisper_small` | `arcee_vylinh_3b_q4_k_m` | Production default |
+| `qwen-release` | `qwen3_asr_0_6b` service | `arcee_vylinh_3b_q4_k_m` | Explicit release candidate; currently blocked |
+| `qwen-reference` | `qwen3_asr_1_7b` service | `arcee_vylinh_3b_q4_k_m` | Explicit quality/reference profile |
 
 ```bash
 uv run soca voice baseline
-uv run soca voice --no-memory                    # disable memory
-uv run soca voice --asr-model phowhisper_base    # explicit diagnostic override
+uv run soca voice --no-memory
+uv run soca voice --asr-model phowhisper_base
 ```
 
-Profiles drive both voice and text; `--llm-model` overrides both. Details:
-[docs/08-registries-profiles-cli.md](docs/08-registries-profiles-cli.md).
+Profile validation, artifact readiness and override precedence are documented
+in [registries, profiles and CLI](docs/08-registries-profiles-cli.md).
 
----
+## Commands at a glance
 
-## CLI at a glance
-
-| Command | What it does |
+| Command | Purpose |
 | --- | --- |
 | `soca voice [profile]` | Microphone voice loop |
-| `soca ask <text>` | One text turn (guardrails / tools / knowledge / memory / LLM) |
+| `soca ask <text>` | One text turn with tools, knowledge, memory and LLM |
 | `soca chat` | Multi-turn text session |
-| `soca ui [status\|chat\|voice\|settings]` | Ink terminal UI over `soca engine` |
-| `soca engine` | Headless NDJSON engine over stdio, for external UIs |
-| `soca status` | Runtime readiness without loading models |
-| `soca profiles` | List runtime profiles |
-| `soca knowledge index <build\|status\|verify\|rebuild\|gc\|inspect\|migrate\|rollback\|watch>` | Transactional index lifecycle |
-| `soca knowledge model <list\|status\|install\|verify\|remove>` | Embedding model lifecycle |
-| `soca asr-models` · `llm-models` | List registered models and local file status |
-| `soca asr-smoke` · `llm-smoke` | Smoke-test a single model |
-| `soca benchmark-asr` · `calibrate-asr` | ASR robustness benchmark / threshold calibration |
+| `soca ui [mode]` | Ink UI: status, chat, voice or settings |
+| `soca engine` | Headless NDJSON engine for external UIs |
+| `soca status` | Readiness and selected runtime configuration |
+| `soca profiles` | Registered runtime profiles |
+| `soca knowledge index ...` | Build, verify, inspect, migrate, rollback or GC an index |
+| `soca knowledge model ...` | Install, verify or inspect the embedding model |
+| `soca asr-models` / `soca llm-models` | Registry and local artifact status |
+| `soca benchmark-asr` / `soca calibrate-asr` | ASR research/evaluation commands |
 
-`soca ask` is the fastest way to exercise routing without mic or TTS:
-
-```bash
-uv run soca ask "wiki: chất đạm là gì?" --trace          # knowledge retrieval + citations
-uv run soca ask "memory: lựa chọn TTS của tôi" --trace   # private memory search
-uv run soca ask "đọc private/secrets.md" --no-llm --trace # guardrail block
-```
-
-**Tool catalog — four local tools, and nothing fake.** `knowledge.search`,
-`knowledge.read`, `knowledge.inspect`, and `memory.search`. There is no weather,
-device, alarm, or timer tool: those requests stay in free chat and the assistant
-says it cannot do them, rather than pretending to via a stub backend.
-
----
-
-## Evaluation
-
-Model choices here are decisions with evidence attached, not preferences. A run
-becomes release evidence only when the tree is clean and every model, dataset, and
-config revision is pinned and hashed; anything against a provider-hosted model is
-labelled characterization and never used for a quality claim.
-
-Selected results — full context, caveats, and the negative results in
-[BENCHMARKS.md](BENCHMARKS.md):
-
-| Area | Result |
-| --- | --- |
-| ASR robustness | 45/50 non-speech clips rejected, **0/30 real utterances falsely rejected**; 16.39% WER on FLEURS-vi |
-| Anti-hallucination ablation | 100% → **0%** hallucination on non-speech, at −0.23 pp WER cost (PhoWhisper-tiny) |
-| Turn-taking | cut-in **100% → 3.3%**, premature close 61.7% → 18.3%, for ~608 ms more patience |
-| Barge-in | 94.7% detection at 2.7% false interrupt under real recorded echo |
-| Retrieval | Recall@5 **0.916** on 10,576 documents, ~71 ms p95 |
-| TTS | RTF p50 0.070, latency p50 271 ms, loopback CER 0.134 — all inside gate |
-| Streaming | first-clause flushing saves **395 ms** to first audio on 7/8 prompts |
-
-Figures are regenerated from committed values, never redrawn by hand:
+Useful routing checks without microphone or TTS:
 
 ```bash
-uv run python scripts/plot_benchmarks.py
+uv run soca ask "wiki: attention và Transformer là gì?" --trace
+uv run soca ask "memory: tôi đã chọn TTS nào?" --trace
+uv run soca ask "đọc private/secrets.md" --no-llm --trace
 ```
 
----
+The production tool catalog is intentionally small: `knowledge.search`,
+`knowledge.read`, `knowledge.inspect` and `memory.search`. There is no weather,
+device, alarm or timer stub. Unsupported requests remain visible as ordinary
+chat rather than pretending that an absent tool succeeded.
 
-## Repository layout
+## Data, memory and indexes
+
+The source vault is user-owned Markdown under `./Knowledge/wiki/`. Approved
+always-on memory lives in `./Knowledge/memory/core.json`; archive memory is
+retrieved from `./Knowledge/memory/` only when the query requires it. Generated
+SQLite catalogs and dense vector generations live privately under
+`./Knowledge/.soca/knowledge_index/`.
+
+Indexing is explicit and incremental. New, changed or deleted Markdown is
+reconciled against the source digest; unchanged passage embeddings are reused;
+new generations are verified and published atomically. A stale, missing or
+corrupt production generation is an explicit failure, not a silent sparse-mode
+fallback. See [index lifecycle](docs/11-index-lifecycle.md) and
+[hybrid RAG and memory](docs/09-hybrid-rag-memory.md).
+
+## Evidence and current release state
+
+SoCa separates a smoke test, a real provider invocation, a public benchmark, a
+private-vault trajectory and a platform/device gate. Each release claim needs a
+pinned code/model/data revision, configuration, hardware, metrics, failures and
+decision. Raw transcripts, private vaults, audio and provider logs stay local.
+
+Selected evidence and open blockers are maintained in
+[`BENCHMARKS.md`](BENCHMARKS.md). The evaluation protocol and status vocabulary
+are in [evaluation and release gates](docs/17-evaluation-and-release.md).
+
+## Documentation and repository map
+
+Start with [`docs/README.md`](docs/README.md), then:
+
+- [system map](docs/00-system-map.md) — boundaries, modules, state and one turn;
+- [voice pipeline](docs/03-voice-pipeline.md) — ASR, streaming, TTS, playback and barge-in;
+- [assistant runtime](docs/05-assistant-runtime.md) — routing, tools, evidence and verification;
+- [conversation repair](docs/06-conversation-repair.md) — typed repair events and handover;
+- [TUI and engine](docs/07-tui.md) — Ink, NDJSON, slash commands and progress;
+- [retrieval and memory](docs/09-hybrid-rag-memory.md) — catalog, hybrid RAG and memory layers;
+- [context budget](docs/14-model-aware-context-budget.md) — prompt admission and `/context`;
+- [provider reliability](docs/provider-runtime-reliability.md) — retries, cancellation and typed failures.
 
 ```text
-soca/
-  cli.py       Click CLI (voice / ask / chat / ui / engine / knowledge / ...)
-  core/        FACADE: AssistantRuntime, VoicePipeline, controlled workflow,
-               guardrails, repair, profiles, streaming, endpointing, AEC sink
-  asr/         PhoWhisper ONNX, Qwen3-ASR worker + IPC, VAD, RobustASR
-  llm/         llama.cpp runner, prompt styles, registry, remote providers
-  tts/         Valtec ONNX runtime, Vietnamese normalizer, G2P, lexicons
-  knowledge/   Markdown vault, BM25 + dense retrievers, transactional index
-  memory/      approved core memory, retrieved archive, session compaction
-  tools/       ToolRuntime and the four local tool specs
-  app/         presentation: CLI helpers + headless engine
-  config/      LLM settings and OS-keyring secret store
-
-ui/            Ink terminal UI (TypeScript), talks to `soca engine` over NDJSON
-docs/          system design (start at docs/README.md) + ADRs + evidence JSON
-eval/          evaluation harnesses for every area in BENCHMARKS.md
-scripts/       model downloads, smoke tests, release gates, figure rendering
+soca/      production Python packages: app, core, asr, llm, tts, knowledge, memory and tools
+ui/        Ink/React terminal UI
+eval/      datasets, harnesses and local results
+docs/      current system docs, ADRs, diagrams and sanitized evidence
+scripts/   provisioning, smoke tests, release gates and figure generation
+local/     experimental ASR robustness workflow; not production runtime
 ```
-
----
 
 ## Development
 
 ```bash
-uv run ruff check soca tests --fix
+uv run ruff check soca tests
 uv run pytest -q
 cd ui && npm test && npm run typecheck
 ```
 
-Model files, datasets, generated audio, and eval results are **local artifacts** and
-are not committed (`models/`, `data/`, `eval/results/`, `benchmarks/raw/`, `*.wav`).
+Model weights, datasets, generated audio and evaluation results are local
+artifacts and are not committed (`models/`, `data/`, `eval/results/`,
+`benchmarks/raw/`, `*.wav`).
 
----
+## Licensing
 
-## Licenses and attribution
-
-**SoCa's own source code is [MIT licensed](LICENSE).**
-
-That does *not* cover the models it downloads. Each third-party model and dataset
-keeps its own license and model-card restrictions, and **one of them is
-non-commercial**. Read this section before deploying SoCa anywhere commercial.
-
-### ⚠️ The non-commercial constraint
-
-| Component | License | Consequence |
-| --- | --- | --- |
-| **Valtec TTS** — [`valtecAI-team/valtec-tts-pretrained`](https://github.com/tronghieuit/valtec-tts) | **CC BY-NC 2.0** | **The default and only TTS engine is non-commercial.** Any commercial deployment of SoCa's voice output requires either a separate license from the Valtec authors or a different TTS engine. Redistribution of the derived ONNX artifacts requires explicit release review. |
-| **ESC-50** (benchmark only) | CC BY-NC | Used to build non-speech evaluation sets. Never shipped as product data. |
-
-Everything else in the product path is permissively licensed.
-
-### Models in the product path
-
-| Role | Model | License |
-| --- | --- | --- |
-| ASR (default) | [`vinai/PhoWhisper-small`](https://huggingface.co/vinai/PhoWhisper-small), ONNX conversion by `huuquyet` | BSD-3-Clause |
-| ASR (explicit profiles) | [`Qwen/Qwen3-ASR-0.6B`](https://huggingface.co/Qwen/Qwen3-ASR-0.6B), [`Qwen3-ASR-1.7B`](https://huggingface.co/Qwen/Qwen3-ASR-1.7B) | Apache-2.0 |
-| Voice activity detection | [`snakers4/silero-vad`](https://github.com/snakers4/silero-vad) | MIT |
-| Turn detection | [`pipecat-ai/smart-turn-v3`](https://huggingface.co/pipecat-ai/smart-turn-v3) (v3.2 CPU int8 ONNX, 8M params) | BSD-2-Clause |
-| Acoustic echo cancellation | WebRTC AEC3 via `pywebrtc-audio` | Apache-2.0 (package); WebRTC upstream BSD-3-Clause |
-| LLM (default) | [`arcee-ai/Arcee-VyLinh`](https://huggingface.co/arcee-ai/Arcee-VyLinh) 3B, community GGUF by QuantFactory | Apache-2.0 upstream |
-| Summary model | [`Qwen3-4B-Instruct-2507`](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507) Q4_K_M, Unsloth GGUF | Apache-2.0 |
-| Embedding | [`AITeamVN/Vietnamese_Embedding_v2`](https://huggingface.co/AITeamVN/Vietnamese_Embedding_v2) | Apache-2.0 |
-| Semantic router | [`intfloat/multilingual-e5-small`](https://huggingface.co/intfloat/multilingual-e5-small) via FastEmbed | MIT |
-| TTS | [`valtecAI-team/valtec-tts-pretrained`](https://github.com/tronghieuit/valtec-tts) | **CC BY-NC 2.0** |
-
-Registered-but-not-default models (PhoGPT-4B BSD-3-Clause, VinaLLaMA and Vistral
-under Llama-2-family and AFL-3.0 signals, and others) each carry a `license_note` in
-[`soca/llm/registry.py`](soca/llm/registry.py). Several are marked *verify upstream
-license before any public release claim* — that warning is deliberate and unresolved.
-
-### Citing the models
-
-PhoWhisper should be cited when used in published work:
-
-> Thanh-Thien Le, Linh The Nguyen, Dat Quoc Nguyen. *PhoWhisper: Automatic Speech
-> Recognition for Vietnamese.* ICLR 2024 Tiny Papers.
-
-The anti-hallucination pipeline is adapted from:
-
-> Barański et al., ICASSP 2025 — Whisper hallucination mitigation on non-speech
-> input. SoCa's replication and its Vietnamese-specific findings are in
-> [BENCHMARKS.md](BENCHMARKS.md#a1--anti-hallucination-ablation-phowhisper-tiny).
-
-Turn-taking metrics use Full-Duplex-Bench vocabulary; ASR reporting follows the Open
-ASR Leaderboard convention of publishing quality and speed together.
-
-### Python dependencies
-
-Every package SoCa depends on directly is MIT, BSD, Apache-2.0, or ISC, and the Ink
-TUI in [`ui/`](ui/) depends on `ink` and `react`, both MIT. Listing them one by one
-would only duplicate `uv.lock` and go stale, so this section records the ones that
-carry an actual obligation instead.
-
-Four transitive packages are not permissive. None is a blocker, and all four are
-used as ordinary separate libraries rather than being copied into SoCa's own source:
-
-| Package | License | Reaches the tree via |
-| --- | --- | --- |
-| `soxr` | LGPL-2.1-or-later | `librosa` (core dependency) — resampling |
-| `Distance` | GPL (unversioned classifier) | `g2p-en`, i.e. only the optional `tts-en` extra |
-| `tqdm` | MPL-2.0 AND MIT | many packages, and SoCa directly |
-| `certifi`, `fqdn` | MPL-2.0 | `requests` / `httpx` / `jsonschema` |
-
-MPL-2.0 is file-level copyleft and imposes nothing on surrounding code. The `soxr`
-and `Distance` entries deserve a decision before any binary redistribution:
-installing the `tts-en` extra puts a GPL-classified package in the environment.
-Skipping that extra removes it — English G2P then falls back to the bundled
-CMUdict lexicon, which is what
-[BENCHMARKS.md](BENCHMARKS.md#a1--anti-hallucination-ablation-phowhisper-tiny)
-measures anyway.
-
-This list was produced by reading installed package metadata, and it can be
-regenerated after any dependency change:
-
-```bash
-uv run python -c "
-import importlib.metadata as md
-for d in md.distributions():
-    name = d.metadata['Name']
-    lic = d.metadata.get('License-Expression') or d.metadata.get('License') or ''
-    cls = ' '.join(c for c in (d.metadata.get_all('Classifier') or []) if c.startswith('License'))
-    text = (lic + ' ' + cls).lower()
-    if any(k in text for k in ('mpl', 'mozilla public', 'gnu', 'gpl', 'eupl', 'noncommercial')):
-        print(f'{name:24} {(lic or cls)[:60]}')
-"
-```
-
-None of this is legal advice — it is what the packages declare about themselves.
-
-Benchmark dataset licenses are listed in
-[BENCHMARKS.md § 2](BENCHMARKS.md#2-datasets-and-corpora).
+SoCa source code is [MIT licensed](LICENSE). Models and datasets retain their
+own licenses and model-card restrictions. The default Valtec TTS artifacts are
+**CC BY-NC 2.0**, so commercial voice deployment requires a separate license
+from the authors or a different TTS engine. Review the complete attribution and
+dependency notes in [BENCHMARKS.md](BENCHMARKS.md#2-datasets-and-corpora) and
+the model registries before redistribution.
