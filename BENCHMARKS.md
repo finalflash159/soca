@@ -1,6 +1,7 @@
 # SoCa — Benchmarks
 
-Measured results for the Vietnamese on-device voice assistant in [`soca/`](soca/).
+Measured results for SoCa, a Vietnamese voice assistant with local audio,
+retrieval, and memory plus an optional local or remote LLM in [`soca/`](soca/).
 This file records **what is currently true about the shipped system** and the
 evidence behind each release decision. Superseded runs are compressed into
 [Appendix A](#appendix-a--superseded-results) rather than deleted, so every decision
@@ -523,8 +524,12 @@ Decision record: [ADR 0004](docs/adr/0004-production-knowledge-retrieval.md).
 
 | Vault | Documents | Chunks | Dense rows | Verify |
 | --- | ---: | ---: | ---: | --- |
-| `~/KnowledgeVault` | 6 | 23 | 23 | clean |
+| repository-root `Knowledge` snapshot | 6 | 23 | 23 | clean |
 | sanitized rich fixture | 35 | 446 | 446 | clean |
+
+These are fixed lifecycle-run snapshots, not a claim about the current contents of
+the operator's vault. The runtime canonical path is `./Knowledge`; the user must
+initialize it and explicitly copy notes before indexing.
 
 The rich fixture exposed two production-path defects that unit metrics did not
 show: flat Markdown sections emitted 37 heading-only chunks, and duplicate chunks

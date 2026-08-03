@@ -2,16 +2,12 @@
 
 ![SoCa](docs/assets/soca-mark.svg)
 
-*The perched songbird is the splash mark the TUI actually draws. The SVG is generated
-by `uv run python scripts/render_logo_svg.py`, which reads the glyphs from
-[`ui/src/components/Logo.tsx`](ui/src/components/Logo.tsx) and the dawn ramp from
-[`soca/app/style/palette.py`](soca/app/style/palette.py), so the mark here cannot
-drift from the one on screen. Sơn ca is the lark, and it sings at first light.*
-
-**An offline-first Vietnamese voice assistant that runs entirely on your own
-machine.** Microphone → VAD → robust ASR → assistant runtime (guardrails · tools ·
-knowledge · memory · local LLM) → TTS → speaker. Nothing in the voice path touches
-a network.
+**An offline-first Vietnamese voice assistant that runs on your own machine.**
+Microphone → VAD → robust ASR → assistant runtime (guardrails · tools · knowledge ·
+memory · local or remote LLM) → TTS → speaker. Audio capture, ASR, TTS, knowledge,
+and memory stay local. The LLM is local by default, or can be explicitly configured
+as a remote provider for both chat and voice; remote selection sends transcript and
+prompt context to that provider.
 
 SoCa is a research-heavy personal project. Every model in the product path had to
 win a local bake-off before it became a default, and every release decision is
@@ -52,8 +48,8 @@ Those live in [BENCHMARKS.md](BENCHMARKS.md) alongside the good results.
 - **Ink TUI**: `soca ui` with status / chat / voice / settings modes over a headless
   NDJSON engine.
 - **Remote LLM providers (opt-in)**: swap the core LLM for OpenAI / Groq /
-  OpenRouter / Gemini from the settings screen. Local stays the default and is the
-  only thing in the voice hot path.
+  OpenRouter / Gemini from the settings screen. Local stays the default; an
+  explicitly selected provider is used by both chat and voice.
 - **Conversation repair**: ASR rejects and guardrail blocks become natural
   Vietnamese follow-ups with variants, no-repeat, and escalation to chat — not raw
   error text read aloud.
