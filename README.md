@@ -85,12 +85,13 @@ flowchart LR
     RT --> WF[Controlled workflow]
     WF --> RAG[(Knowledge index)]
     WF --> MEM[(Working · core · archive)]
-    WF --> LLM[LLM<br/>local by default · remote explicit]
+    WF --> LLM{Selected LLM}
     LLM --> TTS[TTS]
     TTS --> Spk[/Speaker/]
     ASR -. typed reject .-> Repair[Repair layer]
     Repair -.-> TTS
     RT -. progress · usage .-> UI[[CLI · Ink TUI]]
+    LLM -. explicit remote .-> Remote[OpenAI · Gemini · OpenRouter · Groq]
 ```
 
 Detailed boundary view:
