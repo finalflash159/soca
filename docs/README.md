@@ -1,68 +1,83 @@
-# SoCa — System Design Docs
+# SoCa system documentation
 
-System design documentation for **SoCa / Sơn Ca**, a Vietnamese voice assistant
-that runs **fully on-device** with an offline-first architecture. Each file owns
-one area of the system. Conventions: prose is in English, code and identifiers
-stay in English, Mermaid is preferred for diagrams, and ASCII is used where a
-folder tree or TUI layout is easier to read that way.
+SoCa (Sơn Ca) is a local-first Vietnamese voice assistant. Audio capture,
+endpointing, ASR, TTS, knowledge retrieval, memory, indexing and session state
+run on the machine. The LLM is local by default; the user can explicitly select
+OpenAI, Gemini, OpenRouter or Groq for both chat and voice. That selection sends
+the transcript and assembled prompt context to the chosen provider.
 
-> These docs describe the **current implementation** in `soca/`. Phase plans live
-> in `zplan/`; benchmark results live in `BENCHMARKS.md`.
+These pages describe the implementation in `soca/` and `ui/`, not a future
+plan. Plans and historical experiments stay in `zplan/`; measured benchmark
+results stay in [`BENCHMARKS.md`](../BENCHMARKS.md). The canonical current-state
+map is [00-system-map](./00-system-map.md).
 
-## Documentation Map
+## Start here
 
-| #   | File                                                          | Content                                                      |
-| --- | ------------------------------------------------------------- | ------------------------------------------------------------ |
-| —   | [README.md](./README.md)                                      | Table of contents and quick system overview (this file)      |
-| 01  | [overview.md](./01-overview.md)                               | Vision, goals, and high-level container architecture         |
-| 02  | [architecture.md](./02-architecture.md)                       | Package layers, dependency graph, and core data models       |
-| 03  | [voice-pipeline.md](./03-voice-pipeline.md)                   | End-to-end voice loop, streaming, and threading model        |
-| 04  | [asr-robustness.md](./04-asr-robustness.md)                   | RobustASR, the 5-stage anti-hallucination pipeline           |
-| 05  | [assistant-runtime.md](./05-assistant-runtime.md)             | Turn routing, guardrails, knowledge/memory, LLM, telemetry   |
-| 06  | [conversation-repair.md](./06-conversation-repair.md)         | Repair layer: catalog, no-reply ladder, follow-up, handover  |
-| 07  | [tui.md](./07-tui.md)                                         | TUI architecture, modes, threading, and event flow           |
-| 08  | [registries-profiles-cli.md](./08-registries-profiles-cli.md) | ASR/LLM/TTS registries, runtime profiles, CLI, optional deps |
-| 09  | [hybrid-rag-memory.md](./09-hybrid-rag-memory.md)             | Hybrid RAG retrieval, tool router cascade, retrieved memory  |
-| 10  | [vietnamese-rag-model-selection.md](./10-vietnamese-rag-model-selection.md) | Vietnamese embedding, reranker, and vector-backend evidence |
-| 11  | [index-lifecycle.md](./11-index-lifecycle.md)                 | Transactional sparse/dense index lifecycle and operations    |
-| 12  | [local-summary-model-selection.md](./12-local-summary-model-selection.md) | Local summary datasets, bake-off, lifecycle, and decision |
-| 13  | [retrieval-evidence-gates.md](./13-retrieval-evidence-gates.md) | Retrieval relevance, evidence gates, citations and real-flow checks |
+![SoCa system overview](assets/diagrams/system-overview.svg)
 
-## SoCa in One Diagram
+1. [System map](./00-system-map.md) — product boundary, one-turn loop, state,
+   evidence and module ownership.
+2. [Overview](./01-overview.md) — goals and execution surfaces.
+3. [Architecture](./02-architecture.md) — dependency direction and key types.
+4. [Assistant runtime](./05-assistant-runtime.md) — routing, tools, memory,
+   knowledge, LLM and verification.
+5. [Voice pipeline](./03-voice-pipeline.md) — ASR, controlled turn, streaming,
+   TTS, playback and barge-in.
 
-```mermaid
-flowchart LR
-    Mic([🎙 Mic]) --> EP[VAD endpoint<br/>record_until_silence]
-    EP --> ASR[RobustASR<br/>PhoWhisper ONNX]
-    ASR --> RT[AssistantRuntime<br/>guardrails · tools · knowledge · memory · LLM]
-    RT --> TTS[Valtec TTS engine]
-    TTS --> Spk([🔊 Speaker])
-    RT -. citations/trace .-> UI[(CLI / TUI)]
-    ASR -. rejected .-> REP[Repair layer<br/>Vietnamese follow-up]
-    REP --> TTS
-```
+## Documentation map
 
-## Design Principles
+| Document | Scope |
+| --- | --- |
+| [00-system-map](./00-system-map.md) | Canonical system map and requirement-to-code matrix |
+| [01-overview](./01-overview.md) | Product boundary, goals and execution paths |
+| [02-architecture](./02-architecture.md) | Packages, dependency direction and data models |
+| [03-voice-pipeline](./03-voice-pipeline.md) | Voice turn, ASR, streaming, TTS and playback |
+| [04-asr-robustness](./04-asr-robustness.md) | Production ASR gates and measured robustness |
+| [05-assistant-runtime](./05-assistant-runtime.md) | Controlled workflow, routing, evidence and output |
+| [06-conversation-repair](./06-conversation-repair.md) | ASR/runtime repair and handover behavior |
+| [07-tui](./07-tui.md) | Ink UI, NDJSON protocol, slash commands and progress |
+| [08-registries-profiles-cli](./08-registries-profiles-cli.md) | Registries, profiles, CLI and optional dependencies |
+| [09-hybrid-rag-memory](./09-hybrid-rag-memory.md) | Retrieval, catalog, memory and prompt grounding |
+| [10-vietnamese-rag-model-selection](./10-vietnamese-rag-model-selection.md) | Embedding, fusion, reranker and vector-backend decisions |
+| [11-index-lifecycle](./11-index-lifecycle.md) | Revisioned SQLite/dense index lifecycle and operations |
+| [12-local-summary-model-selection](./12-local-summary-model-selection.md) | Summary model evaluation and compaction lifecycle |
+| [13-retrieval-evidence-gates](./13-retrieval-evidence-gates.md) | Relevance, empty evidence, citation and release gates |
+| [14-model-aware-context-budget](./14-model-aware-context-budget.md) | Prompt admission, output reserve and context manifests |
+| [15-capability-router](./15-capability-router.md) | Capability selection and typed tool routing |
+| [16-llm-providers](./16-llm-providers.md) | Local/remote settings, key boundary and model capabilities |
+| [17-evaluation-and-release](./17-evaluation-and-release.md) | Evidence hierarchy, trajectory matrix and release status |
+| [Architecture diagrams](./diagrams.md) | Reviewed SVGs and editable Lucid sources |
 
-- **Offline-first**: no cloud calls in the main path; every model runs locally
-  through ONNX, llama.cpp, Torch, or a local runtime.
-- **`soca/core` is the facade**: app surfaces (CLI/TUI) depend on `soca.core`,
-  not directly on model backends.
-- **Immutable data**: turn results are frozen dataclasses (`RuntimeResult`,
-  `PipelineResult`, `StreamingEvent`, and related types); updates create copies.
-- **Registry + profile**: models are declared in registries; a profile combines
-  ASR, LLM, and TTS into one named runtime choice.
-- **Streaming end to end**: LLM tokens become sentences, while TTS runs in
-  parallel to reduce time-to-first-audio.
-- **Separate technical reasons from user-facing speech**: ASR rejects and
-  guardrail blocks pass through the **repair layer** to produce natural
-  Vietnamese follow-ups.
+## Design principles
 
-## Reading Path
+- **Local-first, explicit remote boundary.** No provider is selected silently;
+  retries are bounded and exhausted failures are typed and visible.
+- **One orchestration facade.** App surfaces call `soca/core`; model backends
+  do not know about the UI.
+- **Goal and evidence before fluent text.** A turn can execute tools, revise a
+  query or ask for clarification before it is finalized.
+- **Corpus-derived retrieval policy.** Knowledge answers come from retrieved
+  evidence; catalog structure helps navigation but cannot substitute for note
+  content.
+- **Explicit memory layers.** Working context, approved core memory and
+  on-demand archive memory have different admission rules.
+- **Typed provenance.** Tool receipts, evidence, citations, usage and terminal
+  outcomes are recorded separately from the user-facing prose.
+- **No long-lived legacy path.** Once a replacement is validated and wired,
+  the superseded production path is removed instead of hidden behind a flag.
 
-- **New to the project** → 01 → 02 → 03.
-- **Understanding why ASR is "robust"** → 04.
-- **Understanding why a turn routed a certain way** → 05.
-- **Understanding UX for missed speech and silence** → 06.
-- **Working on the TUI** → 07.
-- **Adding a model, profile, or CLI command** → 08.
+## Reading paths
+
+- New contributor: 00 → 01 → 02 → 05 → 03.
+- Retrieval/RAG: 09 → 10 → 11 → 13 → 17.
+- Memory and prompt budget: 09 → 12 → 14.
+- Provider or model work: 08 → 16 → 17.
+- UI or voice work: 07 → 03 → 06.
+
+## Diagram provenance
+
+The static SVGs are repository artifacts reviewed against editable Lucid
+documents. The register records each Lucid source, the question answered by the
+diagram and the review checklist. The diagrams intentionally use a small set of
+shapes and one reading direction so that dependencies and control flow remain
+legible at README width.

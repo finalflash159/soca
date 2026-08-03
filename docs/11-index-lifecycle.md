@@ -4,6 +4,8 @@ The production retrieval path uses `soca/knowledge/indexing/`. It separates
 source-of-truth notes, sparse catalog state, dense vectors, and derived search
 backends so a query never performs document embedding itself.
 
+![Knowledge index lifecycle](assets/diagrams/knowledge-lifecycle.svg)
+
 ## Runtime flow
 
 ```mermaid

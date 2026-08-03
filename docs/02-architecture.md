@@ -1,157 +1,111 @@
-# 02 — Architecture & Code Structure
+# 02 — Architecture and code structure
 
-## Folder Tree
+This page describes the dependency direction and the ownership of the current
+implementation. It intentionally omits generated caches, model weights and
+private vault content.
+
+## Repository structure
 
 ```text
 soca/
-├── cli.py                  # Click CLI: voice/ask/chat/ui/profiles/...-smoke/...-models
-├── core/                   # FACADE — public API and turn orchestration, no heavy models
-│   ├── __init__.py         #   re-export everything the app layer needs
-│   ├── runtime.py          #   AssistantRuntime: text-turn routing
-│   ├── pipeline.py         #   VoicePipeline: voice-turn orchestration
-│   ├── voice_runtime.py    #   build_voice_runtime + ResolvedVoiceRuntimeConfig + bundle
-│   ├── profiles.py         #   singleton VoiceRuntimeProfile: baseline
-│   ├── guardrails.py       #   multi-stage check_* functions + policy
-│   ├── repair.py           #   RepairCatalog/Kind/Action + plan_repair/plan_no_reply
-│   ├── turn.py             #   TurnFrame, RuntimeResult, RuntimeTrace, RuntimeRoute
-│   ├── streaming.py        #   StreamingEvent, pop_ready_sentence
-│   ├── text_chunking.py    #   sentence splitting and TTS text normalization
-│   ├── endpoint.py         #   record_until_silence (VAD endpointing)
-│   ├── audio_out.py        #   AudioSink, SoundDevicePlayer, WavFileSink
-│   ├── metrics.py          #   MetricsLogger for per-stage latency
-│   └── usage.py            #   LLMUsage / TurnUsage / SessionUsage
-├── asr/                    # RobustASR + PhoWhisper ONNX + VAD/confidence/de-loop/heuristics
-├── llm/                    # llama.cpp runner + registry + memory-aware + output cleaning
-├── tts/                    # Valtec Vietnamese TTS runtime + factory
-├── knowledge/              # Markdown vault + retrieval context
-├── memory/                 # Retrieved archive + approved core + session memory
-├── tools/                  # ToolRuntime: knowledge and memory tools
-└── app/                    # Presentation layer
-    ├── cli ↔ voice_loop.py / text_chat.py / text_runtime.py / console.py / usage_view.py
-    └── tui/                # Textual app: app.py, voice.py, widgets.py, voice_view.py, ...
+├── app/                 # CLI-facing builders, engine protocol, UI-facing events
+├── asr/                 # PhoWhisper, Qwen service, VAD, calibration and guards
+├── config/              # persisted LLM settings and secret lookup
+├── core/                # public facade, turn orchestration and workflow
+│   └── workflow/        # goal, plan, action, observation, verification, events
+├── knowledge/           # vault, catalog, chunking, sparse/dense index lifecycle
+├── llm/                 # local runner, remote OpenAI-compatible providers, catalog
+├── memory/              # session, working/core/archive, proposals and compaction
+├── tools/               # typed knowledge and memory tool contracts
+└── tts/                 # Valtec frontend, ONNX runner and audio preparation
+ui/
+└── src/                 # Ink/React presentation, protocol, reducer and widgets
+eval/                    # reviewed datasets, harnesses and ignored machine results
+docs/                    # current architecture, decisions, diagrams and evidence
+zplan/                   # active and historical implementation plans
 ```
 
-Reference LOC: `app ≈ 3.2k`, `core ≈ 3.2k`, `tts ≈ 1.6k`,
-`asr ≈ 1.2k`, `llm ≈ 0.7k`.
-
-## Layers & Dependency Direction
+## Dependency direction
 
 ```mermaid
 flowchart TD
-    subgraph L3["Presentation Layer (soca/app, soca/cli)"]
-        cli[cli.py]
-        vloop[app/voice_loop.py]
-        tchat[app/text_chat.py + text_runtime.py]
-        tui[ui/* Ink + app/engine.py]
-    end
-    subgraph L2["Orchestration Layer (soca/core) — FACADE"]
-        runtime[AssistantRuntime]
-        pipeline[VoicePipeline]
-        vrt[voice_runtime / profiles]
-        guard[guardrails]
-        repair[repair]
-    end
-    subgraph L1["Backend Layer (models + utilities)"]
-        asr[asr/RobustASR]
-        llm[llm/llamacpp]
-        tts[tts/* engines]
-        kn[knowledge]
-        mem[memory]
-        tools[tools]
-    end
-
-    cli --> vloop & tchat & tui
-    vloop --> pipeline & vrt
-    tchat --> runtime
-    tui --> runtime & pipeline & vrt
-    pipeline --> asr & tts & runtime
-    runtime --> guard & repair & llm & kn & mem & tools
-    vrt --> asr & llm & tts
+    App[CLI + SocaEngine + Ink UI] --> Core[soca/core facade]
+    Core --> Workflow[core/workflow]
+    Core --> ASR[soca/asr]
+    Core --> LLM[soca/llm]
+    Core --> Knowledge[soca/knowledge]
+    Core --> Memory[soca/memory]
+    Core --> Tools[soca/tools]
+    Core --> TTS[soca/tts]
+    App -. protocol types .-> UI[ui/src]
+    UI -. NDJSON .-> App
 ```
 
-**Golden rule:** dependencies only point **downward**. Backends do not import
-core; core does not import app. Violating this direction is technical debt.
+`core` owns orchestration and public contracts. Backends return typed values and
+do not import the UI. Presentation code consumes the facade and event protocol;
+it does not reconstruct routing or call a model directly.
 
-## Core Abstractions
+## Key entry points
 
-| Abstraction                   | File                    | Role                                                                                  |
-| ----------------------------- | ----------------------- | ------------------------------------------------------------------------------------- |
-| `AssistantRuntime`            | `core/runtime.py`       | Brain of one text turn: guardrail→tool→knowledge/memory→LLM, returns `RuntimeResult`  |
-| `VoicePipeline`               | `core/pipeline.py`      | Orchestrates one voice turn: ASR→runtime→TTS; supports streaming and non-stream paths |
-| `RobustASR`                   | `asr/robust_asr.py`     | Wraps PhoWhisper with four production guard stages                                    |
-| `RuntimeToolRouter`           | `core/runtime.py`       | Protocol for deterministic tool selection before LLM calls                            |
-| `GuardrailPolicy` + `check_*` | `core/guardrails.py`    | Input/retrieval/tool/output safety checks                                             |
-| `RepairCatalog`               | `core/repair.py`        | Produces Vietnamese follow-up text when ASR rejects                                   |
-| `VoiceRuntimeProfile`         | `core/profiles.py`      | Combines ASR+LLM+TTS into one named config                                            |
-| `VoiceRuntimeBundle`          | `core/voice_runtime.py` | Fully constructed components for one profile                                          |
-| `AudioSink`                   | `core/audio_out.py`     | Audio output port: real speaker, null sink, or WAV file                               |
+| Area | Entry point | Responsibility |
+| --- | --- | --- |
+| Text turn | `soca/core/runtime.py:AssistantRuntime` | one guarded/tool/knowledge/memory/LLM turn |
+| Voice turn | `soca/core/pipeline.py:VoicePipeline` | ASR → runtime → streaming TTS/playback |
+| Runtime assembly | `soca/app/text_runtime.py`, `soca/core/voice_runtime.py` | construct selected components and statuses |
+| Controlled loop | `soca/core/workflow/runner.py` | bounded goal/action/observation/verification loop |
+| UI process boundary | `soca/app/engine.py:SocaEngine` | commands in, typed NDJSON events out |
+| UI state | `ui/src/store.ts` and `ui/src/protocol.ts` | reduce events and render current state |
+| Knowledge setup | `soca/core/knowledge_setup.py` | vault/catalog/retriever/tools lifecycle |
+| Index lifecycle | `soca/knowledge/indexing/` | scan, plan, build, verify, publish, GC |
+| LLM construction | `soca/llm/factory.py` | local/remote selection and typed startup errors |
 
-## Core Data Models
+## Core contracts
 
-All of these are `@dataclass(frozen=True)` except runtime state such as
-`SessionMemory` and `RepairState`.
+| Contract | Location | Meaning |
+| --- | --- | --- |
+| `RuntimeResult` | `soca/core/turn.py` | final response, route, citations, trace and usage |
+| `RuntimeTrace` | `soca/core/turn.py` | guards, tools, evidence, stage timings and model use |
+| `PipelineResult` | `soca/core/pipeline.py` | one non-streaming voice result |
+| `StreamingEvent` | `soca/core/streaming.py` | ASR, repair, answer, TTS, audio and terminal events |
+| `ToolCall` / `ToolResult` | `soca/tools/base.py` | typed action request and receipt |
+| `PromptManifest` | `soca/core/context_budget.py` | model window, selected/dropped context and hash |
+| `WorkflowEvent` | `soca/core/workflow/events.py` | public progress and terminal provenance |
+| `VoiceRuntimeProfile` | `soca/core/profiles.py` | explicit ASR, LLM, TTS and retrieval defaults |
 
-```mermaid
-classDiagram
-    class TurnFrame {
-        +str text
-        +str source
-        +dict metadata
-    }
-    class RuntimeResult {
-        +str response_text
-        +RuntimeRoute route
-        +bool blocked
-        +tuple~Citation~ citations
-        +RuntimeTrace trace
-        +LLMUsage usage
-    }
-    class RuntimeTrace {
-        +RuntimeRoute route
-        +tuple~GuardrailEvent~ guardrail_events
-        +tuple~ToolCall~ tool_calls
-        +tuple~ToolResult~ tool_results
-        +bool used_tool
-        +bool used_llm
-        +dict stage_latencies_ms
-    }
-    class PipelineResult {
-        +str transcript
-        +str response_text
-        +bool rejected
-        +str repair_kind
-        +str repair_action
-        +TTSResult tts
-        +dict stage_latencies_ms
-    }
-    class StreamingEvent {
-        +str type
-        +str text
-        +ndarray audio
-        +dict metadata
-    }
-    RuntimeResult --> RuntimeTrace
-    RuntimeResult --> TurnFrame
-    PipelineResult --> RuntimeResult : runtime_result
-```
+## One turn and state ownership
 
-- `RuntimeResult` is the output of a **text turn**.
-- `PipelineResult` is the output of a non-streaming **voice turn**. The streaming
-  path emits a sequence of `StreamingEvent`s:
-  `asr → repair? → runtime → llm_token* → sentence* → tts* → audio* → done`.
-- `RuntimeStreamEvent` carries streaming events from the runtime; `StreamingEvent`
-  is a pipeline-level event that may include audio. The pipeline translates
-  `RuntimeStreamEvent` into `StreamingEvent`.
+1. `SocaEngine` accepts a chat or voice command and starts a turn context.
+2. `AssistantRuntime` admits the input and resolves a typed goal.
+3. The capability/tool router chooses direct chat, knowledge, memory or a
+   clarification path. Explicit tool commands are deterministic; natural
+   language selection uses the configured capability router and model/tool
+   contracts rather than answer text parsing.
+4. A tool action produces a receipt. Knowledge receipts become evidence
+   passages; memory receipts remain memory provenance.
+5. The workflow assesses evidence, may revise a query within its retry budget,
+   and only then asks the selected LLM to synthesize.
+6. Output validation removes internal labels only at the presentation boundary;
+   structured citations and terminal outcome remain available to the UI.
 
-Telemetry details (`LLMUsage/TurnUsage/SessionUsage`) are described in
-[05 — assistant-runtime](./05-assistant-runtime.md#usage-telemetry).
+The state stores are deliberately separate:
 
-## Why `core` Is a Facade
+| State | Owner | Lifetime |
+| --- | --- | --- |
+| Working/session memory | `soca/memory/session.py` | process/session, with optional checkpoint |
+| Approved core memory | `soca/memory/core.py` | private durable store, proposal-gated |
+| Archive memory | `soca/memory/retrieved.py` and vault | retrieved on demand |
+| Knowledge catalog/index | `soca/knowledge/indexing/` | versioned private vault state |
+| Provider settings | `soca/config/llm_settings.py` | user config; keys in secret store |
+| Model assets | ASR/LLM/TTS stores | local provisioned artifacts |
 
-- App surfaces can be tested by **injecting fake runtimes/pipelines**. See
-  `tests/test_tui_*` and `tests/test_app_voice_loop.py`; no real model load is
-  required.
-- Changing a backend, such as adding a TTS engine, should only touch `tts/` and
-  the relevant registry, not app code.
-- The public surface stays small: the app layer only needs exports from
-  `soca.core`.
+## Design constraints
+
+- Required prompt sections cannot be silently dropped; optional sections are
+  dropped by the shared budget assembler and listed in the manifest.
+- Native or optional index artifacts are verified before loading. Missing
+  dependencies are a truthful degraded/unready state, not an automatic backend
+  swap.
+- Retries, timeouts and model calls are bounded and observable. A production
+  failure is not converted into a successful answer by hidden fallback logic.
+- Compatibility code is removed after the replacement has passed unit,
+  integration and real-flow gates.

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/soca-mark.svg" width="108" alt="SoCa">
+  <img src="docs/assets/soca-mark.svg" width="76" alt="SoCa">
 </p>
 
 <h1 align="center">SoCa <sub>(Sơn Ca)</sub></h1>
@@ -73,21 +73,10 @@ Detailed system design lives in [`docs/`](docs/README.md).
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    Mic([🎙 Mic]) --> DUP[Duplex stream<br/>AEC3 + Silero VAD]
-    DUP --> EP[Endpoint<br/>Smart Turn v3.2]
-    EP --> ASR[RobustASR<br/>PhoWhisper ONNX]
-    ASR -->|transcript| RT[AssistantRuntime<br/>guardrails · workflow · tools]
-    RT --> KN[(Markdown vault<br/>BM25 + dense)]
-    RT --> MEM[(Session + long-term<br/>memory)]
-    RT --> LLM[llama.cpp GGUF]
-    ASR -.->|typed reject| REP[Repair layer]
-    RT --> TTS[Valtec ONNX TTS] --> DUP
-    DUP --> Spk([🔊 Speaker])
-    REP --> TTS
-    RT -. trace/usage .-> UI[(CLI / Ink TUI)]
-```
+![SoCa system overview](docs/assets/diagrams/system-overview.svg)
+
+The editable Lucid source and the focused subsystem diagrams are catalogued in
+[the architecture diagram register](docs/diagrams.md).
 
 Dependency rule: `app` (CLI/TUI) → `soca.core` (facade) → backends
 (`asr` / `llm` / `tts` / `knowledge` / `memory` / `tools`). Details:
@@ -154,7 +143,7 @@ uv run soca ui                 # Settings → pick provider → paste key → ch
 Keys are stored in the OS keyring, never auto-written to `.env`, and masked in the
 UI; the chosen backend persists in `~/.config/soca/llm.json`. **Remote sends your
 transcript to a third party.** Precedence and read rules:
-[notes/llm_providers.md](notes/llm_providers.md).
+[docs/16-llm-providers.md](docs/16-llm-providers.md).
 
 The runtime reads local Markdown only — notes under `./Knowledge/wiki/` and
 retrieved archive notes under `./Knowledge/memory/`. Explicitly approved

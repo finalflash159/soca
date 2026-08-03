@@ -2,8 +2,12 @@
 
 This document describes **one spoken turn** through the system: from microphone
 to speaker. Main code: `core/endpoint.py`, `core/pipeline.py`,
-`core/voice_runtime.py`, `core/audio_out.py`, and, for the TUI,
-`app/tui/voice.py`.
+`core/voice_runtime.py`, `core/audio_out.py`, and, for the Ink UI,
+`soca/app/voice_controller.py` plus the event projection in `ui/src/`.
+
+![Voice pipeline](assets/diagrams/voice-pipeline.svg)
+
+Editable diagram source: [Lucid voice pipeline](https://lucid.app/lucidchart/21a10a4a-6658-48de-bc3f-d2416b06e181/view).
 
 ## One Voice Turn at a Glance
 
@@ -165,8 +169,8 @@ than silently rebuilding the running turn.
 
 ## Clause Chunking And PCM Join
 
-Phase 7 (`tts-improvement`) lowers time-to-first-audio and removes the click/gap at
-chunk boundaries. The flow for one streamed turn is:
+The current chunking and playback path lowers time-to-first-audio and removes
+the click/gap at chunk boundaries. The flow for one streamed turn is:
 
 ```text
 LLM token buffer -> safe first clause -> per-chunk guardrail -> Valtec ONNX
@@ -214,9 +218,36 @@ fallback are device metrics and come from `eval/eval_voice_loop.py --playback`, 
 offline WAVs. `BENCHMARKS.md` only accepts numbers once the JSON report, listening CSV and
 artifact checksum are saved together.
 
-## Practical Latency Notes
+## Profiles and practical latency notes
 
-- `baseline` is the only public runtime profile: PhoWhisper Small, Arcee-VyLinh, and Valtec `NF`.
-- `quality` and `edge` are retired and are rejected rather than silently aliased to `baseline`.
-- Phase 5/6 replace Valtec's implementation under the same stable key and record new latency in
-  `BENCHMARKS.md`.
+- `baseline` is the default profile: PhoWhisper Small, Arcee-VyLinh, and Valtec `NF`.
+- `qwen-release` explicitly selects the Qwen3-ASR 0.6B service when its release
+  artifact is ready; `qwen-reference` explicitly selects the 1.7B reference
+  service. Neither is an automatic fallback for another profile.
+- Retired profile names are rejected rather than silently aliased to `baseline`.
+- Chunk-join, playback, endpointing and ASR evidence are recorded in
+  `BENCHMARKS.md`; a text-only dry run is not an audio-device qualification.
+
+## Measured conversational behavior
+
+The turn-taking and barge-in harnesses replay fixed audio frames rather than
+using wall-clock timing. This makes the acoustic decisions reproducible while
+the production controller still owns the microphone and speaker streams. The
+measured data uses AEC-Challenge real echo pairs, Vietnamese FLEURS speech over
+real MIT impulse responses, and Vietnamese endpoint timelines. It is a
+benchmark record, not a claim that every device or room behaves identically.
+
+The acoustic tier measured 2.7% false interruption and 94.7% detection on the
+300-pair AEC-Challenge sample; the Vietnamese real-RIR synthetic tier measured
+2.5% false interruption and 92.5% detection. The adaptive endpoint policy cut
+premature closure from 61.7% to 18.3% versus the fixed policy, at the measured
+cost of 608 ms more median waiting. These figures expose the accuracy/latency
+trade-off; they do not hide the remaining Vietnamese turn-taking limitation.
+
+![Barge-in on real echo](assets/benchmarks/conversation_tier1_real.png)
+![Synthetic Vietnamese barge-in](assets/benchmarks/conversation_tier1_synth.png)
+![Turn-taking policy comparison](assets/benchmarks/conversation_tier2_policy.png)
+
+Detailed result tables, dataset revisions, scripts and limitations are in
+[`BENCHMARKS.md`](../BENCHMARKS.md). Diagram provenance is in
+[`docs/diagrams.md`](./diagrams.md).

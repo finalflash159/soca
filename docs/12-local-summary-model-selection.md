@@ -228,7 +228,7 @@ Reproducibility metadata for that table:
 | model file | `Qwen3-4B-Instruct-2507-Q4_K_M.gguf` |
 | data revision | script-generated conversation fixture in `scripts/smoke_test_working_memory_real.py`; no demo vault or benchmark corpus |
 | runtime/config | Apple M4 Pro, 48 GB, macOS arm64, Python 3.11.14; default XDG model root; no answer-smoke flag |
-| raw artifact | `/tmp/soca-memory-phase7-smoke.json` (local, outside Git) |
+| raw artifact | local ignored summary-smoke artifact (outside Git) |
 | decision | lifecycle and fail-closed recovery pass; metrics are operational evidence, not a model bake-off result |
 
 Context allocation is dynamic from 4K up to a 32K maximum, so a short manual

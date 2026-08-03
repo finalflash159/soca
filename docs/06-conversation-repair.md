@@ -7,7 +7,8 @@ repair layer (`core/repair.py` + `core/repair_prompts.vi.toml`) turns
 **technical codes** into **natural Vietnamese follow-up text**, with variants,
 randomization, no-repeat selection, and escalation.
 
-> Full design context: `zplan/phase4_repair_followup_handover_plan.vi.md`.
+The historical design context is preserved in the relevant `zplan/` plan; this
+page documents the current implementation and its typed repair events.
 
 ## Overview
 

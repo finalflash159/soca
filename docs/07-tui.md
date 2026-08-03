@@ -14,6 +14,10 @@ ui/ (Ink)  ── commands (stdin) ──▶  soca engine (Python)
   `status/context/chat/voice_start/voice_stop/memory/memory_compact/usage/quit`).
 - Voice loop controller dùng chung: `soca/app/voice_controller.py` (`VoiceMonitorController`).
 
+![UI and engine protocol](assets/diagrams/ui-engine-protocol.svg)
+
+Editable diagram source: [Lucid UI protocol](https://lucid.app/lucidchart/4e2fd950-01a6-47ff-8fe8-9e08dd8d0090/view).
+
 ## Chạy
 
 ```bash
@@ -45,7 +49,7 @@ components/       Logo (bird gradient), Timeline, VoiceStatus, HelpOverlay, Prim
 imeInput.tsx      raw-mode editor with replacement/backspace + grapheme handling
 ```
 
-> Bản Textual TUI cũ (`soca/app/tui/`) đã gỡ sau khi Ink UI đạt parity voice
+> Bản TUI Python cũ đã gỡ sau khi Ink UI đạt parity voice
 > (live-test 2026-07-03).
 
 ## Slash command và informational view
@@ -90,7 +94,7 @@ Vì đây không phải tokenizer riêng của model, UI luôn đánh dấu số
 ## Turn progress và timeline
 
 Engine phát `turn_progress` từ stage runtime đang chạy thật; UI không dùng timer
-để giả lập tiến độ. Các phase ổn định gồm chuẩn bị, phân tích, định tuyến,
+để giả lập tiến độ. Các stage ổn định gồm chuẩn bị, phân tích, định tuyến,
 memory, knowledge retrieval, tool, tổng hợp LLM, validation và TTS. Chat và
 voice dùng chung event này, còn chi tiết nội bộ nằm trong trường `operation`.
 Panel progress đổi accent theo loại công việc và chỉ giữ hàng đợi ngắn cho các

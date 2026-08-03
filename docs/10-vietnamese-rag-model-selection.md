@@ -1,6 +1,6 @@
-# Vietnamese RAG model selection
+# Vietnamese RAG model selection and vector backend
 
-This note records the retrieval incident from 2026-07-27 and the model
+This document records the retrieval incident from 2026-07-27 and the model
 selection evidence. It is deliberately separate from the LLM/remote-provider
 choice: the failure happened before answer generation, in candidate retrieval.
 
@@ -53,7 +53,7 @@ small SoCa demo vault:
 
 Every run records `dataset_class`; the release gate rejects `demo_smoke`.
 Machine logs, configuration, environment and JSON reports are retained under
-`eval/results/retrieval_phase5/<run-id>/`.
+`eval/results/retrieval_bakeoff/<run-id>/`.
 
 The decisive TVPL run was
 `20260730-tvpl-fusion-final`:
@@ -193,8 +193,8 @@ load, build time, peak RSS, and disk size.
 
 Full setup, commands, script hash, scale tables, and decision thresholds are in
 [`BENCHMARKS.md`](../BENCHMARKS.md#p212--vector-search-backend-probe).
-The backend research and primary-source comparison are in
-[`notes/vector_backend_research.md`](../notes/vector_backend_research.md).
+The backend research and primary-source comparison are included in this
+document so the decision remains with the production retrieval contract.
 
 ## Decision
 
@@ -229,7 +229,7 @@ gitignored results directory. Re-run the production-quality benchmark with:
 
 ```bash
 uv run python scripts/run_benchmark.py \
-  --family retrieval_phase5 \
+  --family retrieval_bakeoff \
   --run-id <run-id> \
   --output-root eval/results -- \
   uv run python -m eval.retrieval_bakeoff --help
