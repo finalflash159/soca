@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 from dataclasses import dataclass
@@ -85,9 +86,10 @@ def make_voice_config() -> ResolvedVoiceRuntimeConfig:
     )
 
 
-def test_memory_protocol_mode_exposes_degraded_fallback() -> None:
-    assert _memory_protocol_mode("blob", "retrieval_unavailable", 0) == "degraded"
+def test_memory_protocol_mode_exposes_degraded_retrieval_state() -> None:
+    assert _memory_protocol_mode("none", "retrieval_unavailable", 0) == "degraded"
     assert _memory_protocol_mode("retrieved", "", 0) == "retrieved"
+    assert _memory_protocol_mode("unknown", "", 0) == "none"
 
 
 def test_retrieval_trace_preserves_backend_scores_and_rejections() -> None:
@@ -147,6 +149,51 @@ def test_pending_proposal_telemetry_reports_unavailable_state(caplog) -> None:
     assert "proposal telemetry unavailable" in caplog.text
 
 
+def test_dispose_text_bundle_closes_owner_before_detaching() -> None:
+    class Bundle:
+        def __init__(self) -> None:
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    engine = object.__new__(SocaEngine)
+    bundle = Bundle()
+    engine.text_bundle = bundle
+
+    assert engine._dispose_text_bundle() is True
+    assert bundle.close_calls == 1
+    assert engine.text_bundle is None
+
+
+def test_dispose_text_bundle_keeps_owner_after_cleanup_failure() -> None:
+    class Bundle:
+        def close(self) -> None:
+            raise RuntimeError("watcher did not stop")
+
+    class Writer:
+        def __init__(self) -> None:
+            self.events: list[dict] = []
+
+        def emit(self, event: dict) -> None:
+            self.events.append(event)
+
+    engine = object.__new__(SocaEngine)
+    engine.text_bundle = Bundle()
+    engine.writer = Writer()
+
+    assert engine._dispose_text_bundle() is False
+    assert engine.text_bundle is not None
+    assert engine.writer.events == [
+        {
+            "event": "engine_error",
+            "message": "text runtime cleanup failed",
+            "code": "runtime_cleanup_failed",
+            "detail": "RuntimeError",
+        }
+    ]
+
+
 def test_engine_hello_then_quit_emits_bye() -> None:
     capture = ProtocolCapture()
     code = run_engine(
@@ -162,7 +209,7 @@ def test_engine_hello_then_quit_emits_bye() -> None:
     events = capture.events()
     assert events[0]["event"] == "hello"
     assert events[0]["version"] == 2
-    assert events[0]["supported_versions"] == [1, 2]
+    assert events[0]["supported_versions"] == [2]
     assert events[-1]["event"] == "bye"
 
 
@@ -221,11 +268,12 @@ def test_engine_status_does_not_load_embedding_runtime(monkeypatch, tmp_path: Pa
     assert event["knowledge_index"]["dense_state"] == "model_missing"
 
 
-def test_engine_uses_local_defaults_when_saved_llm_settings_are_invalid() -> None:
+def test_engine_blocks_runtime_when_saved_llm_settings_are_invalid() -> None:
     capture = ProtocolCapture()
 
     def stdin():
         yield '{"cmd": "llm_config"}\n'
+        yield '{"cmd": "status"}\n'
         yield '{"cmd": "quit"}\n'
 
     def invalid_settings_loader():
@@ -235,7 +283,7 @@ def test_engine_uses_local_defaults_when_saved_llm_settings_are_invalid() -> Non
         voice_config=None,
         text_config=make_text_config(),
         profile="baseline",
-        no_model=True,
+        no_model=False,
         stdin=stdin(),
         stdout=capture,
         llm_settings_loader=invalid_settings_loader,
@@ -245,11 +293,19 @@ def test_engine_uses_local_defaults_when_saved_llm_settings_are_invalid() -> Non
     events = capture.events()
     assert events[0]["event"] == "hello"
     assert any(
-        event["event"] == "engine_error" and "cấu hình llm" in event["message"].lower()
+        event["event"] == "engine_error"
+        and event.get("code") == "llm_settings_invalid"
         for event in events
     )
     config = next(event for event in events if event["event"] == "llm_config")
     assert config["backend"] == "local"
+    assert config["runtime_ready"] is False
+    assert config["settings_error"]
+    status = next(event for event in events if event["event"] == "status")
+    chat = next(
+        item for item in status["runtime_components"] if item["id"] == "chat_llm"
+    )
+    assert chat["status"] == "invalid"
 
 
 class _FakeAssistantRuntime:
@@ -666,6 +722,117 @@ def test_engine_passes_one_selected_settings_and_goal_store_to_voice_builder(
         assert dependencies["secret_store"] is instance.secret_store
         assert dependencies["active_goal_store"] is instance.active_goal_store
         assert dependencies["engine_factory"] is instance.llm_engine_factory
+
+
+def test_knowledge_index_failure_cleans_up_before_engine_shutdown(
+    monkeypatch, tmp_path: Path
+) -> None:
+    capture = ProtocolCapture()
+    monkeypatch.setattr(
+        "soca.app.engine.load_model",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            FileNotFoundError("embedding model missing")
+        ),
+    )
+
+    def commands():
+        yield json.dumps({"cmd": "knowledge_init"}) + "\n"
+        capture.wait_for('"action": "init"')
+        yield json.dumps({"cmd": "knowledge_index"}) + "\n"
+        capture.wait_for('"status": "failed"')
+        yield '{"cmd": "quit"}\n'
+
+    code = run_engine(
+        voice_config=None,
+        text_config=dataclasses.replace(make_text_config(), vault=tmp_path),
+        profile="baseline",
+        stdin=commands(),
+        stdout=capture,
+        warmup_voice=False,
+    )
+
+    assert code == 0
+    events = capture.events()
+    assert any(event["event"] == "bye" for event in events)
+    failure = next(
+        event
+        for event in events
+        if event.get("event") == "knowledge_setup" and event.get("status") == "failed"
+    )
+    assert failure["error_code"] == "embedding_model_missing"
+
+
+def test_knowledge_index_start_failure_releases_lock_and_reports_error(
+    monkeypatch, tmp_path: Path
+) -> None:
+    class Writer:
+        def __init__(self) -> None:
+            self.events: list[dict] = []
+
+        def emit(self, event: dict) -> None:
+            self.events.append(event)
+
+    class Config:
+        vault = tmp_path
+
+    def fail_start(self) -> None:
+        raise RuntimeError("thread start failed")
+
+    engine = object.__new__(SocaEngine)
+    engine.text_config = Config()
+    engine.writer = Writer()
+    engine._knowledge_job_lock = threading.Lock()
+    engine._knowledge_job_thread = None
+    (tmp_path / "wiki").mkdir()
+    monkeypatch.setattr(threading.Thread, "start", fail_start)
+
+    engine._cmd_knowledge_index()
+
+    assert engine._knowledge_job_thread is None
+    assert engine._knowledge_job_lock.acquire(blocking=False)
+    failure = next(
+        event for event in engine.writer.events if event.get("event") == "knowledge_setup"
+    )
+    assert failure["status"] == "failed"
+    assert failure["error_code"] == "knowledge_index_start_failed"
+
+
+def test_shutdown_emits_bye_after_worker_cleanup_timeout() -> None:
+    class Writer:
+        def __init__(self) -> None:
+            self.events: list[dict] = []
+
+        def emit(self, event: dict) -> None:
+            self.events.append(event)
+
+    class StuckThread:
+        def join(self, timeout: float) -> None:
+            return None
+
+        def is_alive(self) -> bool:
+            return True
+
+    engine = object.__new__(SocaEngine)
+    engine._shutdown = False
+    engine.writer = Writer()
+    engine._cmd_voice_stop = lambda: False
+    engine._dispose_text_bundle = lambda: True
+    engine._chat_thread = None
+    engine._voice_threads = []
+    engine._knowledge_job_thread = StuckThread()
+    engine._catalog_lock = threading.Lock()
+    engine._catalog_threads = set()
+    engine.text_bundle = None
+    engine.session_memory = None
+
+    engine.shutdown()
+
+    assert engine._shutdown is True
+    assert engine.writer.events[-1] == {"event": "bye"}
+    assert any(
+        event.get("code") == "knowledge_index_stop_timeout"
+        for event in engine.writer.events
+    )
 
 
 def test_engine_no_model_rejects_voice_and_chat() -> None:

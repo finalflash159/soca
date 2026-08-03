@@ -113,8 +113,8 @@ def test_knowledge_path_blocks_private_raw_dot_and_traversal() -> None:
     assert dot_event.reason == "blocked_path_part"
 
 
-def test_memory_profile_is_not_allowed_for_knowledge_read() -> None:
-    event = check_knowledge_read_path("memory/profile.md")
+def test_memory_core_is_not_allowed_for_knowledge_read() -> None:
+    event = check_knowledge_read_path("memory/core.json")
 
     assert event.blocked is True
     assert event.reason == "outside_runtime_knowledge_scope"

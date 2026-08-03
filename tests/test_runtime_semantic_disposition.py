@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from soca.core import AssistantRuntime, RuntimeRoute
+from soca.core import AssistantRuntime, RuntimeOptions, RuntimeRoute
 from soca.core.tool_routing import ToolRouterDecision
 from soca.knowledge import KnowledgeContextBuilder
 from soca.memory import MemoryContextBuilder
@@ -47,6 +47,7 @@ def test_semantic_knowledge_request_builds_context_then_calls_llm() -> None:
                 sources=("knowledge",),
             )
         ),
+        options=RuntimeOptions(turn_workflow="shadow"),
     )
     result = runtime.run_text_turn("Ghi chú nói Bayes thế nào?")
     assert result.route == RuntimeRoute.KNOWLEDGE_LLM
@@ -78,6 +79,7 @@ def test_joint_knowledge_memory_request_discloses_unreconciled_sources() -> None
                 sources=("knowledge", "memory"),
             )
         ),
+        options=RuntimeOptions(turn_workflow="shadow"),
     )
 
     result = runtime.run_text_turn(

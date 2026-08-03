@@ -8,7 +8,7 @@ backends so a query never performs document embedding itself.
 
 ```mermaid
 flowchart LR
-  FS[KnowledgeVault/*.md] --> S[scanner + parser + chunker]
+  FS[Knowledge/wiki/*.md] --> S[scanner + parser + chunker]
   S --> TX[(SQLite catalog schema v3)]
   TX --> SP[sparse current revision]
   TX --> J[dense build job]
@@ -21,7 +21,8 @@ flowchart LR
   SS --> R[BM25 + exact dense + linear fusion]
 ```
 
-The catalog is stored below `~/.config/soca/knowledge_index/v2/` (or the configured `index_home`):
+The catalog is stored below the active vault at `Knowledge/.soca/knowledge_index/`
+(or the configured `index_home`):
 
 ```text
 v2/index.sqlite3

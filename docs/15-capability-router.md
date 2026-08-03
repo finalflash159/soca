@@ -15,7 +15,8 @@ working tree; they are not release gates.
 
 ## Production contract
 
-Chat and voice use the same cascade:
+Chat and voice use the same cascade when semantic routing is explicitly
+enabled:
 
 1. deterministic handling consumes explicit commands, safe read paths, and
    allow-listed local knowledge/memory commands;
@@ -66,7 +67,7 @@ The selected router defaults are:
 | direct-tool score floor | `0.85` | calibrated from train/validation direct-tool examples; low-confidence actions are delegated instead of executed |
 | direct-vs-retrieval margin | `0.01` | prevents an action from winning when content retrieval is nearly as plausible |
 | LLM repair attempts | `1` | one bounded schema repair, then fail closed |
-| voice semantic routing | enabled | chat and ASR transcript share the same capability policy |
+| voice semantic routing | shared opt-in | chat and ASR transcript share the same capability policy when enabled |
 
 ## Offline held-out benchmark
 

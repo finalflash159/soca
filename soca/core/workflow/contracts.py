@@ -82,7 +82,6 @@ class Capability(StrEnum):
     KNOWLEDGE_SEARCH = "knowledge_search"
     KNOWLEDGE_READ = "knowledge_read"
     MEMORY_SEARCH = "memory_search"
-    MEMORY_PROPOSE_NOTE = "memory_propose_note"
     KNOWLEDGE_CATALOG = "knowledge_catalog"
     CLARIFICATION = "clarification"
     OUT_OF_SCOPE = "out_of_scope"
@@ -309,7 +308,10 @@ class GoalContract:
 
 @dataclass(frozen=True)
 class TurnBudget:
-    max_transitions: int = 12
+    # Two controller transitions surround each tool call; the revision node
+    # adds one more between retrieval rounds.  The ceiling must therefore
+    # cover the four-action plan budget plus verification and finalization.
+    max_transitions: int = 24
     max_planned_actions: int = 4
     max_tool_calls: int = 4
     max_model_calls: int = 4

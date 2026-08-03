@@ -97,8 +97,10 @@ def test_chat_and_voice_use_the_same_retrieval_policy(tmp_path: Path) -> None:
     assert voice_result.trace is not None
     assert chat_result.trace.disposition == voice_result.trace.disposition == "retrieval_request"
     assert chat_result.trace.selected_sources == voice_result.trace.selected_sources == ("knowledge",)
-    assert chat_source.search_calls == [(query, 3)]
-    assert voice_source.search_calls == [(query, 3)]
+    # Retrieval expands the candidate window before relevance filtering so the
+    # user-visible top-k remains stable across chat and voice.
+    assert chat_source.search_calls == [(query, 12)]
+    assert voice_source.search_calls == [(query, 12)]
     assert "[K1]" in chat_llm.calls[0]["user_msg"]
     assert "[K1]" in voice_llm.calls[0]["user_msg"]
 

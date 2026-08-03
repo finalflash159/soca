@@ -1,38 +1,40 @@
-# ADR 0003: Controlled workflow chạy opt-in trước
+# ADR 0003: Controlled workflow production contract
 
-## Quyết định
+## Decision
 
-SoCa giữ `run_text_turn` và `stream_text_turn` trên đường hiện tại trong thời
-gian controlled runner còn chạy opt-in.
-Controlled workflow được cung cấp qua `ControlledWorkflowRunner` và facade
-`AssistantRuntime.run_controlled_workflow`, chỉ chạy khi `turn_workflow` là
-`shadow` hoặc `controlled`.
+`AssistantRuntime` uses the bounded controlled workflow by default. The
+`run_text_turn` and `stream_text_turn` entrypoints are facades over that
+controller; `turn_workflow="shadow"` is retained only for explicit
+characterization and offline comparison. There is no production legacy
+workflow selector.
 
-Runner là bounded controller: planner chỉ chọn tool có trong catalog runtime,
-mọi transition và budget do controller thực hiện, action có side effect cần
-authorization, retry dùng chung một ledger, và mỗi run có đúng một terminal
-outcome.
+The controller owns goal, capability, action, observation, revision,
+verification and terminal state. A planner can schedule a bounded action set;
+after a retrieval observation, the controller may request one typed refinement
+or evidence-completion action within the shared budget. Side effects require
+authorization, retries use one ledger, and every run emits exactly one typed
+terminal outcome.
 
-## Vì sao không dùng generic agent loop
+The runtime synthesizes the answer only after the scheduled actions finish.
+The facade returns a factual answer only when the controller terminal is
+`achieved`. A typed `insufficient_evidence` terminal may return the model's
+explicit abstention when the evidence prompt had no usable evidence; that
+abstention is not an achieved answer, is never added to session memory, and is
+observable in the trace. Failed verification, exhausted evidence budget or
+typed backend failure is surfaced as a blocked runtime result and is not
+converted into a successful answer. Public updates are progress events, never
+answer text, and only a successful terminal answer is appended to session
+memory.
 
-Một vòng lặp tự do khó chứng minh giới hạn retry, dễ lặp side effect và có thể
-phát câu hứa trước khi action/verification hoàn tất. SoCa dùng transition table,
-fingerprint action, budget ledger và verifier tách biệt để có thể kiểm thử theo
-outcome.
+Event protocol v2 carries `session_id`, `run_id`, `goal_id`, monotonic sequence,
+surface, timestamp, node and status. Terminal taxonomy remains explicit:
+`achieved`, `needs_clarification`, `insufficient_evidence`, `safe_failure`,
+`budget_exhausted`, `cancelled`, and `system_failure`.
 
-Public update chỉ là event `update`, không phải câu trả lời cuối. Runner không
-append session memory; adapter phía trên chỉ append khi nhận terminal thành công.
+## Rollback and characterization
 
-Event protocol v2 dùng envelope có `session_id`, `run_id`, `goal_id`, sequence
-monotonic, surface, timestamp, node và status. Terminal taxonomy mang product
-semantics (`achieved`, `needs_clarification`, `insufficient_evidence`,
-`safe_failure`, `budget_exhausted`, `cancelled`, `system_failure`) thay vì ép
-mọi kết quả về successful/failed. Acknowledgement, progress và answer delta đều
-không terminal.
-
-## Rollout và rollback
-
-`turn_workflow=legacy` hiện là mặc định và không tự chạy runner. `shadow` dành cho
-fixture/offline hoặc read-only dogfood; `controlled` chưa được bật mặc định.
-Rollback là trả flag về `legacy`; checkpoint chưa được bật mặc định ở thời điểm
-ADR này.
+Rollback is an operator action to a release tag before this cutover, with the
+documented checkpoint/index migration procedure. It is not an automatic
+runtime fallback. The shadow selector remains available only to tests and
+offline characterization, and must not be used as a hidden production
+downgrade.

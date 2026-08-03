@@ -17,24 +17,24 @@ from typing import Any
 
 from soca.knowledge import KnowledgeDocument, KnowledgeHit
 from soca.memory import MemoryContextBuilder
-from soca.memory.base import MemoryProfileResult
+from soca.memory.base import MemoryRetrievalResult
 from soca.memory.working import approximate_tokens
 
 
 class _SyntheticMemory:
     def __init__(self, relevant_queries: set[str]) -> None:
         self.relevant_queries = relevant_queries
-        self.profile_reads = 0
+        self.core_reads = 0
         self.archive_reads = 0
 
-    def read_profile(self) -> str:
-        self.profile_reads += 1
+    def read_core(self) -> str:
+        self.core_reads += 1
         return "Approved core preference: trả lời bằng tiếng Việt, có cấu trúc rõ ràng."
 
-    def retrieve_profile(self, query: str) -> MemoryProfileResult:
+    def retrieve_archive(self, query: str) -> MemoryRetrievalResult:
         self.archive_reads += 1
         if query not in self.relevant_queries:
-            return MemoryProfileResult(text="", mode="retrieved", evidence_reason="no_hits")
+            return MemoryRetrievalResult(text="", mode="retrieved", evidence_reason="no_hits")
         document = KnowledgeDocument(
             id="synthetic-policy-hit",
             path="memory/policy-harness.md",
@@ -49,7 +49,7 @@ class _SyntheticMemory:
             line_end=1,
             retrieval_backend="synthetic-policy-harness",
         )
-        return MemoryProfileResult(
+        return MemoryRetrievalResult(
             text="",
             hits=(hit,),
             mode="retrieved",
@@ -139,7 +139,7 @@ def run(dataset: Path, output: Path) -> dict[str, Any]:
     result = {
         "dataset": str(dataset),
         "case_count": len(rows),
-        "profile_reads": source.profile_reads,
+        "core_reads": source.core_reads,
         "archive_search_rate": {
             "actual_calls": actual_archive,
             "expected_on_demand_calls": expected_archive,

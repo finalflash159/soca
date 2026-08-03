@@ -64,20 +64,29 @@ class WorkingMemoryCompactionCoordinator:
         self._started_at = time.monotonic()
         if self.worker is None:
             self.memory.cancel_compaction(job.generation)
+            if self.memory.policy.mode == "trim_only":
+                status = "trim_only"
+                detail = "explicit_no_llm_policy"
+            else:
+                status = "unavailable"
+                detail = "summary_worker_not_configured"
             result = self._result(
-                "trim_only",
-                detail="summary_model_not_configured",
+                status,
+                detail=detail,
                 after_tokens=self.memory.snapshot.token_count,
             )
+            self._last_async_result = result
             self._reset_job()
             return result
         if not self.worker.start(job):
             self.memory.cancel_compaction(job.generation)
+            worker_detail = getattr(getattr(self.worker, "status", None), "detail", "")
             result = self._result(
                 "unavailable",
-                detail="summary_model_not_provisioned",
+                detail=str(worker_detail or "summary_model_not_provisioned"),
                 after_tokens=self.memory.snapshot.token_count,
             )
+            self._last_async_result = result
             self._reset_job()
             return result
         return self._result("accepted")

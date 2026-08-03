@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
 
 from soca.core.llm_tool_router import LLMToolRouter
@@ -11,8 +10,6 @@ from soca.core.tool_routing import ToolRouterConfig
 from soca.knowledge.retrievers.dense import EmbeddingModel
 from soca.llm import LLMEngine
 from soca.tools import ToolRuntime
-
-LOGGER = logging.getLogger(__name__)
 
 
 def build_runtime_tool_router(
@@ -41,15 +38,13 @@ def build_runtime_tool_router(
     # the same semantic policy as text.  Only the optional LLM-router tier has
     # a separate voice privacy/latency gate.
     semantic_config = config.semantic
-    try:
-        semantic_router = build_semantic_turn_router(
-            tool_runtime=tool_runtime,
-            config=semantic_config,
-            embedding_model=embedding_model,
-        )
-    except (FileNotFoundError, ImportError, OSError, RuntimeError, ValueError) as exc:
-        LOGGER.warning("Semantic tool router unavailable; using lower tiers (%s)", type(exc).__name__)
-        semantic_router = None
+    semantic_router = build_semantic_turn_router(
+        tool_runtime=tool_runtime,
+        config=semantic_config,
+        embedding_model=embedding_model,
+    )
+    if semantic_config.enabled and semantic_router is None:
+        raise RuntimeError("semantic_tool_router_unavailable")
     llm_router = None
     if llm is not None and (not voice or config.enabled_in_voice):
         # Deterministic and semantic tiers have already had their chance. The

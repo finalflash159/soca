@@ -73,6 +73,40 @@ describe("SettingsScreen", () => {
     view.unmount();
   });
 
+  it("offers explicit vault initialization before voice setup", async () => {
+    const onKnowledgeInit = vi.fn();
+    const view = render(
+      <SettingsScreen
+        config={null}
+        providers={providers}
+        knowledgeVault={{
+          path: "/workspace/Knowledge",
+          initialized: false,
+          index_home: "/workspace/Knowledge/.soca/knowledge_index",
+        }}
+        knowledgeIndex={null}
+        knowledgeSetup={null}
+        catalog={[]}
+        catalogProvider=""
+        keyPendingProvider={null}
+        notice=""
+        onRequestModels={vi.fn()}
+        onSetKey={vi.fn()}
+        onSelect={vi.fn()}
+        onKnowledgeInit={onKnowledgeInit}
+        onKnowledgeIndex={vi.fn()}
+        onExit={vi.fn()}
+      />,
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(view.lastFrame()).toContain("chưa init");
+    view.stdin.write("\r");
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(onKnowledgeInit).toHaveBeenCalledOnce();
+    view.unmount();
+  });
+
   it("renders provider state, privacy warning, and transparent model prices", () => {
     const view = render(
       <SettingsScreen

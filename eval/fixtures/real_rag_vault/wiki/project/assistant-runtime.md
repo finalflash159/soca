@@ -105,7 +105,7 @@ sentences so audio reaches the speaker faster.
 
 ```mermaid
 flowchart LR
-    F[TurnFrame] --> M[_build_memory_context<br/>long-term profile.md + RAM session]
+    F[TurnFrame] --> M[_build_memory_context<br/>approved core + retrieved archive + RAM session]
     F --> K[_build_knowledge_context<br/>search markdown vault]
     M & K --> P[_build_llm_prompt]
     P --> LLM[llama.cpp generate / stream]
@@ -113,7 +113,9 @@ flowchart LR
     CL --> OUT[response + citations]
 ```
 
-- **Long-term memory**: `memory/profile.md`, read when the vault exists.
+- **Always-on memory**: approved items in `memory/core.json`.
+- **Archive memory**: Markdown notes under `memory/`, retrieved only when the
+  runtime selects an archive access plan.
 - **Session memory**: RAM-only, multi-turn. The TUI uses **shared session
   memory** so voice ↔ chat keep the same context. See [07](./07-tui.md).
 - **Knowledge**: Markdown vault. When used, the answer includes

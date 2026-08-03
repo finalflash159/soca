@@ -8,7 +8,7 @@ from soca.knowledge import KnowledgeCitation, KnowledgeHit
 from soca.knowledge.relevance import RelevancePolicy, assess_relevance
 from soca.memory.base import (
     LongTermMemorySource,
-    MemoryProfileResult,
+    MemoryRetrievalResult,
     QueryAwareLongTermMemorySource,
     SessionMemorySource,
 )
@@ -24,12 +24,12 @@ UNTRUSTED_MEMORY_WARNING = (
 
 @dataclass(frozen=True)
 class MemoryContext:
-    profile_text: str
+    memory_text: str
     session_text: str
     prompt_text: str
     hits: tuple[object, ...] = ()
     citations: tuple[KnowledgeCitation, ...] = ()
-    mode: str = "blob"
+    mode: str = "none"
     degraded_reason: str = ""
     evidence_status: str = "insufficient"
     evidence_reason: str = "no_hits"
@@ -53,19 +53,19 @@ class MemoryContextBuilder:
         session: SessionMemorySource | None = None,
         core: LongTermMemorySource | None = None,
         max_chars: int = 64_000,
-        profile_chars: int = 800,
+        memory_item_chars: int = 800,
         relevance_policy: RelevancePolicy | None = None,
     ) -> None:
         if max_chars <= 0:
             raise ValueError("max_chars must be greater than 0")
-        if profile_chars <= 0:
-            raise ValueError("profile_chars must be greater than 0")
+        if memory_item_chars <= 0:
+            raise ValueError("memory_item_chars must be greater than 0")
 
         self.long_term = long_term
         self.session = session
         self.core = core
         self.max_chars = max_chars
-        self.profile_chars = profile_chars
+        self.memory_item_chars = memory_item_chars
         self.relevance_policy = relevance_policy or RelevancePolicy()
 
     def build(
@@ -76,26 +76,25 @@ class MemoryContextBuilder:
         include_core: bool = True,
         include_working: bool = True,
     ) -> MemoryContext:
-        profile = MemoryProfileResult(text="")
-        core_profile_text = ""
+        archive_result = MemoryRetrievalResult(text="")
+        core_memory_text = ""
         core_degraded_reason = ""
-        archive_profile_text = ""
+        archive_memory_text = ""
         session_text = ""
         parts: list[str] = []
 
         accepted_hits: tuple[object, ...] = ()
         assessment = None
         if include_core:
-            core_source = self.core or self.long_term
+            core_source = self.core
             if core_source is not None:
                 try:
-                    core_profile_text = truncate(core_source.read_profile(), self.profile_chars)
+                    core_memory_text = truncate(core_source.read_core(), self.memory_item_chars)
                 except (OSError, UnicodeError, ValueError) as exc:
                     core_degraded_reason = "core_invalid"
                     LOGGER.warning("Core memory unavailable (%s); continuing without core", type(exc).__name__)
-                if core_profile_text:
-                    header = "Core memory" if self.core is not None else "Long-term memory"
-                    parts.append(header + ":\n" + core_profile_text)
+                if core_memory_text:
+                    parts.append("Core memory:\n" + core_memory_text)
 
         if (
             include_archive
@@ -103,10 +102,10 @@ class MemoryContextBuilder:
             and query is not None
             and isinstance(self.long_term, QueryAwareLongTermMemorySource)
         ):
-            profile = self.long_term.retrieve_profile(query)
-            raw_hits = tuple(profile.hits)
+            archive_result = self.long_term.retrieve_archive(query)
+            raw_hits = tuple(archive_result.hits)
             accepted_hits = raw_hits
-            if profile.mode == "retrieved":
+            if archive_result.mode == "retrieved":
                 knowledge_hits = tuple(
                     knowledge_hit
                     for hit in raw_hits
@@ -129,14 +128,14 @@ class MemoryContextBuilder:
                     )
                 else:
                     accepted_hits = ()
-                archive_profile_text = truncate(
+                archive_memory_text = truncate(
                     _format_retrieved_hits(accepted_hits),
-                    self.profile_chars,
+                    self.memory_item_chars,
                 )
             else:
-                archive_profile_text = truncate(profile.text, self.profile_chars)
-            if archive_profile_text:
-                parts.append(archive_profile_text)
+                raise ValueError("archive memory source must return retrieved evidence")
+            if archive_memory_text:
+                parts.append(archive_memory_text)
 
         if include_working and self.session is not None:
             session_text = self.session.render().strip()
@@ -155,7 +154,7 @@ class MemoryContextBuilder:
             for hit in accepted_hits
             if str(getattr(getattr(hit, "document", None), "path", ""))
         )
-        if profile.mode == "retrieved" and include_archive:
+        if archive_result.mode == "retrieved" and include_archive:
             if assessment is not None:
                 evidence_status = assessment.status
                 evidence_reason = assessment.reason
@@ -167,47 +166,47 @@ class MemoryContextBuilder:
                 sparse_top_score = assessment.sparse_top_score
                 dense_top_score = assessment.dense_top_score
             elif accepted_hits:
-                evidence_status = _memory_status(profile.evidence_status)
-                evidence_reason = profile.evidence_reason or "legacy_memory_hits"
-                rejected_hit_count = profile.rejected_hit_count
-                top_relevance = profile.top_relevance
-                relevance_margin = profile.relevance_margin
-                score_separation = profile.score_separation
-                query_coverage = profile.query_coverage
-                sparse_top_score = profile.sparse_top_score
-                dense_top_score = profile.dense_top_score
+                evidence_status = _memory_status(archive_result.evidence_status)
+                evidence_reason = archive_result.evidence_reason or "retrieved_hits"
+                rejected_hit_count = archive_result.rejected_hit_count
+                top_relevance = archive_result.top_relevance
+                relevance_margin = archive_result.relevance_margin
+                score_separation = archive_result.score_separation
+                query_coverage = archive_result.query_coverage
+                sparse_top_score = archive_result.sparse_top_score
+                dense_top_score = archive_result.dense_top_score
             else:
                 evidence_status = "insufficient"
-                evidence_reason = profile.evidence_reason or "no_hits"
-                rejected_hit_count = profile.rejected_hit_count
-                top_relevance = profile.top_relevance
-                relevance_margin = profile.relevance_margin
-                score_separation = profile.score_separation
-                query_coverage = profile.query_coverage
-                sparse_top_score = profile.sparse_top_score
-                dense_top_score = profile.dense_top_score
+                evidence_reason = archive_result.evidence_reason or "no_hits"
+                rejected_hit_count = archive_result.rejected_hit_count
+                top_relevance = archive_result.top_relevance
+                relevance_margin = archive_result.relevance_margin
+                score_separation = archive_result.score_separation
+                query_coverage = archive_result.query_coverage
+                sparse_top_score = archive_result.sparse_top_score
+                dense_top_score = archive_result.dense_top_score
         else:
-            if profile.degraded_reason == "retrieval_unavailable":
+            if archive_result.degraded_reason == "retrieval_unavailable":
                 evidence_status = "unavailable"
                 evidence_reason = "retrieval_unavailable"
             else:
-                evidence_status = "weak" if archive_profile_text else "insufficient"
-                evidence_reason = "profile_blob" if archive_profile_text else "no_hits"
+                evidence_status = "weak" if archive_memory_text else "insufficient"
+                evidence_reason = "core_only" if archive_memory_text else "no_hits"
             rejected_hit_count = 0
             top_relevance = None
             relevance_margin = None
             score_separation = None
-            query_coverage = profile.query_coverage
-            sparse_top_score = profile.sparse_top_score
-            dense_top_score = profile.dense_top_score
+            query_coverage = archive_result.query_coverage
+            sparse_top_score = archive_result.sparse_top_score
+            dense_top_score = archive_result.dense_top_score
         return MemoryContext(
-            profile_text=core_profile_text or archive_profile_text,
+            memory_text=core_memory_text or archive_memory_text,
             session_text=session_text,
             prompt_text=prompt_text,
             hits=accepted_hits,
             citations=citations,
-            mode=profile.mode if include_archive else "blob",
-            degraded_reason=profile.degraded_reason or core_degraded_reason,
+            mode=archive_result.mode if include_archive else "none",
+            degraded_reason=archive_result.degraded_reason or core_degraded_reason,
             evidence_status=evidence_status,
             evidence_reason=evidence_reason,
             rejected_hit_count=rejected_hit_count,
@@ -219,16 +218,16 @@ class MemoryContextBuilder:
             dense_top_score=dense_top_score,
             retrieval_state=(
                 "unavailable"
-                if profile.degraded_reason == "retrieval_unavailable"
-                else "ready" if accepted_hits or archive_profile_text else "empty"
+                if archive_result.degraded_reason == "retrieval_unavailable"
+                else "ready" if accepted_hits or archive_memory_text else "empty"
             ),
             retrieval_reason=(
-                profile.degraded_reason
-                if profile.degraded_reason == "retrieval_unavailable"
+                archive_result.degraded_reason
+                if archive_result.degraded_reason == "retrieval_unavailable"
                 else ""
             ),
-            core_text=core_profile_text if include_core else "",
-            archive_text=archive_profile_text if include_archive else "",
+            core_text=core_memory_text if include_core else "",
+            archive_text=archive_memory_text if include_archive else "",
         )
 
 

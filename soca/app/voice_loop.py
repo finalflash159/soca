@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import logging
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -35,9 +34,6 @@ from soca.tts import VALTEC_TTS_CONFIG
 InputFn = Callable[[str], str]
 RuntimeBuilder = Callable[[ResolvedVoiceRuntimeConfig], VoiceRuntimeBundle]
 Recorder = Callable[..., np.ndarray]
-LOGGER = logging.getLogger(__name__)
-
-
 def run_voice_loop(
     config: ResolvedVoiceRuntimeConfig,
     *,
@@ -60,8 +56,10 @@ def run_voice_loop(
     """
     console = console or Console()
     bundle = runtime_builder(config)
+    active_player: AudioSink | None = None
     try:
-        player = player or SoundDevicePlayer()
+        active_player = player or SoundDevicePlayer()
+        player = active_player
         # A DuplexAecSink player does barge-in (AEC + VAD) inline and exposes a
         # ``captured`` carry-over buffer; a plain player does not.
         supports_barge_in = hasattr(player, "captured")
@@ -196,10 +194,23 @@ def run_voice_loop(
 
         return 0
     finally:
+        cleanup_failures: list[tuple[str, Exception]] = []
+        if active_player is not None:
+            stop_player = getattr(active_player, "stop", None)
+            if callable(stop_player):
+                try:
+                    stop_player()
+                except Exception as exc:  # noqa: BLE001 - continue deterministic teardown
+                    cleanup_failures.append(("audio", exc))
         try:
             bundle.close()
-        except Exception:  # noqa: BLE001 - shutdown must complete
-            LOGGER.exception("Voice runtime cleanup failed during voice loop shutdown")
+        except Exception as exc:  # noqa: BLE001 - expose cleanup failure
+            cleanup_failures.append(("runtime", exc))
+        if cleanup_failures:
+            details = "; ".join(f"{name}: {error}" for name, error in cleanup_failures)
+            raise RuntimeError(
+                f"Voice loop cleanup failed: {details}"
+            ) from cleanup_failures[0][1]
 
 
 def _turn_streaming(

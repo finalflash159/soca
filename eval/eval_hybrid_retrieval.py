@@ -285,6 +285,9 @@ def _timed_evaluate(
 ) -> tuple[tuple[RetrievalSample, ...], float]:
     started = time.perf_counter()
     source = source_factory()
+    build_index = getattr(source, "build_index", None)
+    if callable(build_index):
+        build_index(dense=getattr(source, "retrieval_mode", "") == "hybrid")
     samples = evaluate_source(source, cases)
     return samples, (time.perf_counter() - started) * 1000
 

@@ -20,7 +20,7 @@ class CoreMemoryItem:
 
 
 class CoreMemoryStore:
-    """Load only explicitly approved items; never promote profile text."""
+    """Load only explicitly approved items; never promote archive text."""
 
     def __init__(self, vault: str | Path, *, max_chars: int = 900) -> None:
         self.vault = Path(vault).expanduser().resolve()
@@ -29,7 +29,7 @@ class CoreMemoryStore:
             raise ValueError("core memory max_chars must be positive")
         self.max_chars = max_chars
 
-    def read_profile(self) -> str:
+    def read_core(self) -> str:
         items = self.items()
         if not items:
             return ""

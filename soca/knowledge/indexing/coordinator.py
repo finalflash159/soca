@@ -5,6 +5,7 @@ from pathlib import Path
 from threading import RLock
 
 from soca.knowledge.index.models import VaultIndex
+from soca.knowledge.index.persistence import manifest_path_for
 from soca.knowledge.indexing.catalog import IndexCatalog, SparseSyncResult
 from soca.knowledge.indexing.generations import DenseBuildReport, DenseGenerationBuilder
 from soca.knowledge.indexing.identity import (
@@ -36,6 +37,10 @@ class BuildReport:
     dense: DenseBuildReport | None
 
 
+class LegacyIndexMigrationRequired(RuntimeError):
+    """Raised when a request path finds an operator-owned v1 snapshot."""
+
+
 class IndexCoordinator:
     """Coordinates sparse revisions and immutable dense generations.
 
@@ -63,11 +68,29 @@ class IndexCoordinator:
     def sync_sparse(self, *, verify_content: bool = False) -> SparseSyncResult:
         with self._lock:
             if self.catalog.sparse_index(self.spec.corpus_identity) is None:
-                import_v1_manifest(
-                    self.catalog,
-                    self.spec,
-                    legacy_index_home=self.catalog.index_home,
+                legacy_path = manifest_path_for(
+                    self.catalog.index_home,
+                    Path(self.spec.resolved_vault_path),
                 )
+                if legacy_path.is_file():
+                    raise LegacyIndexMigrationRequired(
+                        f"run knowledge index migrate before serving {legacy_path}"
+                    )
+            return self.catalog.sync_sparse(
+                self.spec,
+                self.reader,  # type: ignore[arg-type]
+                chunker=self.chunker,
+                verify_content=verify_content,
+            )
+
+    def migrate_legacy(self, *, verify_content: bool = True) -> SparseSyncResult:
+        """Import an old snapshot only from an explicit operator command."""
+        with self._lock:
+            import_v1_manifest(
+                self.catalog,
+                self.spec,
+                legacy_index_home=self.catalog.index_home,
+            )
             return self.catalog.sync_sparse(
                 self.spec,
                 self.reader,  # type: ignore[arg-type]

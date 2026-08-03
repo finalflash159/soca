@@ -41,3 +41,20 @@ class DuplicateTerminalError(WorkflowError):
 class WorkflowCancelledError(WorkflowError):
     def __init__(self) -> None:
         super().__init__(WorkflowErrorCode.CANCELLED, "workflow was cancelled")
+
+
+class WorkflowSynthesisError(WorkflowError):
+    def __init__(self, detail: str = "") -> None:
+        message = "workflow synthesis failed"
+        if detail:
+            message += f": {detail}"
+        super().__init__(WorkflowErrorCode.MODEL_ERROR, message)
+
+
+class WorkflowRevisionError(WorkflowError):
+    def __init__(self, reason_code: str, detail: str = "") -> None:
+        message = "workflow revision failed"
+        if detail:
+            message += f": {detail}"
+        super().__init__(WorkflowErrorCode.PROTOCOL_ERROR, message)
+        self.reason_code = reason_code

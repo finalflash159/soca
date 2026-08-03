@@ -1,6 +1,6 @@
-# 13 — Retrieval, evidence gate and answer verification
+# Retrieval, Evidence Gate and Answer Verification
 
-This note records the current Phase 5 retrieval and grounding path. The goal is not to make a
+This note records the current retrieval and grounding path. The goal is not to make a
 model sound fluent at any cost, but to keep a knowledge request on an explicit
 chain:
 
@@ -19,7 +19,7 @@ insufficient; runtime does not assemble an answer from snippets in code.
 corresponding backend is enabled. Dense is not blocked by a lexical miss. Each
 `KnowledgeHit` carries:
 
-- `retrieval_backend`: `lexical_custom`, `dense`, `hybrid` or `unknown`;
+- `retrieval_backend`: `bm25`, `dense`, `hybrid` or `explicit_read`;
 - `sparse_score`, `dense_score`, `fusion_score`;
 - chunk id, path and line range for trace/citation.
 
@@ -33,14 +33,12 @@ query coverage into `RuntimeTrace`; an empty healthy result is
 `RelevancePolicy` does not compare scores from different backends blindly. It
 uses lexical coverage/normalized sparse score for sparse, a dense floor for dense,
 and records top score, margin, accepted/rejected count. Known-backend hits below
-the floor are rejected before prompt construction. Legacy sources without score
-metadata remain accepted as `weak` for compatibility; that is a migration signal,
-not a calibrated evidence claim. Cached sparse and production hybrid have
-separate calibrated policies: public XQuAD Vietnamese screening uses coverage
-`0.65` plus sparse ratio `0.75` for cached sparse. The Phase 5
-`Vietnamese_Embedding_v2` hybrid uses dense floor `0.52` with conservative
-sparse fallback coverage `0.95`. The old FastEmbed floor `0.85` is invalid for
-the new encoder's score distribution.
+the floor are rejected before prompt construction. Unversioned or unknown
+backend hits are not admitted as grounded evidence. The diagnostic sparse
+profile and production hybrid profile have separate calibrated policies.
+Production hybrid uses the pinned `Vietnamese_Embedding_v2` distribution with
+dense floor `0.52` and sparse coverage `0.95`; sparse-only profiles are
+evaluation tools, not production fallbacks.
 
 ## Context and citations
 
@@ -82,15 +80,15 @@ message; it does not release the uncited original.
 | conflict disclosure | partial, missing or invalid | one repair, then block |
 | abstain / unavailable with no citations | not applicable | allow |
 
-Streaming validates the complete text after streaming, but does not yet prevent
-an earlier factual chunk from reaching the user. Pre-validation holdback is a
-P6 release gate, not something hidden by the non-streaming validator.
+Streaming validates the complete text after streaming. The controlled workflow
+keeps progress/acknowledgement events separate from the terminal answer; a
+failed verification is surfaced rather than replaced by an unvalidated answer.
 
 ## Showcase corpus boundary
 
 `eval/fixtures/knowledge_vault` is for smoke tests and UI demos. It is sanitized,
 not personal data and not a release benchmark. It now contains 16 substantial
-learning notes and 18 life notes covering fundamentals, DSA, systems, ML, DL,
+learning notes and 18 life notes plus source notes covering fundamentals, DSA, systems, ML, DL,
 LLM serving, networking, security, decisions, journal, finance and health. The
 learning notes include an initial misunderstanding, examples,
 invariants, trade-offs, failure cases and open questions. Life notes preserve
@@ -103,12 +101,12 @@ The outdated `wiki/dinh-duong/` tree and `wiki/life/project/` tree are removed.
 
 Automated checks on this branch:
 
-- `uv run pytest -q`: **1178 passed, 3 skipped**;
+- `uv run pytest -q`: **1643 passed, 4 skipped, 3 warnings**;
 - `uv run ruff check soca tests`: **pass**;
 - `uv run pyright soca`: **0 errors, 0 warnings**;
-- showcase fixture: **35 indexed markdown notes**, structure/size/query smoke pass.
+- showcase fixture: **36 indexed markdown notes**, structure/size/query smoke pass.
 
-The P5 local wiring smoke with `arcee_vylinh_3b_q4_k_m` passed:
+The local wiring smoke with `arcee_vylinh_3b_q4_k_m` passed:
 
 ```text
 Knowledge answerable → structured repair → valid [K1]
@@ -116,18 +114,18 @@ Memory answerable    → structured repair → valid [M1]
 Memory unanswerable  → abstain, zero citations, no repair
 ```
 
-The P5 remote smoke with OpenRouter `google/gemini-3.5-flash-lite` passed the
+The remote smoke with OpenRouter `google/gemini-3.5-flash-lite` passed the
 same three paths without repair: valid `[K1]`, valid `[M1]`, then an abstention
 with zero citations. The key was loaded from `.env` and was not written to an
-artifact. Remote is the primary P6 answer-quality target; the small local model
-is retained as a bounded offline/fallback smoke target, not treated as an
-equivalent quality judge.
+artifact. Remote is the primary answer-quality target; the small local model
+is retained as a bounded offline smoke target, never as a runtime fallback and
+not treated as an equivalent quality judge.
 
 These are wiring/abstention smoke checks, not release-quality retrieval scores.
 Entailment and citation correctness still need an independent labeled dataset;
 the showcase corpus must not be used to claim benchmark quality.
 
-The P4 public screening result is recorded in `BENCHMARKS.md` and uses the
+The public screening result is recorded in `BENCHMARKS.md` and uses the
 real XQuAD Vietnamese corpus under `eval/fixtures/real_rag_vault`, not the
 showcase vault. The metric is now policy-accepted evidence recall, not raw
 retriever recall. Cached sparse accepted 10/12 answerable paths and 0/8
@@ -138,9 +136,8 @@ follow-up calibration item rather than a release-quality claim.
 
 ## Remaining gaps
 
-- dense production default and embedding model remain governed by the index
-  lifecycle decision;
 - entailment needs an independent benchmark and human calibration;
-- streaming answer repair needs a holdback/controlled loop design;
-- goal verification, bounded multi-step tool loops and retry policy belong to the
-  controlled-loop phase.
+- answer verification remains bounded and typed; a failed release gate is
+  surfaced rather than repaired by changing backend or model;
+- unsupported platform or provider behavior must remain explicitly
+  `deferred`/`blocked` with an owner in the release matrix.

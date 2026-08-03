@@ -116,8 +116,8 @@ uv run python scripts/download_smart_turn.py
 uv run soca knowledge model install aiteamvn-v2
 
 # 3) A local Markdown knowledge vault
-uv run python scripts/init_knowledge_vault.py ~/KnowledgeVault
-uv run soca knowledge index build --vault ~/KnowledgeVault
+uv run python scripts/init_knowledge_vault.py ./Knowledge
+uv run soca knowledge index build --vault ./Knowledge
 
 # 4) Run
 uv run soca voice                        # CLI voice loop
@@ -147,10 +147,11 @@ UI; the chosen backend persists in `~/.config/soca/llm.json`. **Remote sends you
 transcript to a third party.** Precedence and read rules:
 [notes/llm_providers.md](notes/llm_providers.md).
 
-The runtime reads local Markdown only — notes under `~/KnowledgeVault/wiki/` and
-retrieved archive notes under `~/KnowledgeVault/memory/`. Explicitly approved
-always-on memory lives in `~/KnowledgeVault/memory/core.json`; there is no
-profile/blob archive path in production. It never auto-writes long-term memory,
+The runtime reads local Markdown only — notes under `./Knowledge/wiki/` and
+retrieved archive notes under `./Knowledge/memory/`. Explicitly approved
+always-on memory lives in `./Knowledge/memory/core.json`; generated SQLite and
+vector generations live privately under `./Knowledge/.soca/`. There is no
+unbounded archive payload in production. It never auto-writes long-term memory,
 and vault contents are never committed.
 
 ---
@@ -250,7 +251,7 @@ soca/
   llm/         llama.cpp runner, prompt styles, registry, remote providers
   tts/         Valtec ONNX runtime, Vietnamese normalizer, G2P, lexicons
   knowledge/   Markdown vault, BM25 + dense retrievers, transactional index
-  memory/      long-term profile memory, session memory, compaction worker
+  memory/      approved core memory, retrieved archive, session compaction
   tools/       ToolRuntime and the four local tool specs
   app/         presentation: CLI helpers + headless engine
   config/      LLM settings and OS-keyring secret store
@@ -281,20 +282,17 @@ are not committed (`models/`, `data/`, `eval/results/`, `benchmarks/raw/`, `*.wa
 **SoCa's own source code is [MIT licensed](LICENSE).**
 
 That does *not* cover the models it downloads. Each third-party model and dataset
-keeps its own license and model-card restrictions.
+keeps its own license and model-card restrictions, and **one of them is
+non-commercial**. Read this section before deploying SoCa anywhere commercial.
 
-> [!WARNING]
-> **The default and only TTS engine is non-commercial.** Valtec is CC BY-NC 2.0, so
-> any commercial deployment of SoCa's voice output needs either a separate license
-> from the Valtec authors or a different TTS engine. Everything else in the product
-> path is permissive.
-
-### The non-commercial constraint
+### ⚠️ The non-commercial constraint
 
 | Component | License | Consequence |
 | --- | --- | --- |
-| **Valtec TTS** — [`valtecAI-team/valtec-tts-pretrained`](https://github.com/tronghieuit/valtec-tts) | **CC BY-NC 2.0** | Blocks commercial use of the voice output. Redistributing the derived ONNX artifacts additionally requires an explicit release review. |
-| **ESC-50** (benchmark only) | CC BY-NC | Used to build the non-speech evaluation sets. Never shipped as product data. |
+| **Valtec TTS** — [`valtecAI-team/valtec-tts-pretrained`](https://github.com/tronghieuit/valtec-tts) | **CC BY-NC 2.0** | **The default and only TTS engine is non-commercial.** Any commercial deployment of SoCa's voice output requires either a separate license from the Valtec authors or a different TTS engine. Redistribution of the derived ONNX artifacts requires explicit release review. |
+| **ESC-50** (benchmark only) | CC BY-NC | Used to build non-speech evaluation sets. Never shipped as product data. |
+
+Everything else in the product path is permissively licensed.
 
 ### Models in the product path
 

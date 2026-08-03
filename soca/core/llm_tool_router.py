@@ -111,7 +111,8 @@ def _build_refinement_prompt(
     retrieval_catalog = tuple(
         item
         for item in catalog
-        if item.get("name") in {"knowledge.search", "knowledge.read", "memory.search"}
+        if item.get("name")
+        in {"knowledge.inspect", "knowledge.search", "knowledge.read", "memory.search"}
     )
     return "\n".join(
         (
@@ -126,6 +127,9 @@ def _build_refinement_prompt(
             "If a candidate document clearly matches the requested subject, read that "
             "document. Otherwise rewrite the request as a concise subject-focused "
             "search query, dropping conversational filler while preserving meaning.",
+            "If the original request asks for an inventory, folder tree, headings, "
+            "links, or relationships and the first search returned no usable evidence, "
+            "use knowledge.inspect because navigation metadata is the requested result.",
             "Never write the final prose answer.",
             "Enabled retrieval tools:",
             json.dumps(retrieval_catalog, ensure_ascii=False, sort_keys=True),
@@ -152,7 +156,8 @@ def _build_evidence_completion_prompt(
     retrieval_catalog = tuple(
         item
         for item in catalog
-        if item.get("name") in {"knowledge.search", "knowledge.read"}
+        if item.get("name")
+        in {"knowledge.inspect", "knowledge.search", "knowledge.read"}
     )
     return "\n".join(
         (
@@ -170,6 +175,9 @@ def _build_evidence_completion_prompt(
             "Prefer an exact read of a clearly identified candidate document. Continue "
             "an incomplete read from next_start_line and next_start_column when present, "
             "and preserve its path.",
+            "If the user's goal is an inventory, folder tree, headings, links, or "
+            "relationships, continue with knowledge.inspect; its metadata is the "
+            "answer for that goal and is not note-body evidence.",
             "Use a revised search only when no candidate path can be read directly.",
             "Do not repeat a prior tool call. Do not answer the user. Do not infer facts "
             "from the vault manifest because it is navigation metadata only.",
@@ -259,6 +267,7 @@ class LLMToolRouter:
             return None
         call = self._finish(attempt.raw)
         if call is None or call.name not in {
+            "knowledge.inspect",
             "knowledge.search",
             "knowledge.read",
             "memory.search",
@@ -449,6 +458,7 @@ class LLMToolRouter:
         if not tool.spec.enabled:
             raise RouterOutputError("disabled_completion_tool")
         if decision.call.name not in {
+            "knowledge.inspect",
             "knowledge.search",
             "knowledge.read",
         }:

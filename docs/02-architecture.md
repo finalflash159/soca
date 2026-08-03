@@ -24,7 +24,7 @@ soca/
 ├── llm/                    # llama.cpp runner + registry + memory-aware + output cleaning
 ├── tts/                    # Valtec Vietnamese TTS runtime + factory
 ├── knowledge/              # Markdown vault + retrieval context
-├── memory/                 # Long-term (profile.md) + session memory (RAM)
+├── memory/                 # Retrieved archive + approved core + session memory
 ├── tools/                  # ToolRuntime: knowledge and memory tools
 └── app/                    # Presentation layer
     ├── cli ↔ voice_loop.py / text_chat.py / text_runtime.py / console.py / usage_view.py

@@ -47,7 +47,7 @@ class GuardrailEvent:
 @dataclass(frozen=True)
 class GuardrailPolicy:
     allowed_knowledge_prefixes: tuple[str, ...] = ("wiki/",)
-    allowed_memory_paths: tuple[str, ...] = ("memory/profile.md",)
+    allowed_memory_paths: tuple[str, ...] = ("memory/core.json",)
     blocked_path_prefixes: tuple[str, ...] = ("raw/", "private/")
     blocked_path_parts: tuple[str, ...] = (".git", ".obsidian", ".trash")
     max_tool_side_effect: SideEffectLevel = SideEffectLevel.LOCAL_STATE
@@ -160,6 +160,13 @@ def check_knowledge_read_path(
         return block(GuardrailStage.RETRIEVAL, "empty_path", metadata=metadata)
     if normalized.startswith("/"):
         return block(GuardrailStage.RETRIEVAL, "absolute_path", metadata=metadata)
+    if normalized in policy.allowed_memory_paths:
+        return block(
+            GuardrailStage.RETRIEVAL,
+            "outside_runtime_knowledge_scope",
+            "Memory is read through the memory module, not knowledge.read.",
+            metadata=metadata,
+        )
     if not normalized.endswith(".md"):
         return block(GuardrailStage.RETRIEVAL, "non_markdown_path", metadata=metadata)
 
@@ -170,13 +177,6 @@ def check_knowledge_read_path(
         return block(GuardrailStage.RETRIEVAL, "blocked_path_part", metadata=metadata)
     if normalized.startswith(policy.blocked_path_prefixes):
         return block(GuardrailStage.RETRIEVAL, "blocked_path_prefix", metadata=metadata)
-    if normalized in policy.allowed_memory_paths:
-        return block(
-            GuardrailStage.RETRIEVAL,
-            "outside_runtime_knowledge_scope",
-            "Memory is read through the memory module, not knowledge.read.",
-            metadata=metadata,
-        )
     if not normalized.startswith(policy.allowed_knowledge_prefixes):
         return block(
             GuardrailStage.RETRIEVAL,

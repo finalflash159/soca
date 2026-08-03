@@ -14,7 +14,7 @@ from soca.knowledge.factory import RetrievalConfig, build_retrieval_source
 from soca.llm.providers.model_catalog import fetch_catalog
 from soca.llm.providers.provider_registry import get_provider
 from soca.llm.providers.remote_openai_llm import RemoteOpenAILLM
-from soca.memory import MarkdownLongTermMemory, RetrievedMemory, RetrievedMemoryConfig
+from soca.memory import CoreMemoryStore, RetrievedMemory, RetrievedMemoryConfig
 
 
 def _cases(path: Path, limit: int | None) -> tuple[dict[str, Any], ...]:
@@ -35,29 +35,32 @@ def _cases(path: Path, limit: int | None) -> tuple[dict[str, Any], ...]:
 
 def evaluate(vault: Path, cases_path: Path, *, limit: int | None = None) -> dict[str, Any]:
     cases = _cases(cases_path, limit)
-    profile = MarkdownLongTermMemory(vault, max_chars=2_200)
+    core = CoreMemoryStore(vault, max_chars=2_200)
     source = build_retrieval_source(
         vault,
         include_globs=("memory/**/*.md",),
         config=RetrievalConfig(mode="chunk_sparse"),
     )
-    retrieved = RetrievedMemory(source, profile, config=RetrievedMemoryConfig(top_k=3, max_chars=2_200))
+    retrieved = RetrievedMemory(source, core, config=RetrievedMemoryConfig(top_k=3, max_chars=2_200))
     samples: list[dict[str, float | bool]] = []
-    for case in cases:
-        started = time.perf_counter()
-        result = retrieved.retrieve_profile(str(case["query"]))
-        latency = (time.perf_counter() - started) * 1000
-        text = result.text.casefold()
-        expected = tuple(str(item).casefold() for item in case.get("expected_contains", ()))
-        forbidden = tuple(str(item).casefold() for item in case.get("forbidden_contains", ()))
-        samples.append(
-            {
-                "hit": bool(expected) and all(item in text for item in expected),
-                "forbidden_leak": any(item in text for item in forbidden),
-                "chars": len(text),
-                "latency_ms": latency,
-            }
-        )
+    try:
+        for case in cases:
+            started = time.perf_counter()
+            result = retrieved.retrieve_archive(str(case["query"]))
+            latency = (time.perf_counter() - started) * 1000
+            text = result.text.casefold()
+            expected = tuple(str(item).casefold() for item in case.get("expected_contains", ()))
+            forbidden = tuple(str(item).casefold() for item in case.get("forbidden_contains", ()))
+            samples.append(
+                {
+                    "hit": bool(expected) and all(item in text for item in expected),
+                    "forbidden_leak": any(item in text for item in forbidden),
+                    "chars": len(text),
+                    "latency_ms": latency,
+                }
+            )
+    finally:
+        retrieved.close()
     return {
         "status": "ok",
         "case_count": len(samples),
@@ -101,63 +104,73 @@ def evaluate_answers(
     catalog = fetch_catalog(provider, key)
     model_info = next((item for item in catalog if item.id == model_id), None)
     source_cache: dict[str, RetrievedMemory] = {}
-    profile = MarkdownLongTermMemory(vault, max_chars=2_200)
+    core = CoreMemoryStore(vault, max_chars=2_200)
     results: dict[str, dict[str, float | int]] = {}
-    for variant in variants:
-        if variant == "blob":
-            retrieved = None
-        elif variant in {"retrieved_chunk_sparse", "retrieved_hybrid"}:
-            mode = "chunk_sparse" if variant.endswith("chunk_sparse") else "hybrid"
-            source = build_retrieval_source(
-                vault,
-                include_globs=("memory/**/*.md",),
-                config=RetrievalConfig(mode=mode),
-            )
-            retrieved = RetrievedMemory(source, profile, config=RetrievedMemoryConfig(top_k=3, max_chars=2_200))
-            source_cache[variant] = retrieved
-        else:
-            raise ValueError(f"unknown answer variant: {variant}")
+    try:
+        for variant in variants:
+            if variant == "core_only":
+                retrieved = None
+            elif variant in {"retrieved_chunk_sparse", "retrieved_hybrid"}:
+                mode = "chunk_sparse" if variant.endswith("chunk_sparse") else "hybrid"
+                source = build_retrieval_source(
+                    vault,
+                    include_globs=("memory/**/*.md",),
+                    config=RetrievalConfig(mode=mode),
+                )
+                retrieved = RetrievedMemory(source, core, config=RetrievedMemoryConfig(top_k=3, max_chars=2_200))
+                source_cache[variant] = retrieved
+            else:
+                raise ValueError(f"unknown answer variant: {variant}")
 
-        samples: list[dict[str, float | int]] = []
-        for _ in range(repetitions):
-            for case in cases:
-                started = time.perf_counter()
-                context = profile.read_profile() if retrieved is None else retrieved.retrieve_profile(str(case["query"])).text
-                prompt = (
-                    "Answer the question using only the retrieved memory. "
-                    "If the memory does not contain the answer, say unknown.\n"
-                    f"Question: {case['query']}\nMemory:\n{context}"
-                )
-                answer = llm.generate(prompt, max_tokens=64, temperature=0.0, top_p=1.0, inject_persona=False)
-                text = answer.text.casefold()
-                expected = tuple(str(item).casefold() for item in case.get("expected_contains", ()))
-                forbidden = tuple(str(item).casefold() for item in case.get("forbidden_contains", ()))
-                samples.append(
-                    {
-                        "correct": int(bool(expected) and all(item in text for item in expected)),
-                        "forbidden": int(any(item in text for item in forbidden)),
-                        "prompt_tokens": answer.n_prompt_tokens,
-                        "completion_tokens": answer.n_completion_tokens,
-                        "latency_ms": (time.perf_counter() - started) * 1000,
-                    }
-                )
-        prompt_cost = model_info.price_prompt_per_1m if model_info else None
-        completion_cost = model_info.price_completion_per_1m if model_info else None
-        results[variant] = {
-            "case_count": len(samples),
-            "accuracy": mean(float(sample["correct"]) for sample in samples),
-            "forbidden_leakage_rate": mean(float(sample["forbidden"]) for sample in samples),
-            "prompt_tokens": int(sum(sample["prompt_tokens"] for sample in samples)),
-            "completion_tokens": int(sum(sample["completion_tokens"] for sample in samples)),
-            "latency_mean_ms": mean(float(sample["latency_ms"]) for sample in samples),
-            "estimated_cost_usd": (
-                (sum(sample["prompt_tokens"] for sample in samples) * (prompt_cost or 0.0)
-                 + sum(sample["completion_tokens"] for sample in samples) * (completion_cost or 0.0))
-                / 1_000_000
-                if prompt_cost is not None and completion_cost is not None
-                else -1.0
-            ),
-        }
+            samples: list[dict[str, float | int]] = []
+            for _ in range(repetitions):
+                for case in cases:
+                    started = time.perf_counter()
+                    context = core.read_core() if retrieved is None else retrieved.retrieve_archive(str(case["query"])).text
+                    prompt = (
+                        "Answer the question using only the retrieved memory. "
+                        "If the memory does not contain the answer, say unknown.\n"
+                        f"Question: {case['query']}\nMemory:\n{context}"
+                    )
+                    answer = llm.generate(prompt, max_tokens=64, temperature=0.0, top_p=1.0, inject_persona=False)
+                    text = answer.text.casefold()
+                    expected = tuple(str(item).casefold() for item in case.get("expected_contains", ()))
+                    forbidden = tuple(str(item).casefold() for item in case.get("forbidden_contains", ()))
+                    samples.append(
+                        {
+                            "correct": int(bool(expected) and all(item in text for item in expected)),
+                            "forbidden": int(any(item in text for item in forbidden)),
+                            "prompt_tokens": answer.n_prompt_tokens,
+                            "completion_tokens": answer.n_completion_tokens,
+                            "latency_ms": (time.perf_counter() - started) * 1000,
+                        }
+                    )
+            prompt_cost = model_info.price_prompt_per_1m if model_info else None
+            completion_cost = model_info.price_completion_per_1m if model_info else None
+            results[variant] = {
+                "case_count": len(samples),
+                "accuracy": mean(float(sample["correct"]) for sample in samples),
+                "forbidden_leakage_rate": mean(float(sample["forbidden"]) for sample in samples),
+                "prompt_tokens": int(sum(sample["prompt_tokens"] for sample in samples)),
+                "completion_tokens": int(sum(sample["completion_tokens"] for sample in samples)),
+                "latency_mean_ms": mean(float(sample["latency_ms"]) for sample in samples),
+                "estimated_cost_usd": (
+                    (sum(sample["prompt_tokens"] for sample in samples) * (prompt_cost or 0.0)
+                     + sum(sample["completion_tokens"] for sample in samples) * (completion_cost or 0.0))
+                    / 1_000_000
+                    if prompt_cost is not None and completion_cost is not None
+                    else -1.0
+                ),
+            }
+    finally:
+        close_errors: list[BaseException] = []
+        for retrieved in source_cache.values():
+            try:
+                retrieved.close()
+            except BaseException as exc:  # noqa: BLE001 - preserve eval cleanup failure
+                close_errors.append(exc)
+        if close_errors:
+            raise RuntimeError("retrieved-memory evaluation cleanup failed") from close_errors[0]
     return {"status": "ok", "provider": provider_key, "model": model_id, "variants": results}
 
 
@@ -185,7 +198,7 @@ def main() -> int:
             args.cases,
             provider_key=args.provider,
             model_id=args.model,
-            variants=tuple(args.variant or ["blob", "retrieved_chunk_sparse"]),
+            variants=tuple(args.variant or ["core_only", "retrieved_chunk_sparse"]),
             repetitions=args.repetitions,
             limit=args.limit,
             api_key=env.get(get_provider(args.provider).api_key_env),

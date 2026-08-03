@@ -32,11 +32,21 @@ class RelevancePolicy:
     def for_retrieval_mode(cls, mode: str) -> RelevancePolicy:
         """Return the runtime contract for a backend score distribution.
 
-        Corpus/model calibration belongs in a versioned artifact. This default
-        deliberately does not encode a threshold learned from another corpus.
+        Corpus/model calibration belongs in a versioned artifact. These values
+        are the production profile selected for the current backend family;
+        a release may replace them only through a versioned calibration artifact.
         """
-        del mode
-        return cls(min_lexical_coverage=0.65, min_dense_score=0.55)
+        if mode == "cached_sparse":
+            return cls(min_lexical_coverage=0.65, min_dense_score=0.55)
+        if mode == "chunk_sparse":
+            return cls(min_lexical_coverage=0.95, min_dense_score=0.55)
+        if mode == "hybrid":
+            return cls(
+                min_lexical_coverage=0.95,
+                min_dense_score=0.52,
+                min_fusion_score_ratio=0.70,
+            )
+        raise ValueError(f"unknown retrieval mode: {mode}")
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -126,7 +136,7 @@ def assess_relevance(
             0,
             None,
             None,
-            "legacy_unscored_hits",
+            "unscored_hits",
             query_coverage,
             sparse_top_score,
             dense_top_score,
@@ -253,9 +263,7 @@ def _admission_signal(
         and hit.sparse_score is not None
     ):
         ratio = hit.sparse_score / max_sparse_score
-        if ratio >= policy.min_sparse_score_ratio and (
-            lexical_signal is not None or hit.fusion_score is not None
-        ):
+        if ratio >= policy.min_sparse_score_ratio and lexical_signal is not None:
             sparse_signal = ratio
     if sparse_signal is not None and sparse_signal < policy.min_sparse_score_ratio:
         sparse_signal = None
@@ -279,8 +287,8 @@ def _admission_signal(
     if hit.retrieval_backend == "lexical_custom":
         # Cached sparse hits have a backend-local score. Coverage alone is not
         # enough: generic words such as "hệ thống" can appear in unrelated
-        # notes. Keep the lexical fallback only for legacy/custom hits that do
-        # not expose a sparse score at all.
+        # notes. Keep the lexical fallback only for custom hits that do not
+        # expose a sparse score at all.
         if hit.sparse_score is not None:
             if sparse_signal is not None:
                 return sparse_signal, "sparse"

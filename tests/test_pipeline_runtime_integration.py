@@ -27,6 +27,13 @@ class FakeLLMResult:
     text: str
 
 
+@dataclass(frozen=True)
+class FakeRuntimeStreamEvent:
+    type: str
+    text: str = ""
+    result: RuntimeResult | None = None
+
+
 class FakeASR:
     def __init__(self, text: str, rejection_reason: str = "") -> None:
         self.text = text
@@ -90,6 +97,30 @@ class SpyRuntime:
             trace=trace,
             llm_result=llm_result,
         )
+
+    def stream_text_turn(
+        self,
+        text: str,
+        *,
+        source: str = "text",
+        metadata=None,
+        min_sentence_chars: int = 24,
+        first_sentence_min_chars: int | None = None,
+        first_clause_enabled: bool = True,
+        first_clause_min_chars: int = 12,
+        first_clause_min_words: int = 2,
+        first_clause_max_scan_chars: int = 80,
+    ):
+        del source, metadata, min_sentence_chars, first_sentence_min_chars
+        del first_clause_enabled, first_clause_min_chars, first_clause_min_words
+        del first_clause_max_scan_chars
+        self.calls.append({"text": text, "source": "stream", "metadata": {}})
+        sentences = [item.strip() for item in self.response_text.split(". ") if item.strip()]
+        for item in sentences:
+            sentence = item if item.endswith((".", "!", "?")) else item + "."
+            yield FakeRuntimeStreamEvent(type="token", text=sentence)
+            yield FakeRuntimeStreamEvent(type="sentence", text=sentence)
+        yield FakeRuntimeStreamEvent(type="result", result=self.run_text_turn(text))
 
 
 class SpyTTS:
@@ -195,7 +226,7 @@ def test_turn_keeps_llm_result_from_runtime_when_runtime_used_llm() -> None:
     assert result.runtime_result.trace.used_llm is True
 
 
-def test_streaming_runtime_path_emits_runtime_event_and_tts_without_llm_stream() -> None:
+def test_streaming_runtime_path_emits_runtime_event_and_tts_from_runtime_stream() -> None:
     asr = FakeASR("wiki chất đạm")
     llm = SpyLLM()
     tts = SpyTTS()
@@ -214,7 +245,7 @@ def test_streaming_runtime_path_emits_runtime_event_and_tts_without_llm_stream()
 
     assert event_types[0] == "asr"
     assert "runtime" in event_types
-    assert "llm_token" not in event_types
+    assert "llm_token" in event_types
     assert "sentence" in event_types
     assert "tts" in event_types
     assert "audio" in event_types

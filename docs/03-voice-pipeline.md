@@ -36,11 +36,8 @@ flowchart TD
     S[turn_streaming] --> ASR[ASR transcribe]
     ASR --> Q{empty transcript?}
     Q -->|yes| REP[_plan_repair<br/>emit repair + speak follow-up]
-    Q -->|no| HAS{runtime has<br/>stream_text_turn?}
-    HAS -->|yes| STREAM[_turn_streaming_runtime_stream<br/>token→answer delta→verified TTS]
-    HAS -->|no| BLOCK[_turn_streaming_runtime_blocking<br/>generate all text before TTS]
+    Q -->|no| STREAM[_turn_streaming_runtime_stream<br/>token→answer delta→verified TTS]
     STREAM --> DONE[emit done]
-    BLOCK --> DONE
     REP --> DONE
 ```
 
@@ -202,7 +199,7 @@ LLM token buffer -> safe first clause -> per-chunk guardrail -> Valtec ONNX
 | `audible_ttfa_ms`        | First successful `session.write()`, relative to turn start.       |
 | `synthesis_slack_ms`     | Per boundary: how much the next chunk beat the playback deadline. |
 | `crossfade_ms`           | Actual overlap applied (0 on the non-overlapping fallback).       |
-| `crossfade_fallback`     | `none` \| `non_overlapping` \| `legacy_sink`.                     |
+| `crossfade_fallback`     | `none` \| `non_overlapping` \| `direct_sink`.                     |
 | `output_underflow_count` | Device/stream underflows for the turn (target `0`).               |
 
 When `synthesis_slack_ms < crossfade_ms` (short chunk, cold cache, CPU contention), the

@@ -21,8 +21,6 @@ class RuntimeRoute(Enum):
     OUT_OF_SCOPE = "out_of_scope"
     CLARIFICATION = "clarification"
     FREE_CHAT = "free_chat"
-    # Backward-compatible alias for older tests/reports that imported the enum name.
-    LLM_FALLBACK = "free_chat"
 
 
 @dataclass(frozen=True)
@@ -40,7 +38,7 @@ class RuntimeTrace:
     tool_results: tuple[ToolResult, ...] = ()
     knowledge_hits: tuple[Any, ...] = ()
     memory_hits: tuple[Any, ...] = ()
-    memory_mode: str = "blob"
+    memory_mode: str = "none"
     memory_degraded_reason: str = ""
     citations: tuple[KnowledgeCitation, ...] = ()
     used_tool: bool = False
@@ -75,6 +73,9 @@ class RuntimeTrace:
     prompt_manifest: dict[str, Any] | None = None
     provider_trace: dict[str, Any] = field(default_factory=dict)
     llm_error: dict[str, Any] = field(default_factory=dict)
+    workflow_status: str = "not_run"
+    workflow_error_code: str = ""
+    workflow_unmet_criteria: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -113,11 +114,11 @@ def iter_workflow_events(
     *,
     turn_id: str = "",
     goal_id: str = "",
-    session_id: str = "legacy-session",
+    session_id: str = "runtime-session",
     surface: Literal["ask", "cli", "chat", "voice"] = "chat",
 ) -> Iterator[Any]:
-    """Compatibility entry point for the shared blocking/streaming adapter."""
-    from .workflow.legacy_adapter import iter_runtime_events
+    """Convert runtime output into the shared workflow event stream."""
+    from .workflow.runtime_events import iter_runtime_events
 
     yield from iter_runtime_events(
         source,

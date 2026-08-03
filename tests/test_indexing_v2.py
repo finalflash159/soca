@@ -8,8 +8,12 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from soca.knowledge.index.vault_index import VaultIndexer, VaultIndexStore
 from soca.knowledge.indexing import generations
-from soca.knowledge.indexing.coordinator import IndexCoordinator
+from soca.knowledge.indexing.coordinator import (
+    IndexCoordinator,
+    LegacyIndexMigrationRequired,
+)
 from soca.knowledge.indexing.generations import DenseGenerationBuilder, DenseGenerationCorrupt
 from soca.knowledge.indexing.identity import (
     ChunkerFingerprint,
@@ -60,12 +64,13 @@ def _coordinator(
     model: FakeModel | None = None,
     *,
     chunker: ChunkerFingerprint | None = None,
+    index_home: Path | None = None,
 ) -> IndexCoordinator:
     reader = MarkdownVaultKnowledgeSource(root, include_globs=("wiki/**/*.md",))
     return IndexCoordinator(
         reader,
         spec=CorpusSpec(root),
-        index_home=root / ".index",
+        index_home=index_home or root / ".index",
         model=model,
         chunker=chunker,
     )
@@ -145,6 +150,23 @@ def test_catalog_verify_reports_clean_generation(tmp_path: Path) -> None:
     coordinator.build_blocking(dense=True)
 
     assert coordinator.verify() == ()
+
+
+def test_request_path_requires_explicit_v1_migration(tmp_path: Path) -> None:
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    (wiki / "note.md").write_text("# Note\nContent.", encoding="utf-8")
+    index_home = tmp_path / ".index"
+    reader = MarkdownVaultKnowledgeSource(tmp_path, include_globs=("wiki/**/*.md",))
+    VaultIndexer(reader, VaultIndexStore(index_home=index_home)).refresh()
+
+    coordinator = _coordinator(tmp_path, index_home=index_home)
+    with pytest.raises(LegacyIndexMigrationRequired, match="knowledge index migrate"):
+        coordinator.snapshot()
+
+    migrated = coordinator.migrate_legacy()
+    assert migrated.index.documents
+    assert coordinator.snapshot().sparse_index.documents
 
 
 def test_publishing_new_embedding_profile_retires_old_active_pointer(

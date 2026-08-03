@@ -7,11 +7,11 @@ from typing import Literal
 from soca.knowledge.base import KnowledgeSource
 from soca.knowledge.cached_source import CachedMarkdownVaultKnowledgeSource
 from soca.knowledge.hybrid_source import HybridConfig, HybridKnowledgeSource
+from soca.knowledge.index.persistence import default_index_home
 from soca.knowledge.indexing.models import load_model
 
 RetrievalMode = Literal["cached_sparse", "chunk_sparse", "hybrid"]
 DenseBackend = Literal["aiteamvn_v2"]
-IndexLifecycle = Literal["legacy", "v2"]
 SparseBackend = Literal["bm25", "lexical_custom"]
 FusionMode = Literal["linear", "rrf"]
 
@@ -20,12 +20,11 @@ FusionMode = Literal["linear", "rrf"]
 class RetrievalConfig:
     mode: RetrievalMode = "hybrid"
     dense_backend: str = "aiteamvn_v2"
-    sparse_backend: SparseBackend = "lexical_custom"
+    sparse_backend: SparseBackend = "bm25"
     fusion: FusionMode = "linear"
-    dense_weight: float = 0.25
+    dense_weight: float = 0.75
     rrf_k: int = 60
     per_retriever_limit: int = 12
-    lifecycle: IndexLifecycle = "v2"
     watcher_enabled: bool = True
     watcher_interval_seconds: float = 2.0
 
@@ -44,8 +43,6 @@ class RetrievalConfig:
             or not 0.0 <= float(self.dense_weight) <= 1.0
         ):
             raise ValueError("dense_weight must be in [0, 1]")
-        if self.lifecycle not in {"legacy", "v2"}:
-            raise ValueError("unknown index lifecycle")
         if not isinstance(self.watcher_enabled, bool):
             raise ValueError("watcher_enabled must be a boolean")
         if (
@@ -80,10 +77,10 @@ def build_retrieval_source(
 ) -> KnowledgeSource:
     resolved = config or RetrievalConfig()
     corpus_kind = "memory" if include_globs == ("memory/**/*.md",) else "knowledge"
+    resolved_index_home = index_home or default_index_home(vault)
     common = {
-        "index_home": index_home,
+        "index_home": resolved_index_home,
         "include_globs": include_globs,
-        "lifecycle": resolved.lifecycle,
         "corpus_kind": corpus_kind,
     }
     if resolved.mode == "cached_sparse":
@@ -118,8 +115,15 @@ def build_retrieval_source(
         ),
         **common,
     )
-    if resolved.lifecycle == "v2" and resolved.watcher_enabled:
-        source.activate_watcher(interval_seconds=resolved.watcher_interval_seconds)
+    if resolved.watcher_enabled:
+        try:
+            source.activate_watcher(interval_seconds=resolved.watcher_interval_seconds)
+        except Exception:
+            try:
+                source.close()
+            except Exception as cleanup_exc:  # noqa: BLE001 - preserve cleanup failure
+                raise RuntimeError("retrieval source startup cleanup failed") from cleanup_exc
+            raise
     return source
 
 

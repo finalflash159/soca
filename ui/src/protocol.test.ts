@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adaptLegacyEvent, parseEngineEvent } from "./protocol.js";
+import { parseEngineEvent } from "./protocol.js";
 
 describe("parseEngineEvent", () => {
   it("parses a workflow protocol v2 envelope", () => {
@@ -63,19 +63,6 @@ describe("parseEngineEvent", () => {
     envelope[field] = value;
 
     expect(parseEngineEvent(JSON.stringify(envelope))).toBeNull();
-  });
-
-  it("adapts a v1 hello without changing its fields", () => {
-    const event = adaptLegacyEvent({
-      event: "hello",
-      version: 1,
-      profile: "baseline",
-      no_model: false,
-      stack: {},
-    });
-
-    expect(event.protocol_version).toBe(1);
-    expect(event.supported_versions).toEqual([1]);
   });
 
   it("parses a remote LLM catalog event", () => {

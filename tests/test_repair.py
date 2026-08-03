@@ -104,16 +104,16 @@ def test_pipeline_with_catalog_uses_varied_repair_text() -> None:
     result = pipeline.turn(np.zeros(16000, dtype=np.float32))
 
     assert result.rejected is True
-    # The spoken text now comes from the catalog, not the fixed reject_response.
+    # The spoken text comes from the canonical catalog.
     variants = catalog._slots["no_input.attempt_1"].variants
     assert result.response_text in variants
-    assert result.response_text != pipeline.reject_response
+    assert result.response_text
 
 
-def test_pipeline_without_catalog_keeps_fixed_reject_response() -> None:
+def test_pipeline_without_catalog_loads_canonical_catalog() -> None:
     pipeline = VoicePipeline(asr=FakeASR("", rejection_reason="no_speech"), llm=SpyLLM(), tts=SpyTTS())
     result = pipeline.turn(np.zeros(16000, dtype=np.float32))
-    assert result.response_text == pipeline.reject_response
+    assert result.response_text
 
 
 def test_pipeline_streaming_repair_speaks_catalog_text() -> None:

@@ -2,6 +2,7 @@ import type {
   CitationRecord,
   ContextEvent,
   EngineEvent,
+  KnowledgeSetupEvent,
   LlmConfigEvent,
   MemoryCompactionEvent,
   MemoryEvent,
@@ -88,6 +89,12 @@ export interface KnowledgeIndexStatus {
   chunks: number;
 }
 
+export interface KnowledgeVaultStatus {
+  path: string;
+  initialized: boolean;
+  index_home: string;
+}
+
 // Live partial transcript while the user is still speaking: committed words are
 // stable (LocalAgreement), tentative words may still change on the next decode.
 export interface Caption {
@@ -124,7 +131,7 @@ export interface AppState {
   bargeIn: "off" | "armed" | "fired";
   routerTier: "deterministic" | "semantic" | "llm" | "none";
   routerLatencyMs: number;
-  memoryMode: "blob" | "retrieved" | "degraded";
+  memoryMode: "none" | "retrieved" | "degraded";
   memoryHits: number;
   proposals: MemoryProposal[];
   proposalsOpen: boolean;
@@ -137,6 +144,8 @@ export interface AppState {
   llmKeyPendingProvider: string | null;
   settingsNotice: string;
   knowledgeIndex: KnowledgeIndexStatus | null;
+  knowledgeVault: KnowledgeVaultStatus | null;
+  knowledgeSetup: KnowledgeSetupEvent | null;
   runtimeComponents: RuntimeComponentStatus[];
   activeInfo: InfoView | null;
   context: ContextEvent | null;
@@ -174,7 +183,7 @@ export const initialState: AppState = {
   bargeIn: "off",
   routerTier: "none",
   routerLatencyMs: 0,
-  memoryMode: "blob",
+  memoryMode: "none",
   memoryHits: 0,
   proposals: [],
   proposalsOpen: false,
@@ -187,6 +196,8 @@ export const initialState: AppState = {
   llmKeyPendingProvider: null,
   settingsNotice: "",
   knowledgeIndex: null,
+  knowledgeVault: null,
+  knowledgeSetup: null,
   runtimeComponents: [],
   activeInfo: null,
   context: null,
@@ -567,8 +578,14 @@ function reduceEngineEvent(state: AppState, event: EngineEvent): AppState {
       return {
         ...state,
         profiles: event.profiles,
+        knowledgeVault: event.knowledge_vault ?? null,
         knowledgeIndex: event.knowledge_index ?? null,
         runtimeComponents: event.runtime_components ?? [],
+      };
+    case "knowledge_setup":
+      return {
+        ...state,
+        knowledgeSetup: event,
       };
     case "context":
       return { ...state, context: event };

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from click.testing import CliRunner
 
 from soca.cli import main
+from soca.knowledge.vault import default_vault_root
 
 
 def test_ui_help_shows_quick_examples_not_hidden_compat_options() -> None:
@@ -35,7 +34,7 @@ def test_ui_default_launches_ink_app(monkeypatch) -> None:
             "mode": "voice",
             "profile": "baseline",
             "no_model": True,
-            "vault": Path.home() / "KnowledgeVault",
+            "vault": default_vault_root(),
         }
     ]
 
@@ -58,7 +57,7 @@ def test_ui_bare_launches_ink_splash_without_mode(monkeypatch) -> None:
             "mode": None,
             "profile": None,
             "no_model": False,
-            "vault": Path.home() / "KnowledgeVault",
+            "vault": default_vault_root(),
         }
     ]
 

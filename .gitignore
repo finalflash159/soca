@@ -55,6 +55,7 @@ notebooks/artifacts/
 runs/
 logs/
 artifacts/local/
+/Knowledge/
 runtime/qwen-asr/.runtime-receipt.json
 *.log
 *.wav

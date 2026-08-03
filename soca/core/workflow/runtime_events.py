@@ -18,14 +18,39 @@ def terminal_from_runtime_result(result: RuntimeResult) -> TerminalOutcome:
     recoverable = False
     error_code: str | None = None
 
-    if result.route is RuntimeRoute.CLARIFICATION:
+    workflow_status = result.trace.workflow_status if result.trace is not None else ""
+    workflow_error_code = result.trace.workflow_error_code if result.trace is not None else ""
+    workflow_unmet = result.trace.workflow_unmet_criteria if result.trace is not None else ()
+
+    if workflow_status == TerminalStatus.NEEDS_CLARIFICATION.value:
+        status = TerminalStatus.NEEDS_CLARIFICATION
+        goal_status = GoalStatus.WAITING_FOR_USER
+        recoverable = True
+        unmet_criteria = workflow_unmet or ("clarification_required",)
+    elif workflow_status == TerminalStatus.BUDGET_EXHAUSTED.value:
+        status = TerminalStatus.BUDGET_EXHAUSTED
+        goal_status = GoalStatus.FAILED
+        recoverable = True
+        error_code = workflow_error_code or "workflow_budget_exhausted"
+        unmet_criteria = workflow_unmet or ("complete_goal_evidence",)
+    elif workflow_status == TerminalStatus.INSUFFICIENT_EVIDENCE.value:
+        status = TerminalStatus.INSUFFICIENT_EVIDENCE
+        goal_status = GoalStatus.FAILED
+        unmet_criteria = workflow_unmet or ("complete_goal_evidence",)
+    elif workflow_status in {
+        TerminalStatus.SAFE_FAILURE.value,
+        TerminalStatus.SYSTEM_FAILURE.value,
+    }:
+        status = TerminalStatus.SAFE_FAILURE if workflow_status == TerminalStatus.SAFE_FAILURE.value else TerminalStatus.SYSTEM_FAILURE
+        goal_status = GoalStatus.FAILED
+        error_code = workflow_error_code or "workflow_failed"
+        unmet_criteria = workflow_unmet
+    elif result.route is RuntimeRoute.CLARIFICATION:
         status = TerminalStatus.NEEDS_CLARIFICATION
         goal_status = GoalStatus.WAITING_FOR_USER
         recoverable = True
         unmet_criteria = ("clarification_required",)
-    elif result.trace is not None and (
-        result.trace.evidence_completion_status == "budget_exhausted"
-    ):
+    elif result.trace is not None and result.trace.evidence_completion_status == "budget_exhausted":
         status = TerminalStatus.BUDGET_EXHAUSTED
         goal_status = GoalStatus.FAILED
         recoverable = True
@@ -43,12 +68,18 @@ def terminal_from_runtime_result(result: RuntimeResult) -> TerminalOutcome:
         goal_status = GoalStatus.FAILED
         error_code = "runtime_blocked"
 
-    if result.trace is not None:
-        evidence_ids = tuple(
-            str(getattr(item, "evidence_id", "") or getattr(item, "id", ""))
-            for item in result.trace.evidence_decisions
-            if getattr(item, "evidence_id", "") or getattr(item, "id", "")
+    # Evidence decisions describe source quality, not stable evidence IDs. The
+    # citation records are the runtime's canonical provenance objects, so use
+    # their paths for the terminal receipt instead of probing non-existent
+    # ``id`` fields on the decision dataclass.
+    evidence_ids = tuple(
+        dict.fromkeys(
+            citation.path
+            for citation in result.citations
+            if isinstance(getattr(citation, "path", None), str)
+            and citation.path.strip()
         )
+    )
 
     return TerminalOutcome(
         status=status,
@@ -61,15 +92,12 @@ def terminal_from_runtime_result(result: RuntimeResult) -> TerminalOutcome:
         error_code=error_code,
         metadata={
             "adapter": "runtime_result",
+            "workflow_status": workflow_status or "not_run",
             "evidence_completion_status": (
-                result.trace.evidence_completion_status
-                if result.trace is not None
-                else "not_run"
+                result.trace.evidence_completion_status if result.trace is not None else "not_run"
             ),
             "evidence_completion_reason": (
-                result.trace.evidence_completion_reason
-                if result.trace is not None
-                else ""
+                result.trace.evidence_completion_reason if result.trace is not None else ""
             ),
         },
     )
@@ -80,11 +108,11 @@ def iter_runtime_events(
     *,
     turn_id: str = "",
     goal_id: str = "",
-    session_id: str = "legacy-session",
+    session_id: str = "runtime-session",
     surface: TurnSource = "chat",
 ) -> Iterator[WorkflowEvent]:
     run_id = turn_id.strip() or uuid4().hex
-    resolved_goal_id = goal_id.strip() or f"legacy-{run_id}"
+    resolved_goal_id = goal_id.strip() or f"runtime-{run_id}"
     stream = WorkflowEventStream(
         session_id=session_id,
         run_id=run_id,
@@ -132,7 +160,7 @@ def iter_runtime_events(
                     TurnNode.SYNTHESIZE,
                     payload={"stream_event": event.type, "text": event.text},
                 )
-    except Exception as exc:  # noqa: BLE001 - adapter must close the event contract
+    except Exception as exc:  # noqa: BLE001 - event boundary must close its contract
         if isinstance(exc, DuplicateTerminalError):
             raise
         if stream.terminal_outcome is None:
@@ -156,3 +184,6 @@ def iter_runtime_events(
                 error_code="missing_terminal_result",
             )
         )
+
+
+__all__ = ["iter_runtime_events", "terminal_from_runtime_result"]

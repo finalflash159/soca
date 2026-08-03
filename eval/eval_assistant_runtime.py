@@ -136,7 +136,7 @@ class EvalKnowledgeSource:
 
 
 class FakeLongTermMemory:
-    def read_profile(self) -> str:
+    def read_core(self) -> str:
         return "- Người dùng thích được giải thích chi tiết bằng tiếng Việt."
 
 
@@ -255,6 +255,7 @@ def build_runtime(case: RuntimeEvalCase) -> AssistantRuntime:
     session = SessionMemory()
     memory_builder = MemoryContextBuilder(
         long_term=FakeLongTermMemory(),
+        core=FakeLongTermMemory(),
         session=session,
     )
     return AssistantRuntime(
@@ -262,7 +263,11 @@ def build_runtime(case: RuntimeEvalCase) -> AssistantRuntime:
         tool_runtime=ToolRuntime(tools),
         knowledge_builder=KnowledgeContextBuilder(knowledge_source),
         memory_builder=memory_builder,
-        options=RuntimeOptions(max_tokens=96, temperature=0.0),
+        options=RuntimeOptions(
+            max_tokens=96,
+            temperature=0.0,
+            turn_workflow="shadow",
+        ),
     )
 
 

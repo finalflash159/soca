@@ -61,7 +61,6 @@ class ScriptedTool:
                 "knowledge.search": "knowledge_search",
                 "knowledge.read": "knowledge_read",
                 "memory.search": "memory_search",
-                "memory.propose_note": "memory_propose_note",
             }.get(self.name, ""),
         )
 
@@ -142,7 +141,6 @@ def make_plan(*calls: ToolCall) -> ActionPlan:
                     "knowledge.search": Capability.KNOWLEDGE_SEARCH,
                     "knowledge.read": Capability.KNOWLEDGE_READ,
                     "memory.search": Capability.MEMORY_SEARCH,
-                    "memory.propose_note": Capability.MEMORY_PROPOSE_NOTE,
                 }[call.name],
                 call=call,
                 purpose="retrieve evidence",
@@ -263,10 +261,10 @@ def test_transient_tool_failure_retries_with_shared_budget() -> None:
 def test_mutating_tool_failure_is_not_retried_without_idempotency() -> None:
     tool = ScriptedTool(
         [
-            ToolResult("memory.propose_note", False, "", error="ambiguous"),
-            ToolResult("memory.propose_note", True, "proposal"),
+            ToolResult("memory.search", False, "", error="ambiguous"),
+            ToolResult("memory.search", True, "mutation"),
         ],
-        name="memory.propose_note",
+        name="memory.search",
         side_effect=SideEffectLevel.LOCAL_STATE,
     )
     result = ControlledWorkflowRunner(
@@ -274,7 +272,7 @@ def test_mutating_tool_failure_is_not_retried_without_idempotency() -> None:
         budget=TurnBudget(max_readonly_tool_retries=1),
     ).run(
         make_goal(),
-        explicit_call=ToolCall("memory.propose_note", {"query": "remember"}),
+        explicit_call=ToolCall("memory.search", {"query": "write"}),
         authorize=lambda goal, step: True,
     )
 
@@ -311,6 +309,100 @@ def test_empty_search_observation_does_not_achieve_goal() -> None:
 
     assert result.terminal.status is TerminalStatus.INSUFFICIENT_EVIDENCE
     assert result.terminal.error_code == "no_matching_observation"
+
+
+def test_revision_can_schedule_a_follow_up_action_before_synthesis() -> None:
+    search = ScriptedTool([knowledge_observation("Bayes index")])
+    read = ScriptedTool(
+        [ToolResult("knowledge.read", True, "Bayes details", data={"path": "wiki/bayes.md"})],
+        name="knowledge.read",
+    )
+    first = make_plan(ToolCall("knowledge.search", {"query": "Bayes"})).steps[0]
+    follow_up = PlanStep(
+        action_id="follow-up-read",
+        capability=Capability.KNOWLEDGE_READ,
+        call=ToolCall("knowledge.read", {"path": "wiki/bayes.md"}),
+        purpose="complete evidence",
+        expected_observation="document content",
+    )
+    revisions = 0
+
+    def revise(_goal, actions, _observations):
+        nonlocal revisions
+        if len(actions) == 1:
+            revisions += 1
+            return follow_up
+        return None
+
+    result = ControlledWorkflowRunner(ToolRuntime([search, read])).run(
+        make_goal(),
+        planner=StaticPlanner(ActionPlan((first,))),
+        revise=revise,
+        synthesize=lambda _goal, actions, _observations: ",".join(
+            step.call.name for step in actions
+        ),
+    )
+
+    assert result.terminal.status is TerminalStatus.ACHIEVED
+    assert revisions == 1
+    assert result.budget.tool_calls == 2
+    assert result.terminal.final_text == "knowledge.search,knowledge.read"
+
+
+def test_successful_refinement_replaces_empty_search_failure() -> None:
+    search = ScriptedTool(
+        [ToolResult("knowledge.search", True, "Không tìm thấy", data={"hits": []})]
+    )
+    read = ScriptedTool(
+        [ToolResult("knowledge.read", True, "Bayes details", data={"path": "wiki/bayes.md"})],
+        name="knowledge.read",
+    )
+    first = make_plan(ToolCall("knowledge.search", {"query": "Bayes"})).steps[0]
+    follow_up = PlanStep(
+        action_id="follow-up-read-after-empty-search",
+        capability=Capability.KNOWLEDGE_READ,
+        call=ToolCall("knowledge.read", {"path": "wiki/bayes.md"}),
+        purpose="complete evidence",
+        expected_observation="document content",
+    )
+
+    def revise(_goal, actions, _observations):
+        return follow_up if len(actions) == 1 else None
+
+    result = ControlledWorkflowRunner(ToolRuntime([search, read])).run(
+        make_goal(),
+        planner=StaticPlanner(ActionPlan((first,))),
+        revise=revise,
+        synthesize=lambda _goal, actions, _observations: ",".join(
+            step.call.name for step in actions
+        ),
+    )
+
+    assert result.terminal.status is TerminalStatus.ACHIEVED
+    assert result.terminal.final_text == "knowledge.search,knowledge.read"
+    assert result.budget.tool_calls == 2
+
+
+def test_terminal_verification_rejects_synthesis_with_missing_source() -> None:
+    tool = ScriptedTool([knowledge_observation("Bayes")])
+    goal = GoalContract(
+        goal_id="goal-both-sources",
+        objective="Đối chiếu knowledge và memory",
+        required_sources=(SourceKind.KNOWLEDGE, SourceKind.MEMORY),
+    )
+    synthesized: list[str] = []
+
+    result = ControlledWorkflowRunner(ToolRuntime([tool])).run(
+        goal,
+        planner=StaticPlanner(make_plan(ToolCall("knowledge.search", {"query": "Bayes"}))),
+        revise=lambda _goal, _actions, _observations: None,
+        synthesize=lambda _goal, _actions, _observations: synthesized.append("called") or "draft",
+    )
+
+    assert synthesized == ["called"]
+    assert result.terminal.status is TerminalStatus.INSUFFICIENT_EVIDENCE
+    assert result.terminal.error_code == "goal_criteria_unmet"
+    assert result.terminal.final_text == ""
 
 
 def test_all_required_sources_must_be_covered_before_success() -> None:
@@ -376,11 +468,11 @@ def test_cancellation_does_not_produce_a_success_answer() -> None:
 
 def test_side_effect_action_requires_authorization() -> None:
     tool = ScriptedTool(
-        [ToolResult("memory.propose_note", True, "proposal")],
-        name="memory.propose_note",
+        [ToolResult("memory.search", True, "mutation")],
+        name="memory.search",
         side_effect=SideEffectLevel.LOCAL_STATE,
     )
-    call = ToolCall("memory.propose_note", {"query": "remember this"})
+    call = ToolCall("memory.search", {"query": "write"})
     result = ControlledWorkflowRunner(ToolRuntime([tool])).run(
         make_goal(),
         explicit_call=call,
@@ -720,6 +812,48 @@ def test_runtime_facade_is_opt_in_and_uses_active_goal_store() -> None:
     assert runtime.options.turn_workflow == "shadow"
 
 
+def test_controlled_runtime_closes_achieved_goal_before_next_turn() -> None:
+    store = ActiveGoalStore()
+    tool = ScriptedTool([knowledge_observation("Bayes")])
+    runtime = AssistantRuntime(
+        tool_runtime=ToolRuntime([tool]),
+        options=RuntimeOptions(turn_workflow="controlled"),
+        active_goal_store=store,
+    )
+
+    result = runtime.run_controlled_workflow(
+        "Tìm ghi chú Bayes",
+        explicit_call=ToolCall("knowledge.search", {"query": "Bayes"}),
+    )
+
+    assert result.terminal.status is TerminalStatus.ACHIEVED
+    assert store.current is None
+
+
+def test_controlled_runtime_synthesizes_tool_evidence_before_returning() -> None:
+    from soca.knowledge import KnowledgeContextBuilder
+    from soca.tools import KnowledgeSearchTool
+    from tests.test_assistant_runtime import FakeKnowledgeSource, SpyLLM
+
+    source = FakeKnowledgeSource()
+    runtime = AssistantRuntime(
+        llm=SpyLLM("Theo [K1], protein hỗ trợ duy trì cơ bắp."),
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        knowledge_builder=KnowledgeContextBuilder(source),
+        options=RuntimeOptions(turn_workflow="controlled"),
+    )
+
+    result = runtime.run_text_turn("wiki: chất đạm")
+
+    assert result.blocked is False
+    assert result.trace is not None
+    assert result.trace.used_tool is True
+    assert result.trace.used_llm is True
+    assert result.route.value == "knowledge_llm"
+    assert result.response_text.startswith("Theo [K1]")
+    assert source.search_calls
+
+
 def test_blocked_controlled_run_persists_terminal_metadata(tmp_path) -> None:
     checkpoint_store = GoalCheckpointStore(tmp_path / "goals")
     runtime = AssistantRuntime(
@@ -864,3 +998,46 @@ def test_output_guardrail_block_is_a_safe_failure(monkeypatch: pytest.MonkeyPatc
 
     assert result.terminal.status is TerminalStatus.SAFE_FAILURE
     assert result.terminal.error_code == "output_guardrail"
+
+
+def test_workflow_synthesizes_after_observation_before_terminal() -> None:
+    tool = ScriptedTool([knowledge_observation("Bayes evidence")])
+    seen: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = []
+
+    def synthesize(goal, actions, observations) -> str:
+        seen.append(
+            (
+                goal.objective,
+                tuple(action.call.name for action in actions),
+                tuple(observation.content for observation in observations),
+            )
+        )
+        return "Tóm tắt đã được kiểm tra."
+
+    result = ControlledWorkflowRunner(ToolRuntime([tool])).run(
+        make_goal(),
+        explicit_call=ToolCall("knowledge.search", {"query": "Bayes"}),
+        synthesize=synthesize,
+    )
+
+    assert result.terminal.status is TerminalStatus.ACHIEVED
+    assert result.terminal.final_text == "Tóm tắt đã được kiểm tra."
+    assert seen == [
+        (
+            "Tìm ghi chú Bayes",
+            ("knowledge.search",),
+            ("Bayes evidence",),
+        )
+    ]
+
+
+def test_empty_plan_is_allowed_only_with_explicit_synthesis_callback() -> None:
+    result = ControlledWorkflowRunner(ToolRuntime()).run(
+        make_goal(),
+        planner=StaticPlanner(ActionPlan(steps=())),
+        synthesize=lambda _goal, _actions, _observations: "Câu trả lời tự do.",
+        allow_empty_plan=True,
+    )
+
+    assert result.terminal.status is TerminalStatus.ACHIEVED
+    assert result.terminal.final_text == "Câu trả lời tự do."

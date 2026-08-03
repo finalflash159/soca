@@ -5,6 +5,7 @@ from typing import Any
 
 from soca.knowledge import KnowledgeSource
 from soca.knowledge.catalog import KnowledgeCatalog
+from soca.knowledge.relevance import RelevancePolicy, assess_relevance
 from soca.tools.base import (
     InvalidToolInput,
     PermanentToolError,
@@ -240,9 +241,16 @@ class KnowledgeSearchTool:
         self,
         source: KnowledgeSource,
         max_limit: int = 5,
+        *,
+        relevance_policy: RelevancePolicy | None = None,
+        candidate_multiplier: int = 4,
     ) -> None:
+        if max_limit < 1 or candidate_multiplier < 1:
+            raise ValueError("knowledge search limits must be positive")
         self.source = source
         self.max_limit = max_limit
+        self.relevance_policy = relevance_policy
+        self.candidate_multiplier = candidate_multiplier
 
     @property
     def spec(self) -> ToolSpec:
@@ -276,18 +284,40 @@ class KnowledgeSearchTool:
 
         limit = int(arguments.get("limit") or self.max_limit)
         limit = max(1, min(limit, self.max_limit))
+        candidate_limit = limit * self.candidate_multiplier
         retrieve = getattr(self.source, "retrieve", None)
         diagnostics: Any | None = None
         if callable(retrieve):
-            batch = retrieve(query, limit=limit)
+            batch = retrieve(query, limit=candidate_limit)
             hits = list(getattr(batch, "hits", ()))
             diagnostics = getattr(batch, "diagnostics", None)
         else:
-            hits = self.source.search(query, limit=limit)
+            hits = self.source.search(query, limit=candidate_limit)
+
+        assessment = (
+            assess_relevance(query, tuple(hits), policy=self.relevance_policy)
+            if self.relevance_policy is not None
+            else None
+        )
+        if assessment is not None:
+            hits = list(assessment.accepted_hits[:limit])
 
         if not hits:
             data: dict[str, Any] = {"hits": []}
             data.update(_retrieval_metadata(diagnostics))
+            if assessment is not None:
+                data.update(
+                    {
+                        "evidence_status": assessment.status,
+                        "evidence_reason": assessment.reason,
+                        "rejected_hit_count": assessment.rejected_count,
+                        "top_relevance": assessment.top_score,
+                        "relevance_margin": assessment.margin,
+                        "query_coverage": assessment.query_coverage,
+                        "sparse_top_score": assessment.sparse_top_score,
+                        "dense_top_score": assessment.dense_top_score,
+                    }
+                )
             return ToolResult(
                 name=self.spec.name,
                 ok=True,
@@ -317,6 +347,19 @@ class KnowledgeSearchTool:
 
         metadata: dict[str, Any] = {"hits": data_hits}
         metadata.update(_retrieval_metadata(diagnostics))
+        if assessment is not None:
+            metadata.update(
+                {
+                    "evidence_status": assessment.status,
+                    "evidence_reason": assessment.reason,
+                    "rejected_hit_count": assessment.rejected_count,
+                    "top_relevance": assessment.top_score,
+                    "relevance_margin": assessment.margin,
+                    "query_coverage": assessment.query_coverage,
+                    "sparse_top_score": assessment.sparse_top_score,
+                    "dense_top_score": assessment.dense_top_score,
+                }
+            )
         return ToolResult(
             name=self.spec.name,
             ok=True,

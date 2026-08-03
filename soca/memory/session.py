@@ -48,8 +48,8 @@ class SessionMemory:
     """Compatibility adapter over typed working-memory conversation turns.
 
     ``append(user)`` opens a turn and the following delivered ``append(assistant)``
-    completes it.  The legacy flat ``turns`` view remains only for display and
-    older integrations; compaction/state ownership lives in ``working``.
+    completes it.  The flat ``turns`` view remains only for display and older
+    integrations; compaction/state ownership lives in ``working``.
     """
 
     def __init__(
@@ -123,6 +123,7 @@ class SessionMemory:
             self._summary_worker,
         )
         self._pending_sequences: list[int] = []
+        self._closed = False
         self._pending_sequences.extend(
             turn.sequence for turn in self.working.snapshot.turns if turn.status == "pending"
         )
@@ -244,8 +245,27 @@ class SessionMemory:
         return self.compaction.cancel()
 
     def close(self) -> None:
-        self.compaction.cancel()
-        self._save_checkpoint()
+        if self._closed:
+            return
+        failures: list[tuple[str, Exception]] = []
+        try:
+            self.compaction.cancel()
+        except Exception as exc:  # noqa: BLE001 - continue worker teardown
+            failures.append(("compaction", exc))
+        close_worker = getattr(self._summary_worker, "close", None)
+        if callable(close_worker):
+            try:
+                close_worker()
+            except Exception as exc:  # noqa: BLE001 - continue worker teardown
+                failures.append(("summary_worker", exc))
+        try:
+            self._save_checkpoint()
+        except Exception as exc:  # noqa: BLE001 - expose checkpoint failure
+            failures.append(("checkpoint", exc))
+        if failures:
+            details = "; ".join(f"{name}: {error}" for name, error in failures)
+            raise RuntimeError(f"Session memory cleanup failed: {details}") from failures[0][1]
+        self._closed = True
 
     @property
     def summary_model_key(self) -> str | None:

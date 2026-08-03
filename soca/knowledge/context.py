@@ -112,12 +112,14 @@ class KnowledgeContextBuilder:
         if not hits:
             retrieval_state = _retrieval_state(diagnostics, has_hits=False)
             unavailable = retrieval_state == "unavailable"
+            diagnostic_reason = str(getattr(diagnostics, "evidence_reason", ""))
+            diagnostic_status = str(getattr(diagnostics, "evidence_status", ""))
             prompt_text = "\n\n".join(
                 [
                     UNTRUSTED_KNOWLEDGE_WARNING.strip(),
                     "No local knowledge notes found.",
-                    f"Evidence status: {'unavailable' if unavailable else assessment.status} "
-                    f"({getattr(diagnostics, 'unavailable_reason', '') or assessment.reason}).",
+                    f"Evidence status: {'unavailable' if unavailable else diagnostic_status or assessment.status} "
+                    f"({getattr(diagnostics, 'unavailable_reason', '') or diagnostic_reason or assessment.reason}).",
                 ]
             )
             return KnowledgeContext(
@@ -128,9 +130,11 @@ class KnowledgeContextBuilder:
                 evidence_status="unavailable" if unavailable else "insufficient",
                 evidence_reason=(
                     getattr(diagnostics, "unavailable_reason", "")
+                    or diagnostic_reason
                     or assessment.reason
                 ),
-                rejected_hit_count=assessment.rejected_count,
+                rejected_hit_count=assessment.rejected_count
+                + int(getattr(diagnostics, "rejected_hit_count", 0) or 0),
                 top_relevance=assessment.top_score,
                 relevance_margin=assessment.margin,
                 score_separation=assessment.margin,
@@ -175,7 +179,8 @@ class KnowledgeContextBuilder:
             citations=tuple(citations),
             evidence_status=assessment.status,
             evidence_reason=assessment.reason,
-            rejected_hit_count=assessment.rejected_count,
+            rejected_hit_count=assessment.rejected_count
+            + int(getattr(diagnostics, "rejected_hit_count", 0) or 0),
             top_relevance=assessment.top_score,
             relevance_margin=assessment.margin,
             query_coverage=assessment.query_coverage,

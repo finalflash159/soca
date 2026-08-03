@@ -8,6 +8,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from soca.knowledge.vault import default_vault_root
 from soca.memory.session import SessionMemory
 from soca.memory.session_store import SessionCheckpointStore
 from soca.memory.summary import (
@@ -95,7 +96,7 @@ def main() -> int:
         settings = load_settings()
         bundle = build_text_runtime(
             TextRuntimeConfig(
-                vault=Path.home() / "KnowledgeVault",
+                vault=default_vault_root(),
                 max_tokens=256,
                 tool_router_mode="deterministic",
                 semantic_router_enabled=False,

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from collections import Counter
 from pathlib import Path
 
@@ -38,6 +39,17 @@ def _vault_tokens() -> Counter[str]:
         raw = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", raw)
         for token in TOKEN_RE.findall(raw):
             if len(token) > 1 and token[0].isalpha():
+                # The release TTS gate covers Vietnamese/Latin prose. Public
+                # reference articles can contain Greek, Chinese, or other
+                # scripts; sending those tokens through the Vietnamese
+                # letter-spelling path would measure an unsupported language
+                # rather than a vault defect.
+                if not all(
+                    "LATIN" in unicodedata.name(char, "")
+                    for char in token
+                    if char.isalpha()
+                ):
+                    continue
                 tokens[token] += 1
     return tokens
 

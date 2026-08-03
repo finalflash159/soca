@@ -429,8 +429,8 @@ def run_profile_eval(
         first_clause_enabled=getattr(args, "first_clause", None),
         vault=args.vault,
         no_memory=args.no_memory,
-        memory_chars=args.memory_chars,
-        profile_chars=args.profile_chars,
+        memory_context_chars=args.memory_context_chars,
+        memory_item_chars=args.memory_item_chars,
         session_chars=args.session_chars,
         session_turns=args.session_turns,
         turn_chars=args.turn_chars,
@@ -771,8 +771,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--vault", type=Path, default=Path.home() / "KnowledgeVault")
     parser.add_argument("--no-memory", action="store_true")
-    parser.add_argument("--memory-chars", type=int, default=2200)
-    parser.add_argument("--profile-chars", type=int, default=900)
+    parser.add_argument("--memory-context-chars", type=int, default=2200)
+    parser.add_argument("--memory-item-chars", type=int, default=900)
     parser.add_argument("--session-chars", type=int, default=1300)
     parser.add_argument("--session-turns", type=int, default=6)
     parser.add_argument("--turn-chars", type=int, default=500)

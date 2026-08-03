@@ -18,14 +18,20 @@ ui/ (Ink)  ── commands (stdin) ──▶  soca engine (Python)
 
 ```bash
 cd ui && npm install && npm run build   # một lần
-uv run soca ui                          # splash → ↵ chat · v voice · s settings
+uv run soca ui                          # mở setup vault/profile trước
 uv run soca ui voice baseline           # vào thẳng voice mode
 ```
 
 Dev UI: `cd ui && npm run dev`. Override lệnh engine: env `SOCA_ENGINE_CMD`.
 Chọn vault cho UI bằng `--vault PATH` hoặc `SOCA_VAULT`; nếu không đặt thì UI
-dùng `~/KnowledgeVault`. Ví dụ với showcase vault đã được làm giàu:
+dùng `./Knowledge` tại root repository. Khi mở Settings lần đầu, UI hiển thị
+Knowledge Vault để init trước, sau đó chạy index rõ ràng; không tự tải model hay
+đổi backend. Ví dụ với showcase vault đã được làm giàu:
 `SOCA_VAULT=eval/fixtures/knowledge_vault uv run soca ui chat`.
+
+Sau khi init, SQLite catalog và vector generations nằm dưới
+`Knowledge/.soca/knowledge_index/`, không nằm lẫn trong Markdown. Có thể copy
+fixture showcase vào `Knowledge/` trước khi bấm `Index vault` để chạy demo.
 
 ## Cấu trúc `ui/src/`
 

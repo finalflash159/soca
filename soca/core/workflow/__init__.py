@@ -46,6 +46,8 @@ from .errors import (
     WorkflowCancelledError,
     WorkflowError,
     WorkflowErrorCode,
+    WorkflowRevisionError,
+    WorkflowSynthesisError,
 )
 from .events import EventStatus, EventType, WorkflowEvent, WorkflowEventStream
 from .goal_resolver import (
@@ -68,7 +70,9 @@ from .runner import (
     AuthorizationPolicy,
     ControlledWorkflowRunner,
     RetryLedger,
+    WorkflowRevision,
     WorkflowRun,
+    WorkflowSynthesis,
     action_fingerprint,
 )
 from .verifier import (
@@ -140,10 +144,14 @@ __all__ = [
     "WorkflowCancelledError",
     "WorkflowError",
     "WorkflowErrorCode",
+    "WorkflowRevision",
+    "WorkflowRevisionError",
+    "WorkflowSynthesisError",
     "WorkflowEvent",
     "WorkflowEventStream",
     "WorkflowPlanner",
     "WorkflowRun",
+    "WorkflowSynthesis",
     "WorkflowRunCheckpoint",
     "action_fingerprint",
     "verify_tool_result",
