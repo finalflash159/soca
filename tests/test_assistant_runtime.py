@@ -754,7 +754,9 @@ def test_exact_knowledge_read_is_not_retruncated_as_a_search_snippet() -> None:
         ),
     )
 
-    result = runtime.run_text_turn("Những việc chưa hoàn tất là gì?")
+    result = runtime.run_text_turn(
+        "Những việc chưa hoàn tất trong wiki/life/weekly.md là gì?"
+    )
 
     assert result.route == RuntimeRoute.KNOWLEDGE_LLM
     assert marker in llm.calls[0]["user_msg"]
@@ -825,8 +827,9 @@ def test_goal_completion_reads_the_matching_document_before_answering() -> None:
     assert "write failure analysis" in llm.calls[0]["user_msg"]
     assert "measured latency" in llm.calls[0]["user_msg"]
     assert result.trace.evidence_completion_status == "complete"
+    assert result.trace.evidence_completion_reason == "document_complete"
     assert result.trace.evidence_completion_actions == 1
-    assert len(router.observations) == 2
+    assert len(router.observations) == 1
 
 
 def test_goal_completion_budget_exhaustion_is_not_reported_as_achieved() -> None:
@@ -1013,7 +1016,9 @@ def test_goal_completion_preserves_all_pages_of_a_bounded_exact_read() -> None:
         options=RuntimeOptions(max_evidence_completion_actions=2),
     )
 
-    result = runtime.run_text_turn("Kiểm tra toàn bộ tài liệu dài")
+    result = runtime.run_text_turn(
+        "Kiểm tra toàn bộ tài liệu wiki/learning/long.md"
+    )
     prompt = llm.calls[0]["user_msg"]
 
     assert "1: line payload 1" in prompt

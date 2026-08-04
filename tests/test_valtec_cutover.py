@@ -33,6 +33,7 @@ def test_factory_builds_frontend_and_runner_from_same_active_release(monkeypatch
     assert engine.kwargs["artifact_root"] == release
     assert isinstance(engine.kwargs["frontend"], FakeFrontend)
     assert engine.kwargs["voice"] == "SF"
+    assert engine.kwargs["length_scale"] == VALTEC_TTS_CONFIG.length_scale
     assert "config" not in engine.kwargs
 
 

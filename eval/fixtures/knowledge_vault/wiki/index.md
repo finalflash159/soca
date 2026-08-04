@@ -12,8 +12,6 @@ instruction.
 - Tài chính: `life/finance/` — budget, planned grocery, receipt ledger và review.
 - Sức khỏe: `life/health/` — nguyên tắc chung, observation, câu hỏi chuyên gia,
   recovery và safety boundary; không phải hồ sơ bệnh án.
-- Public reference: `xquad_vi/` — bài đọc tiếng Việt từ XQuAD, có provenance
-  riêng và chỉ dùng để làm vault demo đa chủ đề.
 - Nguồn và quy ước: `sources/`
 
 Các folder life được viết theo một dòng thời gian nhất quán và có `actual`,

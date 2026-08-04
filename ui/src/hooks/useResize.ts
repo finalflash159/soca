@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
 import { useStdout } from "ink";
+import {
+  DEFAULT_TERMINAL_COLUMNS,
+  DEFAULT_TERMINAL_ROWS,
+  safeTerminalDimension,
+} from "../terminalSize.js";
 
 export interface TermSize {
   rows: number;
@@ -9,14 +14,20 @@ export interface TermSize {
 export function useResize(): TermSize {
   const { stdout } = useStdout();
   const [size, setSize] = useState<TermSize>({
-    rows: stdout?.rows ?? 24,
-    cols: stdout?.columns ?? 80,
+    rows: safeTerminalDimension(stdout?.rows, DEFAULT_TERMINAL_ROWS),
+    cols: safeTerminalDimension(stdout?.columns, DEFAULT_TERMINAL_COLUMNS),
   });
   useEffect(() => {
     if (!stdout) return;
-    let previous = { rows: stdout.rows ?? 24, cols: stdout.columns ?? 80 };
+    let previous = {
+      rows: safeTerminalDimension(stdout.rows, DEFAULT_TERMINAL_ROWS),
+      cols: safeTerminalDimension(stdout.columns, DEFAULT_TERMINAL_COLUMNS),
+    };
     const onResize = (): void => {
-      const next = { rows: stdout.rows ?? 24, cols: stdout.columns ?? 80 };
+      const next = {
+        rows: safeTerminalDimension(stdout.rows, DEFAULT_TERMINAL_ROWS),
+        cols: safeTerminalDimension(stdout.columns, DEFAULT_TERMINAL_COLUMNS),
+      };
       if (next.rows === previous.rows && next.cols === previous.cols) return;
       if (next.rows < previous.rows || next.cols < previous.cols)
         stdout.write("\x1b[2J\x1b[H");

@@ -24,4 +24,5 @@ def create_tts_engine(*, voice: str | None = None) -> TTSEngine:
         artifact_root=release_root,
         frontend=frontend,
         voice=voice or VALTEC_TTS_CONFIG.default_voice,
+        length_scale=VALTEC_TTS_CONFIG.length_scale,
     )

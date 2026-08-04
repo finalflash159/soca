@@ -116,6 +116,18 @@ def test_oov_word_is_spelled_out_with_letter_names(g2p):
     assert result.unknown_phoneme_count == 0
 
 
+def test_oov_g_uses_vietnamese_letter_name(g2p):
+    # The standalone letter in the private finance notes is Vietnamese "gờ".
+    # The previous "giy" spelling made Valtec say the English letter name and
+    # repeatedly confused the real ASR round-trip as a different word.
+    symbol_to_id = _symbol_map()
+    id_to_symbol = {index: symbol for symbol, index in symbol_to_id.items()}
+    result = g2p.convert("G")
+    spoken = [id_to_symbol[i] for i in result.phone_ids if i not in (0, symbol_to_id["UNK"])]
+    assert spoken == ["ɣ", "ɤ"]
+    assert result.unknown_phoneme_count == 0
+
+
 def test_oov_english_word_is_spelled_without_unknowns(g2p):
     assert g2p.convert("web").unknown_phoneme_count == 0
     assert g2p.convert("email").unknown_phoneme_count == 0
@@ -147,6 +159,14 @@ def test_foreign_phone_count_marks_english_and_spelled_words(g2p):
     assert g2p.convert("email").foreign_phone_count > 0
     assert g2p.convert("TTS").foreign_phone_count > 0
     assert g2p.convert("xin chào").foreign_phone_count == 0
+
+
+def test_normalized_technical_terms_carry_local_duration_pacing(g2p):
+    result = g2p.convert("gửi remote, LLM và trăn phơ mơ,")
+
+    assert len(result.technical_duration_scales) == len(result.phone_ids)
+    assert max(result.technical_duration_scales) == 1.15
+    assert sum(scale > 1.0 for scale in result.technical_duration_scales) > 0
 
 
 def test_punctuation_policy_maps_semicolon_and_drops_artifact_symbols(g2p):

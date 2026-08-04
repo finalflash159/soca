@@ -5,6 +5,7 @@ import pytest
 from soca.tts.valtec.english_inventory import TRAINED_ENGLISH_IPA, is_trained_ipa
 from soca.tts.valtec.foreign_g2p_en import arpabet_to_ipa
 from soca.tts.valtec.g2p import PortableVietnameseG2P
+from soca.tts.valtec.lexicon import CMU_OVERRIDE_LEXICON
 from tests.test_valtec_g2p import _symbol_map
 
 
@@ -111,6 +112,40 @@ def test_pronunciation_overrides_default_to_empty_and_change_nothing() -> None:
             pronunciation_overrides={},
         ).convert("cache").phone_ids
     )
+
+
+def test_demo_technical_terms_have_explicit_measured_readings() -> None:
+    assert CMU_OVERRIDE_LEXICON["token"] == "tɔkɛn"
+    assert CMU_OVERRIDE_LEXICON["remote"] == "rimoʊt"
+
+
+def test_embedding_uses_native_speech_form_instead_of_foreign_lexicon() -> None:
+    from soca.tts.valtec.lexicon import TECHNICAL_SPEECH_FORMS, TechnicalSpeechForm
+
+    assert isinstance(TECHNICAL_SPEECH_FORMS["embedding"], TechnicalSpeechForm)
+    assert TECHNICAL_SPEECH_FORMS["llm"].spoken == "large language model"
+    assert TECHNICAL_SPEECH_FORMS["softmax"].spoken == "sóp mác"
+    assert TECHNICAL_SPEECH_FORMS["cosine"].spoken == "cô sai"
+    assert TECHNICAL_SPEECH_FORMS["paper"].spoken == "pây pờ"
+    assert TECHNICAL_SPEECH_FORMS["embedding"].spoken == "em bê đinh"
+    assert TECHNICAL_SPEECH_FORMS["api"].spoken == "ây pi ai"
+    assert TECHNICAL_SPEECH_FORMS["pipeline"].spoken == "pai lain"
+    assert TECHNICAL_SPEECH_FORMS["long-context"].spoken == "long con téc"
+    assert TECHNICAL_SPEECH_FORMS["rope"].spoken == "rô pê"
+    assert TECHNICAL_SPEECH_FORMS["scaling"].spoken == "sờ cê lình"
+    assert TECHNICAL_SPEECH_FORMS["activation"].spoken == "ắc ti vây sần"
+    assert TECHNICAL_SPEECH_FORMS["sparsity"].spoken == "sờ pác si ti"
+    assert TECHNICAL_SPEECH_FORMS["interpretability"].spoken == (
+        "in tơ pờ rơ tơ bi li ti"
+    )
+    assert TECHNICAL_SPEECH_FORMS["factuality"].spoken == "phác chu a li ti"
+    assert TECHNICAL_SPEECH_FORMS["recompute"].spoken == "ri cầm piut"
+    assert TECHNICAL_SPEECH_FORMS["err_connection_reset"].spoken == (
+        "lỗi kết nối bị ngắt"
+    )
+    assert TECHNICAL_SPEECH_FORMS["remote"].spoken == "ri mốt"
+    assert TECHNICAL_SPEECH_FORMS["remote"].pause_after
+    assert TECHNICAL_SPEECH_FORMS["transformer"].spoken == "trăn phơ mơ"
 
 
 def test_untrained_ipa_is_rejected_by_gate() -> None:

@@ -33,6 +33,14 @@ import { SessionTokenMeter } from "./components/SessionTokenMeter.js";
 import { TurnProgress } from "./components/TurnProgress.js";
 import { WorkflowInspector } from "./components/WorkflowInspector.js";
 import { ImeTextInput } from "./imeInput.js";
+import {
+  DEFAULT_TERMINAL_COLUMNS,
+  DEFAULT_TERMINAL_ROWS,
+  safeTerminalDimension,
+} from "./terminalSize.js";
+
+const MIN_RENDER_COLUMNS = 48;
+const MIN_RENDER_ROWS = 12;
 
 export interface AppProps {
   /** The mode the user picked on the splash / CLI. */
@@ -89,6 +97,7 @@ export function App({
 }: AppProps) {
   const { exit } = useApp();
   const rawInput = Boolean(useStdin().isRawModeSupported);
+  const { stdout } = useStdout();
   // Explicit chat/voice launches route through Settings first so the user can
   // choose the runtime. Bare `soca ui` reaches this component after the main
   // splash has selected chat or voice.
@@ -114,7 +123,7 @@ export function App({
   >(homeMode);
   const engineRef = useRef<EngineClient | null>(null);
 
-  const { cols } = useResize();
+  const { cols, rows } = useResize();
   // Leave one terminal column unused. Ink's log-update counts newline rows,
   // while terminals also create an implicit row when a line reaches the
   // right margin and autowraps. A full-width live border would therefore
@@ -250,6 +259,10 @@ export function App({
 
   const engine = engineRef.current;
 
+  function clearTerminalSurface(): void {
+    if (stdout?.isTTY) stdout.write("\x1b[2J\x1b[H");
+  }
+
   function switchMode(next: InteractiveMode) {
     if (
       next === "settings" &&
@@ -262,6 +275,7 @@ export function App({
       engine?.send({ cmd: "llm_providers" });
       engine?.send({ cmd: "llm_config" });
     }
+    if (next !== state.mode) clearTerminalSurface();
     dispatch({ type: "set_mode", mode: next });
   }
 
@@ -443,17 +457,41 @@ export function App({
     );
   }
 
+  if (cols < MIN_RENDER_COLUMNS || rows < MIN_RENDER_ROWS) {
+    return (
+      <Box
+        flexDirection="column"
+        width={Math.max(1, cols)}
+        height={Math.max(1, rows)}
+        paddingX={1}
+      >
+        <Text bold color={COLOR.accent}>
+          SoCa
+        </Text>
+        <Text color={COLOR.text}>Terminal too small for the full UI.</Text>
+        <Text color={COLOR.muted}>
+          Resize to at least {MIN_RENDER_COLUMNS} × {MIN_RENDER_ROWS}.
+        </Text>
+        <Text color={COLOR.muted}>
+          Current: {cols} × {rows}
+        </Text>
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column" width={safeWidth}>
-      <Static items={staticItems}>
-        {(item) =>
-          item.kind === "brand" ? (
-            <Brand key="brand" profile={state.profile} />
-          ) : (
-            <TimelineLine key={item.index} entry={item.entry} />
-          )
-        }
-      </Static>
+      {state.mode !== "settings" ? (
+        <Static items={staticItems}>
+          {(item) =>
+            item.kind === "brand" ? (
+              <Brand key="brand" profile={state.profile} />
+            ) : (
+              <TimelineLine key={item.index} entry={item.entry} />
+            )
+          }
+        </Static>
+      ) : null}
 
       {showHelp ? (
         <Box paddingX={1} marginBottom={1}>
@@ -672,9 +710,18 @@ export function Splash({
     { isActive: rawInput },
   );
   const { stdout } = useStdout();
+  const terminalRows = safeTerminalDimension(
+    stdout?.rows,
+    DEFAULT_TERMINAL_ROWS,
+  );
+  const terminalColumns = safeTerminalDimension(
+    stdout?.columns,
+    DEFAULT_TERMINAL_COLUMNS,
+  );
   return (
     <Box
-      height={Math.max(1, (stdout?.rows ?? 24) - 1)}
+      width={terminalColumns}
+      height={Math.max(1, terminalRows - 1)}
       flexDirection="column"
       justifyContent="center"
       alignItems="center"
@@ -685,7 +732,7 @@ export function Splash({
       </Box>
       <Box marginTop={1}>
         <Text color={COLOR.text}>
-          Trợ lý giọng nói tiếng Việt — chạy trên máy bạn.
+          Trợ lý giọng nói tiếng Việt
         </Text>
       </Box>
       <Box>
@@ -700,7 +747,7 @@ export function Splash({
           <Text color={COLOR.muted}> voice</Text>
           <Text color={COLOR.muted}>{`  ${ICON.dot}  `}</Text>
           <Text color={COLOR.alt}>s</Text>
-          <Text color={COLOR.muted}> cài đặt</Text>
+          <Text color={COLOR.muted}> settings</Text>
           <Text color={COLOR.muted}>{`  ${ICON.dot}  `}</Text>
           <Text color={COLOR.alt}>^c</Text>
           <Text color={COLOR.muted}> thoát</Text>

@@ -17,7 +17,7 @@ class Bm25ChunkRetriever:
         self._chunk_ids = tuple(chunk.chunk_id for chunk in chunks)
         self._retriever = bm25s.BM25(method="lucene")
         self._retriever.index(
-            [list(tokenize_terms(chunk.text)) for chunk in chunks],
+            [list(_retrieval_terms(chunk)) for chunk in chunks],
             show_progress=False,
         )
 
@@ -49,3 +49,16 @@ class Bm25ChunkRetriever:
                 start=1,
             )
         ]
+
+
+def _retrieval_terms(chunk: MarkdownChunk) -> tuple[str, ...]:
+    """Index content together with metadata already owned by the vault.
+
+    A chunk's title, path and tags are part of its identity and are persisted
+    alongside its text. Including them in the same BM25 field lets a natural
+    query match a note by its declared subject even when the selected passage
+    does not repeat that subject. No domain vocabulary or query-specific rule
+    is introduced here; BM25 still determines term weights from the corpus.
+    """
+    metadata = " ".join((chunk.title, chunk.document_path, *chunk.tags))
+    return tokenize_terms(f"{metadata}\n{chunk.text}")

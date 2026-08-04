@@ -120,6 +120,25 @@ def test_relevance_policy_is_calibratable_without_code_changes() -> None:
     assert assessment.reason == "all_hits_below_floor"
 
 
+def test_accent_collision_does_not_admit_an_unrelated_vietnamese_hit() -> None:
+    assessment = assess_relevance(
+        "Nha Trang chi tiêu",
+        (
+            _hit(
+                "wiki/public-reference.md",
+                "Public reference",
+                "Một ngôi nhà trắng cần được sửa chữa; chi tiêu tăng theo mùa.",
+                sparse_score=10.0,
+            ),
+        ),
+        policy=RelevancePolicy.for_retrieval_mode("hybrid"),
+    )
+
+    assert assessment.status == "insufficient"
+    assert assessment.reason == "all_hits_below_floor"
+    assert assessment.accepted_hits == ()
+
+
 def test_retrieval_modes_keep_separate_score_distributions() -> None:
     sparse = RelevancePolicy.for_retrieval_mode("cached_sparse")
     hybrid = RelevancePolicy.for_retrieval_mode("hybrid")

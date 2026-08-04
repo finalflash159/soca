@@ -70,13 +70,14 @@ def _build_prompt(
             "A request asking what the user wrote, noted, learned, understood, decided, "
             "or recorded about a subject requires note-body evidence through "
             "knowledge.search/read, even when the subject also names a folder.",
-            "For a broad summary of what the user wrote about a subject, prefer "
-            "knowledge.read when the vault manifest identifies one clear document path. "
-            "Use knowledge.search to locate evidence when the document is unknown or the "
-            "request targets a specific fact or passage.",
+            "For a broad summary of what the user wrote about a subject, use "
+            "knowledge.search unless the user explicitly supplies a document path. "
+            "Only read a path established by the user's request or by a prior search/"
+            "inspect receipt; the vault manifest alone never authorizes note-body reads.",
             "Choose the next evidence operation, not the final prose answer: a request whose answer is a list of paths/folders/headings or a map of links must call knowledge.inspect; a request whose answer depends on note-body facts must retrieve with knowledge.search/read.",
             "A search hit that happens to mention a folder is not a substitute for an inventory or relationship inspection.",
             "If the user refers to notes, the vault, a journal, or a prior retrieval, prefer retrieval_request even when the wording is indirect.",
+            "When a question asks to explain, compare, recall, summarize, or check a factual subject, prefer retrieval_request when the enabled vault could contain the answer; reserve smalltalk for social conversation, greetings, and opinions that do not need local evidence.",
             "Do not classify a turn as out_of_scope merely because the query is colloquial, abbreviated, or asks for a personal fact.",
             "Classify the user's intent, not isolated words such as knowledge, note, link, or structure.",
             "Enabled tools:",

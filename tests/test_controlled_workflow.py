@@ -407,7 +407,7 @@ def test_revision_can_schedule_a_follow_up_action_before_synthesis() -> None:
     assert result.terminal.final_text == "knowledge.search,knowledge.read"
 
 
-def test_successful_refinement_replaces_empty_search_failure() -> None:
+def test_unproven_read_refinement_is_rejected() -> None:
     search = ScriptedTool(
         [ToolResult("knowledge.search", True, "Không tìm thấy", data={"hits": []})]
     )
@@ -436,9 +436,9 @@ def test_successful_refinement_replaces_empty_search_failure() -> None:
         ),
     )
 
-    assert result.terminal.status is TerminalStatus.ACHIEVED
-    assert result.terminal.final_text == "knowledge.search,knowledge.read"
-    assert result.budget.tool_calls == 2
+    assert result.terminal.status is TerminalStatus.SAFE_FAILURE
+    assert result.terminal.metadata["detail"] == "knowledge_read_requires_provenance"
+    assert read.calls == 0
 
 
 def test_terminal_verification_rejects_synthesis_with_missing_source() -> None:

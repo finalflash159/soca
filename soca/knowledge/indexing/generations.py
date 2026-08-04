@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -40,6 +41,9 @@ class DenseBuildInProgress(RuntimeError):
 
 class DenseGenerationCorrupt(RuntimeError):
     pass
+
+
+DenseProgressCallback = Callable[[str, int, int, int, int], None]
 
 
 def _sha256_file(path: Path) -> str:
@@ -139,6 +143,7 @@ class DenseGenerationBuilder:
         model: EmbeddingModel | None,
         lease_seconds: int = 120,
         force: bool = False,
+        on_progress: DenseProgressCallback | None = None,
     ) -> tuple[DenseIndex, DenseBuildReport]:
         if model is None:
             raise FileNotFoundError("embedding model is not provisioned")
@@ -155,6 +160,14 @@ class DenseGenerationBuilder:
             )
             assert row is not None
             path = self.catalog.generation_root(spec.corpus_identity) / row["vector_file"]
+            if on_progress is not None:
+                on_progress(
+                    "complete",
+                    len(index.chunks),
+                    len(index.chunks),
+                    len(index.chunks),
+                    0,
+                )
             return existing, DenseBuildReport(
                 generation_id=row["id"],
                 source_revision=revision,
@@ -203,7 +216,16 @@ class DenseGenerationBuilder:
             missing_positions = tuple(
                 position for position, input_hash in enumerate(hashes) if input_hash not in old_vectors
             )
+            reused_rows = len(index.chunks) - len(missing_positions)
             missing = tuple(index.chunks[position].text for position in missing_positions)
+            if on_progress is not None:
+                on_progress(
+                    "embedding",
+                    reused_rows,
+                    len(index.chunks),
+                    reused_rows,
+                    0,
+                )
             encoded_batches: list[np.ndarray] = []
             batch_size = 32
             for start in range(0, len(missing), batch_size):
@@ -214,9 +236,18 @@ class DenseGenerationBuilder:
                 self.catalog.update_job_progress(
                     job,
                     completed=min(start + len(batch), len(missing)),
-                    reused=len(index.chunks) - len(missing_positions),
+                    reused=reused_rows,
                     lease_seconds=lease_seconds,
                 )
+                if on_progress is not None:
+                    embedded_rows = min(start + len(batch), len(missing))
+                    on_progress(
+                        "embedding",
+                        reused_rows + embedded_rows,
+                        len(index.chunks),
+                        reused_rows,
+                        embedded_rows,
+                    )
             encoded = (
                 np.concatenate(encoded_batches, axis=0)
                 if encoded_batches
@@ -251,6 +282,14 @@ class DenseGenerationBuilder:
             )
             if dense.vectors.nbytes > MAX_VECTOR_BYTES:
                 raise ValueError("dense vector matrix exceeds the safe byte limit")
+            if on_progress is not None:
+                on_progress(
+                    "persisting",
+                    len(index.chunks),
+                    len(index.chunks),
+                    reused_rows,
+                    len(missing_positions),
+                )
             self.catalog.begin_generation(
                 spec,
                 generation_id=generation_id,
@@ -275,6 +314,14 @@ class DenseGenerationBuilder:
             finally:
                 temporary.unlink(missing_ok=True)
             vector_sha256 = _sha256_file(final_path)
+            if on_progress is not None:
+                on_progress(
+                    "verifying",
+                    len(index.chunks),
+                    len(index.chunks),
+                    reused_rows,
+                    len(missing_positions),
+                )
             rows = tuple((position, chunk.chunk_id, hashes[position]) for position, chunk in enumerate(index.chunks))
             self.catalog.publish_generation(
                 spec,
@@ -284,6 +331,14 @@ class DenseGenerationBuilder:
                 vector_bytes=final_path.stat().st_size,
                 job=job,
             )
+            if on_progress is not None:
+                on_progress(
+                    "complete",
+                    len(index.chunks),
+                    len(index.chunks),
+                    reused_rows,
+                    len(missing_positions),
+                )
             return dense, DenseBuildReport(
                 generation_id=generation_id,
                 source_revision=revision,

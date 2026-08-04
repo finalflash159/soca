@@ -261,7 +261,9 @@ def test_adaptive_endpoint_uses_turn_detector_probability(monkeypatch):
 
     assert stream.read_sizes == [100, 100, 100, 100, 100, 100]
     assert len(turn_detector.windows) == 3
-    assert [len(window) for window in turn_detector.windows] == [200, 200, 200]
+    # Smart Turn receives the current turn including the pause being
+    # evaluated, rather than a speech-only slice.
+    assert [len(window) for window in turn_detector.windows] == [400, 500, 600]
     assert audio.shape == (600,)
 
 

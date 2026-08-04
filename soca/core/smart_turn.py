@@ -33,7 +33,9 @@ class SmartTurnDetector:
                 f"Smart Turn model missing: {onnx_path}. Run scripts/download_smart_turn.py"
             )
         opts = ort.SessionOptions()
+        opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
         opts.inter_op_num_threads = 1
+        opts.intra_op_num_threads = 1
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         self._session = ort.InferenceSession(
             str(onnx_path), sess_options=opts, providers=providers or ["CPUExecutionProvider"]

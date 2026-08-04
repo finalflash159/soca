@@ -308,6 +308,43 @@ def test_engine_blocks_runtime_when_saved_llm_settings_are_invalid() -> None:
     assert chat["status"] == "invalid"
 
 
+def test_voice_profile_selection_persists_before_runtime_state_changes(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from soca.app.engine import SocaEngine, _ProtocolWriter
+
+    selected: list[str] = []
+    fake_profile = SimpleNamespace(
+        key="qwen-release",
+        asr=ASRSelection.phowhisper("phowhisper_base"),
+        asr_model="phowhisper_base",
+    )
+    monkeypatch.setattr(
+        "soca.app.engine.get_voice_runtime_profile",
+        lambda _key: fake_profile,
+    )
+    monkeypatch.setattr(
+        "soca.app.profiles.asr_readiness",
+        lambda _selection: SimpleNamespace(ok=True, status="ok", detail="ready"),
+    )
+
+    instance = SocaEngine(
+        voice_config=make_voice_config(),
+        text_config=make_text_config(),
+        profile="baseline",
+        writer=_ProtocolWriter(ProtocolCapture()),
+        warmup_voice=False,
+        voice_profile_saver=selected.append,
+    )
+
+    instance._cmd_voice_profile_select({"profile": "qwen-release"})
+
+    assert selected == ["qwen-release"]
+    assert instance.profile == "qwen-release"
+    assert instance.voice_config is not None
+    assert instance.voice_config.profile_key == "qwen-release"
+
+
 class _FakeAssistantRuntime:
     def run_text_turn(self, text: str, *, source: str, metadata: dict) -> RuntimeResult:
         return RuntimeResult(response_text=f"echo: {text}", route=RuntimeRoute.FREE_CHAT)
@@ -762,6 +799,72 @@ def test_knowledge_index_failure_cleans_up_before_engine_shutdown(
     assert failure["error_code"] == "embedding_model_missing"
 
 
+def test_knowledge_index_emits_structured_progress_events(monkeypatch, tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from soca.knowledge.indexing.coordinator import IndexBuildProgress
+
+    class FakeCoordinator:
+        def __init__(self, *args, **kwargs) -> None:
+            del args, kwargs
+
+        def build_blocking(self, *, on_progress, **kwargs):
+            del kwargs
+            on_progress(IndexBuildProgress("embedding", 3, 5, 2, 1, 1, 5))
+            return SimpleNamespace(
+                sparse=SimpleNamespace(revision=9),
+                dense=SimpleNamespace(reused_rows=2, embedded_rows=3),
+            )
+
+        def status(self):
+            return SimpleNamespace(
+                as_dict=lambda: {
+                    "documents": 1,
+                    "chunks": 5,
+                    "dense_state": "ready",
+                }
+            )
+
+    monkeypatch.setattr("soca.app.engine.load_model", lambda *args, **kwargs: object())
+    monkeypatch.setattr("soca.app.engine.IndexCoordinator", FakeCoordinator)
+
+    capture = ProtocolCapture()
+
+    def commands():
+        yield json.dumps({"cmd": "knowledge_init"}) + "\n"
+        capture.wait_for('"action": "init"')
+        yield json.dumps({"cmd": "knowledge_index"}) + "\n"
+        capture.wait_for('"phase": "embedding"')
+        capture.wait_for('"status": "ready"')
+        yield '{"cmd": "quit"}\n'
+
+    code = run_engine(
+        voice_config=None,
+        text_config=dataclasses.replace(make_text_config(), vault=tmp_path),
+        profile="baseline",
+        stdin=commands(),
+        stdout=capture,
+        warmup_voice=False,
+    )
+
+    assert code == 0
+    events = [event for event in capture.events() if event.get("event") == "knowledge_setup"]
+    progress = next(event for event in events if event.get("phase") == "embedding")
+    assert progress["status"] == "running"
+    assert progress["completed_chunks"] == 3
+    assert progress["total_chunks"] == 5
+    assert progress["reused_chunks"] == 2
+    assert progress["embedded_chunks"] == 1
+    completed = next(
+        event
+        for event in events
+        if event.get("action") == "index" and event.get("status") == "ready"
+    )
+    assert completed["phase"] == "complete"
+    assert completed["documents"] == 1
+    assert completed["chunks"] == 5
+
+
 def test_knowledge_index_start_failure_releases_lock_and_reports_error(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -792,6 +895,7 @@ def test_knowledge_index_start_failure_releases_lock_and_reports_error(
     assert engine._knowledge_job_lock.acquire(blocking=False)
     failure = next(
         event for event in engine.writer.events if event.get("event") == "knowledge_setup"
+        and event.get("status") == "failed"
     )
     assert failure["status"] == "failed"
     assert failure["error_code"] == "knowledge_index_start_failed"

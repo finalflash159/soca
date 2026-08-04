@@ -64,7 +64,7 @@ describe("SettingsScreen", () => {
     );
 
     await new Promise((resolve) => setImmediate(resolve));
-    expect(view.lastFrame()).toContain("Cấu hình gần nhất");
+    expect(view.lastFrame()).toContain("Recent configuration");
     expect(view.lastFrame()).toContain("500.000 → 131.072 output tok");
     expect(view.lastFrame()).toContain("reasoning bật");
     view.stdin.write("\r");
@@ -167,16 +167,33 @@ describe("SettingsScreen", () => {
 
     await new Promise((resolve) => setImmediate(resolve));
     const frame = view.lastFrame() ?? "";
-    expect(frame.indexOf("Cấu hình gần nhất")).toBeLessThan(
-      frame.indexOf("đang chọn"),
+    expect(frame.indexOf("Recent configuration")).toBeLessThan(
+      frame.indexOf("selected"),
     );
-    expect(frame.indexOf("đang chọn")).toBeLessThan(frame.indexOf("Voice ASR"));
+    // The saved configuration leads, then the vault, then the ASR profiles. The
+    // arrow keys below walk that same order, so panels and keyboard agree.
+    expect(frame).toContain("Knowledge Vault");
+    expect(frame.indexOf("selected")).toBeLessThan(
+      frame.indexOf("Knowledge Vault"),
+    );
+    expect(frame.indexOf("Knowledge Vault")).toBeLessThan(
+      frame.indexOf("Voice ASR"),
+    );
+
+    view.stdin.write("\u001b[B");
+    await new Promise((resolve) => setImmediate(resolve));
+    const vaultFrame = view.lastFrame() ?? "";
+    expect(vaultFrame).toContain("selected");
+    expect(vaultFrame.indexOf("Knowledge Vault")).toBeLessThan(
+      vaultFrame.indexOf("selected"),
+    );
 
     view.stdin.write("\u001b[B");
     await new Promise((resolve) => setImmediate(resolve));
     const asrFrame = view.lastFrame() ?? "";
+    expect(asrFrame).toContain("selected");
     expect(asrFrame.indexOf("Voice ASR")).toBeLessThan(
-      asrFrame.indexOf("đang chọn"),
+      asrFrame.indexOf("selected"),
     );
     view.unmount();
   });
@@ -290,6 +307,98 @@ describe("SettingsScreen", () => {
     view.unmount();
   });
 
+  it("opens a dedicated index screen and returns after the terminal event", async () => {
+    const onKnowledgeIndex = vi.fn();
+    const baseProps = {
+      config: {
+        event: "llm_config" as const,
+        backend: "remote" as const,
+        provider: "openrouter",
+        model: "openai/gpt-4o-mini",
+        max_tokens: 4096,
+        effective_max_tokens: 4096,
+        reasoning_enabled: false,
+        effective_reasoning_enabled: false,
+        reasoning_supported: true,
+        reasoning_mandatory: false,
+        temperature: 0.2,
+        top_p: 0.95,
+        pricing_as_of: "2026-08",
+        pricing: null,
+        context_length: 128000,
+      },
+      providers: [],
+      knowledgeVault: {
+        path: "/workspace/Knowledge",
+        initialized: true,
+        index_home: "/workspace/Knowledge/.soca/knowledge_index",
+      },
+      knowledgeIndex: {
+        vault_path: "/workspace/Knowledge",
+        sparse_state: "ready",
+        dense_state: "ready",
+        revision: 4,
+        documents: 31,
+        chunks: 396,
+      },
+      knowledgeSetup: null,
+      catalog: [],
+      catalogProvider: "",
+      keyPendingProvider: null,
+      notice: "",
+      onRequestModels: vi.fn(),
+      onSetKey: vi.fn(),
+      onSelect: vi.fn(),
+      onKnowledgeIndex,
+      onExit: vi.fn(),
+    };
+    const view = render(<SettingsScreen {...baseProps} />);
+    const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+    await tick();
+    view.stdin.write("\u001b[B");
+    await tick();
+    view.stdin.write("\r");
+    await tick();
+
+    expect(onKnowledgeIndex).toHaveBeenCalledOnce();
+    expect(view.lastFrame()).toContain("Indexing Knowledge Vault");
+    expect(view.lastFrame()).not.toContain("Recent configuration");
+    expect(view.lastFrame()).not.toContain("Settings");
+    expect(view.lastFrame()).not.toContain("Voice ASR");
+
+    view.rerender(
+      <SettingsScreen
+        {...baseProps}
+        knowledgeSetup={{
+          event: "knowledge_setup",
+          action: "index",
+          status: "ready",
+          vault: "/workspace/Knowledge",
+          detail: "Đã index 31 tài liệu · 396 chunks.",
+          phase: "complete",
+          completed_chunks: 396,
+          total_chunks: 396,
+          reused_chunks: 200,
+          embedded_chunks: 196,
+          documents: 31,
+          chunks: 396,
+          dense_state: "ready",
+        }}
+      />,
+    );
+    await tick();
+    expect(view.lastFrame()).toContain("Hoàn tất");
+    expect(view.lastFrame()).toContain("31 tài liệu · 396 chunks");
+    expect(view.lastFrame()).toContain("revision ? · dense ready");
+    expect(view.lastFrame()).toContain("Enter quay lại Settings");
+
+    view.stdin.write("\r");
+    await tick();
+    expect(view.lastFrame()).toContain("Knowledge Vault");
+    view.unmount();
+  });
+
   it("renders provider state, privacy warning, and transparent model prices", () => {
     const view = render(
       <SettingsScreen
@@ -327,9 +436,9 @@ describe("SettingsScreen", () => {
     );
 
     const frame = view.lastFrame() ?? "";
-    expect(frame).toContain("Cài đặt LLM");
+    expect(frame).toContain("Settings");
     expect(frame).toContain("OpenRouter");
-    expect(frame).toContain("Remote gửi transcript");
+    expect(frame).not.toContain("Remote gửi transcript");
     expect(frame).toContain("128k");
     expect(frame).toContain("$0.15 / $0.60 / 1M");
     expect(frame).toContain("live");

@@ -90,6 +90,43 @@ def test_snapshot_never_embeds_documents_and_dense_is_sparse_fallback(tmp_path: 
     assert model.document_calls == []
 
 
+def test_build_reports_real_indexing_stages_and_chunk_progress(tmp_path: Path) -> None:
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    (wiki / "note.md").write_text("# Bayes\nEvidence updates beliefs.", encoding="utf-8")
+    progress = []
+
+    report = _coordinator(tmp_path, FakeModel()).build_blocking(
+        dense=True,
+        on_progress=progress.append,
+    )
+
+    assert report.dense is not None
+    assert [item.phase for item in progress] == [
+        "scanning",
+        "chunking",
+        "embedding",
+        "embedding",
+        "persisting",
+        "verifying",
+        "complete",
+    ]
+    assert progress[-1].completed_chunks == progress[-1].total_chunks == 1
+    assert progress[-1].documents == 1
+    assert progress[-1].chunks == 1
+    assert progress[-1].reused_chunks == 0
+    assert progress[-1].embedded_chunks == 1
+
+    rerun_progress = []
+    _coordinator(tmp_path, FakeModel()).build_blocking(
+        dense=True,
+        on_progress=rerun_progress.append,
+    )
+    assert rerun_progress[-1].phase == "complete"
+    assert rerun_progress[-1].reused_chunks == 1
+    assert rerun_progress[-1].embedded_chunks == 0
+
+
 def test_dense_build_is_explicit_and_reuses_vector_after_rename(tmp_path: Path) -> None:
     wiki = tmp_path / "wiki"
     wiki.mkdir()

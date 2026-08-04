@@ -251,6 +251,10 @@ class VoiceMonitorController:
                     "memory_status": self.bundle.memory_status,
                     "knowledge_status": self.bundle.knowledge_status,
                     "asr_guard_status": self.bundle.asr_guard_status,
+                    "smart_turn_enabled": self.bundle.turn_detector is not None,
+                    "adaptive_endpoint": self.bundle.config.adaptive_endpoint,
+                    "endpoint_floor_ms": EndpointConfig().floor_silence_ms,
+                    "endpoint_ceil_ms": EndpointConfig().ceil_silence_ms,
                     "llm_backend": (
                         self.bundle.llm_settings.backend
                         if self.bundle.llm_settings is not None
@@ -315,7 +319,19 @@ class VoiceMonitorController:
             partial_interval_ms=bundle.partial_interval_ms,  # seed from warmup
             adaptive=self.config.adaptive_endpoint,
         )
-        queue.put(VoiceMonitorEvent("recording", "Listening"))
+        queue.put(
+            VoiceMonitorEvent(
+                "recording",
+                "Listening",
+                metadata={
+                    "asr_model": bundle.config.asr_model,
+                    "smart_turn_enabled": bundle.turn_detector is not None,
+                    "adaptive_endpoint": endpoint_config.adaptive,
+                    "endpoint_floor_ms": endpoint_config.floor_silence_ms,
+                    "endpoint_ceil_ms": endpoint_config.ceil_silence_ms,
+                },
+            )
+        )
         t0 = time.perf_counter()
         if self._supports_barge_in:
             # Close any duplex stream left open by the previous turn (incl. a

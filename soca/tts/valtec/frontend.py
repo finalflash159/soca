@@ -17,6 +17,9 @@ class ValtecModelInputs:
     foreign_phone_count: int = 0
     # 0/1 per position in phone_ids (empty tuple = no foreign phones).
     foreign_flags: tuple[int, ...] = ()
+    # Per-phone duration multipliers for speech-only technical-term pacing.
+    # Empty means every phone uses the model/application scale.
+    technical_duration_scales: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
         lengths = {len(self.phone_ids), len(self.tone_ids), len(self.language_ids)}
@@ -30,6 +33,11 @@ class ValtecModelInputs:
             raise ValueError("foreign_phone_count must not be negative")
         if self.foreign_flags and len(self.foreign_flags) != len(self.phone_ids):
             raise ValueError("foreign_flags must align with phone_ids")
+        if self.technical_duration_scales:
+            if len(self.technical_duration_scales) != len(self.phone_ids):
+                raise ValueError("technical_duration_scales must align with phone_ids")
+            if any(scale < 1.0 for scale in self.technical_duration_scales):
+                raise ValueError("technical duration scales must be at least 1.0")
 
 
 class ValtecFrontend(Protocol):

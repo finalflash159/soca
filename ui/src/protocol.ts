@@ -347,6 +347,18 @@ export interface KnowledgeSetupEvent {
   documents?: number;
   chunks?: number;
   dense_state?: string;
+  phase?:
+    | "scanning"
+    | "chunking"
+    | "embedding"
+    | "persisting"
+    | "verifying"
+    | "complete"
+    | "failed";
+  completed_chunks?: number;
+  total_chunks?: number;
+  reused_chunks?: number;
+  embedded_chunks?: number;
 }
 
 export interface RuntimeComponentStatus {
