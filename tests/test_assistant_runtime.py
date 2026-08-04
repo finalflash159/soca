@@ -16,6 +16,7 @@ from soca.knowledge import (
     KnowledgeHit,
 )
 from soca.llm import LLMResult
+from soca.llm.providers import RemoteLLMError
 from soca.memory import MemoryContextBuilder, MemoryRetrievalResult, RetrievedMemory, SessionMemory
 from soca.tools import (
     KnowledgeReadTool,
@@ -568,7 +569,7 @@ def test_llm_blocks_uncited_answer_when_repair_prompt_cannot_fit() -> None:
         knowledge_builder=KnowledgeContextBuilder(source),
         options=RuntimeOptions(
             max_tokens=64,
-            model_context_window=350,
+            model_context_window=420,
             context_safety_margin_tokens=0,
         ),
     )
@@ -856,10 +857,98 @@ def test_goal_completion_budget_exhaustion_is_not_reported_as_achieved() -> None
 
     assert result.trace is not None
     assert result.trace.evidence_completion_status == "budget_exhausted"
-    assert result.trace.workflow_status == "budget_exhausted"
-    assert "budget_exhausted" in result.response_text
-    assert terminal.status.value == "budget_exhausted"
+    assert result.trace.workflow_status == "insufficient_evidence"
+    assert "chưa xác minh đủ bằng chứng" in result.response_text
+    assert terminal.status.value == "insufficient_evidence"
     assert terminal.goal_status.value == "failed"
+
+
+def test_empty_evidence_is_synthesized_after_revision_budget() -> None:
+    source = EmptyKnowledgeSource()
+    router = CompletingKnowledgeRouter(
+        ToolCall("knowledge.search", {"query": "lượng tử", "limit": 3}),
+        [
+            EvidenceCompletionDecision(
+                status="continue",
+                call=ToolCall("knowledge.search", {"query": "quantum", "limit": 10}),
+                reason_code="broader_scope_required",
+            ),
+            EvidenceCompletionDecision(
+                status="continue",
+                call=ToolCall(
+                    "knowledge.search",
+                    {"query": "quantum mechanics", "limit": 20},
+                ),
+                reason_code="broader_scope_required",
+            ),
+            EvidenceCompletionDecision(
+                status="continue",
+                call=ToolCall(
+                    "knowledge.search",
+                    {"query": "particle physics", "limit": 20},
+                ),
+                reason_code="broader_scope_required",
+            ),
+        ],
+    )
+    llm = SpyLLM(text="Mình chưa tìm thấy ghi chú phù hợp trong vault.")
+    runtime = AssistantRuntime(
+        llm=llm,
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        tool_router=router,
+        knowledge_builder=KnowledgeContextBuilder(source),
+        options=RuntimeOptions(max_evidence_completion_actions=2),
+    )
+
+    result = runtime.run_text_turn("Trong vault có ghi gì về vật lý lượng tử không?")
+
+    assert result.blocked is False
+    assert result.response_text == "Mình chưa tìm thấy ghi chú phù hợp trong vault."
+    assert llm.calls
+    assert result.trace is not None
+    assert result.trace.evidence_completion_status == "budget_exhausted"
+    assert result.trace.evidence_completion_actions == 2
+    assert result.trace.workflow_status == "insufficient_evidence"
+    assert result.trace.answer_policy == "abstain"
+
+
+def test_remote_workflow_failure_preserves_typed_provider_error() -> None:
+    class FailingCompletionRouter(CompletingKnowledgeRouter):
+        def assess_evidence(
+            self,
+            text: str,
+            *,
+            observation: str,
+            knowledge_limit: int,
+        ) -> EvidenceCompletionDecision:
+            del text, observation, knowledge_limit
+            raise RemoteLLMError(
+                "OpenRouter structured completion failed",
+                category="protocol",
+                provider="openrouter",
+                model="test/model",
+            )
+
+    source = FakeKnowledgeSource()
+    router = FailingCompletionRouter(
+        ToolCall("knowledge.search", {"query": "Bayes", "limit": 3}),
+        [],
+    )
+    runtime = AssistantRuntime(
+        llm=SpyLLM(),
+        tool_runtime=ToolRuntime([KnowledgeSearchTool(source)]),
+        tool_router=router,
+        knowledge_builder=KnowledgeContextBuilder(source),
+    )
+
+    result = runtime.run_text_turn("Tìm ghi chú Bayes")
+
+    assert result.blocked is True
+    assert result.response_text == "OpenRouter structured completion failed"
+    assert result.trace is not None
+    assert result.trace.llm_error["category"] == "protocol"
+    assert result.trace.llm_error["provider"] == "openrouter"
+    assert result.trace.llm_error["message"] == "OpenRouter structured completion failed"
 
 
 def test_terminal_receipt_uses_citation_paths_as_evidence_ids() -> None:

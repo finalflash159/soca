@@ -41,7 +41,7 @@ _LABEL_CITATION_RE = re.compile(r"(?<!\w)\[(?P<token>[KMkm]\d+)\](?!\w)")
 # in free chat it is far more likely to be content ("[100] nghìn đồng").
 _NUMERIC_CITATION_RE = re.compile(r"(?<!\w)\[(?P<token>\d+)\](?!\w)")
 _SOURCE_FOOTER_RE = re.compile(
-    r"(?im)^[ \t]*(?:#{1,6}[ \t]+)?(?:nguồn|sources?)[ \t]*:[ \t]*(?:\n|$)"
+    r"(?im)^[ \t]*(?:#{1,6}[ \t]+)?(?:\*\*|__)?(?:nguồn|sources?)(?:\*\*)?[ \t]*:(?:\*\*|__)?[ \t]*(?:\n|$)"
 )
 
 

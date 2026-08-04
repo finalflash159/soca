@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { render } from "ink";
-import { App } from "./App.js";
+import { App, Splash } from "./App.js";
 import { enterAlternateScreen } from "./terminalScreen.js";
 import type { Mode } from "./store.js";
 
@@ -62,13 +62,13 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 function Root({ args }: { args: CliArgs }) {
-  // Bare launch opens the main chat surface. Explicit chat/voice commands keep
-  // their runtime setup gate; `/settings` remains available from the UI.
-  const [target] = useState<Mode>(args.mode ?? "chat");
+  // A bare launch shows the main splash. Choosing a surface then enters the
+  // same settings gate as an explicit chat/voice launch.
+  const [target, setTarget] = useState<Mode | null>(args.mode);
+  if (target === null) return <Splash onDone={setTarget} />;
   return (
     <App
       target={target}
-      setupFirst={args.mode !== null}
       profile={args.profile}
       noModel={args.noModel}
       vault={args.vault}

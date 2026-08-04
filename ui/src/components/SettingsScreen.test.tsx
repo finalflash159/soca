@@ -116,6 +116,71 @@ describe("SettingsScreen", () => {
     view.unmount();
   });
 
+  it("focuses the saved configuration after voice setup from the main UI", async () => {
+    const view = render(
+      <SettingsScreen
+        config={{
+          event: "llm_config",
+          backend: "remote",
+          provider: "openrouter",
+          model: "openai/gpt-4o-mini",
+          max_tokens: 4096,
+          effective_max_tokens: 4096,
+          reasoning_enabled: false,
+          effective_reasoning_enabled: false,
+          reasoning_supported: true,
+          reasoning_mandatory: false,
+          temperature: 0.2,
+          top_p: 0.95,
+          pricing_as_of: "2026-08",
+          pricing: null,
+          context_length: 128000,
+        }}
+        returnMode="voice"
+        providers={providers}
+        profiles={[
+          {
+            key: "qwen-release",
+            status: "ok",
+            asr: "qwen3_asr_0_6b",
+            llm: "openai/gpt-4o-mini",
+            tts: "valtec_multispeaker",
+            voice: "NF",
+          },
+        ]}
+        activeProfile="qwen-release"
+        knowledgeVault={{
+          path: "/tmp/Knowledge",
+          initialized: true,
+          index_home: "/tmp/Knowledge/.soca/knowledge_index",
+        }}
+        catalog={[]}
+        catalogProvider=""
+        keyPendingProvider={null}
+        notice=""
+        onRequestModels={vi.fn()}
+        onSetKey={vi.fn()}
+        onSelect={vi.fn()}
+        onExit={vi.fn()}
+      />,
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    const frame = view.lastFrame() ?? "";
+    expect(frame.indexOf("Cấu hình gần nhất")).toBeLessThan(
+      frame.indexOf("đang chọn"),
+    );
+    expect(frame.indexOf("đang chọn")).toBeLessThan(frame.indexOf("Voice ASR"));
+
+    view.stdin.write("\u001b[B");
+    await new Promise((resolve) => setImmediate(resolve));
+    const asrFrame = view.lastFrame() ?? "";
+    expect(asrFrame.indexOf("Voice ASR")).toBeLessThan(
+      asrFrame.indexOf("đang chọn"),
+    );
+    view.unmount();
+  });
+
   it("keeps ASR selection in setup and confirms the engine-applied profile", async () => {
     const onProfileSelect = vi.fn();
     const onExit = vi.fn();

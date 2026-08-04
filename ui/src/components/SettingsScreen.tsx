@@ -197,10 +197,10 @@ export function SettingsScreen({
     knowledgeVault !== null
       ? !knowledgeVault.initialized
         ? "knowledge"
-        : profiles.length > 0
-          ? "asr"
-          : config
-            ? "resume"
+        : config
+          ? "resume"
+          : profiles.length > 0
+            ? "asr"
             : "providers"
       : config
         ? "resume"
@@ -254,10 +254,10 @@ export function SettingsScreen({
     setFocus(
       !knowledgeVault.initialized
         ? "knowledge"
-        : profiles.length > 0
-          ? "asr"
-          : config
-            ? "resume"
+        : config
+          ? "resume"
+          : profiles.length > 0
+            ? "asr"
             : "providers",
     );
   }, [config, knowledgeVault, profiles.length]);
@@ -444,12 +444,8 @@ export function SettingsScreen({
       if (focus === "resume") {
         if (key.return || input === "\r" || input === "\n") onExit();
         else if (input === "a") setFocus("asr");
-        else if (
-          input === "e" ||
-          key.downArrow ||
-          key.rightArrow ||
-          key.tab
-        ) {
+        else if (key.downArrow) setFocus("asr");
+        else if (input === "e" || key.rightArrow || key.tab) {
           touched.current = true;
           setFocus("providers");
         }

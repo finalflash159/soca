@@ -1,7 +1,7 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { App, defaultSettingsReturnMode } from "./App.js";
+import { App, Splash, defaultSettingsReturnMode } from "./App.js";
 
 const harness = vi.hoisted(() => ({
   sent: [] as Array<Record<string, unknown>>,
@@ -303,6 +303,20 @@ describe("App slash command interaction", () => {
     expect(defaultSettingsReturnMode("voice")).toBe("voice");
     expect(defaultSettingsReturnMode("chat")).toBe("chat");
     expect(defaultSettingsReturnMode("status")).toBe("chat");
+  });
+
+  it("keeps the cold launch on the existing main splash", async () => {
+    const onDone = vi.fn();
+    const view = render(<Splash onDone={onDone} />);
+    await tick();
+
+    expect(view.lastFrame()).toContain("asr · llm · tts · barge-in");
+    expect(view.lastFrame()).toContain("↵ chat");
+    expect(view.lastFrame()).toContain("v voice");
+
+    view.stdin.write("\r");
+    expect(onDone).toHaveBeenCalledWith("chat");
+    view.unmount();
   });
 
   it("opens the bare UI on the main chat surface, not settings", async () => {

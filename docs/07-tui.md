@@ -22,7 +22,7 @@ Editable diagram source: [Lucid UI protocol](https://lucid.app/lucidchart/133d6a
 
 ```bash
 cd ui && npm install && npm run build   # một lần
-uv run soca ui                          # mở main chat UI
+uv run soca ui                          # mở main UI
 uv run soca ui voice baseline           # vào thẳng voice mode
 ```
 

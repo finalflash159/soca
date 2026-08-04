@@ -89,6 +89,5 @@ def test_openrouter_structured_options_merge_without_losing_reasoning() -> None:
     assert options["extra_body"]["reasoning"]["enabled"] is True
     assert options["extra_body"]["provider"] == {
         "allow_fallbacks": False,
-        "require_parameters": True,
         "data_collection": "deny",
     }

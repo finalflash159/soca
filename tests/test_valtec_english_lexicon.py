@@ -7,12 +7,18 @@ from soca.tts.valtec.foreign_g2p import ChainedForeignG2P
 from soca.tts.valtec.lexicon import (
     ACRONYM_LEXICON,
     CMU_OVERRIDE_LEXICON,
+    TREND_GREETING_LEXICON,
     WORD_LEXICON,
     WORD_LEXICON_SOURCES,
     LexiconBackend,
 )
 
-ALL_ENTRIES = {**WORD_LEXICON, **ACRONYM_LEXICON, **CMU_OVERRIDE_LEXICON}
+ALL_ENTRIES = {
+    **WORD_LEXICON,
+    **ACRONYM_LEXICON,
+    **CMU_OVERRIDE_LEXICON,
+    **TREND_GREETING_LEXICON,
+}
 
 
 def test_every_lexicon_entry_stays_inside_the_trained_inventory() -> None:
@@ -74,6 +80,12 @@ def test_acronym_and_word_lookups_stay_independent() -> None:
     assert backend.to_ipa("github") == "gɪthəb"
     assert backend.to_ipa("GitHub") == "gɪthəb"
     assert backend.to_ipa("xyzzy") is None
+
+
+def test_trend_greetings_have_explicit_readings() -> None:
+    assert TREND_GREETING_LEXICON["moshi"] == "moʊʃi"
+    assert TREND_GREETING_LEXICON["annyeong"] == "ɑnjɔŋ"
+    assert TREND_GREETING_LEXICON["yeoboseyo"] == "jəbosejo"
 
 
 def test_lexicon_wins_over_a_statistical_guess() -> None:

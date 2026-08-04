@@ -37,7 +37,7 @@ import { ImeTextInput } from "./imeInput.js";
 export interface AppProps {
   /** The mode the user picked on the splash / CLI. */
   target: Mode;
-  /** Explicit chat/voice launches open setup first; bare UI opens main chat. */
+  /** Explicit chat/voice launches open setup first; bare UI opens the splash. */
   setupFirst?: boolean;
   profile?: string;
   noModel?: boolean;
@@ -68,16 +68,10 @@ function Brand({ profile }: { profile: string }) {
         <Bird />
       </Box>
       <Box marginTop={1}>
-        <Text>
-          <Wordmark />
-          <Text color={COLOR.text}>
-            {" "}
-            — trợ lý giọng nói tiếng Việt, chạy trên máy bạn.
-          </Text>
-        </Text>
+        <Text color={COLOR.text}>Trợ lý giọng nói tiếng Việt.</Text>
       </Box>
       <Text color={COLOR.muted}>
-        {profile} {ICON.dot} asr · llm · tts · barge-in, không cloud
+        {profile} {ICON.dot} asr · llm · tts · harness
       </Text>
     </Box>
   );
@@ -96,7 +90,8 @@ export function App({
   const { exit } = useApp();
   const rawInput = Boolean(useStdin().isRawModeSupported);
   // Explicit chat/voice launches route through Settings first so the user can
-  // choose the runtime. Bare `soca ui` opens the main chat surface directly.
+  // choose the runtime. Bare `soca ui` reaches this component after the main
+  // splash has selected chat or voice.
   const gated = setupFirst && (target === "chat" || target === "voice");
   const initialMode: InteractiveMode = gated
     ? "settings"
@@ -652,6 +647,56 @@ export function App({
         llm={llm}
         remote={state.llmConfig?.backend === "remote"}
       />
+    </Box>
+  );
+}
+
+/** The stable cold-launch surface; mode selection happens before App startup. */
+export function Splash({ onDone }: { onDone: (mode: Mode) => void }) {
+  const rawInput = Boolean(useStdin().isRawModeSupported);
+  useInput(
+    (character, key) => {
+      if (key.return) onDone("chat");
+      else if (character === "v") onDone("voice");
+      else if (character === "s") onDone("settings");
+    },
+    { isActive: rawInput },
+  );
+  const { stdout } = useStdout();
+  return (
+    <Box
+      height={Math.max(1, (stdout?.rows ?? 24) - 1)}
+      flexDirection="column"
+      justifyContent="center"
+      alignItems="center"
+    >
+      <Bird />
+      <Box marginTop={1}>
+        <Wordmark />
+      </Box>
+      <Box marginTop={1}>
+        <Text color={COLOR.text}>
+          Trợ lý giọng nói tiếng Việt — chạy trên máy bạn.
+        </Text>
+      </Box>
+      <Box>
+        <Text color={COLOR.muted}>asr · llm · tts · barge-in</Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text>
+          <Text color={COLOR.alt}>↵</Text>
+          <Text color={COLOR.muted}> chat</Text>
+          <Text color={COLOR.muted}>{`  ${ICON.dot}  `}</Text>
+          <Text color={COLOR.alt}>v</Text>
+          <Text color={COLOR.muted}> voice</Text>
+          <Text color={COLOR.muted}>{`  ${ICON.dot}  `}</Text>
+          <Text color={COLOR.alt}>s</Text>
+          <Text color={COLOR.muted}> cài đặt</Text>
+          <Text color={COLOR.muted}>{`  ${ICON.dot}  `}</Text>
+          <Text color={COLOR.alt}>^c</Text>
+          <Text color={COLOR.muted}> thoát</Text>
+        </Text>
+      </Box>
     </Box>
   );
 }

@@ -426,4 +426,25 @@ describe("voice ASR status", () => {
     expect(state.voiceState).toBe("processing");
     expect(state.voiceNote).toBe("Transcribing…");
   });
+
+  it("explains an automatic stop after passive-silence callouts", () => {
+    const state = reduce(initialState, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "loop_stopped",
+        text: "Voice loop stopped",
+        latency_ms: null,
+        metadata: {
+          turns: 3,
+          requested: true,
+          stop_reason: "passive_silence_callout_limit",
+        },
+        usage: null,
+      },
+    });
+
+    expect(state.voiceRunning).toBe(false);
+    expect(state.voiceNote).toBe("tự dừng sau 3 lần nhắc vì im lặng");
+  });
 });

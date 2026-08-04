@@ -441,12 +441,10 @@ _GOAL_SCHEMA: dict[str, Any] = {
         "success_criteria": {
             "type": "array",
             "items": {"enum": sorted(_SUCCESS_CRITERIA)},
-            "uniqueItems": True,
         },
         "required_sources": {
             "type": "array",
             "items": {"enum": [item.value for item in SourceKind]},
-            "uniqueItems": True,
         },
         "constraints": {
             "type": "array",
@@ -454,7 +452,7 @@ _GOAL_SCHEMA: dict[str, Any] = {
                 "type": "object",
                 "properties": {
                     "kind": {"type": "string"},
-                    "value": {},
+                    "value": {"type": "string"},
                 },
                 "required": ["kind", "value"],
                 "additionalProperties": False,

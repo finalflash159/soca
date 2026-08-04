@@ -148,6 +148,8 @@ def test_text_runtime_uses_persisted_remote_selection(monkeypatch, tmp_path: Pat
         backend="remote",
         provider_key="groq",
         model_id="llama-3.1-8b-instant",
+        max_tokens=8_192,
+        model_max_output_tokens=2_048,
     )
     captured: dict[str, object] = {}
 
@@ -157,15 +159,20 @@ def test_text_runtime_uses_persisted_remote_selection(monkeypatch, tmp_path: Pat
         captured["local_factory"] = kwargs["local_factory"]
         return object()
 
+    vault = tmp_path / "vault"
+    (vault / "wiki").mkdir(parents=True)
     monkeypatch.setattr("soca.app.text_runtime.load_settings", lambda: persisted)
     bundle = build_text_runtime(
-        _config(tmp_path / "absent", no_llm=False),
+        _config(vault, no_llm=False, no_memory=True, tool_router_mode="cascade"),
         secret_store=object(),
         engine_factory=fake_engine,
     )
 
     assert captured["settings"] == persisted
     assert bundle.llm_status == "enabled:groq:llama-3.1-8b-instant"
+    assert bundle.runtime.options.max_tokens == 2_048
+    llm_router = bundle.runtime.tool_router._llm_router
+    assert llm_router._config.max_tokens == 2_048
 
 
 def test_text_runtime_uses_persisted_local_model_without_cli_override(

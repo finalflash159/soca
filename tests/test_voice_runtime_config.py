@@ -174,6 +174,8 @@ def test_voice_runtime_uses_selected_remote_llm_without_local_construction(
         backend="remote",
         provider_key="openrouter",
         model_id="google/gemini-3.5-flash-lite",
+        max_tokens=8_192,
+        model_max_output_tokens=2_048,
     )
     calls: list[tuple[LlmSettings, object]] = []
 
@@ -208,6 +210,9 @@ def test_voice_runtime_uses_selected_remote_llm_without_local_construction(
     assert len(calls) == 1
     assert calls[0][0] is settings
     assert bundle.llm_settings == settings
+    assert bundle.assistant_runtime.options.max_tokens == 2_048
+    llm_router = bundle.assistant_runtime.tool_router._llm_router
+    assert llm_router._config.max_tokens == 2_048
 
 
 def test_voice_runtime_closes_asr_when_later_startup_fails(

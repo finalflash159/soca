@@ -13,6 +13,7 @@ from soca.core.context_budget import (
     capability_from_engine,
     token_counter_from_engine,
 )
+from soca.core.tool_routing import build_nullable_arguments_schema
 from soca.llm import LLMEngine, StructuredLLMEngine
 from soca.tools import ToolCall, ToolRuntime
 from soca.tools.base import validate_arguments
@@ -75,42 +76,49 @@ def _tool_capability(tool_runtime: ToolRuntime, tool_name: str) -> Capability:
 
 
 def plan_schema(tool_runtime: ToolRuntime, *, max_actions: int = 4) -> dict[str, Any]:
-    tools = []
+    specs = []
     for spec in tool_runtime.list_specs(include_disabled=False):
         try:
             capability = Capability(spec.workflow_capability)
         except ValueError:
             continue
-        tools.append(
-            {
-                "type": "object",
-                "properties": {
-                    "action_id": {"type": "string"},
-                    "tool": {"const": spec.name},
-                    "capability": {"const": capability.value},
-                    "arguments": dict(spec.input_schema),
-                    "purpose": {"type": "string"},
-                    "expected_observation": {"type": "string"},
-                    "required": {"type": "boolean"},
-                    "requires_authorization": {"type": "boolean"},
-                },
-                "required": [
-                    "action_id",
-                    "tool",
-                    "capability",
-                    "arguments",
-                    "purpose",
-                    "expected_observation",
-                    "required",
-                    "requires_authorization",
-                ],
-                "additionalProperties": False,
-            }
-        )
+        specs.append((spec, capability))
+    tool_names = sorted(spec.name for spec, _ in specs)
+    capability_names = sorted(capability.value for _, capability in specs)
+    tool_property: dict[str, Any] = {"type": "string"}
+    capability_property: dict[str, Any] = {"type": "string"}
+    if tool_names:
+        tool_property["enum"] = tool_names
+    if capability_names:
+        capability_property["enum"] = capability_names
+    step_schema = {
+        "type": "object",
+        "properties": {
+            "action_id": {"type": "string"},
+            "tool": tool_property,
+            "capability": capability_property,
+            "arguments": build_nullable_arguments_schema(tuple(spec for spec, _ in specs)),
+            "purpose": {"type": "string"},
+            "expected_observation": {"type": "string"},
+            "required": {"type": "boolean"},
+            "requires_authorization": {"type": "boolean"},
+        },
+        "required": [
+            "action_id",
+            "tool",
+            "capability",
+            "arguments",
+            "purpose",
+            "expected_observation",
+            "required",
+            "requires_authorization",
+        ],
+        "additionalProperties": False,
+    }
     return {
         "type": "object",
         "properties": {
-            "steps": {"type": "array", "items": {"oneOf": tools}, "maxItems": max_actions},
+            "steps": {"type": "array", "items": step_schema, "maxItems": max_actions},
             "public_update": {"type": "string"},
         },
         "required": ["steps", "public_update"],
@@ -143,6 +151,8 @@ def parse_action_plan(
         tool_name = item.get("tool")
         capability_value = item.get("capability")
         arguments = item.get("arguments")
+        if isinstance(arguments, dict):
+            arguments = {key: value for key, value in arguments.items() if value is not None}
         purpose = item.get("purpose")
         expected_observation = item.get("expected_observation")
         required = item.get("required")

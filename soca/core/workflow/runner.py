@@ -365,12 +365,30 @@ class ControlledWorkflowRunner:
                 context, self._failed_outcome(exc.reason_code, detail=str(exc))
             )
         except Exception as exc:  # noqa: BLE001 - controller boundary terminalizes faults
+            failure = self._failed_outcome(
+                "workflow_error",
+                detail=type(exc).__name__,
+            )
+            as_dict = getattr(exc, "as_dict", None)
+            if callable(as_dict):
+                try:
+                    remote_error = as_dict()
+                except Exception:  # noqa: BLE001 - preserve the original controller fault
+                    remote_error = {}
+                if isinstance(remote_error, Mapping):
+                    failure = replace(
+                        failure,
+                        metadata={
+                            **failure.metadata,
+                            "remote_error": {
+                                "message": str(exc),
+                                **dict(remote_error),
+                            },
+                        },
+                    )
             return self._terminal_run(
                 context,
-                self._failed_outcome(
-                    "workflow_error",
-                    detail=type(exc).__name__,
-                )
+                failure,
             )
 
     def _prepare_plan(

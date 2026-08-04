@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Text, useInput } from "ink";
+import { COLOR } from "./theme.js";
 
 /** The subset of Ink's key flags needed by the text editor. */
 export interface InputKey {
@@ -233,10 +234,10 @@ export function ImeTextInput({
   const visibleCursor = Math.max(0, Math.min(display.length, cursor));
 
   if (display.length === 0 && placeholder) {
-    if (!showCursor || !focus) return <Text color="gray">{placeholder}</Text>;
+    if (!showCursor || !focus) return <Text color={COLOR.muted}>{placeholder}</Text>;
     return (
-      <Text>
-        <Text inverse>{placeholder[0] ?? " "}</Text>
+      <Text color={COLOR.muted}>
+        <Text inverse color={COLOR.muted}>{placeholder[0] ?? " "}</Text>
         {placeholder.slice(1)}
       </Text>
     );

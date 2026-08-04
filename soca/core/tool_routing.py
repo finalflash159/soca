@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import math
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from soca.config import DEFAULT_MAX_TOKENS
 from soca.tools import ToolCall, ToolSpec
 
 SourceProfile = Literal["knowledge", "memory", "both", "neither"]
@@ -52,7 +54,7 @@ class SemanticRouterConfig:
 class ToolRouterConfig:
     mode: ToolRouterMode = "deterministic"
     response_mode: RouterResponseMode = "prompt_json"
-    max_tokens: int = 96
+    max_tokens: int = DEFAULT_MAX_TOKENS
     max_output_chars: int = 8_192
     repair_attempts: int = 1
     zero_data_retention: bool = True
@@ -157,43 +159,19 @@ def _parse_single_json_object(raw: str, *, max_chars: int) -> dict[str, Any]:
 
 
 def build_evidence_completion_schema(specs: tuple[ToolSpec, ...]) -> dict[str, Any]:
-    branches: list[dict[str, Any]] = []
-    for spec in specs:
-        if spec.name not in {"knowledge.inspect", "knowledge.search", "knowledge.read"}:
-            continue
-        branches.append(
-            {
-                "type": "object",
-                "properties": {
-                    "status": {"const": "continue"},
-                    "handler": {"const": spec.name},
-                    "arguments": dict(spec.input_schema),
-                    "reason_code": {"type": "string", "minLength": 1, "maxLength": 80},
-                },
-                "required": ["status", "handler", "arguments", "reason_code"],
-                "additionalProperties": False,
-            }
-        )
-    for status in ("complete", "insufficient"):
-        branches.append(
-            {
-                "type": "object",
-                "properties": {
-                    "status": {"const": status},
-                    "handler": {"type": "null"},
-                    "arguments": {
-                        "type": "object",
-                        "properties": {},
-                        "required": [],
-                        "additionalProperties": False,
-                    },
-                    "reason_code": {"type": "string", "minLength": 1, "maxLength": 80},
-                },
-                "required": ["status", "handler", "arguments", "reason_code"],
-                "additionalProperties": False,
-            }
-        )
-    return {"oneOf": branches}
+    retrieval_specs = tuple(
+        spec
+        for spec in specs
+        if spec.name in {"knowledge.inspect", "knowledge.search", "knowledge.read"}
+    )
+    return _flat_decision_schema(
+        discriminator_name="status",
+        discriminator_values=("complete", "continue", "insufficient"),
+        specs=retrieval_specs,
+        extra_properties={
+            "reason_code": {"type": "string", "minLength": 1, "maxLength": 80},
+        },
+    )
 
 
 def parse_evidence_completion(raw: str, *, max_chars: int) -> EvidenceCompletionDecision:
@@ -202,7 +180,7 @@ def parse_evidence_completion(raw: str, *, max_chars: int) -> EvidenceCompletion
         raise RouterOutputError("invalid_completion_fields")
     status = payload["status"]
     handler = payload["handler"]
-    arguments = payload["arguments"]
+    arguments = _remove_null_arguments(payload["arguments"])
     reason_code = payload["reason_code"]
     if status not in {"complete", "continue", "insufficient"}:
         raise RouterOutputError("invalid_completion_status")
@@ -218,8 +196,8 @@ def parse_evidence_completion(raw: str, *, max_chars: int) -> EvidenceCompletion
             call=ToolCall(handler, dict(arguments)),
             reason_code=reason_code,
         )
-    if handler is not None or arguments:
-        raise RouterOutputError("unexpected_completion_call")
+    handler = None
+    arguments = {}
     return EvidenceCompletionDecision(
         status=cast(EvidenceCompletionStatus, status),
         reason_code=reason_code,
@@ -227,73 +205,121 @@ def parse_evidence_completion(raw: str, *, max_chars: int) -> EvidenceCompletion
 
 
 def build_route_decision_schema(specs: tuple[ToolSpec, ...]) -> dict[str, Any]:
-    """Build the shared LLM-router contract: route first, handler second."""
-    branches: list[dict[str, Any]] = []
-    for spec in specs:
-        branches.append(
-            {
-                "type": "object",
-                "properties": {
-                    "route": {"const": "direct_tool"},
-                    "handler": {"const": spec.name},
-                    "arguments": dict(spec.input_schema),
-                    "sources": {
-                        "type": "array",
-                        "maxItems": 0,
-                    },
-                },
-                "required": ["route", "handler", "arguments", "sources"],
-                "additionalProperties": False,
-            }
-        )
+    """Build a provider-portable strict schema for the route contract.
 
-    branches.append(
-        {
-            "type": "object",
-            "properties": {
-                "route": {"const": "retrieval_request"},
-                "handler": {"type": "null"},
-                "arguments": {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                    "additionalProperties": False,
-                },
-                "sources": {
-                    "type": "array",
-                    "items": {"enum": ["knowledge", "memory"]},
-                    "uniqueItems": True,
-                    "minItems": 1,
-                    "maxItems": 2,
-                },
+    OpenAI-compatible structured-output endpoints reject a root ``oneOf`` even
+    though it is valid JSON Schema.  The discriminator is therefore explicit
+    and the local parser remains responsible for cross-field invariants such as
+    ``retrieval_request`` requiring sources and ``direct_tool`` requiring
+    valid arguments for the selected handler.
+    """
+    return _flat_decision_schema(
+        discriminator_name="route",
+        discriminator_values=(
+            "direct_tool",
+            "retrieval_request",
+            "smalltalk",
+            "out_of_scope",
+            "unresolved",
+        ),
+        specs=specs,
+        extra_properties={
+            "sources": {
+                "type": "array",
+                "items": {"type": "string", "enum": ["knowledge", "memory"]},
             },
-            "required": ["route", "handler", "arguments", "sources"],
-            "additionalProperties": False,
-        }
+        },
     )
-    for route in ("smalltalk", "out_of_scope", "unresolved"):
-        branches.append(
-            {
-                "type": "object",
-                "properties": {
-                    "route": {"const": route},
-                    "handler": {"type": "null"},
-                    "arguments": {
-                        "type": "object",
-                        "properties": {},
-                        "required": [],
-                        "additionalProperties": False,
-                    },
-                    "sources": {
-                        "type": "array",
-                        "maxItems": 0,
-                    },
-                },
-                "required": ["route", "handler", "arguments", "sources"],
-                "additionalProperties": False,
-            }
-        )
-    return {"oneOf": branches}
+
+
+def _flat_decision_schema(
+    *,
+    discriminator_name: str,
+    discriminator_values: tuple[str, ...],
+    specs: tuple[ToolSpec, ...],
+    extra_properties: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Encode a discriminated contract without unsupported root unions."""
+    argument_properties = _nullable_argument_properties(specs)
+    argument_names = sorted(argument_properties)
+    # Keep this nullable and validate the selected name against the live tool
+    # runtime after parsing. Binding the enum here encourages some models to
+    # emit a handler even when the discriminator says retrieval/smalltalk.
+    # Cross-field dependencies are intentionally enforced by the parser.
+    handler_schema: dict[str, Any] = {"type": ["string", "null"]}
+
+    properties: dict[str, Any] = {
+        discriminator_name: {"type": "string", "enum": list(discriminator_values)},
+        "handler": handler_schema,
+        "arguments": {
+            "type": "object",
+            "properties": argument_properties,
+            "required": argument_names,
+            "additionalProperties": False,
+        },
+    }
+    properties.update(deepcopy(extra_properties))
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
+
+
+def build_nullable_arguments_schema(specs: tuple[ToolSpec, ...]) -> dict[str, Any]:
+    """Build a strict nullable argument object for provider structured output."""
+    properties = _nullable_argument_properties(specs)
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": sorted(properties),
+        "additionalProperties": False,
+    }
+
+
+def _nullable_argument_properties(specs: tuple[ToolSpec, ...]) -> dict[str, dict[str, Any]]:
+    """Merge enabled tool argument fields into one strict nullable object."""
+    properties: dict[str, dict[str, Any]] = {}
+    for spec in specs:
+        for name, schema in spec.input_schema.get("properties", {}).items():
+            candidate = _nullable_schema(schema)
+            existing = properties.get(name)
+            if existing is None:
+                properties[name] = candidate
+            elif _schema_shape(existing) != _schema_shape(candidate):
+                properties[name] = {"anyOf": [existing, candidate]}
+    return properties
+
+
+def _nullable_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    candidate = deepcopy(schema)
+    schema_type = candidate.get("type")
+    if isinstance(schema_type, str):
+        candidate["type"] = [schema_type, "null"]
+    elif isinstance(schema_type, list) and "null" not in schema_type:
+        candidate["type"] = [*schema_type, "null"]
+    else:
+        candidate = {"anyOf": [candidate, {"type": "null"}]}
+    return candidate
+
+
+def _schema_shape(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _schema_shape(item)
+            for key, item in value.items()
+            if key not in {"description", "title"}
+        }
+    if isinstance(value, list):
+        return [_schema_shape(item) for item in value]
+    return value
+
+
+def _remove_null_arguments(arguments: Any) -> dict[str, Any]:
+    if not isinstance(arguments, dict):
+        return arguments
+    return {key: value for key, value in arguments.items() if value is not None}
 
 
 def parse_route_decision(raw: str, *, max_chars: int) -> ParsedRouteDecision:
@@ -302,7 +328,7 @@ def parse_route_decision(raw: str, *, max_chars: int) -> ParsedRouteDecision:
         raise RouterOutputError("invalid_root_fields")
     route = payload["route"]
     handler = payload["handler"]
-    arguments = payload["arguments"]
+    arguments = _remove_null_arguments(payload["arguments"])
     sources = payload["sources"]
     if route not in {
         "direct_tool",
@@ -326,12 +352,15 @@ def parse_route_decision(raw: str, *, max_chars: int) -> ParsedRouteDecision:
         raise RouterOutputError("direct_route_missing_handler")
     if route == "retrieval_request" and not sources:
         raise RouterOutputError("retrieval_missing_sources")
-    if route != "direct_tool" and handler is not None:
-        raise RouterOutputError("non_direct_route_has_handler")
     if route != "retrieval_request" and sources:
         raise RouterOutputError("non_retrieval_route_has_sources")
-    if route != "direct_tool" and arguments:
-        raise RouterOutputError("non_direct_route_has_arguments")
+    if route != "direct_tool":
+        # The provider schema cannot express the dependency between the route
+        # discriminator and these fields without a root union. They carry no
+        # executable meaning on non-direct routes, so normalize them away;
+        # only a direct_tool decision reaches the tool validator.
+        handler = None
+        arguments = {}
     return ParsedRouteDecision(
         route=route,
         handler=handler,
@@ -341,35 +370,16 @@ def parse_route_decision(raw: str, *, max_chars: int) -> ParsedRouteDecision:
 
 
 def build_tool_decision_schema(specs: tuple[ToolSpec, ...]) -> dict[str, Any]:
-    branches: list[dict[str, Any]] = [
-        {
-            "type": "object",
-            "properties": {
-                "tool": {"const": "none"},
-                "arguments": {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                    "additionalProperties": False,
-                },
-            },
-            "required": ["tool", "arguments"],
-            "additionalProperties": False,
-        }
-    ]
-    for spec in specs:
-        branches.append(
-            {
-                "type": "object",
-                "properties": {
-                    "tool": {"const": spec.name},
-                    "arguments": dict(spec.input_schema),
-                },
-                "required": ["tool", "arguments"],
-                "additionalProperties": False,
-            }
-        )
-    return {"oneOf": branches}
+    names = ["none", *sorted(spec.name for spec in specs)]
+    return {
+        "type": "object",
+        "properties": {
+            "tool": {"type": "string", "enum": names},
+            "arguments": build_nullable_arguments_schema(specs),
+        },
+        "required": ["tool", "arguments"],
+        "additionalProperties": False,
+    }
 
 
 def parse_tool_decision(raw: str, *, max_chars: int) -> ParsedToolDecision:
@@ -403,7 +413,7 @@ def parse_tool_decision(raw: str, *, max_chars: int) -> ParsedToolDecision:
     if set(payload) != {"tool", "arguments"}:
         raise RouterOutputError("invalid_root_fields")
     tool = payload["tool"]
-    arguments = payload["arguments"]
+    arguments = _remove_null_arguments(payload["arguments"])
     if not isinstance(tool, str) or not tool:
         raise RouterOutputError("invalid_tool_name")
     if not isinstance(arguments, dict) or any(not isinstance(key, str) for key in arguments):

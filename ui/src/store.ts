@@ -418,13 +418,17 @@ function reduceVoiceCore(
       return { ...state, voiceState: "idle", speechChunks: [] };
     case "loop_stopped": {
       const turns = meta["turns"];
+      const stopReason = meta["stop_reason"];
       return {
         ...state,
         voiceRunning: false,
         voiceState: "idle",
         turnProgress: null,
         progressQueue: [],
-        voiceNote: `đã dừng (${typeof turns === "number" ? turns : 0} lượt)`,
+        voiceNote:
+          stopReason === "passive_silence_callout_limit"
+            ? "tự dừng sau 3 lần nhắc vì im lặng"
+            : `đã dừng (${typeof turns === "number" ? turns : 0} lượt)`,
         bargeIn: "off",
         speechChunks: [],
       };
