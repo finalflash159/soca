@@ -597,7 +597,11 @@ class VoiceMonitorController:
                 latency_ms=(time.perf_counter() - turn_start) * 1000,
                 metadata={
                     "rejected": True,
-                    "terminal_status": "cancelled" if leaves_voice else "needs_clarification",
+                    "terminal_status": (
+                        "cancelled"
+                        if leaves_voice or shutdown_after_callout
+                        else "needs_clarification"
+                    ),
                     "rejection_reason": "passive_silence",
                     **metadata,
                 },

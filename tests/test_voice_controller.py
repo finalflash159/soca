@@ -294,6 +294,8 @@ def test_voice_monitor_passive_silence_waits_five_minutes_and_stops_after_three_
     assert len(repairs) == 3
     assert repairs[-1].metadata["shutdown_after_callout"] is True
     assert repairs[-1].metadata["callout_interval_ms"] == 300_000
+    done_events = [event for event in events if event.type == "done"]
+    assert done_events[-1].metadata["terminal_status"] == "cancelled"
     assert stop_event.is_set()
     assert controller._stop_reason == "passive_silence_callout_limit"
 

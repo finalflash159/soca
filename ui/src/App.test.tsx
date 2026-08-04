@@ -319,6 +319,15 @@ describe("App slash command interaction", () => {
     view.unmount();
   });
 
+  it("does not strand the splash when raw terminal input is unavailable", async () => {
+    const onDone = vi.fn();
+    const view = render(<Splash onDone={onDone} rawModeSupported={false} />);
+    await tick();
+
+    expect(onDone).toHaveBeenCalledWith("chat");
+    view.unmount();
+  });
+
   it("opens the bare UI on the main chat surface, not settings", async () => {
     const view = render(<App target="chat" setupFirst={false} noModel />);
     await tick();

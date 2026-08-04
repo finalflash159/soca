@@ -652,8 +652,17 @@ export function App({
 }
 
 /** The stable cold-launch surface; mode selection happens before App startup. */
-export function Splash({ onDone }: { onDone: (mode: Mode) => void }) {
-  const rawInput = Boolean(useStdin().isRawModeSupported);
+export function Splash({
+  onDone,
+  rawModeSupported,
+}: {
+  onDone: (mode: Mode) => void;
+  rawModeSupported?: boolean;
+}) {
+  const rawInput = rawModeSupported ?? Boolean(useStdin().isRawModeSupported);
+  useEffect(() => {
+    if (!rawInput) onDone("chat");
+  }, [onDone, rawInput]);
   useInput(
     (character, key) => {
       if (key.return) onDone("chat");
