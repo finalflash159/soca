@@ -642,6 +642,7 @@ def _build_voice_runtime_components(
         config=ToolRouterConfig(
             mode=cast(ToolRouterMode, config.tool_router_mode),
             response_mode=cast(RouterResponseMode, config.tool_router_response_mode),
+            max_tokens=effective_max_tokens,
             semantic=SemanticRouterConfig(
                 enabled=config.semantic_router_enabled,
                 threshold=config.semantic_router_threshold,
@@ -795,9 +796,19 @@ def _warm_up_asr(bundle: VoiceRuntimeBundle, *, seconds: float) -> VoiceRuntimeW
 def _warm_up_llm(bundle: VoiceRuntimeBundle, *, prompt: str) -> VoiceRuntimeWarmupResult:
     t0 = time.perf_counter()
     try:
+        # A reasoning-capable remote model can spend the first output tokens on
+        # its hidden reasoning trace.  ``max_tokens=1`` therefore makes the
+        # warmup fail with ``finish_reason=length`` before a final answer is
+        # produced.  Use the already capability-clamped runtime budget so the
+        # warmup exercises the same generation contract as a real turn.
+        max_tokens = (
+            bundle.llm_settings.effective_max_tokens
+            if bundle.llm_settings is not None
+            else bundle.config.max_tokens
+        )
         bundle.llm.generate(
             prompt,
-            max_tokens=1,
+            max_tokens=max_tokens,
             temperature=0.0,
             top_p=1.0,
             inject_persona=True,

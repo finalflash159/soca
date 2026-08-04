@@ -796,7 +796,7 @@ def chat(
     "ui",
     epilog=(
         "\b\nQuick examples:\n"
-        "  uv run soca ui\n"
+        "  uv run soca ui              # mở main UI\n"
         "  uv run soca ui chat\n"
         "  uv run soca ui voice baseline"
     ),
@@ -850,7 +850,7 @@ def ui(
     """Open the SoCa terminal UI (Ink) on top of `soca engine`.
 
     Quick form: soca ui [status|chat|voice] [profile]. Without a mode the UI
-    opens on the setup surface so the vault and runtime profiles are explicit.
+    opens on the main UI; use /settings to configure the runtime.
     """
     selected_vault = resolve_ui_vault(vault)
     if session_persistence != "ram_only" or session_id != "default" or resume_session:

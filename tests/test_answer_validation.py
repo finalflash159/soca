@@ -83,6 +83,13 @@ def test_display_text_removes_empty_source_footer_when_citations_are_structured(
     )
 
 
+def test_display_text_removes_markdown_source_footer_when_citations_are_structured() -> None:
+    citations = (KnowledgeCitation("wiki/review.md", "Review tuần 30/2026"),)
+    text = "Đã đối chiếu xong [K1].\n\n**Nguồn:**\n- [K1] Review tuần 30/2026"
+
+    assert answer_text_without_citation_labels(text, citations) == "Đã đối chiếu xong."
+
+
 def test_display_text_removes_source_footer_when_provider_sends_nfd_text() -> None:
     # Some providers stream Vietnamese diacritics NFD-decomposed. The footer
     # regex's "nguồn" literal is NFC, so an unnormalized response used to

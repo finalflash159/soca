@@ -1,6 +1,9 @@
-<p align="center">
-  <img src="docs/assets/soca-mark.svg" width="76" alt="SoCa">
-</p>
+<pre align="center"><code>   .-.
+ .(o/)>
+ ///_/
+  //'
+
+ SoCa</code></pre>
 
 <h1 align="center">SoCa <sub>(Sơn Ca)</sub></h1>
 
@@ -134,7 +137,7 @@ Local remains the default. To use a remote provider explicitly:
 ```bash
 uv sync --extra llm-remote
 uv run soca ui
-# Settings → choose provider → paste key → choose model
+# type /settings → choose provider → paste key → choose model
 ```
 
 Keys are stored in the OS keyring when available and masked in the UI. The
@@ -171,7 +174,7 @@ in [registries, profiles and CLI](docs/08-registries-profiles-cli.md).
 | `soca voice [profile]` | Microphone voice loop |
 | `soca ask <text>` | One text turn with tools, knowledge, memory and LLM |
 | `soca chat` | Multi-turn text session |
-| `soca ui [mode]` | Ink UI: status, chat, voice or settings |
+| `soca ui [mode]` | Ink UI: main UI, status, chat, voice or settings |
 | `soca engine` | Headless NDJSON engine for external UIs |
 | `soca status` | Readiness and selected runtime configuration |
 | `soca profiles` | Registered runtime profiles |

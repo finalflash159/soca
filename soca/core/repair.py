@@ -23,6 +23,7 @@ from pathlib import Path
 from random import Random
 
 _CATALOG_PATH = Path(__file__).with_name("repair_prompts.vi.toml")
+_NO_REPLY_SLOTS = ("no_reply_1", "no_reply_2", "no_reply_3")
 
 class RepairKind(Enum):
     NO_INPUT = "no_input"
@@ -200,13 +201,27 @@ def plan_repair(
 
 @dataclass(frozen=True)
 class RepairTimings:
-    """No-reply / inactivity thresholds (plan §6.1). Milliseconds of silence
-    while SoCa is waiting, not the recorder endpoint silence."""
+    """Silence policy for follow-up speech, in milliseconds.
 
-    no_reply_1_at_ms: int = 45_000
-    no_reply_2_at_ms: int = 120_000
-    sleep_voice_at_ms: int = 300_000
+    One shared interval keeps passive silence and the waiting-for-reply policy
+    from drifting apart. After the bounded number of follow-ups, callers must
+    stop voice explicitly; no fourth spoken fallback is selected.
+    """
+
+    followup_interval_ms: int = 300_000
+    max_followups: int = 3
     passive_sleep_at_ms: int = 300_000
+
+    def __post_init__(self) -> None:
+        for name in ("followup_interval_ms", "passive_sleep_at_ms"):
+            if getattr(self, name) <= 0:
+                raise ValueError(f"{name} must be positive")
+        if self.max_followups < 1:
+            raise ValueError("max_followups must be positive")
+        if self.max_followups > len(_NO_REPLY_SLOTS):
+            raise ValueError(
+                f"max_followups cannot exceed the available no-reply slots ({len(_NO_REPLY_SLOTS)})"
+            )
 
 
 _DEFAULT_TIMINGS = RepairTimings()
@@ -219,23 +234,22 @@ def plan_no_reply(
     attempts_fired: int,
     timings: RepairTimings | None = None,
 ) -> str | None:
-    """Pure no-reply ladder: which ``session_inactive`` slot to fire, or None.
+    """Return the next bounded follow-up slot, or ``None`` when not due.
 
-    When SoCa is not waiting on the user (``expects_response=False``), passive
-    silence never speaks a follow-up — it only sleeps after a long idle. When
-    SoCa *is* waiting, it escalates gently: a soft follow-up, then guidance, then
-    sleep — each fired at most once per idle stretch (tracked by ``attempts_fired``).
+    A waiting session gets at most three five-minute follow-ups. Once that
+    budget is consumed, the caller receives ``sleep`` and must stop voice.
+    Passive silence itself never speaks through this helper; the controller
+    owns its callout catalog and uses the same timing budget.
     """
     timings = timings or _DEFAULT_TIMINGS
     if not expects_response:
         return "sleep" if silence_ms >= timings.passive_sleep_at_ms else None
-    if silence_ms >= timings.sleep_voice_at_ms:
+    if attempts_fired >= timings.max_followups:
         return "sleep"
-    if silence_ms >= timings.no_reply_2_at_ms and attempts_fired < 2:
-        return "no_reply_2"
-    if silence_ms >= timings.no_reply_1_at_ms and attempts_fired < 1:
-        return "no_reply_1"
-    return None
+    due_at_ms = (attempts_fired + 1) * timings.followup_interval_ms
+    if silence_ms < due_at_ms:
+        return None
+    return _NO_REPLY_SLOTS[attempts_fired]
 
 
 _DEFAULT_CATALOG: RepairCatalog | None = None

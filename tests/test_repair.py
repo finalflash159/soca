@@ -3,6 +3,7 @@ from __future__ import annotations
 from random import Random
 
 import numpy as np
+import pytest
 
 from soca.core import NullAudioPlayer, VoicePipeline
 from soca.core.repair import (
@@ -181,13 +182,12 @@ def test_plan_no_reply_ladder_when_waiting() -> None:
     timings = RepairTimings()
     # Quiet below the first threshold: stay silent.
     assert plan_no_reply(10_000, expects_response=True, attempts_fired=0, timings=timings) is None
-    # Cross 45s -> gentle follow-up (once).
-    assert plan_no_reply(50_000, expects_response=True, attempts_fired=0, timings=timings) == "no_reply_1"
-    assert plan_no_reply(50_000, expects_response=True, attempts_fired=1, timings=timings) is None
-    # Cross 120s -> guidance.
-    assert plan_no_reply(130_000, expects_response=True, attempts_fired=1, timings=timings) == "no_reply_2"
-    # Cross 300s -> sleep.
-    assert plan_no_reply(310_000, expects_response=True, attempts_fired=2, timings=timings) == "sleep"
+    # Follow-ups are spaced five minutes apart and capped at three.
+    assert plan_no_reply(300_000, expects_response=True, attempts_fired=0, timings=timings) == "no_reply_1"
+    assert plan_no_reply(300_000, expects_response=True, attempts_fired=1, timings=timings) is None
+    assert plan_no_reply(600_000, expects_response=True, attempts_fired=1, timings=timings) == "no_reply_2"
+    assert plan_no_reply(900_000, expects_response=True, attempts_fired=2, timings=timings) == "no_reply_3"
+    assert plan_no_reply(900_000, expects_response=True, attempts_fired=3, timings=timings) == "sleep"
 
 
 def test_plan_no_reply_passive_silence_never_speaks() -> None:
@@ -195,6 +195,17 @@ def test_plan_no_reply_passive_silence_never_speaks() -> None:
     # Not waiting on the user: no follow-up until the long passive-sleep mark.
     assert plan_no_reply(60_000, expects_response=False, attempts_fired=0, timings=timings) is None
     assert plan_no_reply(310_000, expects_response=False, attempts_fired=0, timings=timings) == "sleep"
+
+
+def test_passive_silence_policy_spaces_callouts_and_caps_them() -> None:
+    timings = RepairTimings()
+    assert timings.followup_interval_ms == 300_000
+    assert timings.max_followups == 3
+
+
+def test_repair_timings_reject_more_followups_than_catalog_slots() -> None:
+    with pytest.raises(ValueError, match="available no-reply slots"):
+        RepairTimings(max_followups=4)
 
 
 def test_catalog_from_toml_can_be_built_standalone(tmp_path) -> None:

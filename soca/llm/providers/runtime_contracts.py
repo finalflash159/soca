@@ -66,6 +66,7 @@ class RemoteLLMError(RuntimeError):
 
     def as_dict(self) -> dict[str, Any]:
         return {
+            "message": str(self),
             "category": self.category,
             "provider": self.provider,
             "model": self.model,

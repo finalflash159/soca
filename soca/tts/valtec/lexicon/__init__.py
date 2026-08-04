@@ -17,6 +17,7 @@ from .cmu_overrides import CMU_OVERRIDE_LEXICON
 from .machine_learning import MACHINE_LEARNING_LEXICON
 from .software import SOFTWARE_LEXICON
 from .tools import TOOLS_LEXICON
+from .trend_greetings import TREND_GREETING_LEXICON
 
 # Lowercase-keyed domains, merged for lookup. Kept separate above so each
 # domain stays reviewable; duplicate keys across domains are a test failure.
@@ -58,6 +59,7 @@ __all__ = [
     "CMU_OVERRIDE_LEXICON",
     "MACHINE_LEARNING_LEXICON",
     "SOFTWARE_LEXICON",
+    "TREND_GREETING_LEXICON",
     "TOOLS_LEXICON",
     "WORD_LEXICON",
     "WORD_LEXICON_SOURCES",

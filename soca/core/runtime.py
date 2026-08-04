@@ -173,6 +173,13 @@ class RuntimeOptions:
         if not 0.0 <= self.asr_goal_repair_min_confidence <= 1.0:
             raise ValueError("asr goal repair confidence must be between zero and one")
 
+    @property
+    def effective_max_tokens(self) -> int:
+        """Return the selected output budget after the model capability cap."""
+        if self.model_max_output_tokens is not None:
+            return min(self.max_tokens, self.model_max_output_tokens)
+        return self.max_tokens
+
 
 class RuntimeToolRouter(Protocol):
     def select(self, text: str, *, knowledge_limit: int) -> ToolCall | None: ...
@@ -536,7 +543,10 @@ class AssistantRuntime:
                 raise RuntimeError(
                     "non-explicit controlled workflow requires a goal resolver model"
                 )
-            structured_goal_resolver = StructuredGoalResolver(self.llm)
+            structured_goal_resolver = StructuredGoalResolver(
+                self.llm,
+                max_tokens=self.options.effective_max_tokens,
+            )
         resolved_decision = goal_decision
         if structured_goal_resolver is not None:
             resolved_decision = structured_goal_resolver.decide(
@@ -646,7 +656,7 @@ class AssistantRuntime:
             planner = StructuredWorkflowPlanner(
                 self.llm,
                 self.tool_runtime,
-                max_tokens=min(256, self._effective_max_tokens(draft)),
+                max_tokens=self._effective_max_tokens(draft),
                 model_context_window=self.options.model_context_window,
                 model_max_output_tokens=self.options.model_max_output_tokens,
                 context_safety_margin_tokens=self.options.context_safety_margin_tokens,
@@ -707,6 +717,20 @@ class AssistantRuntime:
                 revise=revise,
                 allow_empty_plan=True,
             )
+        except RemoteLLMError as exc:
+            draft.llm_error = exc.as_dict()
+            provider_trace = getattr(self.llm, "last_call_trace", None)
+            if provider_trace is not None:
+                draft.provider_trace = provider_trace.as_dict()
+            return self._result(
+                frame,
+                draft,
+                response_text=str(exc),
+                route=RuntimeRoute.BLOCKED,
+                used_tool=bool(draft.tool_calls),
+                used_llm=True,
+                blocked=True,
+            )
         except (RuntimeError, ValueError, WorkflowSynthesisError) as exc:
             return self._blocked_result(
                 frame,
@@ -719,6 +743,20 @@ class AssistantRuntime:
         draft.workflow_status = terminal.status.value
         draft.workflow_error_code = terminal.error_code or ""
         draft.workflow_unmet_criteria = terminal.unmet_criteria
+        if (
+            terminal.status.value == "achieved"
+            and draft.evidence_completion_status == "budget_exhausted"
+        ):
+            draft.workflow_status = "insufficient_evidence"
+            draft.workflow_error_code = "evidence_completion_action_budget_exhausted"
+            return self._blocked_result(
+                frame,
+                draft,
+                reason=(
+                    "Workflow chưa xác minh đủ bằng chứng sau khi dùng hết ngân sách "
+                    "kiểm tra evidence."
+                ),
+            )
         if synthesis_result is not None:
             if synthesis_result.blocked:
                 return self._attach_workflow_terminal(synthesis_result, terminal)
@@ -732,6 +770,19 @@ class AssistantRuntime:
                 and not synthesis_result.citations
             ):
                 return self._attach_workflow_terminal(synthesis_result, terminal)
+        remote_error = terminal.metadata.get("remote_error")
+        if isinstance(remote_error, Mapping):
+            message = str(remote_error.get("message", "Remote LLM failed.")).strip()
+            draft.llm_error = dict(remote_error)
+            return self._result(
+                frame,
+                draft,
+                response_text=message,
+                route=RuntimeRoute.BLOCKED,
+                used_tool=bool(draft.tool_calls),
+                used_llm=True,
+                blocked=True,
+            )
         terminal_reason = terminal.error_code or terminal.status.value
         return self._blocked_result(
             frame,
@@ -809,10 +860,9 @@ class AssistantRuntime:
                     draft.evidence_completion_reason = decision.reason_code
                     if decision.status == "continue" and decision.call is not None:
                         if any(decision.call == item.call for item in actions):
-                            raise WorkflowRevisionError(
-                                "goal_criteria_unmet", "duplicate_completion_action"
-                            )
-                        if (
+                            draft.evidence_completion_status = "insufficient"
+                            draft.evidence_completion_reason = "duplicate_completion_action"
+                        elif (
                             draft.evidence_completion_actions
                             >= self.options.max_evidence_completion_actions
                         ):
@@ -820,16 +870,13 @@ class AssistantRuntime:
                             draft.evidence_completion_reason = (
                                 "evidence_completion_action_budget_exhausted"
                             )
-                            raise WorkflowRevisionError(
-                                "budget_exhausted",
-                                "evidence_completion_action_budget_exhausted",
+                        else:
+                            draft.evidence_completion_actions += 1
+                            return self._revision_step(
+                                decision.call,
+                                purpose="evidence_completion",
+                                sequence=len(actions) + 1,
                             )
-                        draft.evidence_completion_actions += 1
-                        return self._revision_step(
-                            decision.call,
-                            purpose="evidence_completion",
-                            sequence=len(actions) + 1,
-                        )
 
             if not completion_checked and self._can_refine_retrieval(prepared, draft):
                 refiner = getattr(self.tool_router, "refine", None)
@@ -851,7 +898,7 @@ class AssistantRuntime:
                             purpose="retrieval_refinement",
                             sequence=len(actions) + 1,
                         )
-        except WorkflowRevisionError:
+        except (RemoteLLMError, WorkflowRevisionError):
             raise
         except Exception as exc:  # noqa: BLE001 - revision is a typed controller boundary
             raise WorkflowRevisionError("revision_failed", type(exc).__name__) from exc
@@ -1316,7 +1363,11 @@ class AssistantRuntime:
         if self.llm is None:
             return text, {"status": "unavailable", "alternatives": list(alternatives)}
 
-        resolver = StructuredGoalResolver(self.llm, repair_attempts=1, max_tokens=512)
+        resolver = StructuredGoalResolver(
+            self.llm,
+            repair_attempts=1,
+            max_tokens=self.options.effective_max_tokens,
+        )
         decision = resolver.decide(
             text,
             active_goal=self._active_goal_store.current,
@@ -2681,7 +2732,6 @@ class AssistantRuntime:
                                         "enum": list(expected_citation_labels(citations)),
                                     },
                                     "minItems": 1,
-                                    "uniqueItems": True,
                                 },
                             },
                             "required": ["answer", "citations"],
@@ -3228,9 +3278,7 @@ class AssistantRuntime:
         value = manifest.get("effective_output_tokens")
         if isinstance(value, int) and value > 0:
             return value
-        if self.options.model_max_output_tokens is not None:
-            return min(self.options.max_tokens, self.options.model_max_output_tokens)
-        return self.options.max_tokens
+        return self.options.effective_max_tokens
 
     def _record_prompt_calibration(
         self,

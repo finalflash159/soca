@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from soca.app import voice_controller as voice_controller_module
 from soca.app.voice_controller import VoiceMonitorController
 from soca.asr.selection import ASRSelection
 from soca.core import ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
@@ -217,7 +218,7 @@ def test_voice_monitor_reports_microphone_level_for_nonempty_audio() -> None:
     assert level.metadata["rms"] == 0.25
 
 
-def test_voice_monitor_passive_silence_speaks_playful_call_out() -> None:
+def test_voice_monitor_passive_silence_waits_before_calling_out() -> None:
     config = make_config()
     pipeline = FakePipeline([StreamingEvent(type="asr", text="should not run")])
     fake_tts = FakeTTS()
@@ -247,22 +248,60 @@ def test_voice_monitor_passive_silence_speaks_playful_call_out() -> None:
     controller.run_loop(queue, stop_event=Event(), max_turns=1)
     events = _drain_voice_events(queue)
     event_types = [event.type for event in events]
-    repair = next(event for event in events if event.type == "repair")
-
-    # ...but SoCa still calls out the playful no_input follow-up, spoken in-worker.
+    # A fresh silent session must not speak immediately. The first callout is
+    # delayed by the configured five-minute interval.
     assert pipeline.audio_inputs == []
-    assert fake_tts.calls == [repair.text]
-    assert fake_player.play_calls == 1
-    assert event_types.count("tts") == 1
-    assert event_types.count("playback_started") == 1
-    assert event_types.count("audio") == 1
-    playback_started = next(
-        event for event in events if event.type == "playback_started"
+    assert fake_tts.calls == []
+    assert fake_player.play_calls == 0
+    assert "repair" not in event_types
+
+
+def test_voice_monitor_passive_silence_waits_five_minutes_and_stops_after_three_callouts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = make_config()
+    fake_tts = FakeTTS()
+    fake_player = FakeAudioSink()
+    bundle = make_bundle(
+        config,
+        FakePipeline([]),
+        detector=FakeDetector(has_speech=False),
+        tts=fake_tts,
     )
-    assert playback_started.metadata["audio_duration_ms"] == 10.0
-    assert playback_started.metadata["sync_granularity"] == "audio_chunk"
-    assert repair.metadata["repair_kind"] == "no_input"
-    assert repair.metadata["repair_action"] == "reprompt"
+    controller = VoiceMonitorController(
+        config,
+        runtime_builder=lambda _config, *, session_memory=None: bundle,
+        player=fake_player,  # type: ignore[arg-type]
+        warmup=False,
+    )
+    now = [0.0]
+    monkeypatch.setattr(voice_controller_module.time, "perf_counter", lambda: now[0])
+    controller._idle_started_at = 0.0
+    queue: Queue = Queue()
+    stop_event = Event()
+
+    controller._handle_passive_silence(bundle, queue, stop_event=stop_event)
+    assert fake_tts.calls == []
+
+    for minute in (5, 10, 15):
+        now[0] = minute * 60.0
+        controller._handle_passive_silence(bundle, queue, stop_event=stop_event)
+
+    events = []
+    while not queue.empty():
+        events.append(queue.get_nowait())
+    repairs = [event for event in events if event.type == "repair"]
+    assert len(repairs) == 3
+    assert repairs[-1].metadata["shutdown_after_callout"] is True
+    assert repairs[-1].metadata["callout_interval_ms"] == 300_000
+    done_events = [event for event in events if event.type == "done"]
+    assert done_events[-1].metadata["terminal_status"] == "cancelled"
+    assert stop_event.is_set()
+    assert controller._stop_reason == "passive_silence_callout_limit"
+
+    now[0] = 20 * 60.0
+    controller._handle_passive_silence(bundle, queue, stop_event=stop_event)
+    assert queue.empty()
 
 
 def test_voice_monitor_reports_runtime_error_and_traceback() -> None:

@@ -43,6 +43,7 @@ interface PendingSelection {
 
 export interface SettingsScreenProps {
   config: LlmConfigEvent | null;
+  returnMode?: "chat" | "voice";
   providers: LlmProviderStatus[];
   profiles?: StatusProfile[];
   activeProfile?: string;
@@ -169,6 +170,7 @@ function savedSummary(
 
 export function SettingsScreen({
   config,
+  returnMode = "chat",
   providers,
   profiles = [],
   activeProfile = "",
@@ -195,10 +197,10 @@ export function SettingsScreen({
     knowledgeVault !== null
       ? !knowledgeVault.initialized
         ? "knowledge"
-        : profiles.length > 0
-          ? "asr"
-          : config
-            ? "resume"
+        : config
+          ? "resume"
+          : profiles.length > 0
+            ? "asr"
             : "providers"
       : config
         ? "resume"
@@ -237,15 +239,25 @@ export function SettingsScreen({
   }, [activeProfile, profiles]);
 
   useEffect(() => {
+    if (!profileTouched.current || !profileNotice) return;
+    if (activeProfile === selectedProfileKey) {
+      setProfileNotice(`${selectedProfileKey} đã áp dụng.`);
+      return;
+    }
+    // A typed engine error replaces the optimistic pending message.
+    if (notice && !notice.startsWith("API key đã")) setProfileNotice("");
+  }, [activeProfile, notice, profileNotice, selectedProfileKey]);
+
+  useEffect(() => {
     if (setupFocusApplied.current || knowledgeVault === null) return;
     setupFocusApplied.current = true;
     setFocus(
       !knowledgeVault.initialized
         ? "knowledge"
-        : profiles.length > 0
-          ? "asr"
-          : config
-            ? "resume"
+        : config
+          ? "resume"
+          : profiles.length > 0
+            ? "asr"
             : "providers",
     );
   }, [config, knowledgeVault, profiles.length]);
@@ -360,10 +372,12 @@ export function SettingsScreen({
     }
     if (selectedProfile.key === activeProfile) {
       setProfileNotice(`${selectedProfile.key} đang được sử dụng.`);
+      setFocus("providers");
       return;
     }
     setProfileNotice(`Đang áp dụng ${selectedProfile.key}…`);
     onProfileSelect(selectedProfile.key);
+    setFocus("providers");
   }
 
   function applyKnowledgeAction(): void {
@@ -430,12 +444,8 @@ export function SettingsScreen({
       if (focus === "resume") {
         if (key.return || input === "\r" || input === "\n") onExit();
         else if (input === "a") setFocus("asr");
-        else if (
-          input === "e" ||
-          key.downArrow ||
-          key.rightArrow ||
-          key.tab
-        ) {
+        else if (key.downArrow) setFocus("asr");
+        else if (input === "e" || key.rightArrow || key.tab) {
           touched.current = true;
           setFocus("providers");
         }
@@ -579,11 +589,60 @@ export function SettingsScreen({
             width={panelWidth}
           >
             <Text color={COLOR.text}>{savedSummary(config, providers)}</Text>
+            {returnMode === "voice" && activeProfile ? (
+              <Text color={COLOR.text}>
+                {`ASR: ${activeProfile} · ${profiles.find((profile) => profile.key === activeProfile)?.asr ?? "chưa rõ"}`}
+              </Text>
+            ) : null}
             <Text color={focus === "resume" ? COLOR.alt : COLOR.muted}>
               Enter dùng lại · e hoặc ↓ để cấu hình
             </Text>
           </Panel>
         </Box>
+      ) : null}
+
+      <Box marginTop={1}>
+        <Panel
+          title="Voice ASR"
+          subtitle={focus === "asr" ? "đang chọn" : undefined}
+          variant={focus === "asr" ? "focus" : "idle"}
+          width={panelWidth}
+        >
+          {profiles.length === 0 ? (
+            <Text color={COLOR.muted}>đang kiểm tra các profile runtime…</Text>
+          ) : (
+            <Box flexDirection="column">
+              {profiles.map((profile, index) => {
+                const selected = index === selectedProfileIndex;
+                const ready = profile.status === "ok";
+                return (
+                  <Text
+                    key={profile.key}
+                    color={selected && focus === "asr" ? COLOR.accent : COLOR.text}
+                    bold={selected}
+                  >
+                    {`${selected && focus === "asr" ? ICON.pointer : " "} ${profile.key} · ${profile.asr} · `}
+                    <Text color={ready ? COLOR.good : COLOR.warn}>
+                      {ready ? "sẵn sàng" : profile.status}
+                    </Text>
+                  </Text>
+                );
+              })}
+              <Text color={COLOR.muted}>
+                {activeProfile
+                  ? `Đang dùng: ${activeProfile} · a hoặc Tab để chọn profile.`
+                  : "a hoặc Tab để chọn profile."}
+              </Text>
+            </Box>
+          )}
+        </Panel>
+      </Box>
+      {profileNotice ? (
+        <Text
+          color={profileNotice.endsWith("đã áp dụng.") ? COLOR.good : COLOR.warn}
+        >
+          {profileNotice}
+        </Text>
       ) : null}
 
       <Box marginTop={1} flexWrap="wrap">
@@ -625,44 +684,6 @@ export function SettingsScreen({
                   ? "Enter tiếp tục/xác nhận · Esc quay lại"
               : ""}
       </Text>
-
-      <Box marginTop={1}>
-        <Panel
-          title="Voice ASR"
-          subtitle={focus === "asr" ? "đang chọn" : undefined}
-          variant={focus === "asr" ? "focus" : "idle"}
-          width={panelWidth}
-        >
-          {profiles.length === 0 ? (
-            <Text color={COLOR.muted}>đang kiểm tra các profile runtime…</Text>
-          ) : (
-            <Box flexDirection="column">
-              {profiles.map((profile, index) => {
-                const selected = index === selectedProfileIndex;
-                const ready = profile.status === "ok";
-                return (
-                  <Text
-                    key={profile.key}
-                    color={selected && focus === "asr" ? COLOR.accent : COLOR.text}
-                    bold={selected}
-                  >
-                    {`${selected && focus === "asr" ? ICON.pointer : " "} ${profile.key} · ${profile.asr} · `}
-                    <Text color={ready ? COLOR.good : COLOR.warn}>
-                      {ready ? "sẵn sàng" : profile.status}
-                    </Text>
-                  </Text>
-                );
-              })}
-              <Text color={COLOR.muted}>
-                {activeProfile
-                  ? `Đang dùng: ${activeProfile} · a hoặc Tab để chọn profile.`
-                  : "a hoặc Tab để chọn profile."}
-              </Text>
-            </Box>
-          )}
-        </Panel>
-      </Box>
-      {profileNotice ? <Text color={COLOR.warn}>{profileNotice}</Text> : null}
 
       {editingGeneration && pending ? (
         <Box marginTop={1} flexDirection="column">

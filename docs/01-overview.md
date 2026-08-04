@@ -42,7 +42,7 @@ The [system map](./00-system-map.md) is the authoritative cross-module view.
 | One text turn | `soca ask` | build a text runtime and execute one request |
 | Text session | `soca chat` | repeated turns and session memory |
 | CLI voice | `soca voice` | microphone loop, audio playback and repair presentation |
-| Ink UI | `soca ui` | setup, settings, chat/voice interaction and event projection |
+| Ink UI | `soca ui` | main UI, settings, chat/voice interaction and event projection |
 | Engine protocol | `soca engine` | NDJSON command/event boundary for the UI |
 
 The UI is not a second assistant implementation. It sends commands to

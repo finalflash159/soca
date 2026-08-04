@@ -21,6 +21,7 @@ variants = [
   "Moshi moshi? Sơn Ca chưa nghe thấy gì hết á.",
   "Ơ, im ru luôn. Bạn nói lại giúp Sơn Ca một câu nha.",
   "Annyeong? Hình như mình hụt mất câu vừa rồi rồi.",
+  "Annyeonghaseyo? Sơn Ca gọi một tiếng, bạn còn đó không?",
   "Alô alô, mình nghe chưa ra. Bạn nói lại lần nữa nhé.",
   "Ủa, có ai đang nói hông ta? Mình chưa bắt được tiếng.",
   "Hế lô, Sơn Ca đây. Mình chưa nghe rõ, bạn nhắc lại nha.",
@@ -124,6 +125,13 @@ action = "no_reply_guidance"
 variants = [
   "Mình để voice ở chế độ chờ nha. Bạn nói tiếp hoặc gõ trong chat đều được.",
   "Nếu voice không tiện lúc này, bạn cứ gõ trong chat cũng được nhé.",
+]
+
+[session_inactive.no_reply_3]
+action = "no_reply_guidance"
+variants = [
+  "Mình vẫn chưa nghe thấy bạn. Đây là lần nhắc cuối, bạn mở lại voice khi sẵn sàng nha.",
+  "Mình sẽ dừng voice sau lần nhắc này. Khi cần, bạn bật lại giúp mình nhé.",
 ]
 
 [session_inactive.sleep]

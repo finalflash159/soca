@@ -23,6 +23,7 @@ from soca.core.workflow import (
     TurnBudget,
     action_fingerprint,
 )
+from soca.core.workflow.goal_resolver import _GOAL_SCHEMA
 from soca.tools import (
     SideEffectLevel,
     ToolCall,
@@ -32,6 +33,18 @@ from soca.tools import (
     ToolSpec,
     object_schema,
 )
+
+
+def _schema_keywords(schema: object) -> set[str]:
+    if isinstance(schema, dict):
+        return set(schema) | {
+            keyword
+            for value in schema.values()
+            for keyword in _schema_keywords(value)
+        }
+    if isinstance(schema, list):
+        return {keyword for value in schema for keyword in _schema_keywords(value)}
+    return set()
 
 
 @dataclass
@@ -567,6 +580,10 @@ def test_structured_goal_resolver_repairs_and_enforces_knowledge_criterion() -> 
     assert decision.model_calls == 2
 
 
+def test_goal_schema_uses_provider_portable_array_keywords() -> None:
+    assert "uniqueItems" not in _schema_keywords(_GOAL_SCHEMA)
+
+
 def test_structured_goal_resolver_rejects_unknown_success_criterion() -> None:
     invalid = (
         '{"kind":"new_goal","objective":"Tìm ghi chú",'
@@ -709,6 +726,16 @@ def test_planner_catalog_only_contains_declared_capabilities() -> None:
 
     assert "knowledge.search" in schema_text
     assert "external.lookup" not in schema_text
+
+
+def test_planner_schema_remains_valid_without_workflow_tools() -> None:
+    from soca.core.workflow.planner import plan_schema
+
+    schema = plan_schema(ToolRuntime([]))
+    step = schema["properties"]["steps"]["items"]
+
+    assert step["properties"]["tool"] == {"type": "string"}
+    assert step["properties"]["capability"] == {"type": "string"}
 
 
 def test_planner_rejects_public_update_without_action() -> None:

@@ -37,12 +37,19 @@ import { ImeTextInput } from "./imeInput.js";
 export interface AppProps {
   /** The mode the user picked on the splash / CLI. */
   target: Mode;
+  /** Explicit chat/voice launches open setup first; bare UI opens the splash. */
+  setupFirst?: boolean;
   profile?: string;
   noModel?: boolean;
   vault?: string;
   sessionPersistence?: "ram_only" | "local_resumable";
   sessionId?: string;
   resumeSession?: boolean;
+}
+
+/** Settings returns to the surface that opened it; voice is explicit. */
+export function defaultSettingsReturnMode(target: Mode): "chat" | "voice" {
+  return target === "chat" || target === "status" ? "chat" : "voice";
 }
 
 // History flows into the terminal's own scrollback via <Static> (the
@@ -61,16 +68,10 @@ function Brand({ profile }: { profile: string }) {
         <Bird />
       </Box>
       <Box marginTop={1}>
-        <Text>
-          <Wordmark />
-          <Text color={COLOR.text}>
-            {" "}
-            — trợ lý giọng nói tiếng Việt, chạy trên máy bạn.
-          </Text>
-        </Text>
+        <Text color={COLOR.text}>Trợ lý giọng nói tiếng Việt.</Text>
       </Box>
       <Text color={COLOR.muted}>
-        {profile} {ICON.dot} asr · llm · tts · barge-in, không cloud
+        {profile} {ICON.dot} asr · llm · tts · harness
       </Text>
     </Box>
   );
@@ -78,6 +79,7 @@ function Brand({ profile }: { profile: string }) {
 
 export function App({
   target,
+  setupFirst = true,
   profile,
   noModel = false,
   vault,
@@ -87,16 +89,16 @@ export function App({
 }: AppProps) {
   const { exit } = useApp();
   const rawInput = Boolean(useStdin().isRawModeSupported);
-  // Choosing chat/voice routes through Settings first so the user picks the LLM
-  // for this session; leaving Settings (Esc or picking a model) continues into
-  // that mode. status/settings targets open directly.
-  const gated = target === "chat" || target === "voice";
+  // Explicit chat/voice launches route through Settings first so the user can
+  // choose the runtime. Bare `soca ui` reaches this component after the main
+  // splash has selected chat or voice.
+  const gated = setupFirst && (target === "chat" || target === "voice");
   const initialMode: InteractiveMode = gated
     ? "settings"
     : target === "status"
       ? "chat"
       : target;
-  const homeMode: "chat" | "voice" = target === "voice" ? "voice" : "chat";
+  const homeMode = defaultSettingsReturnMode(target);
   const [state, dispatch] = useReducer(reduce, {
     ...initialState,
     mode: initialMode,
@@ -555,6 +557,7 @@ export function App({
       {state.mode === "settings" ? (
         <SettingsScreen
           config={state.llmConfig}
+          returnMode={settingsReturnMode}
           providers={state.llmProviders}
           profiles={state.profiles}
           activeProfile={state.profile}
@@ -644,6 +647,65 @@ export function App({
         llm={llm}
         remote={state.llmConfig?.backend === "remote"}
       />
+    </Box>
+  );
+}
+
+/** The stable cold-launch surface; mode selection happens before App startup. */
+export function Splash({
+  onDone,
+  rawModeSupported,
+}: {
+  onDone: (mode: Mode) => void;
+  rawModeSupported?: boolean;
+}) {
+  const rawInput = rawModeSupported ?? Boolean(useStdin().isRawModeSupported);
+  useEffect(() => {
+    if (!rawInput) onDone("chat");
+  }, [onDone, rawInput]);
+  useInput(
+    (character, key) => {
+      if (key.return) onDone("chat");
+      else if (character === "v") onDone("voice");
+      else if (character === "s") onDone("settings");
+    },
+    { isActive: rawInput },
+  );
+  const { stdout } = useStdout();
+  return (
+    <Box
+      height={Math.max(1, (stdout?.rows ?? 24) - 1)}
+      flexDirection="column"
+      justifyContent="center"
+      alignItems="center"
+    >
+      <Bird />
+      <Box marginTop={1}>
+        <Wordmark />
+      </Box>
+      <Box marginTop={1}>
+        <Text color={COLOR.text}>
+          Trợ lý giọng nói tiếng Việt — chạy trên máy bạn.
+        </Text>
+      </Box>
+      <Box>
+        <Text color={COLOR.muted}>asr · llm · tts · barge-in</Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text>
+          <Text color={COLOR.alt}>↵</Text>
+          <Text color={COLOR.muted}> chat</Text>
+          <Text color={COLOR.muted}>{`  ${ICON.dot}  `}</Text>
+          <Text color={COLOR.alt}>v</Text>
+          <Text color={COLOR.muted}> voice</Text>
+          <Text color={COLOR.muted}>{`  ${ICON.dot}  `}</Text>
+          <Text color={COLOR.alt}>s</Text>
+          <Text color={COLOR.muted}> cài đặt</Text>
+          <Text color={COLOR.muted}>{`  ${ICON.dot}  `}</Text>
+          <Text color={COLOR.alt}>^c</Text>
+          <Text color={COLOR.muted}> thoát</Text>
+        </Text>
+      </Box>
     </Box>
   );
 }

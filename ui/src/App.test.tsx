@@ -1,7 +1,7 @@
 import React from "react";
 import { render } from "ink-testing-library";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { App } from "./App.js";
+import { App, Splash, defaultSettingsReturnMode } from "./App.js";
 
 const harness = vi.hoisted(() => ({
   sent: [] as Array<Record<string, unknown>>,
@@ -296,6 +296,45 @@ describe("App slash command interaction", () => {
   beforeEach(() => {
     harness.sent.length = 0;
     harness.compactionPolls = 0;
+  });
+
+  it("returns bare setup to voice while keeping chat explicit", () => {
+    expect(defaultSettingsReturnMode("settings")).toBe("voice");
+    expect(defaultSettingsReturnMode("voice")).toBe("voice");
+    expect(defaultSettingsReturnMode("chat")).toBe("chat");
+    expect(defaultSettingsReturnMode("status")).toBe("chat");
+  });
+
+  it("keeps the cold launch on the existing main splash", async () => {
+    const onDone = vi.fn();
+    const view = render(<Splash onDone={onDone} />);
+    await tick();
+
+    expect(view.lastFrame()).toContain("asr · llm · tts · barge-in");
+    expect(view.lastFrame()).toContain("↵ chat");
+    expect(view.lastFrame()).toContain("v voice");
+
+    view.stdin.write("\r");
+    expect(onDone).toHaveBeenCalledWith("chat");
+    view.unmount();
+  });
+
+  it("does not strand the splash when raw terminal input is unavailable", async () => {
+    const onDone = vi.fn();
+    const view = render(<Splash onDone={onDone} rawModeSupported={false} />);
+    await tick();
+
+    expect(onDone).toHaveBeenCalledWith("chat");
+    view.unmount();
+  });
+
+  it("opens the bare UI on the main chat surface, not settings", async () => {
+    const view = render(<App target="chat" setupFirst={false} noModel />);
+    await tick();
+
+    expect(view.lastFrame()).toContain("╭─chat");
+    expect(view.lastFrame()).not.toContain("Cài đặt LLM");
+    view.unmount();
   });
 
   it("filters and selects commands, then dismisses info on new input", async () => {

@@ -22,15 +22,15 @@ Editable diagram source: [Lucid UI protocol](https://lucid.app/lucidchart/133d6a
 
 ```bash
 cd ui && npm install && npm run build   # một lần
-uv run soca ui                          # mở setup vault/profile trước
+uv run soca ui                          # mở main UI
 uv run soca ui voice baseline           # vào thẳng voice mode
 ```
 
 Dev UI: `cd ui && npm run dev`. Override lệnh engine: env `SOCA_ENGINE_CMD`.
 Chọn vault cho UI bằng `--vault PATH` hoặc `SOCA_VAULT`; nếu không đặt thì UI
-dùng `./Knowledge` tại root repository. Khi mở Settings lần đầu, UI hiển thị
-Knowledge Vault để init trước, sau đó chạy index rõ ràng; không tự tải model hay
-đổi backend. Ví dụ với showcase vault đã được làm giàu:
+dùng `./Knowledge` tại root repository. Gõ `/settings` để mở cấu hình; UI hiển thị
+Knowledge Vault để init trước, sau đó chạy index rõ ràng;
+không tự tải model hay đổi backend. Ví dụ với showcase vault đã được làm giàu:
 `SOCA_VAULT=eval/fixtures/knowledge_vault uv run soca ui chat`.
 
 Sau khi init, SQLite catalog và vector generations nằm dưới

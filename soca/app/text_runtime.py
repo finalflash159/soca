@@ -416,6 +416,7 @@ def build_text_runtime(
     router_config = ToolRouterConfig(
         mode=cast(ToolRouterMode, config.tool_router_mode),
         response_mode=cast(RouterResponseMode, config.tool_router_response_mode),
+        max_tokens=selected_settings.effective_max_tokens,
         semantic=SemanticRouterConfig(
             enabled=config.semantic_router_enabled,
             threshold=config.semantic_router_threshold,
@@ -449,7 +450,7 @@ def build_text_runtime(
             knowledge_builder=knowledge_builder,
             memory_builder=memory_builder,
             options=RuntimeOptions(
-                max_tokens=config.max_tokens,
+                max_tokens=selected_settings.effective_max_tokens,
                 temperature=config.temperature,
                 top_p=config.top_p,
                 knowledge_limit=config.knowledge_limit,

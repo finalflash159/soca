@@ -64,10 +64,6 @@ class VoiceRuntimeBuilder(Protocol):
 VoiceRecorder = Callable[..., np.ndarray]
 VoiceEventQueue = Queue[VoiceMonitorEvent | None]
 
-# How often SoCa playfully calls out while nobody is speaking (ms of silence
-# between greetings). Spaced so it feels like a gentle "alo?", not a nag.
-_SILENCE_CALLOUT_INTERVAL_MS = 20_000
-
 
 class VoiceMonitorController:
     """Thread-side adapter from VoicePipeline streaming events to UI events."""
@@ -105,6 +101,7 @@ class VoiceMonitorController:
         # không? / moshi moshi?" greetings (no_input.attempt_1), cycling without
         # repeats. It only winds down (sleep + handover) after a long quiet.
         self._silence_callouts_done = 0
+        self._stop_reason = ""
 
     def run_turn(self, queue: VoiceEventQueue) -> None:
         """Run one microphone turn and push normalized events to ``queue``."""
@@ -123,6 +120,12 @@ class VoiceMonitorController:
         This method is synchronous by design: it runs in one worker thread.
         Textual's main thread consumes the queue and owns all widget writes.
         """
+        # A controller instance can be reused after an explicit stop. Silence
+        # policy is session-scoped, so never carry the previous session's clock,
+        # callout budget or terminal reason into a new voice loop.
+        self._idle_started_at = None
+        self._silence_callouts_done = 0
+        self._stop_reason = ""
         turns = 0
         try:
             bundle = self._ensure_bundle(queue)
@@ -169,7 +172,11 @@ class VoiceMonitorController:
                 VoiceMonitorEvent(
                     "loop_stopped",
                     "Voice loop stopped",
-                    metadata={"turns": turns, "requested": stop_event.is_set()},
+                    metadata={
+                        "turns": turns,
+                        "requested": stop_event.is_set(),
+                        "stop_reason": self._stop_reason,
+                    },
                 )
             )
         except Exception as exc:  # pragma: no cover - terminal/runtime boundary
@@ -487,22 +494,16 @@ class VoiceMonitorController:
             self._idle_started_at = time.perf_counter()
         silence_ms = (time.perf_counter() - self._idle_started_at) * 1000
 
-        # After a long quiet stretch, gently wind down: sleep + hand over to chat.
-        if silence_ms >= self.repair_timings.sleep_voice_at_ms:
-            choice = self.repair_catalog.select(
-                RepairKind.SESSION_INACTIVE,
-                "sleep",
-                rng=self._no_reply_rng,
-                recent_ids=tuple(self._recent_no_reply_prompt_ids),
-            )
-            self._recent_no_reply_prompt_ids.append(choice.prompt_id)
-            self._speak_no_reply_choice(
-                bundle, queue, choice, silence_ms=silence_ms, stop_event=stop_event
-            )
+        max_callouts = self.repair_timings.max_followups
+        if self._silence_callouts_done >= max_callouts:
+            self._stop_reason = "passive_silence_callout_limit"
+            if stop_event is not None:
+                stop_event.set()
             return
 
         # Not time for the next call-out yet → keep listening quietly.
-        if silence_ms < self._silence_callouts_done * _SILENCE_CALLOUT_INTERVAL_MS:
+        next_callout_at_ms = (self._silence_callouts_done + 1) * self.repair_timings.followup_interval_ms
+        if silence_ms < next_callout_at_ms:
             return
 
         # Playful presence check: cycle the no_input.attempt_1 greetings
@@ -530,6 +531,10 @@ class VoiceMonitorController:
     ) -> None:
         turn_start = time.perf_counter()
         leaves_voice = choice.action in (RepairAction.SLEEP_VOICE, RepairAction.HANDOVER_TO_CHAT)
+        shutdown_after_callout = (
+            choice.kind is RepairKind.NO_INPUT
+            and self._silence_callouts_done >= self.repair_timings.max_followups
+        )
         handover_target = "chat" if leaves_voice else None
         metadata = {
             "repair_kind": choice.kind.value,
@@ -538,6 +543,9 @@ class VoiceMonitorController:
             "handover_target": handover_target,
             "technical_reason": "passive_silence",
             "silence_ms": silence_ms,
+            "shutdown_after_callout": shutdown_after_callout,
+            "callout_interval_ms": self.repair_timings.followup_interval_ms,
+            "max_callouts": self.repair_timings.max_followups,
         }
         queue.put(VoiceMonitorEvent("repair", choice.text, metadata=metadata))
 
@@ -589,13 +597,19 @@ class VoiceMonitorController:
                 latency_ms=(time.perf_counter() - turn_start) * 1000,
                 metadata={
                     "rejected": True,
-                    "terminal_status": "cancelled" if leaves_voice else "needs_clarification",
+                    "terminal_status": (
+                        "cancelled"
+                        if leaves_voice or shutdown_after_callout
+                        else "needs_clarification"
+                    ),
                     "rejection_reason": "passive_silence",
                     **metadata,
                 },
             )
         )
-        if leaves_voice and stop_event is not None:
+        if shutdown_after_callout:
+            self._stop_reason = "passive_silence_callout_limit"
+        if (leaves_voice or shutdown_after_callout) and stop_event is not None:
             stop_event.set()
 
 

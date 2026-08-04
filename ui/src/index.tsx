@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { render } from "ink";
-import { App } from "./App.js";
+import { App, Splash } from "./App.js";
+import { enterAlternateScreen } from "./terminalScreen.js";
 import type { Mode } from "./store.js";
 
 interface CliArgs {
@@ -61,10 +62,10 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 function Root({ args }: { args: CliArgs }) {
-  // A bare launch opens the setup surface first. It reports whether the
-  // repository Knowledge vault is initialized and keeps chat/voice behind the
-  // same explicit settings gate as the quick chat/voice forms.
-  const [target] = useState<Mode>(args.mode ?? "settings");
+  // A bare launch shows the main splash. Choosing a surface then enters the
+  // same settings gate as an explicit chat/voice launch.
+  const [target, setTarget] = useState<Mode | null>(args.mode);
+  if (target === null) return <Splash onDone={setTarget} />;
   return (
     <App
       target={target}
@@ -79,4 +80,15 @@ function Root({ args }: { args: CliArgs }) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-render(<Root args={args} />, { exitOnCtrlC: true });
+const leaveAlternateScreen = enterAlternateScreen(process.stdout);
+let cleanedUp = false;
+const cleanupTerminal = () => {
+  if (cleanedUp) return;
+  cleanedUp = true;
+  process.removeListener("exit", cleanupTerminal);
+  leaveAlternateScreen();
+};
+process.once("exit", cleanupTerminal);
+
+const ink = render(<Root args={args} />, { exitOnCtrlC: true });
+void ink.waitUntilExit().finally(cleanupTerminal);

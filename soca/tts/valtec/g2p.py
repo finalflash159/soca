@@ -331,7 +331,12 @@ class ValtecVietnameseFrontend:
         if configured_language is not None and int(configured_language) != artifacts.language_id_vi:
             raise ValueError("Valtec manifest/config Vietnamese language id mismatch")
         foreign: ForeignG2P | None = None
-        overrides: dict[str, str] = {}
+        from .lexicon import TREND_GREETING_LEXICON
+
+        # These short foreign greetings appear in the repair catalog. Keep
+        # their user-facing spelling, but give Valtec a measured pronunciation
+        # override even when optional g2p_en is not provisioned.
+        overrides: dict[str, str] = dict(TREND_GREETING_LEXICON)
         if config.get("foreign_g2p") == "g2p_en":
             from .foreign_g2p import ChainedForeignG2P
             from .foreign_g2p_en import G2pEnBackend
@@ -340,7 +345,7 @@ class ValtecVietnameseFrontend:
             # Curated entries first: g2p_en cannot derive brand pronunciations
             # from spelling, so its guess must never shadow a known reading.
             foreign = ChainedForeignG2P((LexiconBackend(), G2pEnBackend()))
-            overrides = dict(CMU_OVERRIDE_LEXICON)
+            overrides.update(CMU_OVERRIDE_LEXICON)
         return cls(
             ValtecTextNormalizer(),
             PortableVietnameseG2P(

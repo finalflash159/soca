@@ -73,38 +73,46 @@ def test_llm_router_prompt_exposes_inspect_as_navigation_not_evidence() -> None:
     assert "even when the subject also names a folder" in prompt
 
 
-def test_route_schema_binds_each_handler_to_its_argument_contract() -> None:
+def test_route_schema_is_strict_without_unsupported_root_union() -> None:
     tools = ToolRuntime([ReadOnlyInspectTool(), ReadOnlySearchTool()])
     schema = build_route_decision_schema(tools.list_specs(include_disabled=False))
-    search_branch = next(
-        branch
-        for branch in schema["oneOf"]
-        if branch["properties"]["handler"].get("const") == "knowledge.search"
-    )
-    inspect_branch = next(
-        branch
-        for branch in schema["oneOf"]
-        if branch["properties"]["handler"].get("const") == "knowledge.inspect"
-    )
+    assert "oneOf" not in schema
+    assert schema["properties"]["route"]["enum"] == [
+        "direct_tool",
+        "retrieval_request",
+        "smalltalk",
+        "out_of_scope",
+        "unresolved",
+    ]
+    assert schema["properties"]["handler"] == {"type": ["string", "null"]}
+    assert schema["properties"]["arguments"]["required"] == ["limit", "query"]
+    assert schema["properties"]["arguments"]["properties"]["query"]["type"] == [
+        "string",
+        "null",
+    ]
 
-    assert search_branch["properties"]["arguments"]["required"] == ["query"]
-    assert inspect_branch["properties"]["arguments"]["required"] == []
-    assert search_branch["properties"]["sources"]["maxItems"] == 0
+    parsed = parse_route_decision(
+        '{"route":"retrieval_request","handler":"knowledge.search",'
+        '"arguments":{"query":"attention"},"sources":["knowledge"]}',
+        max_chars=512,
+    )
+    assert parsed.arguments == {}
+    assert parsed.handler is None
 
 
 def test_evidence_completion_contract_binds_continuation_to_a_tool_schema() -> None:
     tools = ToolRuntime([ReadOnlyInspectTool(), ReadOnlySearchTool()])
     schema = build_evidence_completion_schema(tools.list_specs(include_disabled=False))
-    search_branch = next(
-        branch
-        for branch in schema["oneOf"]
-        if branch["properties"]["handler"].get("const") == "knowledge.search"
-    )
-
-    assert search_branch["properties"]["arguments"]["required"] == ["query"]
+    assert "oneOf" not in schema
+    assert schema["properties"]["status"]["enum"] == [
+        "complete",
+        "continue",
+        "insufficient",
+    ]
+    assert schema["properties"]["arguments"]["required"] == ["limit", "query"]
     decision = parse_evidence_completion(
         '{"status":"continue","handler":"knowledge.search",'
-        '"arguments":{"query":"attention","limit":3},'
+        '"arguments":{"query":"attention","limit":null},'
         '"reason_code":"coverage_gap"}',
         max_chars=512,
     )
@@ -112,12 +120,7 @@ def test_evidence_completion_contract_binds_continuation_to_a_tool_schema() -> N
     assert decision.call is not None
     assert decision.call.arguments["query"] == "attention"
 
-    inspect_branch = next(
-        branch
-        for branch in schema["oneOf"]
-        if branch["properties"].get("handler", {}).get("const") == "knowledge.inspect"
-    )
-    assert inspect_branch["properties"]["arguments"]["required"] == []
+    assert decision.call.arguments == {"query": "attention"}
 
 
 def test_evidence_completion_contract_does_not_offer_memory_actions() -> None:

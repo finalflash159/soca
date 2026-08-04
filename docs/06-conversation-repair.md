@@ -96,36 +96,41 @@ flowchart TD
     REC[record window] --> VAD{VAD sees speech?}
     VAD -->|yes| PIPE["run pipeline normally<br/>reset silence clock"]
     VAD -->|no| SIL[silence_ms += window]
-    SIL --> LONG{"silence &gt;= sleep_voice_at_ms<br/>(~5 minutes)?"}
-    LONG -->|yes| SLEEP["session_inactive.sleep<br/>+ hand over to chat + stop loop"]
-    LONG -->|no| DUE{"call-out interval due?<br/>about every 20 seconds"}
+    SIL --> LIMIT{"three callouts used?"}
+    LIMIT -->|yes| STOP["stop voice<br/>passive_silence_callout_limit"]
+    LIMIT -->|no| DUE{"follow-up interval due?<br/>five minutes"}
     DUE -->|no| WAIT[keep listening]
     DUE -->|yes| CALL["no_input.attempt_1<br/>alo · moshi moshi · annyeong<br/>cycle no-repeat → speak through TTS"]
 ```
 
 Behavior:
 
-- The first passive-silence check can call out immediately after the first empty
-  recording window. Later call-outs are spaced by
-  `_SILENCE_CALLOUT_INTERVAL_MS` (20 seconds by default), not by an ASR turn.
-  The catalog cycles through multiple greetings without immediate repetition.
+- A fresh passive-silence session stays quiet for five minutes before its first
+  call-out. Later call-outs are spaced by the same five-minute interval, not by
+  an ASR turn. The catalog cycles through multiple greetings without immediate
+  repetition.
 - Lines like "I did not hear that clearly" or "move closer to the mic" are only
   for speech-that-was-not-understood, not for pure silence.
-- After roughly **5 minutes** of full silence, the loop winds down: "I'll pause
-  voice for now..." then hands over to chat and stops the voice loop.
-- Constants: `_SILENCE_CALLOUT_INTERVAL_MS` for call-out cadence and
-  `RepairTimings.sleep_voice_at_ms` for sleep.
+- The controller allows at most three passive-silence call-outs, at roughly 5,
+  10 and 15 minutes. The third call-out is the last spoken prompt; after its
+  playback the voice loop stops with the observable reason
+  `passive_silence_callout_limit`. It does not emit a fourth spoken fallback.
+- The policy is configured by `RepairTimings.followup_interval_ms` and
+  `RepairTimings.max_followups`; the controller publishes both values in
+  repair metadata and publishes the stop reason in `loop_stopped`.
+- Trend greetings such as `moshi`, `annyeong` and `yeoboseyo` remain visible in
+  repair text. Valtec pronunciation overrides map them to checkpoint-safe IPA
+  before synthesis, so TTS does not spell the Latin letters one by one. The
+  override is local, deterministic and covered by the trained inventory gate.
 
 ### `plan_no_reply`: Pure Policy Ladder
 
 `plan_no_reply(silence_ms, expects_response, attempts_fired, timings)` is a
-pure, unit-tested policy ladder from the design: 45 s / 120 s / 300 s. It
-distinguishes "SoCa is waiting for a user reply" from "passive silence." The
-current production controller does **not** call this function; it uses
-`VoiceMonitorController._handle_passive_silence()` and the 20-second playful
-call-out behavior above. This function is retained as an independently tested
-policy primitive for a future controller integration, not as evidence that the
-45/120-second ladder is active in the TUI.
+pure, unit-tested policy ladder. When a response is expected, it yields at most
+three slots at five-minute boundaries and then returns `sleep`; when no response
+is expected, it never speaks and only returns `sleep` at the passive-sleep mark.
+The production controller uses the same timing budget directly through
+`VoiceMonitorController._handle_passive_silence()`.
 
 ## Repair events, ordering and handover
 
@@ -165,11 +170,12 @@ repair → tts → playback_started → audio → done
 ```
 
 Its metadata includes `technical_reason=passive_silence`, `silence_ms`,
-`repair_kind`, `repair_action`, `repair_attempt` and `handover_target`. It calls
-TTS directly, skips ASR/LLM, and sets `stop_event` after a
-`session_inactive.sleep` choice so the controller leaves voice and returns to
-chat. A normal call-out ends with `terminal_status=needs_clarification`; the
-sleep handover ends with `terminal_status=cancelled`.
+`repair_kind`, `repair_action`, `repair_attempt`, `handover_target`, the timing
+budget and `shutdown_after_callout`. It calls TTS directly, skips ASR/LLM, and
+sets `stop_event` after the third call-out so the controller leaves voice. A
+normal call-out ends with `terminal_status=needs_clarification`; the final
+call-out ends with `terminal_status=cancelled` and the explicit
+`passive_silence_callout_limit` stop reason.
 
 UI handling is the same at the presentation level:
 

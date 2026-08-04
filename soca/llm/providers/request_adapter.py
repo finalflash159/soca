@@ -59,7 +59,13 @@ class ProviderRequestAdapter:
         return {
             "extra_body": {
                 "provider": {
-                    "require_parameters": True,
+                    # Keep the selected model and explicit no-fallback policy,
+                    # but do not force OpenRouter's provider-level
+                    # `require_parameters` filter here. Some live model
+                    # catalogs advertise response_format while their eligible
+                    # endpoint rejects that routing filter with HTTP 404. The
+                    # response is still schema-validated by the local parser;
+                    # unsupported output is a typed failure, never a fallback.
                     "data_collection": "deny" if zero_data_retention else "allow",
                 }
             }
