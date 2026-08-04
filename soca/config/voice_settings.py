@@ -43,25 +43,35 @@ def save_voice_profile(profile: str, path: Path | None = None) -> None:
     if not isinstance(profile, str) or not profile.strip():
         raise ValueError("voice profile phải là chuỗi không rỗng.")
     path = path or default_voice_settings_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
     contents = json.dumps({"profile": profile}, ensure_ascii=False, indent=2) + "\n"
-    file_descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", dir=path.parent, text=True
-    )
-    temporary_path = Path(temporary_name)
+    file_descriptor: int | None = None
+    temporary_path: Path | None = None
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        file_descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", dir=path.parent, text=True
+        )
+        temporary_path = Path(temporary_name)
         with os.fdopen(file_descriptor, "w", encoding="utf-8") as output:
+            file_descriptor = None
             output.write(contents)
             output.flush()
             os.fsync(output.fileno())
         os.chmod(temporary_path, 0o600)
         os.replace(temporary_path, path)
-        os.chmod(path, 0o600)
     except OSError as exc:
+        if file_descriptor is not None:
+            try:
+                os.close(file_descriptor)
+            except OSError:
+                pass
         raise ValueError(f"Không thể lưu voice settings tại {path}: {exc}") from exc
     finally:
-        if temporary_path.exists():
-            temporary_path.unlink(missing_ok=True)
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 __all__ = [

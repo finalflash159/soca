@@ -126,6 +126,11 @@ def _apply_env_overrides(config: EndpointConfig) -> EndpointConfig:
             changes[fld] = int(value)
     return replace(config, **changes) if changes else config
 
+
+def effective_endpoint_config(config: EndpointConfig | None = None) -> EndpointConfig:
+    """Return the endpoint configuration after process-level tuning overrides."""
+    return _apply_env_overrides(config or EndpointConfig())
+
 def should_stop_recording(
     speech_timestamps: list[dict[str, int]],
     total_samples: int,
@@ -193,7 +198,7 @@ def record_until_silence(
     partial_transcriber=None,
     stream_factory=None,
 ) -> np.ndarray:
-    config = _apply_env_overrides(config or EndpointConfig())
+    config = effective_endpoint_config(config)
     stream_factory = stream_factory or sd.InputStream
     n_block_samples = block_samples(config)
     max_samples = int(config.sample_rate * config.max_record_ms / 1000)

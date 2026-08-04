@@ -25,6 +25,18 @@ def test_voice_profile_round_trips_with_private_permissions(tmp_path):
     assert json.loads(path.read_text(encoding="utf-8")) == {"profile": "qwen-release"}
 
 
+def test_voice_profile_save_wraps_config_directory_errors(tmp_path, monkeypatch):
+    path = tmp_path / "voice.json"
+
+    def fail_mkdir(*_args, **_kwargs):
+        raise PermissionError("read-only config")
+
+    monkeypatch.setattr(path.parent.__class__, "mkdir", fail_mkdir)
+
+    with pytest.raises(ValueError, match="Không thể lưu voice settings"):
+        save_voice_profile("qwen-release", path)
+
+
 @pytest.mark.parametrize(
     "payload",
     [

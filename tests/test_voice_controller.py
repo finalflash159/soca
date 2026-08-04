@@ -130,6 +130,19 @@ def make_bundle(
     )
 
 
+def test_voice_controller_reports_effective_endpoint_overrides(monkeypatch):
+    monkeypatch.setenv("SOCA_ENDPOINT_FLOOR_MS", "2100")
+    monkeypatch.setenv("SOCA_ENDPOINT_CEIL_MS", "3600")
+    config = make_config()
+    bundle = make_bundle(config, FakePipeline([]))
+    controller = VoiceMonitorController(config, warmup=False)
+
+    effective = controller._endpoint_config(bundle)
+
+    assert effective.floor_silence_ms == 2100
+    assert effective.ceil_silence_ms == 3600
+
+
 def test_runtime_bundle_closes_llm_and_tts_handles() -> None:
     class CloseSpy:
         def __init__(self) -> None:

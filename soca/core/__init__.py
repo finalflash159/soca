@@ -25,7 +25,13 @@ from .context_budget import (
     capability_from_values,
     token_counter_from_engine,
 )
-from .endpoint import EndpointConfig, block_samples, record_until_silence, should_stop_recording
+from .endpoint import (
+    EndpointConfig,
+    block_samples,
+    effective_endpoint_config,
+    record_until_silence,
+    should_stop_recording,
+)
 from .guardrails import (
     GuardrailAction,
     GuardrailEvent,
@@ -222,6 +228,7 @@ __all__ = [
     "source_profile",
     "validate_route_fields",
     "EndpointConfig",
+    "effective_endpoint_config",
     "GuardrailAction",
     "GuardrailEvent",
     "GuardrailPolicy",

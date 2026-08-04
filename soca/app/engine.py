@@ -2220,16 +2220,16 @@ class SocaEngine:
                 detail=readiness.detail,
             )
             return
+        if not self._invalidate_voice_runtime():
+            return
         try:
             self.voice_profile_saver(profile_key)
-        except ValueError as exc:
+        except (OSError, ValueError) as exc:
             self._error(
                 "Không thể lưu voice profile đã chọn.",
                 code="voice_profile_persist_failed",
                 detail=str(exc),
             )
-            return
-        if not self._invalidate_voice_runtime():
             return
         self.voice_config = dataclasses.replace(
             self.voice_config,

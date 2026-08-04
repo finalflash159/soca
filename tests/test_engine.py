@@ -308,7 +308,7 @@ def test_engine_blocks_runtime_when_saved_llm_settings_are_invalid() -> None:
     assert chat["status"] == "invalid"
 
 
-def test_voice_profile_selection_persists_before_runtime_state_changes(monkeypatch) -> None:
+def test_voice_profile_selection_invalidates_before_persisting(monkeypatch) -> None:
     from types import SimpleNamespace
 
     from soca.app.engine import SocaEngine, _ProtocolWriter
@@ -343,6 +343,88 @@ def test_voice_profile_selection_persists_before_runtime_state_changes(monkeypat
     assert instance.profile == "qwen-release"
     assert instance.voice_config is not None
     assert instance.voice_config.profile_key == "qwen-release"
+
+
+def test_voice_profile_selection_does_not_persist_when_invalidation_fails(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from soca.app.engine import SocaEngine, _ProtocolWriter
+
+    selected: list[str] = []
+    fake_profile = SimpleNamespace(
+        key="qwen-release",
+        asr=ASRSelection.phowhisper("phowhisper_base"),
+        asr_model="phowhisper_base",
+    )
+    monkeypatch.setattr(
+        "soca.app.engine.get_voice_runtime_profile",
+        lambda _key: fake_profile,
+    )
+    monkeypatch.setattr(
+        "soca.app.profiles.asr_readiness",
+        lambda _selection: SimpleNamespace(ok=True, status="ok", detail="ready"),
+    )
+
+    instance = SocaEngine(
+        voice_config=make_voice_config(),
+        text_config=make_text_config(),
+        profile="baseline",
+        writer=_ProtocolWriter(ProtocolCapture()),
+        warmup_voice=False,
+        voice_profile_saver=selected.append,
+    )
+    monkeypatch.setattr(instance, "_invalidate_voice_runtime", lambda: False)
+
+    instance._cmd_voice_profile_select({"profile": "qwen-release"})
+
+    assert selected == []
+    assert instance.profile == "baseline"
+    assert instance.voice_config is not None
+    assert instance.voice_config.profile_key == "baseline"
+
+
+def test_voice_profile_selection_surfaces_oserror_without_applying(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from soca.app.engine import SocaEngine, _ProtocolWriter
+
+    fake_profile = SimpleNamespace(
+        key="qwen-release",
+        asr=ASRSelection.phowhisper("phowhisper_base"),
+        asr_model="phowhisper_base",
+    )
+    monkeypatch.setattr(
+        "soca.app.engine.get_voice_runtime_profile",
+        lambda _key: fake_profile,
+    )
+    monkeypatch.setattr(
+        "soca.app.profiles.asr_readiness",
+        lambda _selection: SimpleNamespace(ok=True, status="ok", detail="ready"),
+    )
+
+    capture = ProtocolCapture()
+
+    def fail_save(_profile: str) -> None:
+        raise PermissionError("read-only config")
+
+    instance = SocaEngine(
+        voice_config=make_voice_config(),
+        text_config=make_text_config(),
+        profile="baseline",
+        writer=_ProtocolWriter(capture),
+        warmup_voice=False,
+        voice_profile_saver=fail_save,
+    )
+
+    instance._cmd_voice_profile_select({"profile": "qwen-release"})
+
+    assert instance.profile == "baseline"
+    assert instance.voice_config is not None
+    assert instance.voice_config.profile_key == "baseline"
+    assert any(
+        event.get("code") == "voice_profile_persist_failed"
+        for event in capture.events()
+    )
 
 
 class _FakeAssistantRuntime:
