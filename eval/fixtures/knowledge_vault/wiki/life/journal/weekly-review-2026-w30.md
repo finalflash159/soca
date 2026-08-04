@@ -4,52 +4,57 @@ period: 2026-W30
 status: complete
 created: 2026-07-27
 updated: 2026-07-29
-tags: [journal, weekly-review, actual, planned, reflection]
+tags: [journal, tổng-kết-tuần, học, tiền, sức-khỏe]
 source_kind: redacted-personal-note
 ---
 
-# Review tuần 30/2026
+# Review tuần 30 (20/07 – 26/07)
 
-## Đã làm và evidence tương ứng
+Viết vào sáng thứ hai 27/07, đọc lại nhật ký cả tuần rồi mới viết chứ không viết
+theo trí nhớ. Trí nhớ toàn giữ lại mấy ngày tệ.
 
-| Việc | Evidence | Trạng thái |
-| --- | --- | --- |
-| ôn Bayes bằng bảng đếm | journal 20/07 + learning note | complete |
-| kiểm tra pipeline ONNX | journal 23/07 | complete, metric chưa đủ |
-| cập nhật food receipt | receipt ledger | complete-to-28/07 |
-| nghe lại TTS và ghi trade-off | decision TTS | complete, confidence medium |
-| dọn cấu trúc vault | journal 27/07 + decision | complete |
-| kiểm empty retrieval/compact | journal 28/07 | observed, còn remediation |
+## Tuần này đã làm được gì
 
-“Đã làm” ở bảng này chỉ nói activity có record. “Đã hiểu” cần một ví dụ tự giải
-thích và một câu hỏi phản biện; “đã benchmark” cần repetition và artifact.
+- Học lại Bayes bằng cách đếm tay trên 10.000 người. Cuối cùng cũng hiểu chỗ mẫu số.
+- Sửa được cái bug ONNX làm kết quả lệch. Nguyên nhân là chuẩn hóa input sai.
+- Đọc được nửa paper thầy gửi.
+- Gặp Nam, nghe nó kể chuyện đi làm. Học được cách kể về dự án.
+- Viết lại phần dự án trong CV bốn lần.
 
-## Chưa hoàn tất
+## Chưa làm được
 
-- chưa có benchmark release độc lập cho retrieval;
-- chưa có kết luận cuối về embedding model;
-- chưa chạy đủ cold/warm repetition cho ONNX/TTS;
-- chưa đối chiếu hai receipt lunch pending;
-- chưa biết summary compact có giữ mọi uncertainty trong mọi case;
-- chưa kiểm hết câu query voice nói sai chính tả.
+- Chưa đọc xong paper.
+- Chưa đi tập buổi nào trong tuần 30. Nghỉ tổng cộng mười ngày rồi.
+- Chưa động tới vụ luyện nói tiếng Anh dù đã định từ đầu tháng.
 
-## Tuần tới
+## Tiền
 
-1. học thêm network/security/data pipeline;
-2. chạy query “tuần trước tôi học gì” và xem loại source;
-3. khóa food ledger ngày 31/07;
-4. thử TTS bằng câu code-mix và barge-in;
-5. thêm correction note nếu summary làm mất trạng thái unknown;
-6. giữ benchmark release tách khỏi showcase corpus.
+Ăn uống tới hết tuần khoảng 1 triệu 5 trên trần 2 triệu 4. Đang trong tầm kiểm
+soát. Khoản đội lên là mấy bữa trưa ăn ngoài — quán gần trường tăng giá.
 
-## Điều tôi muốn assistant giữ khi tóm tắt
+Cà phê gặp bạn để riêng, tuần này 70 nghìn.
 
-Nếu nguồn là journal, nói đó là việc đã ghi trong ngày. Nếu nguồn là learning,
-đó là cách tôi hiểu khái niệm. Nếu nguồn là plan, giữ “dự kiến”. Nếu không có
-record, nói chưa tìm thấy. Một câu gần đúng loại evidence vẫn là câu trả lời sai.
+## Sức khỏe
 
-## Cách tôi review tuần sau
+Ngủ thất thường. Đêm 22 chỉ được gần 6 tiếng, hôm sau uể oải cả ngày. Mấy đêm
+còn lại khá hơn.
 
-Mỗi mục phải có path, trạng thái, failure và bước tiếp theo. Tôi không dùng một
-con số tổng để che những mục còn unknown. Nếu thay đổi cấu trúc note, tôi ghi
-change log để query cũ không âm thầm trỏ vào câu chuyện khác.
+Ngồi máy nhiều, lưng bắt đầu mỏi.
+
+## Điều rút ra
+
+Cái tật lớn nhất tuần này: nghi ngờ đúng chỗ nhưng lại đi kiểm tra chỗ khác
+trước. Vụ ONNX mất ba tiếng chỉ vì vậy.
+
+Còn chuyện với Nam làm mình nhận ra mình hay kể việc mình *làm gì*, chứ ít khi
+nói được *tại sao khó* và *tại sao chọn cách này*. Phần đó mới là phần người
+nghe quan tâm.
+
+## Tuần sau muốn gì
+
+- Viết ba câu hỏi cho đồ án (thầy dặn).
+- Quay lại phòng gym, ít nhất hai buổi.
+- Nộp hồ sơ trước thứ sáu.
+- Đọc nốt paper.
+
+Không đặt thêm gì nữa. Mấy tuần trước cứ liệt kê tám chín món rồi làm được ba.
