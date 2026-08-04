@@ -126,6 +126,51 @@ class RepairLLM:
         )
 
 
+@dataclass
+class StructuredRepairLLM:
+    structured_response: str
+    plain_response: str
+    structured_calls: int = 0
+    plain_calls: int = 0
+
+    def generate_structured(self, user_msg: str, **kwargs: object):
+        del user_msg, kwargs
+        self.structured_calls += 1
+        from soca.llm import LLMResult
+
+        return LLMResult(
+            text=self.structured_response,
+            prompt="planner-structured",
+            n_prompt_tokens=1,
+            n_completion_tokens=1,
+            ttft_ms=0,
+            total_latency_ms=0,
+            tokens_per_second=1,
+        )
+
+    def generate(
+        self,
+        user_msg: str,
+        max_tokens: int = 128,
+        temperature: float = 0.7,
+        top_p: float = 0.95,
+        inject_persona: bool = True,
+    ):
+        del user_msg, max_tokens, temperature, top_p, inject_persona
+        self.plain_calls += 1
+        from soca.llm import LLMResult
+
+        return LLMResult(
+            text=self.plain_response,
+            prompt="planner-repair",
+            n_prompt_tokens=1,
+            n_completion_tokens=1,
+            ttft_ms=0,
+            total_latency_ms=0,
+            tokens_per_second=1,
+        )
+
+
 def make_goal() -> GoalContract:
     return GoalContract(goal_id="goal-1", objective="Tìm ghi chú Bayes")
 
@@ -656,6 +701,26 @@ def test_structured_planner_repairs_once_and_debits_each_model_call() -> None:
 
     assert plan.steps[0].call.name == "knowledge.search"
     assert calls == 2
+
+
+def test_structured_planner_repairs_provider_shape_with_plain_json() -> None:
+    runtime = ToolRuntime([ScriptedTool([])])
+    valid = (
+        '{"steps":[{"action_id":"a1","tool":"knowledge.search",'
+        '"capability":"knowledge_search","arguments":{"query":"Bayes"},'
+        '"purpose":"retrieve","expected_observation":"matching note",'
+        '"required":true,"requires_authorization":false}],'
+        '"public_update":""}'
+    )
+    llm = StructuredRepairLLM('{"steps":[{"action_id":"{"}]}', valid)
+    from soca.core.workflow import StructuredWorkflowPlanner
+
+    planner = StructuredWorkflowPlanner(llm, runtime, repair_attempts=1)
+    plan = planner.plan("Tìm ghi chú Bayes")
+
+    assert plan.steps[0].call.name == "knowledge.search"
+    assert llm.structured_calls == 1
+    assert llm.plain_calls == 1
 
 
 def test_structured_planner_clamps_output_to_model_capability() -> None:

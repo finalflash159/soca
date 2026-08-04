@@ -250,7 +250,7 @@ class StructuredWorkflowPlanner:
             prompt = self._prompt(goal)
         except PromptBudgetError as exc:
             raise PlanOutputError("context_budget_exceeded") from exc
-        raw = self._generate(prompt)
+        raw = self._generate(prompt, structured=True)
         try:
             return parse_action_plan(
                 raw,
@@ -267,17 +267,23 @@ class StructuredWorkflowPlanner:
                 repair_prompt = self._prompt(
                     goal,
                     repair_code=first_error.code,
+                    previous_output=raw,
                 )
             except PromptBudgetError as exc:
                 raise PlanOutputError("context_budget_exceeded") from exc
-            repaired = self._generate(repair_prompt)
+            # Some OpenAI-compatible endpoints advertise JSON Schema but emit
+            # malformed or cross-tool arguments for this nested plan contract.
+            # The bounded repair is deliberately a plain-JSON call with the
+            # same model and dynamic catalog, so the local parser remains the
+            # authority without silently switching provider/model/logic.
+            repaired = self._generate(repair_prompt, structured=False)
             return parse_action_plan(
                 repaired,
                 self.tool_runtime,
                 max_actions=self.max_actions,
             )
 
-    def _generate(self, prompt: str) -> str:
+    def _generate(self, prompt: str, *, structured: bool) -> str:
         max_tokens = self.max_tokens
         if self.last_prompt_manifest is not None:
             effective = self.last_prompt_manifest.get("effective_output_tokens")
@@ -285,7 +291,7 @@ class StructuredWorkflowPlanner:
                 max_tokens = effective
         if self._model_call_hook is not None:
             self._model_call_hook()
-        if isinstance(self.llm, StructuredLLMEngine):
+        if structured and isinstance(self.llm, StructuredLLMEngine):
             result = self.llm.generate_structured(
                 prompt,
                 schema_name="soca_workflow_plan",
@@ -328,7 +334,13 @@ class StructuredWorkflowPlanner:
             )
         manifest["provider_completion_tokens"] = int(getattr(result, "n_completion_tokens", 0) or 0)
 
-    def _prompt(self, goal: str, *, repair_code: str = "") -> str:
+    def _prompt(
+        self,
+        goal: str,
+        *,
+        repair_code: str = "",
+        previous_output: str = "",
+    ) -> str:
         catalog = [
             {
                 "name": spec.name,
@@ -377,6 +389,29 @@ class StructuredWorkflowPlanner:
                     "Previous plan failed validation with code: "
                     + repair_code
                     + ". Return only valid JSON matching the schema.",
+                    priority=0,
+                    required=True,
+                )
+            )
+            components.append(
+                PromptComponent(
+                    "repair_contract",
+                    "\n".join(
+                        [
+                            "Return exactly one JSON object and no prose.",
+                            "The top-level keys must be steps and public_update.",
+                            "Every step must contain action_id, tool, capability, arguments, purpose, expected_observation, required and requires_authorization.",
+                            "The selected tool and its arguments must match the catalog; do not copy arguments belonging to another tool.",
+                            "Schema contract: "
+                            + json.dumps(
+                                plan_schema(self.tool_runtime, max_actions=self.max_actions),
+                                ensure_ascii=False,
+                                sort_keys=True,
+                            ),
+                            "Previous output (untrusted; repair it, do not explain it): "
+                            + previous_output,
+                        ]
+                    ),
                     priority=0,
                     required=True,
                 )
