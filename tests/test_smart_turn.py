@@ -38,10 +38,17 @@ def test_detector_builds_reference_features_and_returns_still_speaking(
     captured: dict[str, object] = {}
 
     class FakeSessionOptions:
-        __slots__ = ("inter_op_num_threads", "graph_optimization_level")
+        __slots__ = (
+            "execution_mode",
+            "inter_op_num_threads",
+            "intra_op_num_threads",
+            "graph_optimization_level",
+        )
 
         def __init__(self) -> None:
+            self.execution_mode = None
             self.inter_op_num_threads = 0
+            self.intra_op_num_threads = 0
             self.graph_optimization_level = None
 
     class FakeSession:
@@ -67,6 +74,7 @@ def test_detector_builds_reference_features_and_returns_still_speaking(
 
     fake_ort = SimpleNamespace(
         SessionOptions=FakeSessionOptions,
+        ExecutionMode=SimpleNamespace(ORT_SEQUENTIAL="sequential"),
         GraphOptimizationLevel=SimpleNamespace(ORT_ENABLE_ALL="all"),
         InferenceSession=FakeSession,
     )
@@ -91,3 +99,5 @@ def test_detector_builds_reference_features_and_returns_still_speaking(
         "do_normalize": True,
     }
     assert captured["options"].inter_op_num_threads == 1
+    assert captured["options"].intra_op_num_threads == 1
+    assert captured["options"].execution_mode == "sequential"

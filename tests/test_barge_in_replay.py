@@ -169,8 +169,8 @@ def test_p_based_waits_longer_when_model_says_still_speaking() -> None:
     ).run(near)
 
     assert eager.stopped and patient.stopped
-    # P=0 → required = floor (1000ms); P=1 → required = ceil (3000ms).
-    assert eager.required_silence_ms == pytest.approx(1000.0)
+    # P=0 → required = release floor (1800ms); P=1 → required = ceil (3000ms).
+    assert eager.required_silence_ms == pytest.approx(1800.0)
     assert patient.required_silence_ms == pytest.approx(3000.0)
     assert eager.stop_frame < patient.stop_frame
     assert eager.trailing_silence_ms < patient.trailing_silence_ms

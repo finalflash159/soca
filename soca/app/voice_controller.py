@@ -26,6 +26,7 @@ from soca.core import (
     VoiceRuntimeWarmupError,
     audio_duration_ms,
     build_voice_runtime,
+    effective_endpoint_config,
     record_until_silence,
     warm_up_voice_runtime,
 )
@@ -242,6 +243,7 @@ class VoiceMonitorController:
         )
         t0 = time.perf_counter()
         self.bundle = self._build_runtime_bundle()
+        endpoint_config = self._endpoint_config(self.bundle)
         queue.put(
             VoiceMonitorEvent(
                 "ready",
@@ -251,6 +253,10 @@ class VoiceMonitorController:
                     "memory_status": self.bundle.memory_status,
                     "knowledge_status": self.bundle.knowledge_status,
                     "asr_guard_status": self.bundle.asr_guard_status,
+                    "smart_turn_enabled": self.bundle.turn_detector is not None,
+                    "adaptive_endpoint": self.bundle.config.adaptive_endpoint,
+                    "endpoint_floor_ms": endpoint_config.floor_silence_ms,
+                    "endpoint_ceil_ms": endpoint_config.ceil_silence_ms,
                     "llm_backend": (
                         self.bundle.llm_settings.backend
                         if self.bundle.llm_settings is not None
@@ -302,6 +308,16 @@ class VoiceMonitorController:
     def _build_runtime_bundle(self) -> VoiceRuntimeBundle:
         return self.runtime_builder(self.config, session_memory=self.session_memory)
 
+    def _endpoint_config(self, bundle: VoiceRuntimeBundle) -> EndpointConfig:
+        return effective_endpoint_config(
+            EndpointConfig(
+                endpoint_silence_ms=self.config.endpoint_silence_ms,
+                max_record_ms=self.config.max_record_ms,
+                partial_interval_ms=bundle.partial_interval_ms,
+                adaptive=self.config.adaptive_endpoint,
+            )
+        )
+
     def _run_one_turn(
         self,
         bundle: VoiceRuntimeBundle,
@@ -309,13 +325,20 @@ class VoiceMonitorController:
         *,
         stop_event: Event | None = None,
     ) -> None:
-        endpoint_config = EndpointConfig(
-            endpoint_silence_ms=self.config.endpoint_silence_ms,
-            max_record_ms=self.config.max_record_ms,
-            partial_interval_ms=bundle.partial_interval_ms,  # seed from warmup
-            adaptive=self.config.adaptive_endpoint,
+        endpoint_config = self._endpoint_config(bundle)
+        queue.put(
+            VoiceMonitorEvent(
+                "recording",
+                "Listening",
+                metadata={
+                    "asr_model": bundle.config.asr_model,
+                    "smart_turn_enabled": bundle.turn_detector is not None,
+                    "adaptive_endpoint": endpoint_config.adaptive,
+                    "endpoint_floor_ms": endpoint_config.floor_silence_ms,
+                    "endpoint_ceil_ms": endpoint_config.ceil_silence_ms,
+                },
+            )
         )
-        queue.put(VoiceMonitorEvent("recording", "Listening"))
         t0 = time.perf_counter()
         if self._supports_barge_in:
             # Close any duplex stream left open by the previous turn (incl. a

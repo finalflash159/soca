@@ -422,6 +422,10 @@ def test_voice_pipeline_keeps_citations_as_metadata_not_spoken_text() -> None:
     done = events[-1]
     assert done.type == "done"
     assert done.text == "Attention dùng query, key và value."
+    runtime_event = next(event for event in events if event.type == "runtime")
+    assert runtime_event.text == "Attention dùng query, key và value."
+    sentence_event = next(event for event in events if event.type == "sentence")
+    assert "[K1]" not in sentence_event.text
     assert done.metadata["citations"] == [
         {
             "label": "K1",

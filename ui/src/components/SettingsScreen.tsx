@@ -15,6 +15,11 @@ import type {
 import { COLOR, ICON } from "../theme.js";
 import { ImeTextInput } from "../imeInput.js";
 import { Panel, Spinner } from "./Primitives.js";
+import { KnowledgeIndexScreen } from "./KnowledgeIndexScreen.js";
+import {
+  DEFAULT_TERMINAL_COLUMNS,
+  safeTerminalDimension,
+} from "../terminalSize.js";
 
 type FocusTarget =
   | "resume"
@@ -190,7 +195,11 @@ export function SettingsScreen({
   onExit,
 }: SettingsScreenProps) {
   const { stdout } = useStdout();
-  const panelWidth = Math.max(24, Math.min(88, (stdout?.columns ?? 80) - 2));
+  const terminalColumns = safeTerminalDimension(
+    stdout?.columns,
+    DEFAULT_TERMINAL_COLUMNS,
+  );
+  const panelWidth = Math.max(24, Math.min(88, terminalColumns - 2));
   const configProvider =
     config?.backend === "remote" ? config.provider : "local";
   const initialFocus: FocusTarget =
@@ -215,6 +224,7 @@ export function SettingsScreen({
   const [reasoningEnabled, setReasoningEnabled] = useState(false);
   const [selectedProfileKey, setSelectedProfileKey] = useState(activeProfile);
   const [profileNotice, setProfileNotice] = useState("");
+  const [knowledgeIndexView, setKnowledgeIndexView] = useState(false);
   const touched = useRef(false);
   const profileTouched = useRef(false);
   const setupFocusApplied = useRef(false);
@@ -383,7 +393,11 @@ export function SettingsScreen({
   function applyKnowledgeAction(): void {
     if (knowledgeSetup?.status === "running") return;
     if (!knowledgeVault?.initialized) onKnowledgeInit();
-    else onKnowledgeIndex();
+    else {
+      if (stdout?.isTTY) stdout.write("\x1b[2J\x1b[H");
+      setKnowledgeIndexView(true);
+      onKnowledgeIndex();
+    }
   }
 
   function beginGeneration(selection: PendingSelection): void {
@@ -429,14 +443,15 @@ export function SettingsScreen({
 
   useInput(
     (input, key) => {
+      if (knowledgeIndexView) return;
       if (key.escape) {
         if (focus === "models") setFocus("search");
         else if (focus === "search" || focus === "key")
           setFocus("providers");
         else if (editingGeneration)
           setFocus(pending?.backend === "remote" ? "search" : "providers");
-        else if (focus === "knowledge") setFocus("asr");
-        else if (focus === "asr") setFocus(config ? "resume" : "providers");
+        else if (focus === "asr") setFocus("knowledge");
+        else if (focus === "knowledge") setFocus(config ? "resume" : "providers");
         else if (focus === "resume") setFocus("providers");
         else onExit();
         return;
@@ -444,7 +459,7 @@ export function SettingsScreen({
       if (focus === "resume") {
         if (key.return || input === "\r" || input === "\n") onExit();
         else if (input === "a") setFocus("asr");
-        else if (key.downArrow) setFocus("asr");
+        else if (key.downArrow) setFocus("knowledge");
         else if (input === "e" || key.rightArrow || key.tab) {
           touched.current = true;
           setFocus("providers");
@@ -453,6 +468,7 @@ export function SettingsScreen({
       }
       if (focus === "knowledge") {
         if (key.downArrow || key.tab) setFocus("asr");
+        else if (key.upArrow && config) setFocus("resume");
         else if (key.return) applyKnowledgeAction();
         return;
       }
@@ -521,19 +537,52 @@ export function SettingsScreen({
     },
   );
 
+  if (knowledgeIndexView) {
+    return (
+      <KnowledgeIndexScreen
+        width={panelWidth}
+        vault={knowledgeVault}
+        setup={knowledgeSetup}
+        onReturn={() => {
+          if (stdout?.isTTY) stdout.write("\x1b[2J\x1b[H");
+          setKnowledgeIndexView(false);
+          setFocus("knowledge");
+        }}
+      />
+    );
+  }
+
   return (
     <Box flexDirection="column" paddingX={1} marginBottom={1}>
       <Text bold color={COLOR.accent}>
-        Cài đặt LLM
-      </Text>
-      <Text color={COLOR.warn}>
-        {ICON.err} Remote gửi transcript đến provider bên thứ ba.
+        Settings
       </Text>
 
+      {config ? (
+        <Box marginTop={1}>
+          <Panel
+            title="Recent configuration"
+            subtitle={focus === "resume" ? "selected" : undefined}
+            variant={focus === "resume" ? "focus" : "idle"}
+            width={panelWidth}
+          >
+            <Text color={COLOR.text}>{savedSummary(config, providers)}</Text>
+            {returnMode === "voice" && activeProfile ? (
+              <Text color={COLOR.text}>
+                {`ASR: ${activeProfile} · ${profiles.find((profile) => profile.key === activeProfile)?.asr ?? "chưa rõ"}`}
+              </Text>
+            ) : null}
+            <Text color={focus === "resume" ? COLOR.alt : COLOR.muted}>
+              Enter dùng lại · ↓ vault · e để cấu hình
+            </Text>
+          </Panel>
+        </Box>
+      ) : null}
+
       <Box marginTop={1}>
-        <Panel
-          title="Knowledge Vault"
-          subtitle={focus === "knowledge" ? "đang setup" : undefined}
+          <Panel
+            title="Knowledge Vault"
+            subtitle={focus === "knowledge" ? "selected" : undefined}
           variant={
             knowledgeSetup?.status === "running"
               ? "busy"
@@ -580,31 +629,10 @@ export function SettingsScreen({
         </Panel>
       </Box>
 
-      {config ? (
-        <Box marginTop={1}>
-          <Panel
-            title="Cấu hình gần nhất"
-            subtitle={focus === "resume" ? "đang chọn" : undefined}
-            variant={focus === "resume" ? "focus" : "idle"}
-            width={panelWidth}
-          >
-            <Text color={COLOR.text}>{savedSummary(config, providers)}</Text>
-            {returnMode === "voice" && activeProfile ? (
-              <Text color={COLOR.text}>
-                {`ASR: ${activeProfile} · ${profiles.find((profile) => profile.key === activeProfile)?.asr ?? "chưa rõ"}`}
-              </Text>
-            ) : null}
-            <Text color={focus === "resume" ? COLOR.alt : COLOR.muted}>
-              Enter dùng lại · e hoặc ↓ để cấu hình
-            </Text>
-          </Panel>
-        </Box>
-      ) : null}
-
       <Box marginTop={1}>
         <Panel
           title="Voice ASR"
-          subtitle={focus === "asr" ? "đang chọn" : undefined}
+          subtitle={focus === "asr" ? "selected" : undefined}
           variant={focus === "asr" ? "focus" : "idle"}
           width={panelWidth}
         >
@@ -803,7 +831,7 @@ export function SettingsScreen({
               {showModels ? (
                 <Box marginTop={1} flexDirection="column">
                   <Panel
-                    title="Lọc model"
+                    title="Model filter"
                     width={panelWidth}
                     focused={focus === "search"}
                   >

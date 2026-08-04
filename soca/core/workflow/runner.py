@@ -13,6 +13,7 @@ from soca.core.guardrails import (
     GuardrailPolicy,
     check_final_output,
     check_tool_call,
+    knowledge_paths_from_results,
 )
 from soca.tools import (
     SideEffectLevel,
@@ -531,6 +532,7 @@ class ControlledWorkflowRunner:
             ledger=context.ledger,
             retries=context.retries,
             stream=context.stream,
+            prior_results=tuple(context.results),
             authorize=authorize,
             is_cancelled=is_cancelled,
         )
@@ -736,6 +738,7 @@ class ControlledWorkflowRunner:
         ledger: BudgetLedger,
         retries: RetryLedger,
         stream: WorkflowEventStream,
+        prior_results: tuple[ToolResult, ...],
         authorize: AuthorizationPolicy | None,
         is_cancelled: Callable[[], bool],
     ) -> tuple[ToolResult, Observation, Verification, TerminalOutcome | None]:
@@ -759,6 +762,9 @@ class ControlledWorkflowRunner:
             self.tool_runtime,
             step.call,
             self.guardrail_policy,
+            user_text=state.goal.objective,
+            knowledge_read_paths=knowledge_paths_from_results(prior_results),
+            require_read_provenance=True,
         )
         if guardrail_event.blocked:
             result = ToolResult(

@@ -253,10 +253,12 @@ class TurnEndpointDecider:
             if not has_speech:
                 continue
 
-            # Voiced window = speech heard before the current pause, capped at 8s.
-            voiced_end = (i + 1) * self.frame - int(silence_run_ms / 1000 * self.config.sample_rate)
-            voiced_start = max(0, voiced_end - max_voiced_samples)
-            voiced = near_arr[voiced_start:voiced_end] if voiced_end > 0 else near_arr[:0]
+            # Smart Turn receives the current turn including the pause being
+            # evaluated, capped at 8s.  This mirrors the production endpoint
+            # and the upstream Smart Turn inference contract.
+            turn_end = (i + 1) * self.frame
+            turn_start = max(0, turn_end - max_voiced_samples)
+            voiced = near_arr[turn_start:turn_end]
 
             required = self._required_silence_ms(silence_run_ms, voiced)
             if silence_run_ms >= required:

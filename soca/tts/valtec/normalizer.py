@@ -3,6 +3,9 @@ from __future__ import annotations
 import re
 import unicodedata
 from datetime import date
+from functools import partial
+
+from .lexicon import TECHNICAL_SPEECH_FORMS, TechnicalSpeechForm
 
 DIGITS = {
     "0": "không", "1": "một", "2": "hai", "3": "ba", "4": "bốn",
@@ -226,6 +229,25 @@ def _convert_currency(text: str) -> str:
     )
 
 
+def _convert_ratios(text: str) -> str:
+    """Read numeric slash ratios as ``trên`` instead of dropping ``/``."""
+    numeric = r"\d+(?:[.,]\d+)*"
+    pattern = re.compile(
+        # A sentence-final dot is punctuation, not part of the second number.
+        # Keep dots followed by a digit protected so a malformed date or a
+        # longer dotted token cannot be mistaken for a ratio.
+        rf"(?<![\w.,/])({numeric})\s*/\s*({numeric})(?![\w,/]|\.\d)"
+    )
+
+    return pattern.sub(
+        lambda match: (
+            f"{_spoken_numeric(match.group(1))} trên "
+            f"{_spoken_numeric(match.group(2))}"
+        ),
+        text,
+    )
+
+
 def _convert_phone_numbers(text: str) -> str:
     pattern = re.compile(r"(?<!\d)(?:\+84|0)(?:[ .-]?\d){9,10}(?!\d)")
 
@@ -249,6 +271,31 @@ def split_sentences(text: str) -> tuple[str, ...]:
 
 
 WWW_PREFIX = re.compile(r"^www\.", re.IGNORECASE)
+
+
+def _technical_form_replacement(
+    match: re.Match[str], *, source_text: str, form: TechnicalSpeechForm
+) -> str:
+    if not form.pause_after:
+        return form.spoken
+    next_character = source_text[match.end() :].lstrip()[:1]
+    if not next_character or next_character in ",.!?;:":
+        return form.spoken
+    return f"{form.spoken},"
+
+
+def _rewrite_technical_speech_forms(text: str) -> str:
+    """Use native Vietnamese syllables for terms with unstable foreign prosody."""
+    for source, form in sorted(
+        TECHNICAL_SPEECH_FORMS.items(), key=lambda item: len(item[0]), reverse=True
+    ):
+        text = re.sub(
+            rf"(?<!\w){re.escape(source)}(?!\w)",
+            partial(_technical_form_replacement, source_text=text, form=form),
+            text,
+            flags=re.IGNORECASE,
+        )
+    return text
 
 
 def _speak_dots(raw: str) -> str:
@@ -279,6 +326,10 @@ class ValtecTextNormalizer:
     def normalize(self, text: str) -> str:
         normalized = unicodedata.normalize("NFC", text)
         normalized = _speak_emails_and_urls(normalized)
+        # Keep the visible answer unchanged; only the Valtec speech stream uses
+        # these native forms. This avoids foreign-IPA tone artifacts in terms
+        # that appear frequently in the assistant's technical answers.
+        normalized = _rewrite_technical_speech_forms(normalized)
         normalized = normalized.translate(
             str.maketrans({"&": " và ", "@": " a còng ", "#": " thăng ", "_": " "})
         )
@@ -303,6 +354,9 @@ class ValtecTextNormalizer:
             flags=re.IGNORECASE,
         )
         normalized = _convert_currency(normalized)
+        # Dates are handled above; the remaining numeric slash form is a
+        # ratio/fraction and must remain audible as "trên".
+        normalized = _convert_ratios(normalized)
         normalized = re.sub(
             r"(-?\d+(?:[.,]\d+)?)\s*%",
             lambda match: f"{_spoken_numeric(match.group(1))} phần trăm",
@@ -344,4 +398,7 @@ class ValtecTextNormalizer:
             r"\1, ",
             normalized,
         )
+        # A missing space after a comma makes adjacent technical terms sound
+        # glued together. Do not touch comma-grouped numbers such as 1,843.
+        normalized = re.sub(r",(?=[^\s\d])", ", ", normalized)
         return re.sub(r"\s+", " ", normalized).strip()

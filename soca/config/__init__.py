@@ -10,6 +10,12 @@ from .llm_settings import (
     save_settings,
 )
 from .secret_store import SecretStore
+from .voice_settings import (
+    DEFAULT_VOICE_PROFILE,
+    default_voice_settings_path,
+    load_voice_profile,
+    save_voice_profile,
+)
 
 __all__ = [
     "DEFAULT_SETTINGS",
@@ -20,4 +26,8 @@ __all__ = [
     "SecretStore",
     "load_settings",
     "save_settings",
+    "DEFAULT_VOICE_PROFILE",
+    "default_voice_settings_path",
+    "load_voice_profile",
+    "save_voice_profile",
 ]

@@ -18,7 +18,7 @@ from soca.app.style.palette import ALT, st
 from soca.app.text_chat import run_text_chat
 from soca.app.text_runtime import TextRuntimeConfig, resolve_text_runtime_config, run_text_ask
 from soca.asr.registry import ASR_MODEL_REGISTRY, DEFAULT_ASR_MODEL_KEY
-from soca.config import DEFAULT_MAX_TOKENS
+from soca.config import DEFAULT_MAX_TOKENS, load_voice_profile
 from soca.core import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
     VOICE_RUNTIME_PROFILES,
@@ -1036,7 +1036,13 @@ def engine(
     """
     from soca.app.engine import run_engine
 
-    profile = quick_profile or DEFAULT_VOICE_RUNTIME_PROFILE_KEY
+    if quick_profile is None:
+        try:
+            profile = load_voice_profile()
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+    else:
+        profile = quick_profile
     try:
         voice_config = resolve_voice_runtime_config(
             profile_key=profile,
@@ -1246,7 +1252,14 @@ def voice(
 
     Quick form: soca voice [profile]
     """
-    profile = quick_profile or profile_option or DEFAULT_VOICE_RUNTIME_PROFILE_KEY
+    explicit_profile = quick_profile or profile_option
+    if explicit_profile is None:
+        try:
+            profile = load_voice_profile()
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+    else:
+        profile = explicit_profile
 
     try:
         config = resolve_voice_runtime_config(

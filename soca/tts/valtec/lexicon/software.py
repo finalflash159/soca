@@ -20,7 +20,6 @@ SOFTWARE_LEXICON: dict[str, str] = {
     "http": "eɪʧtitipi",
     "https": "eɪʧtitipiɛs",
     "kv": "keɪvi",
-    "llm": "ɛlɛlɛm",
     "ml": "ɛmɛl",
     "ndcg": "ɛndisiʤi",
     "pid": "piaɪdi",

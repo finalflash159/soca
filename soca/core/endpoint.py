@@ -100,7 +100,11 @@ class EndpointConfig:
     max_record_ms: int = 10000
     min_audio_ms: int = 300
     adaptive: bool = True
-    floor_silence_ms: int = 1000
+    # Do not let an ordinary within-turn pause close the turn immediately
+    # after the VAD floor.  The 1.8s floor is the release setting measured on
+    # the Vietnamese turn-taking replay; Smart Turn still controls patience up
+    # to the 3s ceiling after this guard.
+    floor_silence_ms: int = 1800
     ceil_silence_ms: int = 3000
     use_incremental_vad: bool = True
     partial_interval_ms: int = 900
@@ -122,6 +126,11 @@ def _apply_env_overrides(config: EndpointConfig) -> EndpointConfig:
             changes[fld] = int(value)
     return replace(config, **changes) if changes else config
 
+
+def effective_endpoint_config(config: EndpointConfig | None = None) -> EndpointConfig:
+    """Return the endpoint configuration after process-level tuning overrides."""
+    return _apply_env_overrides(config or EndpointConfig())
+
 def should_stop_recording(
     speech_timestamps: list[dict[str, int]],
     total_samples: int,
@@ -141,17 +150,21 @@ def block_samples(config: EndpointConfig) -> int:
     return int(config.sample_rate * config.block_ms / 1000)
 
 
-def _voiced_window(chunks, silence_ms, config, *, max_s: float = 8.0):
-    """The speech audio right before the current pause (for acoustic P cues), up to max_s (Pipecat Smart Turn cap)."""
+def _turn_window(chunks, config, *, max_s: float = 8.0):
+    """Return the current turn, including the pause being evaluated.
+
+    Smart Turn is trained/integrated as an end-of-turn classifier over the
+    current turn after VAD observes silence.  Removing the trailing silence
+    before inference discards the endpoint signal and makes the model judge
+    only the preceding speech.  Keep the last eight seconds, matching the
+    upstream model contract.
+    """
     if not chunks:
         return None
     cap_blocks = max(2, int((config.ceil_silence_ms + max_s * 1000) / max(config.block_ms, 1)) + 2)
     audio = np.concatenate(chunks[-cap_blocks:]).astype(np.float32, copy=False)
-    end = len(audio) - int(silence_ms / 1000 * config.sample_rate)
-    if end <= 0:
-        return None
-    start = max(0, end - int(max_s * config.sample_rate))
-    return audio[start:end]
+    start = max(0, len(audio) - int(max_s * config.sample_rate))
+    return audio[start:]
 
 
 def _decide_required_silence(config, silence_ms, chunks, turn_detector) -> float:
@@ -159,7 +172,7 @@ def _decide_required_silence(config, silence_ms, chunks, turn_detector) -> float
         return float(config.endpoint_silence_ms)          # fixed, deterministic
     if silence_ms < config.floor_silence_ms:
         return float(config.ceil_silence_ms)
-    window = _voiced_window(chunks, silence_ms, config)
+    window = _turn_window(chunks, config)
     if window is None:
         return float(config.ceil_silence_ms)
     try:
@@ -185,7 +198,7 @@ def record_until_silence(
     partial_transcriber=None,
     stream_factory=None,
 ) -> np.ndarray:
-    config = _apply_env_overrides(config or EndpointConfig())
+    config = effective_endpoint_config(config)
     stream_factory = stream_factory or sd.InputStream
     n_block_samples = block_samples(config)
     max_samples = int(config.sample_rate * config.max_record_ms / 1000)

@@ -29,3 +29,24 @@ def test_bm25_chunk_retriever_returns_real_bm25_scores() -> None:
     assert hits[0].chunk_id == "bayes"
     assert hits[0].score > hits[1].score
     assert retriever.backend == "bm25"
+
+
+def test_bm25_chunk_retriever_indexes_note_metadata() -> None:
+    retriever = Bm25ChunkRetriever(
+        (
+            MarkdownChunk(
+                chunk_id="attention",
+                document_path="wiki/learning/attention.md",
+                title="Attention và Transformer",
+                tags=("deep-learning", "transformer"),
+                text="Các token trao đổi thông tin trong cùng một sequence.",
+                line_start=1,
+                line_end=1,
+            ),
+            _chunk("other", "Một đoạn ghi chú không nêu chủ đề."),
+        )
+    )
+
+    hits = retriever.rank("transformer", limit=2)
+
+    assert hits[0].chunk_id == "attention"

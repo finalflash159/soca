@@ -14,6 +14,10 @@ class ValtecTTSConfig:
     runner: str = "valtec_onnx"
     default_voice: str = "NF"
     voices: tuple[str, ...] = ("NF", "SF", "NM1", "SM", "NM2")
+    # The release artifact is calibrated at 1.0.  The application preset is
+    # faster while keeping Valtec's adaptive anti-slur pacing active. Caption
+    # reveal timing uses each synthesized chunk's actual audio duration.
+    length_scale: float = 0.85
     license: str = "CC BY-NC 2.0 (HF valtecAI-team/valtec-tts-pretrained, verified 2026-07-23)"
     source_url: str = "https://github.com/tronghieuit/valtec-tts"
 

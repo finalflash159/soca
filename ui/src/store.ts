@@ -281,6 +281,42 @@ function upsertSpeechChunk(
   );
 }
 
+/**
+ * Advance the visual playback cursor without treating a buffered write as
+ * audible completion. The session sink emits `audio` after accepting PCM
+ * into the device buffer; the previous chunk is visually complete when the
+ * next chunk starts, while the active chunk keeps its duration-driven reveal.
+ */
+function startSpeechChunk(
+  chunks: SpeechChunk[],
+  event: EngineEvent & { event: "voice" },
+): SpeechChunk[] {
+  const index = speechChunkIndex(event.metadata ?? {});
+  if (index === null) return chunks;
+  const next = upsertSpeechChunk(chunks, event, "playing");
+  return next.map((chunk) =>
+    chunk.index < index && chunk.status === "playing"
+      ? { ...chunk, status: "complete" }
+      : chunk,
+  );
+}
+
+function confirmSpeechChunkAudio(
+  chunks: SpeechChunk[],
+  event: EngineEvent & { event: "voice" },
+): SpeechChunk[] {
+  const index = speechChunkIndex(event.metadata ?? {});
+  const previous =
+    index === null ? undefined : chunks.find((chunk) => chunk.index === index);
+  // Protect the monotonic visual state if an adapter delivers the buffered
+  // audio receipt after the next playback-start event.
+  return upsertSpeechChunk(
+    chunks,
+    event,
+    previous?.status === "complete" ? "complete" : "playing",
+  );
+}
+
 // Voice event type -> UI state, mirroring the Textual _VOICE_RENDERERS table.
 function reduceVoiceCore(
   state: AppState,
@@ -312,8 +348,26 @@ function reduceVoiceCore(
     case "loading":
       return { ...state, voiceState: "loading", voiceNote: event.text || "Loading ASR" };
     case "ready":
-    case "warmup":
+      return {
+        ...state,
+        voiceState: "loading",
+        voiceNote:
+          meta["smart_turn_enabled"] === true
+            ? "SmartTurn active · khởi động…"
+            : "khởi động…",
+      };
+    case "warmup": {
+      const component = event.text || String(meta["component"] ?? "");
+      if (component === "smart_turn") {
+        const ok = meta["ok"] !== false;
+        return {
+          ...state,
+          voiceState: "loading",
+          voiceNote: ok ? "SmartTurn ready" : "SmartTurn failed",
+        };
+      }
       return { ...state, voiceState: "loading", voiceNote: "khởi động…" };
+    }
     case "loop_started":
       return {
         ...state,
@@ -336,7 +390,14 @@ function reduceVoiceCore(
       };
     }
     case "recording":
-      return { ...state, voiceState: "listening", voiceNote: "đang nghe…" };
+      return {
+        ...state,
+        voiceState: "listening",
+        voiceNote:
+          meta["smart_turn_enabled"] === true
+            ? "đang nghe · SmartTurn"
+            : "đang nghe…",
+      };
     case "recorded":
       return { ...state, voiceState: "processing", voiceNote: "" };
     case "transcribing":
@@ -382,12 +443,15 @@ function reduceVoiceCore(
       return {
         ...state,
         voiceState: "speaking",
-        speechChunks: upsertSpeechChunk(state.speechChunks, event, "playing"),
+        speechChunks: startSpeechChunk(state.speechChunks, event),
       };
     case "audio":
       return {
         ...state,
-        speechChunks: upsertSpeechChunk(state.speechChunks, event, "complete"),
+        // `audio` means PCM was accepted by the playback session. It is not
+        // an audible-end event: marking it complete here makes unread text
+        // glow while the device is still draining its buffer.
+        speechChunks: confirmSpeechChunkAudio(state.speechChunks, event),
       };
     case "interrupted":
       return { ...state, speechChunks: [] };

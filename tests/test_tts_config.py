@@ -13,6 +13,7 @@ def test_valtec_is_the_only_tts_configuration() -> None:
     assert VALTEC_TTS_CONFIG.runner == "valtec_onnx"
     assert VALTEC_TTS_CONFIG.default_voice == "NF"
     assert VALTEC_TTS_CONFIG.voices == ("NF", "SF", "NM1", "SM", "NM2")
+    assert VALTEC_TTS_CONFIG.length_scale == 0.85
 
 
 def test_factory_has_no_model_selector() -> None:

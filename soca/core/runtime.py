@@ -49,6 +49,7 @@ from soca.core.guardrails import (
     check_tool_result,
     check_untrusted_text,
     extract_markdown_paths,
+    knowledge_paths_from_results,
     normalize_vi,
 )
 from soca.core.streaming import pop_ready_first_clause, pop_ready_sentence
@@ -80,6 +81,7 @@ from soca.memory import (
 )
 from soca.prompts import (
     ABSTENTION_GROUNDING_INSTRUCTIONS,
+    EXACT_READ_GROUNDING_INSTRUCTIONS,
     JOINT_GROUNDING_INSTRUCTIONS,
     SOCA_RUNTIME_SYSTEM_PROMPT,
     UNAVAILABLE_GROUNDING_INSTRUCTIONS,
@@ -747,10 +749,28 @@ class AssistantRuntime:
         draft.workflow_status = terminal.status.value
         draft.workflow_error_code = terminal.error_code or ""
         draft.workflow_unmet_criteria = terminal.unmet_criteria
+        if self._workflow_has_unproven_read(workflow_run):
+            return self._synthesize_unproven_read_abstention(frame, draft)
         if (
             terminal.status.value == "achieved"
             and draft.evidence_completion_status == "budget_exhausted"
         ):
+            if (
+                synthesis_result is not None
+                and not synthesis_result.blocked
+                and synthesis_result.trace is not None
+                and synthesis_result.trace.answer_policy == "abstain"
+                and not synthesis_result.citations
+            ):
+                # Empty retrieval is a valid synthesized abstention. Keep it
+                # visible as insufficient evidence instead of replacing it
+                # with a generic controller failure message.
+                trace = replace(
+                    synthesis_result.trace,
+                    workflow_status="insufficient_evidence",
+                    workflow_error_code="evidence_completion_action_budget_exhausted",
+                )
+                return replace(synthesis_result, trace=trace, citations=trace.citations)
             draft.workflow_status = "insufficient_evidence"
             draft.workflow_error_code = "evidence_completion_action_budget_exhausted"
             return self._blocked_result(
@@ -768,11 +788,18 @@ class AssistantRuntime:
                 self._append_safe_session_turn(frame.text, synthesis_result.response_text)
                 return self._attach_workflow_terminal(synthesis_result, terminal)
             if (
-                terminal.status.value == "insufficient_evidence"
+                terminal.status.value in {"insufficient_evidence", "budget_exhausted"}
                 and synthesis_result.trace is not None
-                and synthesis_result.trace.answer_policy == "abstain"
-                and not synthesis_result.citations
+                and synthesis_result.trace.answer_policy in {"grounded", "abstain"}
+                and (
+                    synthesis_result.trace.answer_policy == "abstain"
+                    or bool(synthesis_result.citations)
+                )
             ):
+                # A bounded controller may run out of revision budget after a
+                # usable synthesis. Preserve that typed partial result and its
+                # truthful terminal status; do not replace it with a generic
+                # workflow error that hides the evidence already delivered.
                 return self._attach_workflow_terminal(synthesis_result, terminal)
         remote_error = terminal.metadata.get("remote_error")
         if isinstance(remote_error, Mapping):
@@ -796,6 +823,73 @@ class AssistantRuntime:
                 or f"Workflow kết thúc ở trạng thái {terminal_reason}; chưa thể trả lời an toàn."
             ),
         )
+
+    @staticmethod
+    def _workflow_has_unproven_read(workflow_run: WorkflowRun) -> bool:
+        return any(
+            result.error == "knowledge_read_requires_provenance"
+            for result in workflow_run.observations
+        )
+
+    def _synthesize_unproven_read_abstention(
+        self,
+        frame: TurnFrame,
+        draft: _TraceDraft,
+    ) -> RuntimeResult:
+        """Turn an unauthorized planner read into a truthful empty-evidence answer.
+
+        A planner must not manufacture note evidence from the catalog. Once that
+        protocol error is observed, the safest user-facing result is the normal
+        abstention contract with an empty knowledge context, not a generic
+        workflow error and not a read of an unrelated document.
+        """
+        draft.knowledge_hits.clear()
+        draft.citations[:] = [
+            citation for citation in draft.citations if citation.source != "knowledge"
+        ]
+        draft.evidence_decisions[:] = [
+            decision for decision in draft.evidence_decisions if decision.source != "knowledge"
+        ]
+        draft.evidence_decisions.append(
+            decide_evidence(
+                "knowledge",
+                (),
+                status="insufficient",
+                reason="knowledge_read_requires_provenance",
+                source_state="ready",
+            )
+        )
+        draft.evidence_bundle = EvidenceReconciler().reconcile(tuple(draft.evidence_decisions))
+        draft.workflow_status = "insufficient_evidence"
+        draft.workflow_error_code = "knowledge_read_requires_provenance"
+        context = KnowledgeContext(
+            query=frame.text,
+            hits=(),
+            prompt_text=(
+                f"{UNTRUSTED_KNOWLEDGE_WARNING.strip()}\n\n"
+                "No local knowledge notes found with a verified path for this request.\n"
+                "Evidence status: insufficient (knowledge_read_requires_provenance)."
+            ),
+            citations=(),
+            evidence_status="insufficient",
+            evidence_reason="knowledge_read_requires_provenance",
+            retrieval_state="ready",
+        )
+        result = self._run_llm_turn(
+            frame,
+            draft,
+            self._build_memory_context(frame, draft),
+            context,
+            used_tool=True,
+        )
+        if result.trace is None:
+            return result
+        trace = replace(
+            result.trace,
+            workflow_status=draft.workflow_status,
+            workflow_error_code=draft.workflow_error_code,
+        )
+        return replace(result, trace=trace, citations=trace.citations)
 
     @staticmethod
     def _attach_workflow_terminal(
@@ -847,6 +941,10 @@ class AssistantRuntime:
             knowledge_context=knowledge_context,
             memory_context=memory_context,
         )
+        if self._read_receipt_is_complete(result):
+            draft.evidence_completion_status = "complete"
+            draft.evidence_completion_reason = "document_complete"
+            return None
 
         completion_checked = False
         assessor = getattr(self.tool_router, "assess_evidence", None)
@@ -1221,6 +1319,19 @@ class AssistantRuntime:
         ``min_sentence_chars``.
         """
         if self.options.turn_workflow == "controlled":
+            if isinstance(self.tool_router, DefaultRuntimeToolRouter):
+                yield from self._stream_default_controlled_turn(
+                    text,
+                    source=source,
+                    metadata=metadata,
+                    min_sentence_chars=min_sentence_chars,
+                    first_sentence_min_chars=first_sentence_min_chars,
+                    first_clause_enabled=first_clause_enabled,
+                    first_clause_min_chars=first_clause_min_chars,
+                    first_clause_min_words=first_clause_min_words,
+                    first_clause_max_scan_chars=first_clause_max_scan_chars,
+                )
+                return
             result = self.run_controlled_turn(text, source=source, metadata=metadata)
             if result.response_text:
                 yield RuntimeStreamEvent(type="token", text=result.response_text)
@@ -1496,6 +1607,75 @@ class AssistantRuntime:
             tokens_per_second=tps,
         )
 
+    def _stream_default_controlled_turn(
+        self,
+        text: str,
+        *,
+        source: str,
+        metadata: dict[str, Any] | None,
+        min_sentence_chars: int,
+        first_sentence_min_chars: int | None,
+        first_clause_enabled: bool,
+        first_clause_min_chars: int,
+        first_clause_min_words: int,
+        first_clause_max_scan_chars: int,
+    ) -> Iterator[RuntimeStreamEvent]:
+        """Stream a default-router no-tool turn without bypassing guardrails.
+
+        The production cascade router owns controlled workflow turns. The
+        default router is also used by lightweight callers and tests; for its
+        typed no-tool disposition there is no tool action to execute or
+        verify, so the normal streaming LLM path is the faithful surface.
+        Tool-bearing turns remain on the controlled path.
+        """
+        frame_text, frame_metadata = self._prepare_turn_input(
+            text,
+            source=source,
+            metadata=metadata,
+        )
+        frame = TurnFrame(text=frame_text, source=source, metadata=frame_metadata)
+        draft = _TraceDraft([], [], [], [], [], {})
+        with self._stage(draft, "input_guardrail"):
+            input_event = check_input_text(frame.text, self.guardrail_policy)
+        draft.guardrail_events.append(input_event)
+        if input_event.blocked:
+            result = self._blocked_result(
+                frame,
+                draft,
+                reason=input_event.message or self._safe_block_message(input_event.reason),
+            )
+            yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
+            return
+
+        self._set_router_context(frame)
+        with self._stage(draft, "tool_router"):
+            tool_call = self.tool_router.select(
+                frame.text,
+                knowledge_limit=self.options.knowledge_limit,
+            )
+        decision = getattr(self.tool_router, "last_decision", ToolRouterDecision())
+        draft.tool_router_tier = str(getattr(self.tool_router, "last_tier", "deterministic"))
+        draft.tool_router_reason = str(getattr(decision, "reason", "no_match"))
+        self._record_router_decision(draft, decision)
+        if tool_call is not None:
+            result = self.run_controlled_turn(frame.text, source=source, metadata=metadata)
+            yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
+            return
+
+        memory_context = self._build_memory_context(frame, draft)
+        yield from self._stream_llm_turn(
+            frame,
+            draft,
+            memory_context,
+            None,
+            min_sentence_chars=min_sentence_chars,
+            first_sentence_min_chars=first_sentence_min_chars,
+            first_clause_enabled=first_clause_enabled,
+            first_clause_min_chars=first_clause_min_chars,
+            first_clause_min_words=first_clause_min_words,
+            first_clause_max_scan_chars=first_clause_max_scan_chars,
+        )
+
     def _stream_llm_turn(
         self,
         frame: TurnFrame,
@@ -1762,7 +1942,13 @@ class AssistantRuntime:
 
         completion_checked = False
         if prepared.result.name in {"knowledge.search", "knowledge.read"}:
-            assessor = getattr(self.tool_router, "assess_evidence", None)
+            assessor = None
+            if self._read_receipt_is_complete(prepared.result):
+                completion_checked = True
+                draft.evidence_completion_status = "complete"
+                draft.evidence_completion_reason = "document_complete"
+            else:
+                assessor = getattr(self.tool_router, "assess_evidence", None)
             if callable(assessor):
                 observation = self._evidence_completion_observation(prepared, draft)
                 with self._stage(
@@ -1857,6 +2043,10 @@ class AssistantRuntime:
                 return prepared
             if prepared.result.name not in {"knowledge.search", "knowledge.read"}:
                 return prepared
+            if self._read_receipt_is_complete(prepared.result):
+                draft.evidence_completion_status = "complete"
+                draft.evidence_completion_reason = "document_complete"
+                return prepared
             assessor = getattr(self.tool_router, "assess_evidence", None)
             if not callable(assessor):
                 return prepared
@@ -1944,6 +2134,7 @@ class AssistantRuntime:
             prompt_text="\n\n".join(
                 (
                     UNTRUSTED_KNOWLEDGE_WARNING.strip(),
+                    EXACT_READ_GROUNDING_INSTRUCTIONS.strip(),
                     f"Evidence status: {evidence_status} ({evidence_reason}).",
                     *blocks,
                 )
@@ -2025,6 +2216,14 @@ class AssistantRuntime:
         }
         return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
+    @staticmethod
+    def _read_receipt_is_complete(result: ToolResult) -> bool:
+        return (
+            result.name == "knowledge.read"
+            and isinstance(result.data, Mapping)
+            and result.data.get("document_complete") is True
+        )
+
     def _can_refine_retrieval(
         self,
         prepared: _PreparedToolTurn,
@@ -2081,6 +2280,9 @@ class AssistantRuntime:
                 self.tool_runtime,
                 tool_call,
                 self.guardrail_policy,
+                user_text=frame.text,
+                knowledge_read_paths=knowledge_paths_from_results(draft.tool_results),
+                require_read_provenance=True,
             )
         draft.guardrail_events.append(tool_input_event)
         if tool_input_event.blocked:
@@ -2341,10 +2543,11 @@ class AssistantRuntime:
                     "exact_read_complete" if complete else "exact_read_requires_continuation"
                 )
                 prompt_text = "\n\n".join(
-                    (
-                        UNTRUSTED_KNOWLEDGE_WARNING.strip(),
-                        f"Evidence status: {evidence_status} ({evidence_reason}).",
-                        f"[K1] {path}\nTitle: {title}\nExact read:\n\n{tool_result.content}",
+                (
+                    UNTRUSTED_KNOWLEDGE_WARNING.strip(),
+                    EXACT_READ_GROUNDING_INSTRUCTIONS.strip(),
+                    f"Evidence status: {evidence_status} ({evidence_reason}).",
+                    f"[K1] {path}\nTitle: {title}\nExact read:\n\n{tool_result.content}",
                     )
                 )
                 return KnowledgeContext(

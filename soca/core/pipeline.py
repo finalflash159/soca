@@ -282,9 +282,13 @@ class VoicePipeline:
         trace = getattr(runtime_result, "trace", None)
         citations = getattr(runtime_result, "citations", ())
         memory_access_plan = getattr(trace, "memory_access_plan", None)
+        response_text = answer_text_without_citation_labels(
+            getattr(runtime_result, "response_text", "").strip(),
+            tuple(citations),
+        )
         return StreamingEvent(
             type="runtime",
-            text=getattr(runtime_result, "response_text", "").strip(),
+            text=response_text,
             metadata={
                 "route": getattr(getattr(runtime_result, "route", None), "value", ""),
                 "blocked": bool(getattr(runtime_result, "blocked", False)),
@@ -393,7 +397,7 @@ class VoicePipeline:
                     pending_sentences.append(event.text)
                     yield StreamingEvent(
                         type="sentence",
-                        text=event.text,
+                        text=answer_text_without_citation_labels(event.text, ()),
                         metadata={"delivery": "answer_delta", "terminal": False},
                     )
                 elif event.type == "result":

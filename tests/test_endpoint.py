@@ -9,6 +9,7 @@ from soca.core.endpoint import (
     EndpointConfig,
     _start_partial_worker,
     block_samples,
+    effective_endpoint_config,
     record_until_silence,
     should_stop_recording,
 )
@@ -49,6 +50,16 @@ class FakeTurnDetector:
     def p_still_speaking(self, audio_window: np.ndarray) -> float:
         self.windows.append(audio_window.copy())
         return self.p
+
+
+def test_effective_endpoint_config_reports_environment_overrides(monkeypatch):
+    monkeypatch.setenv("SOCA_ENDPOINT_FLOOR_MS", "2100")
+    monkeypatch.setenv("SOCA_ENDPOINT_CEIL_MS", "3600")
+
+    config = effective_endpoint_config(EndpointConfig())
+
+    assert config.floor_silence_ms == 2100
+    assert config.ceil_silence_ms == 3600
 
 class FakeInputStream:
     def __init__(self, blocks: list[np.ndarray]):
@@ -261,7 +272,9 @@ def test_adaptive_endpoint_uses_turn_detector_probability(monkeypatch):
 
     assert stream.read_sizes == [100, 100, 100, 100, 100, 100]
     assert len(turn_detector.windows) == 3
-    assert [len(window) for window in turn_detector.windows] == [200, 200, 200]
+    # Smart Turn receives the current turn including the pause being
+    # evaluated, rather than a speech-only slice.
+    assert [len(window) for window in turn_detector.windows] == [400, 500, 600]
     assert audio.shape == (600,)
 
 

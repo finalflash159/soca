@@ -12,6 +12,7 @@ from typing import Any, cast
 from .artifacts import ValtecOnnxArtifacts
 from .foreign_g2p import ForeignG2P
 from .frontend import ValtecModelInputs
+from .lexicon import TECHNICAL_SPEECH_FORMS
 from .normalizer import ValtecTextNormalizer
 
 TABLE_PATH = Path(__file__).with_name("g2p_tables.json")
@@ -30,7 +31,7 @@ ENGLISH_IPA_REWRITE = str.maketrans({"ʧ": "tʃ", "ʤ": "dʒ", "ɚ": "ə", "ɝ":
 # letter names instead of feeding UNK embeddings into the acoustic model.
 LETTER_NAMES = {
     "a": "ây", "ă": "á", "â": "ớ", "b": "bi", "c": "si", "d": "đi", "đ": "đê",
-    "e": "i", "ê": "ê", "f": "ép", "g": "giy", "h": "ếch", "i": "ai",
+    "e": "i", "ê": "ê", "f": "ép", "g": "gờ", "h": "ếch", "i": "ai",
     "j": "giây", "k": "cây", "l": "eo", "m": "em", "n": "en", "o": "âu",
     "ô": "ô", "ơ": "ơ", "p": "pi", "q": "kiu", "r": "a", "s": "ét", "t": "ti",
     "u": "diu", "ư": "ư", "v": "vi", "w": "đắp liu", "x": "ít", "y": "quai",
@@ -258,10 +259,19 @@ class PortableVietnameseG2P:
         tone_ids: list[int] = [self.tone_offset]
         language_ids: list[int] = [self.language_id]
         foreign_flags: list[int] = [0]
+        technical_duration_scales: list[float] = [1.0]
         unknown_count = 0
         foreign_count = 0
         tokens = re.findall(r"[^\W\d_]+|[,\.!?;:'\"()\[\]{}]", text, flags=re.UNICODE)
-        for token in tokens:
+        token_scales = [1.0] * len(tokens)
+        for start in range(len(tokens)):
+            for form in TECHNICAL_SPEECH_FORMS.values():
+                words = form.spoken.split()
+                if tokens[start : start + len(words)] == words:
+                    for index in range(start, start + len(words)):
+                        token_scales[index] = max(token_scales[index], form.duration_scale)
+
+        for token_index, token in enumerate(tokens):
             if token in PUNCTUATION:
                 spoken = PUNCTUATION_REMAP.get(token, token)
                 phone_id = (
@@ -275,12 +285,15 @@ class PortableVietnameseG2P:
                 tone_ids.append(self.tone_offset)
                 language_ids.append(self.language_id)
                 foreign_flags.append(0)
+                technical_duration_scales.append(1.0)
                 continue
+            technical_scale = token_scales[token_index]
             for ids, internal_tone, unknown, foreign in self._word_segments(token):
                 phone_ids.extend(ids)
                 tone_ids.extend([internal_tone + self.tone_offset] * len(ids))
                 language_ids.extend([self.language_id] * len(ids))
                 foreign_flags.extend([int(foreign)] * len(ids))
+                technical_duration_scales.extend([technical_scale] * len(ids))
                 unknown_count += unknown
                 if foreign:
                     foreign_count += len(ids)
@@ -289,22 +302,31 @@ class PortableVietnameseG2P:
         tone_ids.append(self.tone_offset)
         language_ids.append(self.language_id)
         foreign_flags.append(0)
+        technical_duration_scales.append(1.0)
         if self.add_blank:
             phones_with_blank: list[int] = []
             tones_with_blank: list[int] = []
             languages_with_blank: list[int] = []
             flags_with_blank: list[int] = []
-            for phone, tone, language, flag in zip(
-                phone_ids, tone_ids, language_ids, foreign_flags, strict=True
+            technical_scales_with_blank: list[float] = []
+            for phone, tone, language, flag, technical_scale in zip(
+                phone_ids,
+                tone_ids,
+                language_ids,
+                foreign_flags,
+                technical_duration_scales,
+                strict=True,
             ):
                 phones_with_blank.extend((0, phone))
                 tones_with_blank.extend((0, tone))
                 languages_with_blank.extend((self.language_id, language))
                 flags_with_blank.extend((0, flag))
+                technical_scales_with_blank.extend((1.0, technical_scale))
             phone_ids = [*phones_with_blank, 0]
             tone_ids = [*tones_with_blank, 0]
             language_ids = [*languages_with_blank, self.language_id]
             foreign_flags = [*flags_with_blank, 0]
+            technical_duration_scales = [*technical_scales_with_blank, 1.0]
         return ValtecModelInputs(
             phone_ids=tuple(phone_ids),
             tone_ids=tuple(tone_ids),
@@ -313,6 +335,11 @@ class PortableVietnameseG2P:
             unknown_phoneme_count=unknown_count,
             foreign_phone_count=foreign_count,
             foreign_flags=tuple(foreign_flags) if foreign_count else (),
+            technical_duration_scales=(
+                tuple(technical_duration_scales)
+                if any(scale > 1.0 for scale in technical_duration_scales)
+                else ()
+            ),
         )
 
 

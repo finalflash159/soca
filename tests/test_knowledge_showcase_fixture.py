@@ -16,7 +16,7 @@ def test_showcase_vault_has_realistic_demo_slices() -> None:
 
     paths = source.iter_paths()
 
-    assert len(paths) >= 35
+    assert len(paths) >= 32
     assert {
         "wiki/learning/fundamentals/bayes-and-probability.md",
         "wiki/learning/dsa/graphs-and-dp.md",
@@ -30,22 +30,14 @@ def test_showcase_vault_has_realistic_demo_slices() -> None:
         "wiki/learning/data/data-pipelines.md",
         "wiki/learning/networks/http-timeouts-and-retries.md",
         "wiki/learning/security/threat-modeling.md",
-        "wiki/xquad_vi/Oxygen.md",
-        "wiki/xquad_vi/Computational_complexity_theory.md",
     }.issubset(paths)
     assert not any(path.startswith("wiki/dinh-duong/") for path in paths)
     assert not any(path.startswith("wiki/life/project/") for path in paths)
     assert not any(path.startswith("wiki/life/decisions/") for path in paths)
     assert "wiki/learning/llm/context-and-tool-use.md" not in paths
-    learning_paths = [
-        path
-        for path in paths
-        if path.startswith("wiki/learning/") and not path.startswith("wiki/xquad_vi/")
-    ]
-    public_paths = [path for path in paths if path.startswith("wiki/xquad_vi/")]
+    learning_paths = [path for path in paths if path.startswith("wiki/learning/")]
     life_paths = [path for path in paths if path.startswith("wiki/life/")]
     assert len(learning_paths) >= 15
-    assert len(public_paths) == 48
     assert len(life_paths) >= 15
     assert all(
         len((SHOWCASE_VAULT / path).read_text(encoding="utf-8").splitlines()) >= 100
@@ -56,6 +48,7 @@ def test_showcase_vault_has_realistic_demo_slices() -> None:
         for path in life_paths
     )
     assert all(path.startswith("wiki/") for path in paths)
+    assert not any(path.startswith("wiki/xquad_vi/") for path in paths)
 
 
 def test_showcase_vault_has_answerable_and_unanswerable_smoke_queries() -> None:

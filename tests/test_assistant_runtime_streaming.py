@@ -592,3 +592,47 @@ def test_stream_usage_uses_engine_token_counter_when_available() -> None:
     assert result.trace is not None
     assert result.trace.prompt_manifest is not None
     assert result.trace.prompt_manifest["observed_prompt_token_source"] == "stream_engine"
+
+
+def _controlled_runtime(**kwargs):
+    """A runtime configured the way production configures it (ADR 0003)."""
+    kwargs.setdefault("options", RuntimeOptions(turn_workflow="controlled"))
+    return AssistantRuntime(**kwargs)
+
+
+def test_controlled_free_chat_streams_tokens_incrementally() -> None:
+    # The production workflow used to run the turn to completion and then emit the
+    # whole answer as a single token, so no surface could show text as it arrived.
+    llm = StreamSpyLLM(["Xin chào bạn. ", "Mình là SoCa."])
+    runtime = _controlled_runtime(llm=llm)
+
+    events = list(runtime.stream_text_turn("xin chào", min_sentence_chars=8))
+    tokens = [event.text for event in events if event.type == "token"]
+
+    assert tokens == ["Xin chào bạn. ", "Mình là SoCa."]
+    assert llm.stream_calls, "controlled free chat must reach generate_stream"
+    assert llm.generate_calls == []
+
+
+def test_controlled_free_chat_still_ends_with_one_result() -> None:
+    llm = StreamSpyLLM(["Xin chào bạn. ", "Mình là SoCa."])
+    runtime = _controlled_runtime(llm=llm)
+
+    events = list(runtime.stream_text_turn("xin chào", min_sentence_chars=8))
+
+    assert [event.type for event in events].count("result") == 1
+    assert events[-1].type == "result"
+    result = events[-1].result
+    assert result is not None
+    assert result.blocked is False
+    assert result.response_text == "Xin chào bạn. Mình là SoCa."
+
+
+def test_controlled_stream_emits_sentences_for_the_tts_pump() -> None:
+    llm = StreamSpyLLM(["Xin chào bạn. ", "Mình là SoCa."])
+    runtime = _controlled_runtime(llm=llm)
+
+    events = list(runtime.stream_text_turn("xin chào", min_sentence_chars=8))
+    sentences = [event.text for event in events if event.type == "sentence"]
+
+    assert sentences == ["Xin chào bạn.", "Mình là SoCa."]

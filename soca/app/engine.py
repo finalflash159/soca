@@ -27,7 +27,14 @@ from soca.app.voice_controller import (
     VoiceRecorder,
     VoiceRuntimeBuilder,
 )
-from soca.config import DEFAULT_SETTINGS, LlmSettings, SecretStore, load_settings, save_settings
+from soca.config import (
+    DEFAULT_SETTINGS,
+    LlmSettings,
+    SecretStore,
+    load_settings,
+    save_settings,
+    save_voice_profile,
+)
 from soca.core import AudioSink, ResolvedVoiceRuntimeConfig
 from soca.core.answer_validation import (
     answer_text_without_citation_labels,
@@ -61,7 +68,7 @@ from soca.core.workflow.protocol import (
 )
 from soca.core.workflow.runtime_events import terminal_from_runtime_result
 from soca.knowledge.index.persistence import default_index_home
-from soca.knowledge.indexing.coordinator import IndexCoordinator
+from soca.knowledge.indexing.coordinator import IndexBuildProgress, IndexCoordinator
 from soca.knowledge.indexing.identity import CorpusSpec
 from soca.knowledge.indexing.models import load_model
 from soca.knowledge.markdown_vault import MarkdownVaultKnowledgeSource
@@ -108,6 +115,7 @@ class TextRuntimeBuilder(Protocol):
 
 SettingsLoader = Callable[[], LlmSettings]
 SettingsSaver = Callable[[LlmSettings], None]
+VoiceProfileSaver = Callable[[str], None]
 CatalogFetcher = Callable[[LLMProvider, str], list[RemoteModelInfo]]
 
 
@@ -324,6 +332,7 @@ class SocaEngine:
         warmup_voice: bool = True,
         llm_settings_loader: SettingsLoader = load_settings,
         llm_settings_saver: SettingsSaver = save_settings,
+        voice_profile_saver: VoiceProfileSaver = save_voice_profile,
         secret_store: LlmSecretStore | None = None,
         catalog_fetcher: CatalogFetcher = fetch_catalog,
         llm_engine_factory: EngineBuilder = DEFAULT_LLM_ENGINE_FACTORY,
@@ -339,6 +348,7 @@ class SocaEngine:
         self.voice_player = voice_player
         self.warmup_voice = warmup_voice
         self.llm_settings_saver = llm_settings_saver
+        self.voice_profile_saver = voice_profile_saver
         self._settings_error: str | None = None
         try:
             self.llm_settings = llm_settings_loader()
@@ -614,9 +624,57 @@ class SocaEngine:
                 lock_released = True
                 self._knowledge_job_lock.release()
 
+        progress_state: dict[str, Any] = {
+            "phase": "scanning",
+            "completed_chunks": 0,
+            "total_chunks": 0,
+            "reused_chunks": 0,
+            "embedded_chunks": 0,
+            "documents": 0,
+            "chunks": 0,
+            "dense_state": "building",
+        }
+        phase_messages = {
+            "scanning": "Đang quét tài liệu…",
+            "chunking": "Đang chia tài liệu thành chunks…",
+            "embedding": "Đang tạo embedding…",
+            "persisting": "Đang ghi vector index…",
+            "verifying": "Đang kiểm tra generation…",
+            "complete": "Đã hoàn tất index.",
+        }
+
+        def report_progress(progress: IndexBuildProgress) -> None:
+            if (
+                progress.phase == progress_state["phase"]
+                and progress.completed_chunks == progress_state["completed_chunks"]
+                and progress.total_chunks == progress_state["total_chunks"]
+                and progress.reused_chunks == progress_state["reused_chunks"]
+                and progress.embedded_chunks == progress_state["embedded_chunks"]
+                and progress.documents == progress_state["documents"]
+                and progress.chunks == progress_state["chunks"]
+            ):
+                return
+            progress_state.update(
+                {
+                    "phase": progress.phase,
+                    "completed_chunks": progress.completed_chunks,
+                    "total_chunks": progress.total_chunks,
+                    "reused_chunks": progress.reused_chunks,
+                    "embedded_chunks": progress.embedded_chunks,
+                    "documents": progress.documents,
+                    "chunks": progress.chunks,
+                    "dense_state": "building",
+                }
+            )
+            self._emit_knowledge_setup(
+                "index",
+                "running",
+                phase_messages.get(progress.phase, "Đang cập nhật index…"),
+                **progress_state,
+            )
+
         def run() -> None:
             try:
-                self._emit_knowledge_setup("index", "running", "Đang quét và tạo embedding…")
                 reader = MarkdownVaultKnowledgeSource(
                     vault,
                     include_globs=("wiki/**/*.md",),
@@ -628,8 +686,24 @@ class SocaEngine:
                     index_home=default_index_home(vault),
                     model=load_model("aiteamvn-v2", allow_download=False),
                 )
-                report = coordinator.build_blocking(dense=True, verify_content=True)
+                report = coordinator.build_blocking(
+                    dense=True,
+                    verify_content=True,
+                    on_progress=report_progress,
+                )
                 status = coordinator.status().as_dict()
+                progress_state.update(
+                    {
+                        "phase": "complete",
+                        "completed_chunks": status["chunks"],
+                        "total_chunks": status["chunks"],
+                        "reused_chunks": progress_state["reused_chunks"],
+                        "embedded_chunks": progress_state["embedded_chunks"],
+                        "documents": status["documents"],
+                        "chunks": status["chunks"],
+                        "dense_state": status["dense_state"],
+                    }
+                )
                 self._emit_knowledge_setup(
                     "index",
                     "ready",
@@ -638,42 +712,57 @@ class SocaEngine:
                     documents=status["documents"],
                     chunks=status["chunks"],
                     dense_state=status["dense_state"],
+                    **{
+                        key: value
+                        for key, value in progress_state.items()
+                        if key not in {"documents", "chunks", "dense_state"}
+                    },
                 )
                 self._cmd_status()
             except ImportError as exc:
+                progress_state["phase"] = "failed"
                 self._emit_knowledge_setup(
                     "index",
                     "failed",
                     str(exc),
                     error_code="embedding_dependency_missing",
+                    **progress_state,
                 )
             except FileNotFoundError as exc:
+                progress_state["phase"] = "failed"
                 self._emit_knowledge_setup(
                     "index",
                     "failed",
                     str(exc),
                     error_code="embedding_model_missing",
+                    **progress_state,
                 )
             except OSError as exc:
+                progress_state["phase"] = "failed"
                 self._emit_knowledge_setup(
                     "index",
                     "failed",
                     str(exc),
                     error_code="knowledge_index_io_error",
+                    **progress_state,
                 )
             except RuntimeError as exc:
+                progress_state["phase"] = "failed"
                 self._emit_knowledge_setup(
                     "index",
                     "failed",
                     str(exc),
                     error_code="knowledge_index_runtime_error",
+                    **progress_state,
                 )
             except ValueError as exc:
+                progress_state["phase"] = "failed"
                 self._emit_knowledge_setup(
                     "index",
                     "failed",
                     str(exc),
                     error_code="knowledge_index_invalid",
+                    **progress_state,
                 )
             finally:
                 release_job_lock()
@@ -686,6 +775,7 @@ class SocaEngine:
         )
         self._knowledge_job_thread = thread
         try:
+            report_progress(IndexBuildProgress("scanning", 0, 0, 0, 0, 0, 0))
             thread.start()
         except Exception as exc:  # noqa: BLE001 - release the acquired job lock
             self._knowledge_job_thread = None
@@ -867,8 +957,17 @@ class SocaEngine:
             elif voice_bundle is not None and voice_bundle.turn_detector is not None:
                 smart_state = "loaded"
             else:
-                smart_state = "ready" if smart_turn_path.is_file() else "missing"
-            add("smart_turn", "SmartTurn", smart_state, SMART_TURN_MODEL_FILE)
+                smart_state = "configured" if smart_turn_path.is_file() else "missing"
+            smart_detail = (
+                f"{SMART_TURN_MODEL_FILE} · loaded + warmed"
+                if smart_state == "loaded"
+                else (
+                    f"{SMART_TURN_MODEL_FILE} · load + warmup khi voice start"
+                    if smart_state == "configured"
+                    else SMART_TURN_MODEL_FILE
+                )
+            )
+            add("smart_turn", "SmartTurn", smart_state, smart_detail)
             add(
                 "vad",
                 "VAD",
@@ -2123,6 +2222,15 @@ class SocaEngine:
             return
         if not self._invalidate_voice_runtime():
             return
+        try:
+            self.voice_profile_saver(profile_key)
+        except (OSError, ValueError) as exc:
+            self._error(
+                "Không thể lưu voice profile đã chọn.",
+                code="voice_profile_persist_failed",
+                detail=str(exc),
+            )
+            return
         self.voice_config = dataclasses.replace(
             self.voice_config,
             profile_key=profile_key,
@@ -2460,6 +2568,7 @@ def run_engine(
     warmup_voice: bool = True,
     llm_settings_loader: SettingsLoader = load_settings,
     llm_settings_saver: SettingsSaver = save_settings,
+    voice_profile_saver: VoiceProfileSaver = save_voice_profile,
     secret_store: LlmSecretStore | None = None,
     catalog_fetcher: CatalogFetcher = fetch_catalog,
     llm_engine_factory: EngineBuilder = DEFAULT_LLM_ENGINE_FACTORY,
@@ -2481,6 +2590,7 @@ def run_engine(
         warmup_voice=warmup_voice,
         llm_settings_loader=llm_settings_loader,
         llm_settings_saver=llm_settings_saver,
+        voice_profile_saver=voice_profile_saver,
         secret_store=secret_store,
         catalog_fetcher=catalog_fetcher,
         llm_engine_factory=llm_engine_factory,

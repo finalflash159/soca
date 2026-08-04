@@ -347,10 +347,23 @@ class ValtecOnnxTTS:
         if self._sentence_chunking:
             length_scale = self._paced_length_scale(model_inputs, logw, x_mask)
             flags = getattr(model_inputs, "foreign_flags", ())
-            if flags:
-                duration_scales = np.where(
-                    np.asarray(flags, dtype=np.float32) > 0, FOREIGN_SLOWDOWN, 1.0
-                ).astype(np.float32)
+            technical_scales = getattr(model_inputs, "technical_duration_scales", ())
+            if flags or technical_scales:
+                duration_scales = np.ones(len(model_inputs.phone_ids), dtype=np.float32)
+                if flags:
+                    duration_scales = np.maximum(
+                        duration_scales,
+                        np.where(
+                            np.asarray(flags, dtype=np.float32) > 0,
+                            FOREIGN_SLOWDOWN,
+                            1.0,
+                        ),
+                    )
+                if technical_scales:
+                    duration_scales = np.maximum(
+                        duration_scales,
+                        np.asarray(technical_scales, dtype=np.float32),
+                    )
 
         z_p, y_mask = self._expand_latents(
             m_p,

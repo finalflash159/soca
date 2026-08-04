@@ -16,6 +16,7 @@ from .acronyms import ACRONYM_LEXICON
 from .cmu_overrides import CMU_OVERRIDE_LEXICON
 from .machine_learning import MACHINE_LEARNING_LEXICON
 from .software import SOFTWARE_LEXICON
+from .spoken_forms import TECHNICAL_SPEECH_FORMS, TechnicalSpeechForm
 from .tools import TOOLS_LEXICON
 from .trend_greetings import TREND_GREETING_LEXICON
 
@@ -61,6 +62,8 @@ __all__ = [
     "SOFTWARE_LEXICON",
     "TREND_GREETING_LEXICON",
     "TOOLS_LEXICON",
+    "TECHNICAL_SPEECH_FORMS",
+    "TechnicalSpeechForm",
     "WORD_LEXICON",
     "WORD_LEXICON_SOURCES",
     "LexiconBackend",

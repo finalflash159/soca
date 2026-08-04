@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from threading import RLock
@@ -35,6 +36,20 @@ class IndexSnapshot:
 class BuildReport:
     sparse: SparseSyncResult
     dense: DenseBuildReport | None
+
+
+@dataclass(frozen=True)
+class IndexBuildProgress:
+    phase: str
+    completed_chunks: int
+    total_chunks: int
+    reused_chunks: int
+    embedded_chunks: int
+    documents: int
+    chunks: int
+
+
+IndexProgressCallback = Callable[[IndexBuildProgress], None]
 
 
 class LegacyIndexMigrationRequired(RuntimeError):
@@ -135,17 +150,66 @@ class IndexCoordinator:
         dense: bool = True,
         verify_content: bool = False,
         force_dense: bool = False,
+        on_progress: IndexProgressCallback | None = None,
     ) -> BuildReport:
         with self._lock:
+            if on_progress is not None:
+                on_progress(IndexBuildProgress("scanning", 0, 0, 0, 0, 0, 0))
             sparse = self.sync_sparse(verify_content=verify_content)
+            if on_progress is not None:
+                on_progress(
+                    IndexBuildProgress(
+                        "chunking",
+                        0,
+                        len(sparse.index.chunks),
+                        0,
+                        0,
+                        len(sparse.index.documents),
+                        len(sparse.index.chunks),
+                    )
+                )
             dense_report = None
             if dense and sparse.index.chunks:
+                def dense_progress(
+                    phase: str,
+                    completed_chunks: int,
+                    total_chunks: int,
+                    reused_chunks: int,
+                    embedded_chunks: int,
+                ) -> None:
+                    if on_progress is None:
+                        return
+                    on_progress(
+                        IndexBuildProgress(
+                            phase,
+                            completed_chunks,
+                            total_chunks,
+                            reused_chunks,
+                            embedded_chunks,
+                            len(sparse.index.documents),
+                            len(sparse.index.chunks),
+                        )
+                    )
+
                 _, dense_report = self.builder.build(
                     self.spec,
                     index=sparse.index,
                     revision=sparse.revision,
                     model=self.model,
                     force=force_dense,
+                    on_progress=dense_progress,
+                )
+            elif on_progress is not None:
+                on_progress(
+                    IndexBuildProgress(
+                        "complete",
+                        len(sparse.index.chunks),
+                        len(sparse.index.chunks),
+                        0,
+                        0,
+                        len(sparse.index.documents),
+                        len(sparse.index.chunks),
+                    )
                 )
             return BuildReport(sparse=sparse, dense=dense_report)
 

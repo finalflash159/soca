@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import PurePosixPath
@@ -236,6 +237,10 @@ def check_tool_call(
     runtime: ToolRuntime,
     call: ToolCall,
     policy: GuardrailPolicy = DEFAULT_POLICY,
+    *,
+    user_text: str = "",
+    knowledge_read_paths: Collection[str] = (),
+    require_read_provenance: bool = False,
 ) -> GuardrailEvent:
     tool = runtime.get(call.name)
     metadata = {"tool": call.name}
@@ -270,8 +275,68 @@ def check_tool_call(
                 message=path_event.message,
                 metadata={**metadata, **path_event.metadata},
             )
+        if require_read_provenance:
+            normalized_path = path_event.metadata.get("normalized_path")
+            explicit_paths = {
+                explicit_event.metadata.get("normalized_path")
+                for explicit_path in extract_markdown_paths(user_text)
+                for explicit_event in (check_knowledge_read_path(explicit_path, policy),)
+                if not explicit_event.blocked
+            }
+            known_paths = {
+                _normalize_path(known_path)
+                for known_path in knowledge_read_paths
+                if isinstance(known_path, str) and known_path.strip()
+            }
+            if normalized_path not in explicit_paths | known_paths:
+                return block(
+                    GuardrailStage.TOOL_INPUT,
+                    "knowledge_read_requires_provenance",
+                    "Chưa có đường dẫn này từ câu hỏi hoặc receipt truy xuất trước đó.",
+                    metadata={
+                        **metadata,
+                        **path_event.metadata,
+                        "provenance": "missing_search_or_explicit_path",
+                    },
+                )
 
     return allow(GuardrailStage.TOOL_INPUT, metadata=metadata)
+
+
+def knowledge_paths_from_results(results: Iterable[ToolResult]) -> tuple[str, ...]:
+    """Collect paths established by typed navigation/search receipts.
+
+    A catalog or search receipt can establish that a path exists. It does not
+    make arbitrary vault paths readable; the caller still applies the normal
+    path guard before executing ``knowledge.read``.
+    """
+    paths: set[str] = set()
+    for result in results:
+        if result.name == "knowledge.search":
+            raw_paths = (
+                item.get("path")
+                for item in result.data.get("hits", [])
+                if isinstance(item, dict)
+            )
+        elif result.name == "knowledge.inspect":
+            raw_paths = (
+                item.get("path")
+                for item in result.data.get("documents", [])
+                if isinstance(item, dict)
+            )
+        elif result.name == "knowledge.read":
+            raw_paths = (result.data.get("path"),)
+        else:
+            continue
+        for raw_path in raw_paths:
+            if not isinstance(raw_path, str) or not raw_path.strip():
+                continue
+            event = check_knowledge_read_path(raw_path)
+            if not event.blocked:
+                normalized = event.metadata.get("normalized_path")
+                if isinstance(normalized, str) and normalized:
+                    paths.add(normalized)
+    return tuple(sorted(paths))
 
 
 def check_tool_result(result: ToolResult) -> GuardrailEvent:

@@ -253,6 +253,39 @@ describe("progress reducer", () => {
         usage: null,
       },
     });
+    // The session sink reports `audio` when PCM is accepted, not when the
+    // speaker has finished draining it. Keep the chunk active until the next
+    // playback_started event advances the cursor.
+    expect(state.speechChunks[0]?.status).toBe("playing");
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "playback_started",
+        text: "Câu tiếp theo.",
+        latency_ms: null,
+        metadata: {
+          chunk_index: 1,
+          audio_duration_ms: 900,
+        },
+        usage: null,
+      },
+    });
+    expect(state.speechChunks[0]?.status).toBe("complete");
+
+    // A delayed receipt must not move a completed chunk back to the active
+    // color state.
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "audio",
+        text: "Câu đầu tiên.",
+        latency_ms: 1200,
+        metadata: { chunk_index: 0 },
+        usage: null,
+      },
+    });
     expect(state.speechChunks[0]?.status).toBe("complete");
 
     state = reduce(state, {
@@ -298,7 +331,7 @@ describe("progress reducer", () => {
     expect(state.voiceState).toBe("speaking");
     expect(state.speechChunks).toHaveLength(1);
 
-    // Once nothing is playing, tokens mean the runtime is thinking again.
+    // A buffered `audio` event does not mean the speaker is done.
     state = reduce(state, {
       type: "engine_event",
       event: {
@@ -321,7 +354,7 @@ describe("progress reducer", () => {
         usage: null,
       },
     });
-    expect(state.voiceState).toBe("processing");
+    expect(state.voiceState).toBe("speaking");
   });
 
   it("drops the speech caption when playback is interrupted", () => {

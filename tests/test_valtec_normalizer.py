@@ -70,6 +70,58 @@ def test_web_is_respelled_to_pronounceable_vep():
     assert "trang vép" in ValtecTextNormalizer().normalize("Xem trang web nhé")
 
 
+def test_technical_terms_use_native_spoken_forms_without_changing_meaning() -> None:
+    result = ValtecTextNormalizer().normalize(
+        "Embedding khác Transformer ở cách gửi remote LLM."
+    )
+    assert result == (
+        "em bê đinh khác trăn phơ mơ, ở cách gửi ri mốt, "
+        "large language model."
+    )
+    assert ValtecTextNormalizer().normalize("llm") == "large language model"
+    assert ValtecTextNormalizer().normalize("softmax, cosine và paper") == (
+        "sóp mác, cô sai và pây pờ"
+    )
+
+
+def test_long_technical_terms_and_numeric_ratios_are_fully_spoken() -> None:
+    result = ValtecTextNormalizer().normalize(
+        "long-context, RoPE scaling, activation sparsity, "
+        "interpretability, factuality, recompute, API, ERR_CONNECTION_RESET; "
+        "1.843.000/2.400.000"
+    )
+    assert result == (
+        "long con téc, rô pê sờ cê lình, ắc ti vây sần sờ pác si ti, "
+        "in tơ pờ rơ tơ bi li ti, phác chu a li ti, ri cầm piut, "
+        "ây pi ai, lỗi kết nối bị ngắt; "
+        "một triệu, tám trăm, bốn mươi ba nghìn trên hai triệu, bốn trăm nghìn"
+    )
+
+
+def test_numeric_ratio_before_sentence_punctuation_keeps_the_connector() -> None:
+    result = ValtecTextNormalizer().normalize("Tỷ lệ là 1.843.000/2.400.000.")
+    assert result == (
+        "Tỷ lệ là một triệu, tám trăm, bốn mươi ba nghìn trên "
+        "hai triệu, bốn trăm nghìn."
+    )
+
+
+def test_invalid_date_with_multiple_slashes_is_not_rewritten_as_ratio() -> None:
+    result = ValtecTextNormalizer().normalize("99/99/2026")
+    assert "trên" not in result
+    assert result.count("/") == 2
+
+
+def test_technical_pause_does_not_duplicate_existing_punctuation() -> None:
+    result = ValtecTextNormalizer().normalize("Remote, transformer.")
+    assert result == "ri mốt, trăn phơ mơ."
+
+
+def test_pipeline_uses_continuous_speech_form() -> None:
+    result = ValtecTextNormalizer().normalize("Pipeline này chạy ổn.")
+    assert result == "pai lain này chạy ổn."
+
+
 def test_numeric_linh_is_rewritten_to_le_and_scale_words_get_rests():
     normalizer = ValtecTextNormalizer()
     assert (

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from soca.knowledge.base import KnowledgeHit
-from soca.knowledge.markdown_vault import tokenize_terms
+from soca.knowledge.markdown_vault import TOKEN_RE, tokenize_terms
 
 RelevanceStatus = Literal["supported", "weak", "insufficient"]
 _SignalSpace = Literal["explicit", "lexical", "sparse", "dense"]
@@ -27,6 +27,7 @@ class RelevancePolicy:
     min_dense_score: float = 0.55
     min_top_margin: float = 0.05
     min_fusion_score_ratio: float = 0.70
+    accent_fold_weight: float = 0.25
 
     @classmethod
     def for_retrieval_mode(cls, mode: str) -> RelevancePolicy:
@@ -55,6 +56,7 @@ class RelevancePolicy:
             ("min_dense_score", self.min_dense_score),
             ("min_top_margin", self.min_top_margin),
             ("min_fusion_score_ratio", self.min_fusion_score_ratio),
+            ("accent_fold_weight", self.accent_fold_weight),
         ):
             if (
                 isinstance(value, bool)
@@ -69,6 +71,8 @@ class RelevancePolicy:
             raise ValueError("min_sparse_score_ratio must be at most 1")
         if self.min_fusion_score_ratio > 1.0:
             raise ValueError("min_fusion_score_ratio must be at most 1")
+        if self.accent_fold_weight > 1.0:
+            raise ValueError("accent_fold_weight must be at most 1")
 
 
 @dataclass(frozen=True)
@@ -94,7 +98,17 @@ def assess_relevance(
     if not hits:
         return RelevanceAssessment("insufficient", (), 0, None, None, "no_hits")
 
-    query_coverage = max((_lexical_coverage(query, hit) for hit in hits), default=0.0)
+    query_coverage = max(
+        (
+            _lexical_coverage(
+                query,
+                hit,
+                accent_fold_weight=resolved.accent_fold_weight,
+            )
+            for hit in hits
+        ),
+        default=0.0,
+    )
     sparse_top_score = max(
         (float(hit.sparse_score) for hit in hits if hit.sparse_score is not None),
         default=None,
@@ -178,6 +192,7 @@ def assess_relevance(
         hits,
         explicit,
         max_sparse_score=max_sparse_score,
+        accent_fold_weight=resolved.accent_fold_weight,
     )
 
     status = "supported"
@@ -204,6 +219,7 @@ def _same_backend_margin(
     admitted: list[tuple[KnowledgeHit, float, _SignalSpace]],
     *,
     max_sparse_score: float | None,
+    accent_fold_weight: float,
 ) -> float | None:
     """Compare the leader with its raw runner-up in each admitted score space.
 
@@ -220,7 +236,13 @@ def _same_backend_margin(
         if "explicit" in by_space and hit.retrieval_backend == "explicit_read":
             by_space["explicit"].append(1.0)
         if "lexical" in by_space:
-            by_space["lexical"].append(_lexical_coverage(query, hit))
+            by_space["lexical"].append(
+                _lexical_coverage(
+                    query,
+                    hit,
+                    accent_fold_weight=accent_fold_weight,
+                )
+            )
         if (
             "sparse" in by_space
             and max_sparse_score is not None
@@ -252,7 +274,11 @@ def _admission_signal(
     if hit.retrieval_backend == "explicit_read":
         return 1.0, "explicit"
 
-    lexical_coverage = _lexical_coverage(query, hit)
+    lexical_coverage = _lexical_coverage(
+        query,
+        hit,
+        accent_fold_weight=policy.accent_fold_weight,
+    )
     lexical_signal = (
         lexical_coverage if lexical_coverage >= policy.min_lexical_coverage else None
     )
@@ -303,22 +329,36 @@ def _admission_signal(
     return None
 
 
-def _lexical_coverage(query: str, hit: KnowledgeHit) -> float:
-    query_terms = set(tokenize_terms(query))
+def _lexical_coverage(
+    query: str,
+    hit: KnowledgeHit,
+    *,
+    accent_fold_weight: float = 0.25,
+) -> float:
+    query_terms = set(_surface_terms(query))
     if not query_terms:
         return 0.0
-    evidence_terms = set(
-        tokenize_terms(
-            " ".join(
-                (
-                    hit.document.title,
-                    hit.document.path,
-                    hit.snippet,
-                )
-            )
+    evidence_text = " ".join(
+        (
+            hit.document.title,
+            hit.document.path,
+            hit.snippet,
         )
     )
-    return len(query_terms & evidence_terms) / len(query_terms)
+    evidence_terms = set(_surface_terms(evidence_text))
+    exact_coverage = len(query_terms & evidence_terms) / len(query_terms)
+
+    folded_query_terms = set(tokenize_terms(query))
+    folded_evidence_terms = set(tokenize_terms(evidence_text))
+    folded_coverage = len(folded_query_terms & folded_evidence_terms) / len(
+        folded_query_terms
+    )
+    return exact_coverage + (folded_coverage - exact_coverage) * accent_fold_weight
+
+
+def _surface_terms(text: str) -> tuple[str, ...]:
+    """Keep a surface-form signal alongside the accent-folded search terms."""
+    return tuple(TOKEN_RE.findall(text.lower()))
 
 
 __all__ = ["RelevanceAssessment", "RelevancePolicy", "RelevanceStatus", "assess_relevance"]

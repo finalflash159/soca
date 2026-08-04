@@ -70,6 +70,15 @@ describe("VoiceStatus speech caption", () => {
     expect(revealedGraphemes(10, 4000, 1000)).toBe(10);
   });
 
+  it("uses the actual faster chunk duration after a TTS speed change", () => {
+    // length_scale is a synthesis setting, not a second caption clock.
+    // Playback events carry the resulting audio duration per chunk; the
+    // reveal follows that value when the production preset is 0.85.
+    expect(revealedGraphemes(20, 500, 1000)).toBe(10);
+    expect(revealedGraphemes(20, 425, 850)).toBe(10);
+    expect(revealedGraphemes(20, 850, 850)).toBe(20);
+  });
+
   it("reveals nothing without a usable duration", () => {
     expect(revealedGraphemes(10, 500, 0)).toBe(0);
     expect(revealedGraphemes(10, 500, -1)).toBe(0);
