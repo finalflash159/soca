@@ -8,7 +8,6 @@ instruction.
   `learning/ml/`, `learning/deep-learning/`, `learning/llm/` và
   `learning/software/`. Đây là note cách tôi hiểu, có ví dụ, phản ví dụ và câu
   hỏi mở; không phải bản chép giáo trình.
-- Quyết định: `life/decisions/` — privacy, TTS và cấu trúc vault.
 - Nhật ký: `life/journal/` — ngày đã làm, phản tỉnh và kế hoạch chưa hoàn tất.
 - Tài chính: `life/finance/` — budget, planned grocery, receipt ledger và review.
 - Sức khỏe: `life/health/` — nguyên tắc chung, observation, câu hỏi chuyên gia,

@@ -165,6 +165,43 @@ class _SequenceRouterLLM:
         return LLMResult(self.responses.pop(0), "", 0, 0, 0.0, 0.0, 0.0)
 
 
+class _StructuredEvidenceRepairLLM:
+    def __init__(self, structured_response: str, plain_response: str) -> None:
+        self.structured_response = structured_response
+        self.plain_response = plain_response
+        self.structured_calls = 0
+        self.plain_calls = 0
+        self.prompts: list[str] = []
+
+    def generate_structured(self, user_msg: str, **kwargs: object) -> LLMResult:
+        del kwargs
+        self.prompts.append(user_msg)
+        self.structured_calls += 1
+        return LLMResult(
+            self.structured_response,
+            "",
+            0,
+            0,
+            0.0,
+            0.0,
+            0.0,
+        )
+
+    def generate(self, user_msg: str, **kwargs: object) -> LLMResult:
+        del kwargs
+        self.prompts.append(user_msg)
+        self.plain_calls += 1
+        return LLMResult(
+            self.plain_response,
+            "",
+            0,
+            0,
+            0.0,
+            0.0,
+            0.0,
+        )
+
+
 class _FailingRouterLLM:
     def generate(self, user_msg: str, **kwargs: object) -> LLMResult:
         del user_msg, kwargs
@@ -318,6 +355,37 @@ def test_llm_router_assesses_goal_coverage_before_finalizing() -> None:
     assert decision.call.name == "knowledge.search"
     assert llm.prompts[0].startswith("You are SoCa's evidence-completion controller.")
     assert "covers every requested aspect" in llm.prompts[0]
+
+
+def test_evidence_completion_repairs_provider_shape_with_same_model() -> None:
+    llm = _StructuredEvidenceRepairLLM(
+        '{"status":"continue","handler":"knowledge.search",'
+        '"arguments":{"query":"attention","path":"wiki/other.md"},'
+        '"reason_code":"coverage_gap"}',
+        '{"status":"complete","handler":null,"arguments":{},'
+        '"reason_code":"covered"}',
+    )
+    router = LLMToolRouter(
+        llm,
+        ToolRuntime([ReadOnlySearchTool()]),
+        config=ToolRouterConfig(
+            mode="llm",
+            response_mode="json_schema",
+            repair_attempts=1,
+        ),
+    )
+
+    decision = router.assess_evidence(
+        "giải thích attention",
+        observation='{"receipt":{"hits":[{"path":"wiki/attention.md"}]}}',
+        knowledge_limit=3,
+    )
+
+    assert decision.status == "complete"
+    assert decision.call is None
+    assert llm.structured_calls == 1
+    assert llm.plain_calls == 1
+    assert "Schema contract" in llm.prompts[1]
 
 
 def test_evidence_completion_provider_failure_returns_typed_insufficient() -> None:

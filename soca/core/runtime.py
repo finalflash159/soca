@@ -138,7 +138,11 @@ class RuntimeOptions:
     context_safety_margin_tokens: int = DEFAULT_CONTEXT_SAFETY_MARGIN_TOKENS
     vault_manifest_chars: int = DEFAULT_VAULT_MANIFEST_CHARS
     max_retrieval_refinements: int = 1
-    max_evidence_completion_actions: int = 2
+    # A read receipt can require several bounded continuations when a Markdown
+    # document exceeds the tool's character budget. Three keeps the controller
+    # finite while covering the normal long-note path without making the loop
+    # unbounded or silently switching retrieval behavior.
+    max_evidence_completion_actions: int = 3
     asr_goal_repair_min_confidence: float = 0.70
 
     def __post_init__(self) -> None:

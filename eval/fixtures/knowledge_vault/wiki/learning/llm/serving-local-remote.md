@@ -116,7 +116,8 @@ không chỉ tăng token mù.
 ## Tóm tắt
 
 Serving là một phần của chất lượng. Model tốt nhưng load quá lâu, tràn context,
-không cancel được hoặc gửi data sai policy thì chưa phải model phù hợp cho SoCa.
+không cancel được hoặc gửi data sai policy thì chưa phải model phù hợp cho desktop
+assistant.
 
 ## Tôi tách các con số latency
 

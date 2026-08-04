@@ -179,6 +179,12 @@ def _build_evidence_completion_prompt(
             "relationships, continue with knowledge.inspect; its metadata is the "
             "answer for that goal and is not note-body evidence.",
             "Use a revised search only when no candidate path can be read directly.",
+            "Treat typed receipt fields complete and document_complete as authoritative "
+            "for the requested path: never request another continuation for that same "
+            "range when either field is true.",
+            "A focused question about how a note explains one subject can be complete "
+            "when the retrieved passage covers that subject; do not expand to the whole "
+            "document unless the user asks to review, list, compare, or check everything.",
             "Do not repeat a prior tool call. Do not answer the user. Do not infer facts "
             "from the vault manifest because it is navigation metadata only.",
             "Use insufficient when evidence cannot be improved with the enabled tools.",
@@ -291,14 +297,66 @@ class LLMToolRouter:
             vault_manifest=self._read_vault_manifest(),
             turn_context=self._turn_context,
         )
+        result = self._generate_evidence_completion(prompt)
+        if isinstance(result, EvidenceCompletionDecision):
+            return result
+
+        raw = getattr(result, "text", "")
         try:
-            if self._config.response_mode == "json_schema":
+            decision = self._parse_evidence_completion(raw)
+        except RouterOutputError as first_error:
+            if self._config.repair_attempts == 0:
+                return EvidenceCompletionDecision(
+                    status="insufficient",
+                    reason_code=f"invalid_completion:{first_error.code}",
+                )
+            repair_prompt = "\n".join(
+                (
+                    prompt,
+                    f"Previous output failed validation with code: {first_error.code}.",
+                    "Return only one valid JSON object with exactly status, handler, arguments and reason_code.",
+                    "The handler arguments must match the enabled retrieval tool schema in the catalog; do not mix fields from another tool.",
+                    "Schema contract: "
+                    + json.dumps(
+                        build_evidence_completion_schema(
+                            self._tool_runtime.list_specs(include_disabled=False)
+                        ),
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
+                    "Previous output (untrusted; repair it without commentary): "
+                    + json.dumps(raw[:1_000], ensure_ascii=False),
+                )
+            )
+            repaired = self._generate_evidence_completion(repair_prompt, structured=False)
+            if isinstance(repaired, EvidenceCompletionDecision):
+                return repaired
+            try:
+                return self._parse_evidence_completion(getattr(repaired, "text", ""))
+            except RouterOutputError as repair_error:
+                return EvidenceCompletionDecision(
+                    status="insufficient",
+                    reason_code=f"invalid_completion:{repair_error.code}",
+                )
+        return decision
+
+    def _generate_evidence_completion(
+        self,
+        prompt: str,
+        *,
+        structured: bool = True,
+    ) -> Any | EvidenceCompletionDecision:
+        try:
+            if (
+                structured
+                and self._config.response_mode == "json_schema"
+            ):
                 if not isinstance(self._llm, StructuredLLMEngine):
                     return EvidenceCompletionDecision(
                         status="insufficient",
                         reason_code="structured_output_unsupported",
                     )
-                result = self._llm.generate_structured(
+                return self._llm.generate_structured(
                     prompt,
                     schema_name="soca_evidence_completion",
                     schema=build_evidence_completion_schema(
@@ -310,14 +368,13 @@ class LLMToolRouter:
                     inject_persona=False,
                     zero_data_retention=self._config.zero_data_retention,
                 )
-            else:
-                result = self._llm.generate(
-                    prompt,
-                    max_tokens=self._config.max_tokens,
-                    temperature=0.0,
-                    top_p=1.0,
-                    inject_persona=False,
-                )
+            return self._llm.generate(
+                prompt,
+                max_tokens=self._config.max_tokens,
+                temperature=0.0,
+                top_p=1.0,
+                inject_persona=False,
+            )
         except Exception as exc:  # noqa: BLE001 - provider boundary becomes typed state
             LOGGER.warning(
                 "Evidence completion generation failed (%s)",
@@ -325,19 +382,19 @@ class LLMToolRouter:
             )
             return EvidenceCompletionDecision(
                 status="insufficient",
-                reason_code="completion_provider_failed",
+                reason_code=(
+                    "completion_provider_failed"
+                    if structured
+                    else "completion_repair_provider_failed"
+                ),
             )
-        try:
-            decision = parse_evidence_completion(
-                getattr(result, "text", ""),
-                max_chars=self._config.max_output_chars,
-            )
-            self._validate_completion_call(decision)
-        except RouterOutputError as exc:
-            return EvidenceCompletionDecision(
-                status="insufficient",
-                reason_code=f"invalid_completion:{exc.code}",
-            )
+
+    def _parse_evidence_completion(self, raw: str) -> EvidenceCompletionDecision:
+        decision = parse_evidence_completion(
+            raw,
+            max_chars=self._config.max_output_chars,
+        )
+        self._validate_completion_call(decision)
         return decision
 
     def _finish(self, raw: str) -> ToolCall | None:

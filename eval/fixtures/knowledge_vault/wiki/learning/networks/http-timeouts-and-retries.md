@@ -74,7 +74,7 @@ theo key trong thời gian phù hợp. Nếu nhận lại cùng key, server tr�
 thay vì chạy side effect lần nữa. Key không thay thế authorization; một key phải
 gắn với user/operation để không bị reuse sai boundary.
 
-Với SoCa, truy vấn knowledge là read-only nên retry dễ hơn. Ghi memory proposal
+Với một trợ lý, truy vấn knowledge là read-only nên retry dễ hơn. Ghi memory proposal
 hoặc thay config là side effect local; runtime phải có operation ID và không tự
 ghi lần hai khi response UI bị mất.
 
@@ -121,7 +121,7 @@ thái side effect, deadline và khả năng lặp an toàn. Một hệ thống t
 ## Câu hỏi còn mở
 
 - provider remote nào hỗ trợ idempotency thực sự và giữ key bao lâu?
-- streaming answer của SoCa nên resume hay bắt đầu lượt mới?
+- streaming answer nên resume hay bắt đầu lượt mới?
 - cancel có cần gửi signal tới upstream hay chỉ dừng render local?
 
 ## Bài tập
