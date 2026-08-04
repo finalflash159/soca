@@ -91,7 +91,7 @@ Tôi tách bốn trạng thái:
 - unavailable: index/model không sẵn sàng.
 
 Không dùng “hit_count > 0” làm supported. Một note có chữ `provider` không trả lời
-được câu hỏi provider của ONNX nếu snippet không có mapping đó.
+được câu hỏi về execution provider nếu snippet không có mapping đó.
 
 ## Đánh giá retrieval
 
@@ -125,9 +125,10 @@ bằng regex; mỗi rule phải có lý do, test và artifact calibrate.
 ## Hard negative tôi tự tạo
 
 - query Bayes và nhật ký có nhắc Bayes nhưng không giải thích;
-- query ONNX provider và note context có chữ provider;
+- query execution provider và note context có chữ provider;
 - query ngân sách tháng 07 và review chỉ nói cách theo dõi;
-- query TTS local và privacy decision chỉ nói ranh giới remote;
+- query serving local/remote và note học tập chỉ nói trade-off, không phải cấu hình
+  của một ứng dụng cụ thể;
 - query thời tiết khi vault không có realtime source.
 
 Hard negative tốt không phải đoạn vô nghĩa. Nó là đoạn đọc lên thấy hợp chủ đề

@@ -16,7 +16,8 @@ theo trí nhớ. Trí nhớ toàn giữ lại mấy ngày tệ.
 ## Tuần này đã làm được gì
 
 - Học lại Bayes bằng cách đếm tay trên 10.000 người. Cuối cùng cũng hiểu chỗ mẫu số.
-- Sửa được cái bug ONNX làm kết quả lệch. Nguyên nhân là chuẩn hóa input sai.
+- Hoàn thành một bài thực hành inference và ghi lại được nguyên nhân lệch kết quả:
+  chuẩn hóa input sai.
 - Đọc được nửa paper thầy gửi.
 - Gặp Nam, nghe nó kể chuyện đi làm. Học được cách kể về dự án.
 - Viết lại phần dự án trong CV bốn lần.
@@ -44,7 +45,8 @@ Ngồi máy nhiều, lưng bắt đầu mỏi.
 ## Điều rút ra
 
 Cái tật lớn nhất tuần này: nghi ngờ đúng chỗ nhưng lại đi kiểm tra chỗ khác
-trước. Vụ ONNX mất ba tiếng chỉ vì vậy.
+trước. Một bài thực hành mất ba tiếng chỉ vì tôi chưa kiểm hợp đồng input ngay
+từ đầu.
 
 Còn chuyện với Nam làm mình nhận ra mình hay kể việc mình *làm gì*, chứ ít khi
 nói được *tại sao khó* và *tại sao chọn cách này*. Phần đó mới là phần người
@@ -52,9 +54,18 @@ nghe quan tâm.
 
 ## Tuần sau muốn gì
 
-- Viết ba câu hỏi cho đồ án (thầy dặn).
+- Viết ba câu hỏi cho buổi trao đổi (thầy dặn).
 - Quay lại phòng gym, ít nhất hai buổi.
 - Nộp hồ sơ trước thứ sáu.
 - Đọc nốt paper.
 
 Không đặt thêm gì nữa. Mấy tuần trước cứ liệt kê tám chín món rồi làm được ba.
+
+## Nếu học tiếp từ đây
+
+Phần học tuần này nên nối từ những gì đã làm dở, không mở thêm một chủ đề mới chỉ
+vì thấy nó thú vị. Trước hết đọc nốt paper thầy gửi, sau đó quay lại bài thực
+hành và kiểm tra nó trên một tập input khác. Bayes thì đã hiểu hơn sau lần đếm
+tay, nhưng chưa cần mở thêm một chủ đề mới. Mục tiêu là nối được ba mảnh: câu hỏi
+rõ, thí nghiệm có cách đo, và kết quả có thể kiểm tra lại. Nếu tuần này chỉ làm
+được một mảnh thì ưu tiên đọc xong paper và viết ba câu hỏi cho thầy.

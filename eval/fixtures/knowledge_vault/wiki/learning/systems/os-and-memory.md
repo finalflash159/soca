@@ -196,5 +196,5 @@ steady state và lúc compact/reload.
 
 Tôi hình dung OS như người quản lý kho: CPU, RAM, disk và network có quota; cache
 giúp lấy nhanh nhưng không phải nguồn sự thật; queue giữ công việc nhưng có thể
-trở thành nợ. Khi SoCa chậm, tôi tìm stage và resource boundary bằng trace thay
-vì tăng timeout mù.
+trở thành nợ. Khi một ứng dụng chậm, tôi tìm stage và resource boundary bằng
+trace thay vì tăng timeout mù.

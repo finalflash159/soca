@@ -13,11 +13,10 @@ source_kind: repository-policy
 ## Corpus này là gì
 
 Corpus này được viết theo góc nhìn first-person và một timeline nhất quán để mô
-phỏng cách một người thật có thể ghi learning, journal, decision, finance và
-health. Nó đã được redacted: không có tên, địa chỉ, API key, receipt thật hay hồ
-sơ sức khỏe thật. “Realistic” ở đây nghĩa là context, trạng thái, mâu thuẫn nhỏ,
-history và uncertainty đủ thật để test retrieval; không được hiểu là dữ liệu cá
-nhân thật.
+phỏng cách một người thật có thể ghi learning, journal, finance và health. Nó đã
+được redacted: không có tên, địa chỉ, API key, receipt thật hay hồ sơ sức khỏe
+thật. “Realistic” ở đây nghĩa là context, trạng thái, mâu thuẫn nhỏ, history và
+uncertainty đủ thật để test retrieval; không được hiểu là dữ liệu cá nhân thật.
 
 ## Vì sao corpus phải có nhiều loại note
 
@@ -30,9 +29,9 @@ Ví dụ:
 
 - Bayes learning note giải thích công thức; journal 20/07 nói mình đã học nó;
 - food budget đặt trần; receipt ledger ghi actual; grocery plan ghi planned;
-- tts-choice là decision; privacy-boundary nêu constraint;
+- journal có thể nhắc một bài học nhưng không phải source kỹ thuật;
 - balanced-meals là general reference; safety-boundaries là guardrail;
-- context/tool-use là cách tôi học; journal ghi việc tôi đã kiểm tra runtime.
+- các note học tập diễn giải theo cách hiểu cá nhân, không phải tài liệu dự án.
 
 ## Tiêu chuẩn viết corpus
 
@@ -83,7 +82,6 @@ memory context và empty-answer trong một tình huống đọc giống vault t
 | --- | --- |
 | `learning_note` | hiểu biết/diễn giải cá nhân về một chủ đề |
 | `journal_entry` | sự kiện theo ngày, có completed/planned distinction |
-| `life_decision` | lựa chọn và lý do, có status/time |
 | `finance_note` | budget/ledger/plan; actual và planned tách nhau |
 | `health_note` | thông tin chung có safety boundary |
 | `source_note` | quy ước corpus, không phải evidence cho domain khác |
@@ -118,9 +116,9 @@ note thành benchmark hay bằng chứng cho đời sống.
 
 ## Dùng trong demo
 
-Smoke query có thể hỏi Bayes, DSA, ONNX, embedding, budget, journal hoặc TTS
-decision. Query không có evidence như weather realtime, chẩn đoán bệnh hoặc tháng
-08 phải được trả là insufficient/out-of-scope, không được lấp bằng note gần nghĩa.
+Smoke query có thể hỏi Bayes, DSA, ONNX, embedding, serving, budget hoặc journal.
+Query không có evidence như weather realtime, chẩn đoán bệnh hoặc tháng 08 phải
+được trả là insufficient/out-of-scope, không được lấp bằng note gần nghĩa.
 
 ## Dùng trong benchmark
 

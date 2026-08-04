@@ -122,7 +122,7 @@ giữ terminal size, key sequence và snapshot/state transition.
 
 Unit test kiểm pure decision nhanh. Integration test kiểm tool/runtime/source
 thật ở boundary. Real-flow smoke chạy process, model/provider thật và resource
-thật. Ba tầng trả lời ba câu khác nhau; unit xanh không chứng minh OpenRouter,
+thật. Ba tầng trả lời ba câu khác nhau; unit xanh không chứng minh provider remote,
 tokenizer, model load hay terminal IME đang ổn.
 
 Tôi ghi rõ test nào mock LLM. Mock hữu ích để kiểm branching/retry, nhưng không

@@ -16,7 +16,7 @@ source_kind: personal-study-note
 Tôi từng thấy câu lệnh insert trả về thành công rồi nghĩ dữ liệu đã an toàn. Thực
 ra có nhiều lớp: process đã nhận request, engine đã đưa data vào memory, journal
 đã ghi, transaction đã commit và filesystem đã flush. Mỗi lớp có một contract
-khác. Khi thiết kế index cho SoCa, tôi phải biết metadata nào có thể rebuild và
+khác. Khi thiết kế index cho một ứng dụng, tôi phải biết metadata nào có thể rebuild và
 metadata nào mất là mất dữ liệu.
 
 Một cache vector có thể tạo lại từ Markdown; một proposal memory đã được user

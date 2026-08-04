@@ -169,7 +169,7 @@ Attention đầy đủ thường tốn theo bình phương sequence length ở s
 context không chỉ tăng token input; còn tăng memory, KV cache và latency decode.
 Các phương pháp sparse/linear attention đổi trade-off chứ không xóa giới hạn.
 
-Trong SoCa, tôi muốn context budget bao gồm system, profile, retrieved evidence,
+Trong một ứng dụng có retrieval, tôi muốn context budget bao gồm system, profile, retrieved evidence,
 working summary, recent turns và output reserve. Model có cửa sổ 32K không đồng
 nghĩa tôi được nhét 32K raw note mà không có latency/cost.
 
