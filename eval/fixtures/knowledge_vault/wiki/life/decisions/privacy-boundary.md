@@ -1,93 +1,59 @@
 ---
 type: life_decision
-area: privacy
+area: riêng-tư
 status: current
 created: 2026-07-19
 updated: 2026-07-29
 confidence: high
-tags: [privacy, local, remote, memory, api-key, data-flow]
+review_after: 2026-11-01
+tags: [riêng-tư, ai, dữ-liệu-cá-nhân, quyết-định]
 source_kind: redacted-personal-note
 ---
 
-# Ranh giới riêng tư khi dùng assistant
+# Mình cho AI đọc tới đâu
 
-## Vì sao tôi không dùng chữ “local-first” như một khẩu hiệu
+Từ hồi bắt đầu dùng trợ lý AI để tra lại ghi chép của chính mình, mình thấy cần
+tự đặt ra một ranh giới. Không phải vì sợ, mà vì nếu không nghĩ trước thì sẽ tiện
+tay quăng hết mọi thứ lên mạng rồi sau này mới thấy phiền.
 
-Tôi có thể lưu API key ở máy nhưng vẫn gửi transcript ra provider. Tôi có thể
-chạy retrieval local nhưng gửi cả retrieved note vào prompt remote. Hai việc đó
-không mâu thuẫn, nhưng nếu UI chỉ ghi `remote` thì tôi không biết dữ liệu nào vừa
-đi qua boundary.
+## Quyết định
 
-Vì vậy trước khi bật remote, tôi muốn trả lời được ba câu: provider/model nào sẽ
-nhận request, transcript nào được gửi, và context nào được đưa vào request. Nếu
-không trả lời được, tôi coi config là chưa đủ rõ để dùng.
+**Ghi chép cá nhân thì để máy tự xử lý. Chỉ khi nào cần câu trả lời thông minh
+hơn mới bật model ngoài, và khi đó mình biết rõ nó nhận được gì.**
 
-## Ma trận dữ liệu tôi áp dụng
+## Cái làm mình nghĩ ra chuyện này
 
-| Dữ liệu | Mặc định | Có thể rời máy? | Điều kiện |
-| --- | --- | --- | --- |
-| câu chat hiện tại | RAM + provider local | có | user bật provider remote |
-| transcript voice | RAM + engine local | có | cùng consent với chat |
-| knowledge snippet | index local | có | chỉ khi prompt remote cần evidence |
-| working memory | session local | có | không gửi nếu turn không cần |
-| core/pinned memory | local state | có | phải relevant với prompt |
-| API key | secure local config | không như nội dung | không in vào prompt/log |
-| vector/index metadata | cache private | không | chỉ local filesystem |
+Hôm bữa mình hỏi trợ lý một câu về chi tiêu. Nó trả lời đúng, nhưng lúc đó mình
+mới giật mình: để trả lời được thì nó phải đọc cái file ghi tiền của mình. Nếu
+đang chạy model trên mạng thì nguyên đoạn đó vừa rời khỏi máy mình.
 
-Tôi không dùng “API key đã lưu” để suy ra “transcript an toàn”. Key chỉ là quyền
-gọi provider; chính payload mới là dữ liệu cần consent.
+Không có gì nghiêm trọng trong file đó. Nhưng vấn đề là mình *không hề nghĩ tới*
+cho tới lúc đó. Đấy mới là chỗ đáng ngại.
 
-## Quy tắc vận hành
+## Mình chia làm ba nhóm
 
-1. local là default cho chat và voice.
-2. remote phải hiện provider, model, reasoning state và max output.
-3. API key hiển thị masked; khi thay hoặc xóa, ô nhập và persisted config cùng đổi.
-4. key không đi vào Markdown, exception, trace hay screenshot debug.
-5. knowledge và memory được đánh dấu là data không tin cậy trong prompt.
-6. memory dài hạn chỉ nhận proposal, không tự ghi từ một câu model nói.
-7. khi không có realtime tool, assistant nói rõ chưa kiểm tra hiện tại.
-8. path ngoài vault, side effect chưa approve hoặc provider mơ hồ đều phải dừng.
+**Không bao giờ gửi đi đâu cả:** mấy thứ về sức khỏe, chuyện gia đình, mật khẩu,
+số tài khoản. Cái này thì tuyệt đối.
 
-## Những lần tôi đã kiểm tra
+**Cân nhắc từng lần:** ghi chép tiền nong, nhật ký. Bình thường để máy tự xử.
+Nếu thật sự cần hỏi một câu khó thì mới bật model ngoài, và chấp nhận là đoạn đó
+đi ra ngoài.
 
-| Tình huống | Điều phải nhìn thấy |
-| --- | --- |
-| chọn OpenRouter | status nói rõ transcript gửi OpenRouter/model cụ thể |
-| voice sau khi đổi provider | voice dùng cùng setting hoặc UI nói rõ nếu khác |
-| hỏi note riêng tư | citation/path hiển thị, không dump cả file vào UI |
-| xóa API key | input trống, config trống, không còn bản sao trong history |
-| provider lỗi | lỗi provider không bị đổi thành câu trả lời thành công |
-| index crash | cache mới không làm mất generation trước |
+**Thoải mái:** ghi chú học hành, kiến thức kỹ thuật. Mấy cái này trên mạng đầy,
+không có gì riêng tư.
 
-## Threat model tôi dùng ở mức desktop
+## Hai điều mình tự bắt mình làm
 
-Tôi không giả định máy luôn an toàn tuyệt đối. Người khác có thể đọc file nếu
-permission sai; log có thể vô tình chứa prompt; extension có thể chụp terminal;
-provider có thể lưu request theo chính sách riêng. Vì vậy index có nội dung note
-phải private, trace phải redact, và remote phải là hành động nhìn thấy được.
+**Phải nhìn thấy đang chạy gì.** Nếu màn hình không nói rõ đang dùng model trên
+máy hay model ngoài thì mình không dùng. Không đoán.
 
-Tôi chưa giải quyết toàn bộ threat model của hệ điều hành, nhưng ít nhất không
-để status nói “không cloud” trong khi model đang remote. Chữ trên UI là một phần
-của security boundary vì nó quyết định user có hiểu hành động hay không.
+**Không cho nó tự ghi vào ghi chép của mình.** Nó gợi ý thì được, nhưng mình phải
+bấm duyệt. Ghi chép là thứ mình sẽ tin vào sau này; để một cái máy tự thêm vào là
+tự phá nguồn tin của chính mình.
 
-## Điều còn để mở
+## Chỗ mình biết mình đang lỏng
 
-- retention transcript remote phụ thuộc policy từng provider và chưa tự kiểm chứng;
-- approval UI cho memory proposal cần hiển thị evidence trước khi ghi;
-- trace debug cần mặc định ẩn query nhạy cảm thay vì chỉ ẩn API key;
-- nếu voice/chat dùng provider khác nhau, status cần hiện ở từng lượt.
+Mình bật model ngoài nhiều hơn dự định lúc đầu, vì trả lời hay hơn hẳn. Lý do
+"chỉ khi thật cần" đang bị co giãn dần.
 
-## Lịch sử quyết định
-
-| Ngày | Quyết định | Lý do |
-| --- | --- | --- |
-| 19/07 | local-first | privacy và khả năng chạy offline |
-| 24/07 | hiển thị provider/model trong status | “remote” quá mơ hồ |
-| 28/07 | áp dụng remote setting cho chat + voice | tránh UI hứa một config nhưng runtime dùng config khác |
-| 29/07 | tách key boundary khỏi transcript boundary | key local không làm payload local |
-
-## Kết luận
-
-Tôi chấp nhận dùng remote khi lợi ích chất lượng đáng giá và tôi biết dữ liệu đi
-đâu. Tôi không chấp nhận một default hoặc một status khiến mình tưởng request
-đang local trong khi nó không phải.
+Ghi ra đây để tháng 11 đọc lại còn biết mà chỉnh.

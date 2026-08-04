@@ -210,7 +210,7 @@ class StructuredWorkflowPlanner:
         llm: LLMEngine,
         tool_runtime: ToolRuntime,
         *,
-        max_tokens: int = 256,
+        max_tokens: int = 2048,
         max_actions: int = 4,
         repair_attempts: int = 1,
         model_context_window: int | None = None,
