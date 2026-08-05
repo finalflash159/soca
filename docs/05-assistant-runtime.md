@@ -58,6 +58,23 @@ their result is converted to `KnowledgeContext` and passed to the LLM when one i
 enabled. If no LLM is available, the raw tool result is returned. Tools also have
 side-effect levels and parameter validation.
 
+### Bounded evidence completion
+
+`knowledge.read` returns a bounded receipt with the total line count and a
+continuation cursor when the requested note is larger than one tool receipt. The
+controlled runtime may follow that cursor so an exact read can cover a long note
+without silently treating the first page as the whole document. The current
+default permits the initial read plus up to six continuation reads. The shared
+turn budget therefore defaults to seven planned/tool actions and 40 controller
+transitions; other tool calls consume the same action budget.
+
+These are finite admission limits, not an automatic retrieval fallback. When the
+evidence-completion budget is exhausted, the trace records
+`budget_exhausted`/`insufficient` and the workflow exposes that terminal state to
+the caller. It must not claim that the goal was verified or silently switch to a
+different retrieval path. The limits are defined by `RuntimeOptions` and
+`TurnBudget` in `soca/core/runtime.py` and `soca/core/workflow/contracts.py`.
+
 ## Guardrails: Multiple Stages
 
 `core/guardrails.py`. **Stage** means where the check runs; **Action** is the

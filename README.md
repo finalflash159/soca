@@ -21,6 +21,10 @@
   </a>
 </p>
 
+<p align="center">
+  <a href="https://soca-page.vercel.app/">Project page</a>
+</p>
+
 SoCa is a Vietnamese voice assistant that runs on your machine. Audio capture,
 VAD/AEC, ASR, TTS, knowledge retrieval, memory, indexing and session state stay
 local. The LLM is local by default. If you explicitly select OpenAI, Gemini,
@@ -31,6 +35,19 @@ transcript plus assembled prompt context.
 > loop, TUI, retrieval and memory run end to end. Current release blockers and
 > negative measurements are recorded in [BENCHMARKS.md](BENCHMARKS.md); they are
 > not hidden behind a green summary.
+
+## Project page and demo
+
+The [SoCa project page](https://soca-page.vercel.app/) is the public visual
+companion to this repository. It presents the full demo recording, a short
+teaser, reviewed benchmark evidence, architecture diagrams and links to the
+source documentation. The page is intentionally separate from the runtime
+repository so the public presentation can remain concise while this repository
+keeps the implementation, release gates and detailed evidence authoritative.
+
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="SoCa terminal demo showing a grounded Vietnamese voice-assistant response" width="900">
+</p>
 
 ## What SoCa does
 
