@@ -72,6 +72,12 @@ working-summary worker, archive memory, embedding và các tool router. Model
 mới ghi `loaded`. Knowledge index hiển thị riêng sparse/dense generation hiện
 tại.
 
+`VoiceStatus` giữ phần live voice note ngắn và hướng theo hành động của người
+dùng (`khởi động…`, `đang nghe…`); nó không lặp lại tên implementation như
+SmartTurn trong dòng trạng thái này. Chi tiết SmartTurn, VAD và readiness vẫn
+được giữ ở `/status`, nơi người dùng có thể kiểm tra component và trạng thái
+backend đầy đủ.
+
 - `/memory` chỉ mô tả working session memory, summary/recent turn và compaction.
 - `/compact` mở progress panel và tự poll worker tới trạng thái cuối.
   Khi hoàn tất panel hiển thị token trước/sau; `/compact-show` mở riêng
