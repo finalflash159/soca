@@ -351,19 +351,15 @@ function reduceVoiceCore(
       return {
         ...state,
         voiceState: "loading",
-        voiceNote:
-          meta["smart_turn_enabled"] === true
-            ? "SmartTurn active · khởi động…"
-            : "khởi động…",
+        voiceNote: "khởi động…",
       };
     case "warmup": {
       const component = event.text || String(meta["component"] ?? "");
       if (component === "smart_turn") {
-        const ok = meta["ok"] !== false;
         return {
           ...state,
           voiceState: "loading",
-          voiceNote: ok ? "SmartTurn ready" : "SmartTurn failed",
+          voiceNote: "khởi động…",
         };
       }
       return { ...state, voiceState: "loading", voiceNote: "khởi động…" };
@@ -393,10 +389,7 @@ function reduceVoiceCore(
       return {
         ...state,
         voiceState: "listening",
-        voiceNote:
-          meta["smart_turn_enabled"] === true
-            ? "đang nghe · SmartTurn"
-            : "đang nghe…",
+        voiceNote: "đang nghe…",
       };
     case "recorded":
       return { ...state, voiceState: "processing", voiceNote: "" };

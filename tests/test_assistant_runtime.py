@@ -976,7 +976,7 @@ def test_goal_completion_preserves_all_pages_of_a_bounded_exact_read() -> None:
                 id="long",
                 path="wiki/learning/long.md",
                 title="Long note",
-                text="\n".join(f"line payload {index}" for index in range(1, 241)),
+                text="\n".join(f"line payload {index}" for index in range(1, 701)),
             )
 
     source = LongDocumentSource()
@@ -1000,6 +1000,38 @@ def test_goal_completion_preserves_all_pages_of_a_bounded_exact_read() -> None:
                 reason_code="read_has_continuation",
             ),
             EvidenceCompletionDecision(
+                status="continue",
+                call=ToolCall(
+                    "knowledge.read",
+                    {"path": "wiki/learning/long.md", "start_line": 301},
+                ),
+                reason_code="read_has_continuation",
+            ),
+            EvidenceCompletionDecision(
+                status="continue",
+                call=ToolCall(
+                    "knowledge.read",
+                    {"path": "wiki/learning/long.md", "start_line": 401},
+                ),
+                reason_code="read_has_continuation",
+            ),
+            EvidenceCompletionDecision(
+                status="continue",
+                call=ToolCall(
+                    "knowledge.read",
+                    {"path": "wiki/learning/long.md", "start_line": 501},
+                ),
+                reason_code="read_has_continuation",
+            ),
+            EvidenceCompletionDecision(
+                status="continue",
+                call=ToolCall(
+                    "knowledge.read",
+                    {"path": "wiki/learning/long.md", "start_line": 601},
+                ),
+                reason_code="read_has_continuation",
+            ),
+            EvidenceCompletionDecision(
                 status="complete",
                 reason_code="document_end_reached",
             ),
@@ -1013,7 +1045,7 @@ def test_goal_completion_preserves_all_pages_of_a_bounded_exact_read() -> None:
         ),
         tool_router=router,
         knowledge_builder=KnowledgeContextBuilder(source, max_chars=32_000),
-        options=RuntimeOptions(max_evidence_completion_actions=2),
+        options=RuntimeOptions(),
     )
 
     result = runtime.run_text_turn(
@@ -1023,11 +1055,11 @@ def test_goal_completion_preserves_all_pages_of_a_bounded_exact_read() -> None:
 
     assert "1: line payload 1" in prompt
     assert "101: line payload 101" in prompt
-    assert "240: line payload 240" in prompt
-    assert len(result.citations) == 3
+    assert "700: line payload 700" in prompt
+    assert len(result.citations) == 7
     assert result.trace is not None
     assert result.trace.evidence_completion_status == "complete"
-    assert result.trace.evidence_completion_actions == 2
+    assert result.trace.evidence_completion_actions == 6
     assert result.trace.evidence_status == "supported"
 
 

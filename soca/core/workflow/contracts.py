@@ -308,12 +308,12 @@ class GoalContract:
 
 @dataclass(frozen=True)
 class TurnBudget:
-    # Two controller transitions surround each tool call; the revision node
-    # adds one more between retrieval rounds.  The ceiling must therefore
-    # cover the four-action plan budget plus verification and finalization.
-    max_transitions: int = 24
-    max_planned_actions: int = 4
-    max_tool_calls: int = 4
+    # The production evidence loop permits one initial retrieval plus six
+    # bounded continuation reads. Two controller transitions surround each
+    # tool call; revision nodes add transitions between those actions.
+    max_transitions: int = 40
+    max_planned_actions: int = 7
+    max_tool_calls: int = 7
     max_model_calls: int = 4
     max_planner_calls: int = 2
     max_retrieval_rounds: int = 2

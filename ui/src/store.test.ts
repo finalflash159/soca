@@ -426,6 +426,50 @@ describe("progress reducer", () => {
 });
 
 describe("voice ASR status", () => {
+  it("keeps SmartTurn implementation details out of the voice status note", () => {
+    let state = reduce(initialState, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "ready",
+        text: "Voice ready",
+        latency_ms: null,
+        metadata: { smart_turn_enabled: true },
+        usage: null,
+      },
+    });
+
+    expect(state.voiceNote).toBe("khởi động…");
+
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "warmup",
+        text: "smart_turn",
+        latency_ms: null,
+        metadata: { component: "smart_turn", ok: true },
+        usage: null,
+      },
+    });
+
+    expect(state.voiceNote).toBe("khởi động…");
+
+    state = reduce(state, {
+      type: "engine_event",
+      event: {
+        event: "voice",
+        type: "recording",
+        text: "Recording",
+        latency_ms: null,
+        metadata: { smart_turn_enabled: true },
+        usage: null,
+      },
+    });
+
+    expect(state.voiceNote).toBe("đang nghe…");
+  });
+
   it("shows the concrete backend loading message", () => {
     const state = reduce(initialState, {
       type: "engine_event",

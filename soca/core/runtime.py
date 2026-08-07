@@ -141,10 +141,9 @@ class RuntimeOptions:
     vault_manifest_chars: int = DEFAULT_VAULT_MANIFEST_CHARS
     max_retrieval_refinements: int = 1
     # A read receipt can require several bounded continuations when a Markdown
-    # document exceeds the tool's character budget. Three keeps the controller
-    # finite while covering the normal long-note path without making the loop
-    # unbounded or silently switching retrieval behavior.
-    max_evidence_completion_actions: int = 3
+    # document exceeds the tool's character budget. Six continuations cover a
+    # long private note while keeping the controller finite and observable.
+    max_evidence_completion_actions: int = 6
     asr_goal_repair_min_confidence: float = 0.70
 
     def __post_init__(self) -> None:
