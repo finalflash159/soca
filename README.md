@@ -46,7 +46,7 @@ repository so the public presentation can remain concise while this repository
 keeps the implementation, release gates and detailed evidence authoritative.
 
 <p align="center">
-  <img src="docs/assets/demo.gif" alt="SoCa terminal demo showing a grounded Vietnamese voice-assistant response" width="900">
+  <img src="docs/assets/soca-teaser.gif" alt="SoCa terminal demo showing a grounded Vietnamese voice-assistant response" width="900">
 </p>
 
 ## What SoCa does
