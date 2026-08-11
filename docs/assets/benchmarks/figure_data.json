@@ -3,7 +3,7 @@
   "purpose": "Values plotted in docs/assets/benchmarks/*.png. Every entry is copied from a run already recorded in BENCHMARKS.md or docs/evidence/, and carries the section it came from so a figure can never drift away from its source silently.",
   "regenerate": "uv run python scripts/plot_benchmarks.py",
   "asr_production": {
-    "source": "BENCHMARKS.md section 2.1 (paired production run 2026-07-30) and section 2.2 (Qwen matrix 2026-08-03)",
+    "source": "BENCHMARKS.md section 3.1 (paired production run 2026-07-30) and section 3.2 (Qwen matrix 2026-08-03)",
     "disposition": {
       "run": "phowhisper_small production RobustASR, CoreML with CPU provider",
       "groups": [
@@ -160,7 +160,7 @@
     }
   },
   "retrieval_pareto": {
-    "source": "BENCHMARKS.md section 5.2 (embedding and fusion selection, run 20260730-tvpl-fusion-final)",
+    "source": "BENCHMARKS.md section 6.2 (embedding and fusion selection, run 20260730-tvpl-fusion-final)",
     "corpus": "TVPL, 10,576 docs / 13,230 chunks",
     "queries": 1000,
     "label_offsets_note": "dx/dy are label offsets in typographic points, chosen by hand because eight of the nine candidates land in one dense cluster around 70 ms. They affect nothing but label placement.",
@@ -258,7 +258,7 @@
     ]
   },
   "turn_taking": {
-    "source": "BENCHMARKS.md section 4.2 (turn-taking, run 2026-07-25)",
+    "source": "BENCHMARKS.md section 5.2 (turn-taking, run 985b9ce, 2026-08-11)",
     "scenarios": 120,
     "within_turn_pause_ms": 800,
     "policies": {
@@ -268,13 +268,13 @@
         "median_over_wait_ms": 704
       },
       "p_based (Smart Turn v3.2)": {
-        "cut_in_rate": 0.033,
-        "premature_close_rate": 0.183,
-        "median_over_wait_ms": 1312
+        "cut_in_rate": 0.017,
+        "premature_close_rate": 0.05,
+        "median_over_wait_ms": 1824
       }
     },
     "barge_in": {
-      "source": "BENCHMARKS.md section 4.1 (barge-in)",
+      "source": "BENCHMARKS.md section 5.1 (barge-in)",
       "runs": [
         {
           "label": "Real echo\n(AEC-Challenge, 300 pairs)",
@@ -290,7 +290,7 @@
     }
   },
   "tts": {
-    "source": "BENCHMARKS.md sections 3.1 and 3.2 (Valtec release gates + first-clause A/B)",
+    "source": "BENCHMARKS.md sections 4.1 and 4.2 (Valtec release gates + first-clause A/B)",
     "release_gates": [
       {
         "metric": "Latency p50",
@@ -341,7 +341,7 @@
     }
   },
   "evidence_floor": {
-    "source": "BENCHMARKS.md section 5.5 (evidence-floor recalibration)",
+    "source": "BENCHMARKS.md section 6.5 (evidence-floor recalibration)",
     "corpus": "XQuAD Vietnamese grounding split: 12 answerable, 8 deliberately unanswerable",
     "operating_points": [
       {
