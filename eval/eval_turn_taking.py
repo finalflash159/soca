@@ -33,8 +33,10 @@ from eval.barge_in_replay import (
     TurnEndpointDecider,
 )
 from eval.conversation_metrics import TurnOutcome, turn_taking_report
+from eval.provenance import config_snapshot, run_provenance
 from eval.scenarios_turn_taking import TurnScenario, build_scenarios
 from local import config as cfg
+from soca.core.endpoint import EndpointConfig
 
 _SMART_TURN_DIR = "models/smart-turn-v3-onnx"
 
@@ -135,7 +137,19 @@ def main(n_utterances: int, pause_ms: float, seed: int) -> None:
     report = turn_taking_report(outcomes)
     _print_report(report)
 
-    meta = {"tier": 2, "n_utterances": n_utterances, "pause_ms": pause_ms, "seed": seed}
+    # The endpoint constants decide this result as much as the audio does, so they
+    # are stamped into the artifact: a later tuning commit then shows up as a diff
+    # here instead of silently invalidating whatever the doc quotes.
+    meta = run_provenance(
+        tier=2,
+        n_utterances=n_utterances,
+        pause_ms=pause_ms,
+        seed=seed,
+        endpoint_config=config_snapshot(
+            EndpointConfig(),
+            ("endpoint_silence_ms", "floor_silence_ms", "ceil_silence_ms"),
+        ),
+    )
     cfg.EVAL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = cfg.EVAL_RESULTS_DIR / "conversation_tier2.json"
     out_path.write_text(

@@ -31,6 +31,7 @@ from eval.aec_challenge import (
 )
 from eval.barge_in_replay import BargeInDecider, EchoCanceller, SpeechProb
 from eval.conversation_metrics import BargeInOutcome, BargeInReport, barge_in_report
+from eval.provenance import run_provenance
 from local import config as cfg
 
 _SAMPLE_RATE = 16000
@@ -190,15 +191,15 @@ def main(
     report = barge_in_report(outcomes)
     _print_report(report)
 
-    meta = {
-        "tier": 1,
-        "data_dir": str(root),
-        "n_per_condition": n_per_condition,
-        "seed": seed,
-        "sustained_ms": sustained_ms,
-        "vad_threshold": vad_threshold,
-        "stream_delay_ms": stream_delay_ms,
-    }
+    meta = run_provenance(
+        tier=1,
+        data_dir=str(root),
+        n_per_condition=n_per_condition,
+        seed=seed,
+        sustained_ms=sustained_ms,
+        vad_threshold=vad_threshold,
+        stream_delay_ms=stream_delay_ms,
+    )
     cfg.EVAL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = cfg.EVAL_RESULTS_DIR / "conversation_tier1.json"
     out_path.write_text(

@@ -1,0 +1,38 @@
+{
+  "metadata": {
+    "commit": "985b9cef177ae95f6236bd2faf0009ae473fdcbf",
+    "dirty": false,
+    "created_at": "2026-08-11T11:29:31.216742+00:00",
+    "tier": 2,
+    "n_utterances": 60,
+    "pause_ms": 800.0,
+    "seed": 42,
+    "endpoint_config": {
+      "endpoint_silence_ms": 700,
+      "floor_silence_ms": 1800,
+      "ceil_silence_ms": 3000
+    }
+  },
+  "policies": {
+    "fixed": {
+      "n_clean": 60,
+      "n_mid_pause": 60,
+      "cut_in_rate": 1.0,
+      "cut_in_count": 60,
+      "premature_close_rate": 0.6166666666666667,
+      "premature_close_count": 37,
+      "median_over_wait_ms": 704.0,
+      "n_correct_close": 23
+    },
+    "p_based": {
+      "n_clean": 60,
+      "n_mid_pause": 60,
+      "cut_in_rate": 0.016666666666666666,
+      "cut_in_count": 1,
+      "premature_close_rate": 0.05,
+      "premature_close_count": 3,
+      "median_over_wait_ms": 1824.0,
+      "n_correct_close": 57
+    }
+  }
+}

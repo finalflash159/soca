@@ -332,11 +332,18 @@ def conversation_turn_taking(data: dict) -> Figure:
     right.set_title("Cost of that accuracy")
     _despine(right)
 
+    # Derived, never typed in: a hardcoded caption survived a policy retune once
+    # already and contradicted the bars drawn right above it.
+    baseline, adaptive = (policies[name] for name in names)
+    extra_wait = adaptive["median_over_wait_ms"] - baseline["median_over_wait_ms"]
     _caption(
         figure,
         "Replacing a fixed 700 ms silence timer with Smart Turn v3.2 probability-based endpointing cuts interruptions of the\n"
-        "user from 100% to 3.3% and premature closes from 61.7% to 18.3%, paid for with ~608 ms more patience. The residual\n"
-        "18.3% is expected: Smart Turn is English-trained. Source: BENCHMARKS.md, conversational robustness.",
+        f"user from {baseline['cut_in_rate']:.0%} to {adaptive['cut_in_rate']:.1%} and premature closes from "
+        f"{baseline['premature_close_rate']:.1%} to {adaptive['premature_close_rate']:.1%}, paid for with "
+        f"~{extra_wait:,.0f} ms more patience.\n"
+        f"The residual {adaptive['premature_close_rate']:.1%} is expected: Smart Turn is English-trained. "
+        "Source: BENCHMARKS.md, conversational robustness.",
     )
     return figure
 

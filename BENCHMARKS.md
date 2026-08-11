@@ -352,7 +352,7 @@ index — deterministic and machine-independent. AEC and VAD are injected for un
 tests, then the production WebRTC AEC3 and Silero are fed for the real runs.
 
 Barge-in gate: sustained 400 ms, Silero threshold 0.7 (production `DuplexAecSink`
-defaults). Endpoint policies: `fixed` (700 ms) versus `p_based` (floor 1,000 +
+defaults). Endpoint policies: `fixed` (700 ms) versus `p_based` (floor 1,800 +
 span·P, ceiling 3,000; Smart Turn v3.2). Vocabulary follows Full-Duplex-Bench so
 the numbers are comparable to published spoken-dialogue work.
 
@@ -381,20 +381,33 @@ stronger echo.
 *Figure 5 — Fixed-timer versus probability-based endpointing, and what the accuracy
 costs in patience.*
 
+Canonical run `985b9ce`, seed 42, endpoint floor 1,800 ms. Evidence:
+[`turn-taking-20260811.json`](docs/evidence/turn-taking-20260811.json).
+
 | Policy | Cut-in rate | Premature close | Median over-wait |
 | --- | ---: | ---: | ---: |
 | `fixed` | 100.0% | 61.7% | 704 ms |
-| **`p_based`** | **3.3%** | **18.3%** | 1,312 ms |
+| **`p_based`** | **1.7%** | **5.0%** | 1,824 ms |
 
-Adaptive endpointing drops cut-in **100% → 3.3%** and premature close
-**61.7% → 18.3%** — 30× and 3.4× — for about 608 ms more patience. That is the
+Adaptive endpointing drops cut-in **100% → 1.7%** and premature close
+**61.7% → 5.0%** — 60× and 12× — for about 1,120 ms more patience. That is the
 takeover-rate versus response-latency trade-off, measured for Vietnamese.
 
-**Two honest limits.** `p_based` still closes 18.3% of Vietnamese turns early
-because Smart Turn is English-trained; a Vietnamese turn model is the real fix. And
-the 400 ms sustained gate filters 400 ms backchannels only because it actually
-needs 416 ms (13 × 32 ms frames) — a 500 ms "vâng ạ" would leak through. A
-backchannel classifier, not a longer timer, is the fix.
+**Superseded numbers.** Until 2026-08-05 this section reported 3.3% cut-in and
+18.3% premature close at 1,312 ms over-wait. Commit `587a93a` raised
+`floor_silence_ms` from 1,000 to 1,800 ms and fixed the window handed to Smart
+Turn: `_voiced_window` stripped the trailing silence before inference, which
+removed the very cue an end-of-turn classifier is trained on. The 1,000 ms-floor
+numbers were correct for the code of the day and are kept in
+[A.2](#a2--decision-history); the endpoint constants are now stamped into the
+result file so the next tuning commit shows up as a diff rather than as drift.
+
+**One honest limit, one improved.** The 400 ms sustained gate filters 400 ms
+backchannels only because it actually needs 416 ms (13 × 32 ms frames) — a 500 ms
+"vâng ạ" would leak through, and a backchannel classifier, not a longer timer, is
+the fix. Premature close is no longer a release blocker at 5.0%, but the residual
+3/60 are still English-trained-model errors: a Vietnamese turn model remains the
+principled fix, and the 1,824 ms over-wait is the price currently paid for it.
 
 *Caveats:* latency here is a system number (sustained floor + VAD on read speech),
 not a pure front-end reaction time. The backchannel is a synthetic 400 ms FLEURS
@@ -680,7 +693,7 @@ Consolidated from every section above. Nothing here is scheduled away or softene
 | 4 | Remote tool-router generation failure telemetry path unaudited | [3.2](#32-qwen3-asr-release-qualification--decision-blocked) |
 | 5 | No microphone, speaker, or live barge-in device run | [9](#9-platform-provider-and-audio-gates) |
 | 6 | No PTY / IME matrix on iTerm2 or Terminal.app | [9](#9-platform-provider-and-audio-gates) |
-| 7 | Smart Turn is English-trained: 18.3% premature close on Vietnamese | [5.2](#52-turn-taking-120-scenarios-800-ms-within-turn-pause) |
+| 7 | Vietnamese turn-taking costs 1,824 ms median over-wait to hold premature close at 5.0% | [5.2](#52-turn-taking-120-scenarios-800-ms-within-turn-pause) |
 | 8 | Backchannels longer than ~416 ms leak through the sustained gate | [5.2](#52-turn-taking-120-scenarios-800-ms-within-turn-pause) |
 | 9 | Summary mixed Vietnamese/code/path placement recall 8% | [7](#7-working-memory-summarization) |
 | 10 | Router goal-level pass rate 1/14 on the remediation baseline | [8](#8-capability-routing) |
@@ -701,7 +714,13 @@ uv run python scripts/plot_benchmarks.py --only retrieval-pareto
 The plotted numbers live in
 [`docs/assets/benchmarks/figure_data.json`](docs/assets/benchmarks/figure_data.json),
 each entry carrying the section it was copied from, so a figure cannot silently
-drift from its source.
+drift from its source. Figure captions are derived from those values rather than
+typed, because a hand-written caption already survived a retune once and
+contradicted the bars above it.
+
+Conversation harnesses stamp the revision they ran from, whether the tree was
+dirty, and the endpoint constants in force into the result file. A later tuning
+commit then appears as a diff in the artifact instead of as a stale number here.
 
 Selected harnesses:
 
@@ -806,5 +825,6 @@ matched 0/80 on the production model.
 | Summary decision `trim_only` | 2026-07-28 | Superseded by explicit product-owner acceptance in [§7](#7-working-memory-summarization); the measurements remain valid |
 | Voice/knowledge phases P0–P5 | 2026-07-29 | Consolidated into [§6](#6-knowledge-retrieval) and [§8](#8-capability-routing) |
 | Qwen3-ASR release matrix on CPU: partial p95 11,619 ms | 2026-08-02 | Re-run on MPS ([§3.2](#32-qwen3-asr-release-qualification--decision-blocked)); the CPU failure is retained, not overwritten |
+| Turn-taking `p_based` at a 1,000 ms floor: cut-in 3.3%, premature close 18.3%, over-wait 1,312 ms | 2026-08-03 | Correct for the code of the day; `587a93a` raised the floor to 1,800 ms and stopped stripping the trailing silence before Smart Turn inference, giving the 1.7% / 5.0% / 1,824 ms in [§5.2](#52-turn-taking-120-scenarios-800-ms-within-turn-pause) |
 
 Model licenses are listed in [README.md](README.md#licenses-and-attribution).
