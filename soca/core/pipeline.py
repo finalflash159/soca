@@ -370,80 +370,90 @@ class VoicePipeline:
             crossfade_ms=self.pcm_crossfade_ms,
         )
         pump.start()
-
-        runtime_result: Any | None = None
-        pending_sentences: list[str] = []
-        runtime = self.assistant_runtime
-        if runtime is None:
-            raise RuntimeError("assistant runtime is not configured")
-        stream = runtime.stream_text_turn(
-            transcript,
-            source="asr",
-            metadata=_runtime_input_metadata(rejection_reason, asr_alternatives),
-            min_sentence_chars=min_sentence_chars,
-            first_sentence_min_chars=first_sentence_min_chars,
-            first_clause_enabled=self.first_clause_enabled,
-            first_clause_min_chars=self.first_clause_min_chars,
-            first_clause_min_words=self.first_clause_min_words,
-            first_clause_max_scan_chars=self.first_clause_max_scan_chars,
-        )
         try:
-            for event in stream:
-                if interrupt_event is not None and interrupt_event.is_set():
-                    break  # stop
-                if event.type == "token":
-                    yield StreamingEvent(type="llm_token", text=event.text)
-                elif event.type == "sentence":
-                    pending_sentences.append(event.text)
-                    yield StreamingEvent(
-                        type="sentence",
-                        text=answer_text_without_citation_labels(event.text, ()),
-                        metadata={"delivery": "answer_delta", "terminal": False},
-                    )
-                elif event.type == "result":
-                    runtime_result = event.result
-                yield from pump.drain_ready()
+            runtime_result: Any | None = None
+            pending_sentences: list[str] = []
+            runtime = self.assistant_runtime
+            if runtime is None:
+                raise RuntimeError("assistant runtime is not configured")
+            stream = runtime.stream_text_turn(
+                transcript,
+                source="asr",
+                metadata=_runtime_input_metadata(
+                    rejection_reason,
+                    asr_alternatives,
+                ),
+                min_sentence_chars=min_sentence_chars,
+                first_sentence_min_chars=first_sentence_min_chars,
+                first_clause_enabled=self.first_clause_enabled,
+                first_clause_min_chars=self.first_clause_min_chars,
+                first_clause_min_words=self.first_clause_min_words,
+                first_clause_max_scan_chars=self.first_clause_max_scan_chars,
+            )
+            try:
+                for event in stream:
+                    if interrupt_event is not None and interrupt_event.is_set():
+                        break  # stop
+                    if event.type == "token":
+                        yield StreamingEvent(type="llm_token", text=event.text)
+                    elif event.type == "sentence":
+                        pending_sentences.append(event.text)
+                        yield StreamingEvent(
+                            type="sentence",
+                            text=answer_text_without_citation_labels(event.text, ()),
+                            metadata={"delivery": "answer_delta", "terminal": False},
+                        )
+                    elif event.type == "result":
+                        runtime_result = event.result
+                    yield from pump.drain_ready()
+            finally:
+                close = getattr(stream, "close", None)
+                if callable(close):
+                    close()
+            interrupted = interrupt_event is not None and interrupt_event.is_set()
+            if interrupted:
+                yield StreamingEvent(type="interrupted", text="")
+            elif runtime_result is not None:
+                if getattr(runtime_result, "blocked", False):
+                    pending_sentences = [
+                        getattr(runtime_result, "response_text", "").strip()
+                    ]
+                citations = tuple(getattr(runtime_result, "citations", ()))
+                for sentence in pending_sentences:
+                    spoken = answer_text_without_citation_labels(sentence, citations)
+                    if spoken:
+                        pump.submit(spoken)
+                yield self._runtime_summary_event(runtime_result)
+            pump.close()
+            yield from pump.drain_until_done()
+            yield StreamingEvent(
+                type="done",
+                text=answer_text_without_citation_labels(
+                    getattr(runtime_result, "response_text", "").strip(),
+                    tuple(getattr(runtime_result, "citations", ())),
+                ),
+                latency_ms=(time.perf_counter() - turn_start_time) * 1000,
+                metadata={
+                    "rejected": False,
+                    "interrupted": interrupted,  # cho UI/loop biết
+                    "terminal_status": _runtime_terminal_status(
+                        runtime_result,
+                        interrupted=interrupted,
+                    ),
+                    "runtime_blocked": bool(getattr(runtime_result, "blocked", False)),
+                    "runtime_route": getattr(
+                        getattr(runtime_result, "route", None), "value", ""
+                    ),
+                    "citations": list(
+                        citation_records(tuple(getattr(runtime_result, "citations", ())))
+                    ),
+                    "stage_latencies_ms": self.metrics.snapshot(),
+                    "playback": pump.playback_summary,
+                },
+            )
         finally:
-            close = getattr(stream, "close", None)
-            if callable(close):
-                close()
-        interrupted = interrupt_event is not None and interrupt_event.is_set()
-        if interrupted:
-            yield StreamingEvent(type="interrupted", text="")
-        elif runtime_result is not None:
-            if getattr(runtime_result, "blocked", False):
-                pending_sentences = [getattr(runtime_result, "response_text", "").strip()]
-            citations = tuple(getattr(runtime_result, "citations", ()))
-            for sentence in pending_sentences:
-                spoken = answer_text_without_citation_labels(sentence, citations)
-                if spoken:
-                    pump.submit(spoken)
-            yield self._runtime_summary_event(runtime_result)
-        pump.close()
-        yield from pump.drain_until_done()
-        yield StreamingEvent(
-            type="done",
-            text=answer_text_without_citation_labels(
-                getattr(runtime_result, "response_text", "").strip(),
-                tuple(getattr(runtime_result, "citations", ())),
-            ),
-            latency_ms=(time.perf_counter() - turn_start_time) * 1000,
-            metadata={
-                "rejected": False,
-                "interrupted": interrupted,  # cho UI/loop biết
-                "terminal_status": _runtime_terminal_status(
-                    runtime_result,
-                    interrupted=interrupted,
-                ),
-                "runtime_blocked": bool(getattr(runtime_result, "blocked", False)),
-                "runtime_route": getattr(getattr(runtime_result, "route", None), "value", ""),
-                "citations": list(
-                    citation_records(tuple(getattr(runtime_result, "citations", ())))
-                ),
-                "stage_latencies_ms": self.metrics.snapshot(),
-                "playback": pump.playback_summary,
-            },
-        )
+            pump.close()
+            pump.join()
 
     def _stream_tts_playback(
         self,
@@ -516,6 +526,7 @@ class _TTSPlaybackPump:
             "output_underflow_count": 0,
         }
         self._event_queue: queue.Queue[StreamingEvent | object] = queue.Queue()
+        self._closed = False
         self._tts_thread = threading.Thread(target=self._tts_worker, name="soca-tts-worker")
         self._playback_thread = threading.Thread(
             target=self._playback_worker, name="soca-playback-worker"
@@ -541,7 +552,14 @@ class _TTSPlaybackPump:
             self._sentence_queue.put(sentence)
 
     def close(self) -> None:
-        self._sentence_queue.put(None)
+        if not self._closed:
+            self._closed = True
+            self._sentence_queue.put(None)
+
+    def join(self) -> None:
+        """Wait for both workers without consuming queued telemetry events."""
+        self._tts_thread.join()
+        self._playback_thread.join()
 
     def drain_ready(self) -> Iterator[StreamingEvent]:
         """Yield events already available, without blocking."""
@@ -863,6 +881,16 @@ def _runtime_terminal_status(runtime_result: Any, *, interrupted: bool) -> str:
         return "cancelled"
     if runtime_result is None:
         return "system_failure"
+    trace = getattr(runtime_result, "trace", None)
+    workflow_status = str(getattr(trace, "workflow_status", "") or "")
+    if workflow_status in {
+        "needs_clarification",
+        "budget_exhausted",
+        "insufficient_evidence",
+        "safe_failure",
+        "system_failure",
+    }:
+        return workflow_status
     if bool(getattr(runtime_result, "blocked", False)):
         route = getattr(getattr(runtime_result, "route", None), "value", "")
         return "needs_clarification" if route == "clarification" else "safe_failure"

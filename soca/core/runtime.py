@@ -98,7 +98,6 @@ from soca.tools import (
     KnowledgeSearchTool,
     MemorySearchTool,
     SideEffectLevel,
-    SpeculativeReceipt,
     ToolCall,
     ToolResult,
     ToolRuntime,
@@ -453,6 +452,12 @@ class AssistantRuntime:
         if self._closed:
             return
         failures: list[tuple[str, Exception]] = []
+        tool_runtime_close = getattr(self.tool_runtime, "close", None)
+        if callable(tool_runtime_close):
+            try:
+                tool_runtime_close()
+            except Exception as exc:  # noqa: BLE001 - aggregate cleanup failures
+                failures.append(("tool_runtime", exc))
         sources: list[tuple[str, object | None]] = [
             (
                 "knowledge",
@@ -463,7 +468,6 @@ class AssistantRuntime:
                 getattr(self.memory_builder, "long_term", None),
             ),
         ]
-        tool_runtime_close = getattr(self.tool_runtime, "close", None)
         closed_ids: set[int] = set()
         for name, source in sources:
             if source is None or id(source) in closed_ids:
@@ -476,11 +480,6 @@ class AssistantRuntime:
                 close()
             except Exception as exc:  # noqa: BLE001 - aggregate cleanup failures
                 failures.append((name, exc))
-        if callable(tool_runtime_close):
-            try:
-                tool_runtime_close()
-            except Exception as exc:  # noqa: BLE001 - aggregate cleanup failures
-                failures.append(("speculative_tools", exc))
         if failures:
             details = "; ".join(f"{name}: {error}" for name, error in failures)
             raise RuntimeError(f"Assistant runtime cleanup failed: {details}") from failures[0][1]
@@ -512,30 +511,6 @@ class AssistantRuntime:
         """
 
         self._progress_callback = callback
-
-    def prefetch_knowledge(
-        self,
-        slot_id: str,
-        query: str,
-        *,
-        limit: int | None = None,
-    ) -> SpeculativeReceipt:
-        """Start a read-only retrieval for a future, explicitly named turn."""
-        prefetch = getattr(self.tool_runtime, "prefetch", None)
-        if not callable(prefetch):
-            raise RuntimeError("speculative_retrieval_not_configured")
-        normalized_query = query.strip()
-        if not normalized_query:
-            raise ValueError("speculative retrieval query must not be empty")
-        arguments: dict[str, Any] = {"query": normalized_query}
-        if limit is not None:
-            if limit < 1:
-                raise ValueError("speculative retrieval limit must be positive")
-            arguments["limit"] = limit
-        return cast(
-            SpeculativeReceipt,
-            prefetch(slot_id, ToolCall("knowledge.search", arguments)),
-        )
 
     def _notify_progress(self, stage: str) -> None:
         callback = self._progress_callback
@@ -772,18 +747,8 @@ class AssistantRuntime:
         if summary is not None:
             working_summary = str(getattr(summary, "render", lambda: "")()).strip()
 
-        speculative_slot = frame_metadata.get("speculative_retrieval_slot", "")
-        speculative_scope = getattr(self.tool_runtime, "using_slot", None)
-        scope = cast(
-            Any,
-            (
-                speculative_scope(speculative_slot)
-                if callable(speculative_scope) and isinstance(speculative_slot, str)
-                else nullcontext()
-            ),
-        )
         try:
-            with scope:
+            with nullcontext():
                 workflow_run = self.run_controlled_workflow(
                     frame.text,
                     planner=planner,

@@ -30,7 +30,7 @@ def test_voice_command_delegates_to_app_voice_loop(monkeypatch) -> None:
     # Stub the duplex sink so the CLI does not load the real models here.
     player_sentinel = object()
     monkeypatch.setattr("soca.core.duplex_aec_sink.DuplexAecSink", lambda **kwargs: player_sentinel)
-    monkeypatch.setattr("soca.cli.run_voice_loop", fake_run_voice_loop)
+    monkeypatch.setattr("soca.app.voice_loop.run_voice_loop", fake_run_voice_loop)
 
     result = CliRunner().invoke(
         main,
@@ -86,7 +86,7 @@ def test_voice_command_accepts_quick_profile_argument(monkeypatch) -> None:
         return 0
 
     monkeypatch.setattr("soca.core.duplex_aec_sink.DuplexAecSink", lambda **kwargs: object())
-    monkeypatch.setattr("soca.cli.run_voice_loop", fake_run_voice_loop)
+    monkeypatch.setattr("soca.app.voice_loop.run_voice_loop", fake_run_voice_loop)
 
     result = CliRunner().invoke(main, ["voice", "baseline", "--no-warmup"])
 

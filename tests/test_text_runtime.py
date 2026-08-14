@@ -134,10 +134,6 @@ def test_text_runtime_uses_shared_source_and_k_query_returns_citation(
     read_tool = bundle.runtime.tool_runtime.get("knowledge.read")
     user_text, metadata = normalize_text_turn("/k chất đạm")
     source.search("warmup", limit=1)
-    slot_id = "text-runtime-prefetch"
-    receipt = bundle.runtime.prefetch_knowledge(slot_id, "chất đạm", limit=2)
-    assert receipt.wait(timeout=2).status == "ready"
-    metadata["speculative_retrieval_slot"] = slot_id
     result = bundle.runtime.run_text_turn(
         user_text,
         source="test",
@@ -153,10 +149,6 @@ def test_text_runtime_uses_shared_source_and_k_query_returns_citation(
     assert bundle.runtime.sufficiency_assessor is not None
     assert [citation.path for citation in result.citations] == ["wiki/protein.md"]
     assert result.trace is not None
-    assert result.trace.tool_results[0].data["speculative_retrieval"] == {
-        "status": "hit",
-        "reason": "exact_identity_match",
-    }
 
 
 def test_no_evidence_memory_request_without_vault_returns_empty_evidence(tmp_path: Path) -> None:

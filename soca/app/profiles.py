@@ -13,10 +13,10 @@ from soca.asr.calibration import (
     load_strict_confidence_calibration,
     qwen_calibration_identity,
 )
+from soca.asr.confidence_calibration import load_confidence_guard_calibration
 from soca.asr.qwen_artifacts import QWEN_ARTIFACT_REGISTRY
 from soca.asr.qwen_readiness import QwenReadinessState, inspect_qwen_readiness
 from soca.asr.registry import ASR_MODEL_REGISTRY
-from soca.asr.robust_asr import load_confidence_guard_calibration
 from soca.asr.selection import ASREngine, ASRSelection
 from soca.core.profiles import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,

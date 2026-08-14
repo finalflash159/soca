@@ -90,13 +90,12 @@ The upgrade harnesses deliberately separate “implementation exists” from
 
 | Capability | Harness / contract | Current release state |
 | --- | --- | --- |
-| Sufficient context | `eval.eval_sufficient_context_viquad` | `fail`; production default off |
+| Sufficient context | `eval.eval_sufficient_context_viquad` | prompt/model matrix available; proxy labels cannot release; production default off |
 | Controlled first clause | `eval.measure_first_clause_ttfa` | paired capture/replay measured |
 | Native hot paths | `eval.profile_hot_paths` | `blocked` on macOS native sampling |
 | TTS naturalness + intelligibility | `eval.eval_tts_quality` + TTS WER report | `blocked` on paired human references |
 | Public Vietnamese retrieval | `eval.eval_vn_mteb` | full pinned ArguAna-VN comparison |
 | Backchannel classifier | `eval.eval_backchannel_classifier` | `blocked` on reviewed Vietnamese audio/model winner |
-| Speculative retrieval | `eval.eval_speculative_retrieval` | contract integrated; voice rollout blocked on paired latency |
 | Natural disfluency | `eval.eval_disfluency` | `blocked` on private audio and real-flow receipts |
 | ARM edge daemon | `eval.eval_edge_daemon` | native tests pass; device gate blocked on Linux aarch64 SBC |
 
@@ -112,8 +111,17 @@ uv run pyright soca
 uv run pytest -q -m 'not real_model'
 uv run python -m eval.release_report --manifest <local-manifest.json> \
   --suite platform-audio-release --output <local-report.json>
+
+# Diagnostic only unless --reviewed-labels has two-reviewer semantic consensus.
+uv run python -m eval.eval_sufficient_context_viquad \
+  --provider <provider> --model <model> --prompt-variant paper_definition \
+  --reviewed-labels <ignored-reviewed-labels.json>
 ```
 
-The detailed measurements and historical dispositions remain in
+UIT-ViQuAD's `is_impossible` field is an extractive-MRC proxy, not semantic
+sufficient-context ground truth. Release evidence therefore requires exact
+sample coverage under `sufficient_context_semantic_v1`, matching per-case labels
+from at least two named reviewers, and records only the reviewed-manifest hash in the public
+artifact. The detailed measurements and historical dispositions remain in
 [`BENCHMARKS.md`](../BENCHMARKS.md); the source-specific decisions live under
 [`docs/adr/`](adr/).

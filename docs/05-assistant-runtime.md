@@ -92,47 +92,6 @@ Vietnamese quality gate passes; explicit evaluation can set
 `sufficient_context_enabled=True`, and an enabled-but-unavailable assessor fails
 closed.
 
-### Speculative knowledge retrieval
-
-`SpeculativeToolRuntime` provides an explicit
-`prefetch_knowledge(slot_id, query)` API for future-turn retrieval. Only read-only
-tools are admitted. A result is reused once only when the final controller call
-has byte-equivalent canonical JSON arguments and the active knowledge-generation
-identity is unchanged. Pending or failed work, argument drift, a replaced slot,
-or generation drift runs the normal tool and adds a typed cache-miss marker to
-its receipt.
-
-Prefetch never returns an answer. The canonical workflow still observes the tool
-receipt and owns context assessment, synthesis, answer verification, and terminal
-state. Automatic voice-partial rollout remains disabled until its paired latency
-gate passes.
-
-## Guardrails: Multiple Stages
-
-`core/guardrails.py`. **Stage** means where the check runs; **Action** is the
-result.
-
-```mermaid
-flowchart LR
-    subgraph Stages["GuardrailStage"]
-        I[INPUT] --> R[RETRIEVAL] --> TI[TOOL_INPUT] --> TO[TOOL_OUTPUT] --> O[OUTPUT]
-    end
-    Stages -.-> A["GuardrailAction:<br/>ALLOW · WARN · BLOCK"]
-```
-
-| Function                    | Stage       | Checks                                                                |
-| --------------------------- | ----------- | --------------------------------------------------------------------- |
-| `check_input_text`          | INPUT       | Whether the user input violates policy                                |
-| `check_knowledge_read_path` | RETRIEVAL   | Whether a knowledge path is safe and cannot path-traverse             |
-| `check_untrusted_text`      | RETRIEVAL   | Whether retrieved untrusted content contains dangerous instructions   |
-| `check_tool_call`           | TOOL_INPUT  | Whether tool parameters and permissions are valid                     |
-| `check_tool_result`         | TOOL_OUTPUT | Whether tool output leaks private or unsafe content                   |
-| `check_final_output`        | OUTPUT      | Whether the final answer makes unsupported claims, e.g. realtime data |
-
-`GuardrailEvent` is frozen and records `stage`, `action`, `reason`, and
-`message`. All events are stored in `RuntimeTrace.guardrail_events` for the
-Inspector.
-
 ### Why Streaming Remains Safe
 
 On LLM routes, `check_final_output` is a **stateless substring scan** that catches

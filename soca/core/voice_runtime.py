@@ -73,10 +73,8 @@ from soca.memory import (
 )
 from soca.tools import (
     MemorySearchTool,
-    SpeculativeToolRuntime,
     Tool,
     ToolRuntime,
-    knowledge_source_identity,
 )
 from soca.tts import VALTEC_TTS_CONFIG, TTSEngine, create_tts_engine
 
@@ -301,7 +299,6 @@ def resolve_voice_runtime_config(
         raise ValueError("unknown knowledge retrieval mode")
     if resolved_backend != "aiteamvn_v2":
         raise ValueError("unknown knowledge dense backend")
-
     return ResolvedVoiceRuntimeConfig(
         profile_key=profile_key,
         asr=resolved_asr,
@@ -638,19 +635,7 @@ def _build_voice_runtime_components(
     )
     startup_resources.llm = llm
 
-    base_tool_runtime = ToolRuntime(tools)
-    tool_runtime = (
-        SpeculativeToolRuntime(
-            base_tool_runtime,
-            identity_provider=lambda name: (
-                knowledge_source_identity(knowledge_builder.source)
-                if name == "knowledge.search" and knowledge_builder is not None
-                else ""
-            ),
-        )
-        if knowledge_builder is not None
-        else base_tool_runtime
-    )
+    tool_runtime = ToolRuntime(tools)
     router_embedding_model = None
     if config.semantic_router_enabled:
         router_embedding_model = FastEmbedModel(allow_download=False)

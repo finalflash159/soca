@@ -138,6 +138,12 @@
       "false_sufficient_rate_max": 0.05,
       "sufficient_recall_min": 0.9
     },
+    "label_policy": {
+      "uit_viquad_is_impossible": "diagnostic_extractability_proxy_only",
+      "release_definition": "sufficient_context_semantic_v1",
+      "required_reviewers": 2,
+      "reviewed_manifest": "missing"
+    },
     "clean_closed_world_probe": {
       "case_count": 40,
       "provider_failures": 0,
@@ -156,13 +162,51 @@
       "sufficient_recall": 0.9043478260869565,
       "accuracy": 0.7043478260869566,
       "decision": "fail"
-    }
+    },
+    "additional_diagnostic_probes": [
+      {
+        "model": "anthropic/claude-sonnet-4.6",
+        "prompt": "strict_exact",
+        "false_sufficient_rate": 0.25,
+        "sufficient_recall": 0.9,
+        "accuracy": 0.825
+      },
+      {
+        "model": "anthropic/claude-sonnet-4.6",
+        "prompt": "paper_definition",
+        "false_sufficient_rate": 0.5,
+        "sufficient_recall": 0.95,
+        "accuracy": 0.725
+      },
+      {
+        "model": "anthropic/claude-sonnet-4.6",
+        "prompt": "balanced_examples",
+        "false_sufficient_rate": 0.45,
+        "sufficient_recall": 0.9,
+        "accuracy": 0.725
+      }
+    ]
+  },
+  "speculative_retrieval": {
+    "decision": "fail",
+    "production_wiring": "opt_in_disabled_by_default",
+    "controlled_measurement_scope": "final_query_commit_to_retrieval_result_ready",
+    "source_clean": false,
+    "case_count": 20,
+    "actual_median_lead_ms": 256.96,
+    "cache_hit_rate": 1.0,
+    "baseline_p50_ms": 155.12,
+    "baseline_p95_ms": 161.29,
+    "speculative_p50_ms": 1.99,
+    "speculative_p95_ms": 2.51,
+    "median_saved_ms": 153.16,
+    "controlled_decision": "threshold_pass_dirty_source",
+    "production_decision": "production_voice_receipts_required"
   },
   "blocked_gates": {
     "hot_path_profile": "native_sampling_unsupported_on_available_macos_arm64_host",
     "tts_quality": "reviewed_paired_vietnamese_human_reference_audio_not_provisioned",
     "backchannel_model": "reviewed_vietnamese_target_hardware_evidence_not_available",
-    "speculative_voice_partial_rollout": "paired_production_latency_receipts_not_available",
     "vietnamese_disfluency": "reviewed_private_audio_and_controlled_real_flow_receipts_not_provisioned",
     "edge_daemon_linux_aarch64": "real_sbc_device_receipt_not_available"
   },

@@ -7,13 +7,23 @@ import pytest
 from eval.eval_sufficient_context_viquad import (
     DATASET_REVISION,
     DATASET_SPLIT,
+    DEFAULT_FALSE_SUFFICIENT_MAX,
+    DEFAULT_PER_CLASS,
+    DEFAULT_SUFFICIENT_RECALL_MIN,
+    RELEASE_MINIMUM_REVIEWED_PER_CLASS,
     LabeledContext,
     aggregate_results,
+    apply_reviewed_labels,
+    build_parser,
+    demote_non_release_run,
     evaluate_contexts,
     load_labeled_contexts,
+    reasoning_options_for_provider,
+    release_overrides,
     select_balanced_contexts,
     wilson_interval,
 )
+from soca.config import LlmSettings
 from soca.core.sufficient_context import (
     RetrievedContext,
     SufficiencyAssessmentError,
@@ -123,6 +133,8 @@ def test_evaluation_aggregates_confusion_usage_and_gate() -> None:
         results,
         false_sufficient_max=0.5,
         sufficient_recall_min=0.5,
+        release_labels_reviewed=True,
+        minimum_class_count=1,
     )
 
     assert aggregate["confusion_matrix"] == {"tp": 1, "fn": 1, "fp": 1, "tn": 1}
@@ -151,12 +163,19 @@ def test_evaluator_records_typed_failure_and_fails_closed() -> None:
         (result,),
         false_sufficient_max=0.05,
         sufficient_recall_min=0.9,
+        release_labels_reviewed=True,
+        minimum_class_count=1,
     )
 
     assert result.error_code == "provider_unavailable"
     assert result.predicted_sufficient is None
     assert aggregate["gate"]["passed"] is False
+    # A run where every call failed has nothing assessed, so both classes are
+    # simultaneously empty and underpowered. Reporting all five reasons keeps the
+    # artifact honest about *why* it cannot be read as evidence.
     assert aggregate["gate"]["reasons"] == [
+        "underpowered_sufficient_class",
+        "underpowered_insufficient_class",
         "assessment_failures",
         "missing_insufficient_class",
         "missing_sufficient_class",
@@ -168,3 +187,226 @@ def test_wilson_interval_handles_zero_denominator() -> None:
     low, high = wilson_interval(0, 115)
     assert low == 0.0
     assert high is not None and high < 0.04
+
+
+def test_reviewed_labels_require_two_reviewer_consensus_and_full_coverage() -> None:
+    contexts = load_labeled_contexts(_rows())
+    reviewed = apply_reviewed_labels(
+        contexts,
+        {
+            "dataset_revision": DATASET_REVISION,
+            "label_definition": "sufficient_context_semantic_v1",
+            "reviewers": ["reviewer-a", "reviewer-b"],
+            "cases": [
+                {
+                    "case_id": item.case_id,
+                    "expected_sufficient": not item.expected_sufficient,
+                    "reviewer_labels": {
+                        "reviewer-a": not item.expected_sufficient,
+                        "reviewer-b": not item.expected_sufficient,
+                    },
+                }
+                for item in contexts
+            ],
+        },
+    )
+
+    assert [item.expected_sufficient for item in reviewed] == [False, True, False, True]
+
+    with pytest.raises(ValueError, match="at least two reviewers"):
+        apply_reviewed_labels(
+            contexts,
+            {
+                "dataset_revision": DATASET_REVISION,
+                "label_definition": "sufficient_context_semantic_v1",
+                "reviewers": ["reviewer-a"],
+                "cases": [],
+            },
+        )
+
+    with pytest.raises(ValueError, match="reviewer labels"):
+        apply_reviewed_labels(
+            contexts,
+            {
+                "dataset_revision": DATASET_REVISION,
+                "label_definition": "sufficient_context_semantic_v1",
+                "reviewers": ["reviewer-a", "reviewer-b"],
+                "cases": [
+                    {
+                        "case_id": item.case_id,
+                        "expected_sufficient": item.expected_sufficient,
+                        "reviewer_labels": {"reviewer-a": item.expected_sufficient},
+                    }
+                    for item in contexts
+                ],
+            },
+        )
+
+
+def test_proxy_labels_cannot_pass_release_gate() -> None:
+    contexts = load_labeled_contexts(_rows())
+    results = evaluate_contexts(
+        contexts,
+        _Assessor({item.case_id: item.expected_sufficient for item in contexts}),
+    )
+
+    report = aggregate_results(
+        results,
+        false_sufficient_max=0.05,
+        sufficient_recall_min=0.9,
+        release_labels_reviewed=False,
+        minimum_class_count=1,
+    )
+
+    assert report["gate"]["passed"] is False
+    assert "proxy_labels_not_release_evidence" in report["gate"]["reasons"]
+
+
+def test_cli_accepts_explicit_provider_prompt_variant_and_reviewed_labels() -> None:
+    args = build_parser().parse_args(
+        [
+            "--provider",
+            "gemini",
+            "--model",
+            "gemini-2.5-pro",
+            "--prompt-variant",
+            "paper_definition",
+            "--reviewed-labels",
+            "reviewed.json",
+            "--autorater-max-tokens",
+            "512",
+        ]
+    )
+
+    assert args.provider == "gemini"
+    assert args.prompt_variant == "paper_definition"
+    assert args.reviewed_labels.name == "reviewed.json"
+    assert args.autorater_max_tokens == 512
+
+
+def test_provider_override_does_not_leak_openrouter_reasoning_transport() -> None:
+    settings = LlmSettings(
+        backend="remote",
+        provider_key="openrouter",
+        model_id="openai/test",
+        max_tokens=2_048,
+        reasoning_enabled=False,
+        model_reasoning_supported=True,
+        model_reasoning_parameter="reasoning",
+    )
+
+    assert reasoning_options_for_provider(
+        settings,
+        "openrouter",
+        "openai/test",
+    ) == (False, "reasoning")
+    assert reasoning_options_for_provider(
+        settings,
+        "openrouter",
+        "anthropic/other",
+    ) == (None, None)
+    # A different provider must not inherit the persisted capabilities either, or a
+    # bake-off across providers would silently carry one provider's reasoning flags.
+    assert reasoning_options_for_provider(
+        settings,
+        "gemini",
+        "gemini-3.6-flash",
+    ) == (None, None)
+
+
+def test_release_gate_rejects_underpowered_reviewed_semantic_class() -> None:
+    contexts = tuple(
+        LabeledContext(item.case_id, item.question, item.context, True)
+        for item in load_labeled_contexts(_rows())
+    )
+    results = evaluate_contexts(
+        contexts,
+        _Assessor({item.case_id: True for item in contexts}),
+    )
+
+    report = aggregate_results(
+        results,
+        false_sufficient_max=1.0,
+        sufficient_recall_min=0.0,
+        release_labels_reviewed=True,
+        minimum_class_count=2,
+    )
+
+    assert report["gate"]["passed"] is False
+    assert "underpowered_insufficient_class" in report["gate"]["reasons"]
+
+
+def test_pinned_release_configuration_reports_no_overrides() -> None:
+    assert release_overrides(
+        false_sufficient_max=DEFAULT_FALSE_SUFFICIENT_MAX,
+        sufficient_recall_min=DEFAULT_SUFFICIENT_RECALL_MIN,
+        per_class=DEFAULT_PER_CLASS,
+        minimum_reviewed_per_class=RELEASE_MINIMUM_REVIEWED_PER_CLASS,
+        reviewed_labels_present=True,
+    ) == ()
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected"),
+    [
+        ("false_sufficient_max", 0.5, "relaxed_false_sufficient_max"),
+        ("sufficient_recall_min", 0.5, "relaxed_sufficient_recall_min"),
+        ("per_class", 5, "reduced_per_class"),
+        ("minimum_reviewed_per_class", 1, "reduced_minimum_reviewed_per_class"),
+        ("reviewed_labels_present", False, "proxy_labels_not_release_evidence"),
+    ],
+)
+def test_every_loosened_knob_is_named_as_an_override(
+    field: str,
+    value: object,
+    expected: str,
+) -> None:
+    # Each knob is individually sufficient to disqualify a run from being read as
+    # release evidence; a caller must not be able to reach gate.passed by turning
+    # one of them down.
+    kwargs: dict[str, object] = {
+        "false_sufficient_max": DEFAULT_FALSE_SUFFICIENT_MAX,
+        "sufficient_recall_min": DEFAULT_SUFFICIENT_RECALL_MIN,
+        "per_class": DEFAULT_PER_CLASS,
+        "minimum_reviewed_per_class": RELEASE_MINIMUM_REVIEWED_PER_CLASS,
+        "reviewed_labels_present": True,
+    }
+    kwargs[field] = value
+
+    assert release_overrides(**kwargs) == (expected,)  # type: ignore[arg-type]
+
+
+def test_tightening_a_threshold_is_not_an_override() -> None:
+    # Stricter than release is still release-eligible: the gate only refuses to be
+    # read as evidence when it was made *easier* to pass.
+    assert release_overrides(
+        false_sufficient_max=0.01,
+        sufficient_recall_min=0.99,
+        per_class=DEFAULT_PER_CLASS + 50,
+        minimum_reviewed_per_class=RELEASE_MINIMUM_REVIEWED_PER_CLASS + 5,
+        reviewed_labels_present=True,
+    ) == ()
+
+
+def test_dirty_or_overridden_runs_cannot_report_a_passing_gate() -> None:
+    passing = {"gate": {"passed": True, "reasons": []}}
+
+    demoted = demote_non_release_run(passing, overrides=("reduced_per_class",), dirty=False)
+    assert demoted["gate"]["passed"] is False
+    assert demoted["gate"]["reasons"] == ["reduced_per_class"]
+    assert demoted["run_class"] == "diagnostic"
+
+    dirty = demote_non_release_run({"gate": {"passed": True, "reasons": []}}, overrides=(), dirty=True)
+    assert dirty["gate"]["passed"] is False
+    assert dirty["gate"]["reasons"] == ["evaluation_source_dirty"]
+    assert dirty["run_class"] == "diagnostic"
+
+
+def test_clean_pinned_run_stays_a_release_run() -> None:
+    report = demote_non_release_run(
+        {"gate": {"passed": True, "reasons": []}},
+        overrides=(),
+        dirty=False,
+    )
+    assert report["gate"]["passed"] is True
+    assert report["run_class"] == "release"

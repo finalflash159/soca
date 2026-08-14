@@ -12,6 +12,7 @@ from soca.core.sufficient_context import (
     RetrievedContext,
     SufficiencyAssessmentError,
     SufficiencyDecision,
+    SufficiencyPromptVariant,
     SufficiencyStatus,
     SufficientContextAutorater,
     parse_sufficiency_response,
@@ -19,6 +20,7 @@ from soca.core.sufficient_context import (
 )
 from soca.core.workflow import ControlledWorkflowRunner, GoalContract, TerminalStatus
 from soca.llm import LLMResult
+from soca.llm.providers import RemoteLLMError
 from soca.tools import ToolCall, ToolResult, ToolRuntime, ToolSpec, object_schema
 
 
@@ -131,7 +133,12 @@ def test_autorater_uses_one_structured_call_and_emits_no_reasoning_control_data(
             )
         ]
     )
-    autorater = SufficientContextAutorater(llm, model_id="test/autorater", max_chars=2_000)
+    autorater = SufficientContextAutorater(
+        llm,
+        model_id="test/autorater",
+        max_chars=2_000,
+        prompt_variant=SufficiencyPromptVariant.STRICT_EXACT,
+    )
 
     decision = autorater.assess(
         "Ai là tác giả của ghi chú?",
@@ -159,6 +166,77 @@ def test_autorater_uses_one_structured_call_and_emits_no_reasoning_control_data(
     assert "đảo vai" in call["prompt"].lower()
 
 
+def test_paper_definition_prompt_allows_supported_inference_without_cot_output() -> None:
+    llm = _StructuredLLM(
+        [
+            json.dumps(
+                {
+                    "sufficient": True,
+                    "confidence": 0.9,
+                    "reason_code": "supported_inference",
+                }
+            )
+        ]
+    )
+    autorater = SufficientContextAutorater(
+        llm,
+        model_id="test/autorater",
+        max_chars=3_000,
+        prompt_variant=SufficiencyPromptVariant.PAPER_DEFINITION,
+    )
+
+    autorater.assess(
+        "Lan sống ở đâu?",
+        (RetrievedContext("K1", "Lan chuyển nhà đến Huế và vẫn ở đó.", {}),),
+    )
+
+    prompt = llm.calls[0]["prompt"].lower()
+    assert "người đọc cẩn trọng" in prompt
+    assert "suy luận" in prompt
+    assert "lan chuyển nhà đến huế" in prompt
+    assert "chain-of-thought" not in prompt
+    assert "reasoning" not in llm.calls[0]["schema"]["properties"]
+
+
+def test_balanced_prompt_contains_positive_and_hard_negative_examples() -> None:
+    llm = _StructuredLLM(
+        [
+            json.dumps(
+                {
+                    "sufficient": False,
+                    "confidence": 0.9,
+                    "reason_code": "missing_requested_fact",
+                }
+            )
+        ]
+    )
+    autorater = SufficientContextAutorater(
+        llm,
+        model_id="test/autorater",
+        max_chars=4_000,
+        prompt_variant=SufficiencyPromptVariant.BALANCED_EXAMPLES,
+    )
+
+    autorater.assess(
+        "Ai viết tài liệu?",
+        (RetrievedContext("K1", "Tài liệu nói về Bayes.", {}),),
+    )
+
+    prompt = llm.calls[0]["prompt"].lower()
+    assert '"sufficient":true' in prompt
+    assert '"sufficient":false' in prompt
+    assert "đảo vai" in prompt
+
+
+def test_autorater_rejects_unknown_prompt_variant() -> None:
+    with pytest.raises(ValueError, match="prompt variant"):
+        SufficientContextAutorater(
+            _StructuredLLM([]),
+            model_id="test/autorater",
+            prompt_variant="invented",  # type: ignore[arg-type]
+        )
+
+
 def test_autorater_invalid_output_fails_closed_without_plain_generation_fallback() -> None:
     llm = _StructuredLLM(["not-json"])
 
@@ -169,6 +247,22 @@ def test_autorater_invalid_output_fails_closed_without_plain_generation_fallback
         )
 
     assert len(llm.calls) == 1
+
+
+def test_autorater_preserves_typed_remote_failure_category() -> None:
+    class RateLimitedLLM(_StructuredLLM):
+        def generate_structured(self, user_msg: str, **kwargs: Any) -> LLMResult:
+            del user_msg, kwargs
+            raise RemoteLLMError("quota", category="rate_limit")
+
+    with pytest.raises(SufficiencyAssessmentError, match="provider_rate_limit"):
+        SufficientContextAutorater(
+            RateLimitedLLM([]),
+            model_id="test/autorater",
+        ).assess(
+            "Câu hỏi",
+            (RetrievedContext("K1", "Bằng chứng", {}),),
+        )
 
 
 def test_controlled_workflow_stops_before_synthesis_when_context_is_insufficient() -> None:

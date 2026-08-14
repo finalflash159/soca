@@ -9,7 +9,7 @@ def test_profiles_command_lists_only_valtec_runtime_profiles(monkeypatch) -> Non
     def fail_voice_loop(*_args, **_kwargs):
         raise AssertionError("profiles must not run the voice loop")
 
-    monkeypatch.setattr("soca.cli.run_voice_loop", fail_voice_loop)
+    monkeypatch.setattr("soca.app.voice_loop.run_voice_loop", fail_voice_loop)
 
     result = CliRunner().invoke(main, ["profiles"])
 

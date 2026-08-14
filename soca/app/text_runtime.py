@@ -51,10 +51,8 @@ from soca.memory import (
 )
 from soca.tools import (
     MemorySearchTool,
-    SpeculativeToolRuntime,
     Tool,
     ToolRuntime,
-    knowledge_source_identity,
 )
 
 
@@ -422,19 +420,7 @@ def build_text_runtime(
         else:
             llm_status = f"enabled:{selected_settings.model_id}"
 
-    base_tool_runtime = ToolRuntime(tools)
-    tool_runtime = (
-        SpeculativeToolRuntime(
-            base_tool_runtime,
-            identity_provider=lambda name: (
-                knowledge_source_identity(knowledge_builder.source)
-                if name == "knowledge.search" and knowledge_builder is not None
-                else ""
-            ),
-        )
-        if knowledge_builder is not None
-        else base_tool_runtime
-    )
+    tool_runtime = ToolRuntime(tools)
     router_config = ToolRouterConfig(
         mode=cast(ToolRouterMode, config.tool_router_mode),
         response_mode=cast(RouterResponseMode, config.tool_router_response_mode),

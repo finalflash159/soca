@@ -11,12 +11,21 @@ from enum import StrEnum
 from typing import Any, Protocol
 
 from soca.llm import LLMResult, StructuredLLMEngine
+from soca.llm.providers import RemoteLLMError
 from soca.tools import ToolResult
 
 
 class SufficiencyStatus(StrEnum):
     SUFFICIENT = "sufficient"
     INSUFFICIENT = "insufficient"
+
+
+class SufficiencyPromptVariant(StrEnum):
+    """Versioned prompt policies used by evaluation and controlled rollout."""
+
+    STRICT_EXACT = "strict_exact"
+    PAPER_DEFINITION = "paper_definition"
+    BALANCED_EXAMPLES = "balanced_examples"
 
 
 class SufficiencyAssessmentError(RuntimeError):
@@ -233,6 +242,7 @@ class SufficientContextAutorater:
         model_id: str,
         max_chars: int = 12_000,
         max_tokens: int = 96,
+        prompt_variant: SufficiencyPromptVariant | str = SufficiencyPromptVariant.PAPER_DEFINITION,
     ) -> None:
         if not isinstance(llm, StructuredLLMEngine):
             raise TypeError("sufficient-context autorater requires structured output")
@@ -240,10 +250,15 @@ class SufficientContextAutorater:
             raise ValueError("sufficient-context model id is required")
         if max_chars < 512 or max_tokens < 16:
             raise ValueError("sufficient-context limits are too small")
+        try:
+            resolved_variant = SufficiencyPromptVariant(prompt_variant)
+        except ValueError as exc:
+            raise ValueError(f"unknown sufficient-context prompt variant: {prompt_variant}") from exc
         self.llm = llm
         self.model_id = model_id.strip()
         self.max_chars = max_chars
         self.max_tokens = max_tokens
+        self.prompt_variant = resolved_variant
 
     def assess(
         self,
@@ -272,6 +287,11 @@ class SufficientContextAutorater:
                 inject_persona=False,
                 zero_data_retention=True,
             )
+        except RemoteLLMError as exc:
+            category = f"provider_{exc.category}"
+            if not _valid_reason_code(category):
+                category = "provider_unknown"
+            raise SufficiencyAssessmentError(category) from exc
         except Exception as exc:  # noqa: BLE001 - provider boundary is fail-closed
             raise SufficiencyAssessmentError("provider_unavailable") from exc
         if not isinstance(result, LLMResult):
@@ -298,27 +318,7 @@ class SufficientContextAutorater:
         question: str,
         contexts: tuple[RetrievedContext, ...],
     ) -> str:
-        prefix = (
-            "Bạn là bộ kiểm tra sufficient-context độc lập theo nguyên tắc closed-world "
-            "exact entailment. Chỉ đánh dấu sufficient khi bằng chứng trực tiếp hỗ trợ một "
-            "câu trả lời ngắn cho TOÀN BỘ câu hỏi, gồm đúng chủ thể, đối tượng, vai trò, "
-            "hành động, thời gian và mọi ràng buộc được hỏi. Đánh dấu insufficient nếu "
-            "bất kỳ tiền đề, thực thể, quan hệ hoặc ràng buộc nào bị thiếu, sai, đảo vai, "
-            "mâu thuẫn hoặc mơ hồ. Không sửa hộ câu hỏi, không thay một khái niệm bằng "
-            "khái niệm gần nghĩa, không dùng kiến thức ngoài bằng chứng. Passage cùng chủ "
-            "đề hoặc trả lời được một câu gần giống vẫn là insufficient. Chỉ trả về object "
-            "JSON theo schema; không đưa phân tích hoặc nội dung bằng chứng vào output.\n\n"
-            "Ví dụ:\n"
-            "Question: Ai là tác giả của tài liệu?\n"
-            "Evidence K1: Tài liệu mô tả thuật toán nhưng không ghi tác giả.\n"
-            'Output: {"sufficient":false,"confidence":0.98,'
-            '"reason_code":"missing_requested_fact"}\n\n'
-            "Question: An đã yêu cầu Bình làm gì sau khi Bình yêu cầu An rời đi?\n"
-            "Evidence K1: An yêu cầu Bình rời đi.\n"
-            'Output: {"sufficient":false,"confidence":0.99,'
-            '"reason_code":"relation_role_mismatch"}\n\n'
-            f"Question: {question}\n"
-        )
+        prefix = self._prompt_prefix() + f"Question: {question}\n"
         remaining = self.max_chars - len(prefix)
         if remaining < 128:
             raise SufficiencyAssessmentError("context_budget_exceeded")
@@ -337,6 +337,58 @@ class SufficientContextAutorater:
             raise SufficiencyAssessmentError("context_budget_exceeded")
         return prefix + "".join(sections) + "\nOutput:"
 
+    def _prompt_prefix(self) -> str:
+        output_contract = (
+            "Chỉ trả về object JSON theo schema; không đưa phân tích hoặc nội dung "
+            "bằng chứng vào output.\n\n"
+        )
+        if self.prompt_variant is SufficiencyPromptVariant.STRICT_EXACT:
+            return (
+                "Bạn là bộ kiểm tra sufficient-context độc lập theo nguyên tắc closed-world "
+                "exact entailment. Chỉ đánh dấu sufficient khi bằng chứng trực tiếp hỗ trợ một "
+                "câu trả lời ngắn cho TOÀN BỘ câu hỏi, gồm đúng chủ thể, đối tượng, vai trò, "
+                "hành động, thời gian và mọi ràng buộc được hỏi. Đánh dấu insufficient nếu "
+                "bất kỳ tiền đề, thực thể, quan hệ hoặc ràng buộc nào bị thiếu, sai, đảo vai, "
+                "mâu thuẫn hoặc mơ hồ. Không sửa hộ câu hỏi, không thay một khái niệm bằng "
+                "khái niệm gần nghĩa, không dùng kiến thức ngoài bằng chứng. Passage cùng chủ "
+                "đề hoặc trả lời được một câu gần giống vẫn là insufficient. "
+                + output_contract
+                + "Ví dụ:\n"
+                "Question: Ai là tác giả của tài liệu?\n"
+                "Evidence K1: Tài liệu mô tả thuật toán nhưng không ghi tác giả.\n"
+                'Output: {"sufficient":false,"confidence":0.98,'
+                '"reason_code":"missing_requested_fact"}\n\n'
+                "Question: An đã yêu cầu Bình làm gì sau khi Bình yêu cầu An rời đi?\n"
+                "Evidence K1: An yêu cầu Bình rời đi.\n"
+                'Output: {"sufficient":false,"confidence":0.99,'
+                '"reason_code":"relation_role_mismatch"}\n\n'
+            )
+
+        definition = (
+            "Bạn đánh giá context theo định nghĩa sufficient-context: một người đọc cẩn "
+            "trọng có thể tạo ra câu trả lời đúng và dứt khoát cho toàn bộ câu hỏi chỉ từ "
+            "bằng chứng đã cho. Cho phép kết hợp nhiều đoạn và suy luận hợp lý được bằng "
+            "chứng hỗ trợ; không đòi câu trả lời phải xuất hiện nguyên văn. Đánh dấu "
+            "insufficient khi thông tin cần thiết bị thiếu, mơ hồ, mâu thuẫn, sai thực thể, "
+            "sai thời gian hoặc sai quan hệ. Không dùng kiến thức ngoài bằng chứng. "
+            + output_contract
+            + "Ví dụ đủ:\n"
+            "Question: Lan sống ở đâu?\n"
+            "Evidence K1: Lan chuyển nhà đến Huế và vẫn ở đó.\n"
+            'Output: {"sufficient":true,"confidence":0.95,'
+            '"reason_code":"supported_inference"}\n\n'
+        )
+        if self.prompt_variant is SufficiencyPromptVariant.PAPER_DEFINITION:
+            return definition
+        return (
+            definition
+            + "Ví dụ thiếu — cùng chủ đề nhưng sai quan hệ và đảo vai:\n"
+            "Question: An yêu cầu Bình làm gì?\n"
+            "Evidence K1: Bình yêu cầu An rời đi.\n"
+            'Output: {"sufficient":false,"confidence":0.98,'
+            '"reason_code":"relation_role_mismatch"}\n\n'
+        )
+
 
 __all__ = [
     "ContextSufficiencyAssessor",
@@ -344,6 +396,7 @@ __all__ = [
     "SUFFICIENCY_SCHEMA",
     "SufficiencyAssessmentError",
     "SufficiencyDecision",
+    "SufficiencyPromptVariant",
     "SufficiencyStatus",
     "SufficientContextAutorater",
     "parse_sufficiency_response",

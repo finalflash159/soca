@@ -88,6 +88,14 @@ embedded-device figure.
 
 ### 1.4 Native hot-path and edge status
 
+Metadata commands (`soca status`, `profiles`, `asr-models`, `llm-models`) start in
+**0.25 s**, down from **2.53 s**. The old cost was entirely import graph: `soca.cli`
+reached `voice_loop → voice_runtime → robust_asr → whisper_onnx`, pulling
+`transformers` (813 ms), `torchaudio` (430 ms) and `torch` (416 ms) to print a
+config table, plus `scipy.signal` (332 ms) through `pipeline → audio_out`. The
+model stack is now imported at the point of use, and confidence-guard calibration —
+pure JSON parsing — moved out of the ASR module into `soca/asr/confidence_calibration.py`.
+
 The pinned profiler is `py-spy` 0.4.2. Its native-stack mode is unsupported on
 the available macOS arm64 host, so the required voice, text-retrieval, and
 120-scenario turn-taking profiles are all recorded as `blocked`; no Python/native
@@ -98,8 +106,8 @@ The Rust edge daemon now has a bounded SPSC capture path, out-of-callback
 resampling, real Silero/Smart Turn ONNX adapters, adaptive endpointing, typed
 NDJSON, model hashes, failure events, and a five-minute device receipt. Native
 unit tests (9) and strict Clippy pass on macOS arm64. The release gate remains
-`blocked`: macOS arm64 is not a Linux aarch64 SBC, so it cannot close blocker
-#11. ONNX Runtime is a pinned dynamic dependency; the earlier “static binary”
+`blocked`: macOS arm64 is not a Linux aarch64 SBC, so it cannot close
+blocker #11. ONNX Runtime is a pinned dynamic dependency; the earlier “static binary”
 wording is an intentional plan deviation pending a reproducible static ORT
 package for aarch64.
 
@@ -650,22 +658,6 @@ the private-domain selection or justify a new production winner on its own.
 Sanitized aggregate evidence for this run and the other upgrade gates is in
 [`soca-upgrade-release-gates-20260814.json`](docs/evidence/soca-upgrade-release-gates-20260814.json).
 
-### 6.9 Speculative retrieval contract
-
-`SpeculativeToolRuntime` can prefetch a read-only knowledge call into one named
-future-turn slot. Reuse requires the exact canonical JSON call and exact active
-knowledge generation identity; it is single-consume. A pending/failed prefetch,
-argument mismatch, source-generation change, or missing slot executes the
-canonical tool call and records a typed miss reason. The controller still owns
-observation, sufficient-context assessment, synthesis, verification, and the
-terminal outcome.
-
-Production text-builder integration proves an exact warm-index hit reaches the
-normal tool receipt and cited answer. Paired production latency evidence is not
-yet available, so automatic voice-partial rollout remains `blocked`. The A/B
-gate requires at least 20 equivalent verified turns, ≥80% hit rate, positive
-median visible latency savings, and no p95 regression.
-
 ---
 
 ## 7. Working-memory summarization
@@ -794,13 +786,22 @@ default yet:
 | --- | ---: | ---: | ---: | ---: | :-: |
 | Initial one-call prompt | 230 (115/class) | **49.6%** | 90.4% | 70.4% | ❌ |
 | Closed-world exact-entailment probe | 40 (20/class) | **30.0%** | **85.0%** | 77.5% | ❌ |
+| Claude 4.6 strict exact | 40 (20/class) | **25.0%** | 90.0% | 82.5% | ❌ |
+| Claude 4.6 paper definition | 40 (20/class) | **50.0%** | 95.0% | 72.5% | proxy only |
+| Claude 4.6 balanced examples | 40 (20/class) | **45.0%** | 90.0% | 72.5% | proxy only |
 
 Both used OpenRouter `openai/gpt-5.6-luna-pro`, one attempt per case and zero
 provider failures. The probe improves false positives but misses both the ≤5%
 false-sufficient and ≥90% sufficient-recall thresholds, so spending another
-full run on that rejected prompt would not be release evidence. The autorater is
-implemented and opt-in for evaluation, while production builders expose
-`disabled_until_quality_gate_passes`. Blocker #1 therefore remains open.
+full run on that rejected prompt would not be release evidence. Manual error
+analysis also found proxy-label conflicts: several UIT “impossible” passages
+still support a semantic answer, while strict exact matching rejects typo and
+near-synonym cases. UIT `is_impossible` is therefore diagnostic extractability,
+not release truth. Artifact v2 requires exact sample coverage and matching
+per-case labels from at least two reviewers under
+`sufficient_context_semantic_v1`. This follows the original
+[Sufficient Context definition](https://arxiv.org/abs/2411.06037). Production
+remains `disabled_until_quality_gate_passes`.
 
 ### 9.2 Provider reliability
 
@@ -824,7 +825,7 @@ Consolidated from every section above. Nothing here is scheduled away or softene
 
 | # | Blocker | Section |
 | --- | --- | --- |
-| 1 | Real-vault false evidence is 0.50; the new UIT-ViQuAD autorater also fails at 0.496 (closed-world probe 0.30) against ≤0.05 | [9.1](#91-the-failing-gate) |
+| 1 | Sufficient-context production gate lacks two-reviewer semantic labels; UIT extractability proxy and all tested prompt/model candidates remain non-releasable | [9.1](#91-the-failing-gate) |
 | 2 | Repeated full-stack memory-pressure evidence with summary-worker overlap missing | [3.2](#32-qwen3-asr-release-qualification--decision-blocked) |
 | 3 | `resource_tracker` leaked-semaphore warning on the 1.7B worker, root cause unknown | [3.2](#32-qwen3-asr-release-qualification--decision-blocked) |
 | 4 | Remote tool-router generation failure telemetry path unaudited | [3.2](#32-qwen3-asr-release-qualification--decision-blocked) |
@@ -836,7 +837,6 @@ Consolidated from every section above. Nothing here is scheduled away or softene
 | 10 | Router goal-level pass rate 1/14 on the remediation baseline | [8](#8-capability-routing) |
 | 11 | Rust edge daemon passes native tests, but no real Linux aarch64 SBC device receipt exists | [1.4](#14-native-hot-path-and-edge-status) |
 | 12 | UTMOSv2+WER harness exists, but reviewed paired human Vietnamese references are missing | [4.2](#42-streaming-latency-and-playback-continuity) |
-| 13 | Speculative retrieval has no paired production latency receipt, so voice-partial rollout is disabled | [6.9](#69-speculative-retrieval-contract) |
 | 14 | Natural Vietnamese disfluency audio and controlled real-flow receipts are not provisioned | [5.3](#53-vietnamese-disfluency-gate) |
 
 ---
@@ -894,7 +894,6 @@ uv run python -m eval.eval_sufficient_context_viquad
 
 # Additional rollout/device gates (private receipts stay local)
 uv run python -m eval.eval_backchannel_classifier --help
-uv run python -m eval.eval_speculative_retrieval --help
 uv run python -m eval.eval_disfluency --help
 uv run python -m eval.eval_edge_daemon --help
 
@@ -979,5 +978,6 @@ matched 0/80 on the production model.
 | Voice/knowledge phases P0–P5 | 2026-07-29 | Consolidated into [§6](#6-knowledge-retrieval) and [§8](#8-capability-routing) |
 | Qwen3-ASR release matrix on CPU: partial p95 11,619 ms | 2026-08-02 | Re-run on MPS ([§3.2](#32-qwen3-asr-release-qualification--decision-blocked)); the CPU failure is retained, not overwritten |
 | Turn-taking `p_based` at a 1,000 ms floor: cut-in 3.3%, premature close 18.3%, over-wait 1,312 ms | 2026-08-03 | Correct for the code of the day; `587a93a` raised the floor to 1,800 ms and stopped stripping the trailing silence before Smart Turn inference, giving the 1.7% / 5.0% / 1,824 ms in [§5.2](#52-turn-taking-120-scenarios-800-ms-within-turn-pause) |
+| Speculative knowledge prefetch: 20/20 cache hit, 153.2 ms median retrieval-ready saving at a ~257 ms lead | 2026-08-15 | Removed. The saving is bounded by production retrieval cost (71 ms p95, [§6.2](#62-embedding-and-fusion-selection)); the fixture merely made it look larger. That ceiling is ~25× smaller than the 1,824 ms endpoint wait, and did not justify the slot lifecycle, cancellation, identity matching, isolated sources and receipt schema it required |
 
 Model licenses are listed in [README.md](README.md#licenses-and-attribution).

@@ -18,12 +18,6 @@ from soca.tools.knowledge_tools import (
     KnowledgeSearchTool,
 )
 from soca.tools.memory_tools import MemorySearchTool
-from soca.tools.speculative import (
-    SpeculativeReceipt,
-    SpeculativeSnapshot,
-    SpeculativeToolRuntime,
-    knowledge_source_identity,
-)
 
 __all__ = [
     "KnowledgeInspectTool",
@@ -32,10 +26,6 @@ __all__ = [
     "InvalidToolInput",
     "MemorySearchTool",
     "SideEffectLevel",
-    "SpeculativeReceipt",
-    "SpeculativeSnapshot",
-    "SpeculativeToolRuntime",
-    "knowledge_source_identity",
     "Tool",
     "ToolCall",
     "ToolExecutionStatus",
