@@ -1105,15 +1105,17 @@ floor + read-speech VAD; grows under stronger echo).
 | Policy      | cut-in rate | premature-close | median over-wait |
 | ----------- | ----------: | --------------: | ---------------: |
 | fixed       |      100.0% |           61.7% |           704 ms |
-| **p_based** |    **3.3%** |       **18.3%** |          1312 ms |
+| **p_based** |    **1.7%** |        **5.0%** |          1824 ms |
 
 **Key findings**
 
-- Adaptive `p_based` drops cut-in **100% → 3.3%** and premature-close **61.7% →
-  18.3%** (30x / 3.4x) for ~608 ms more patience — the FDB TOR vs response-
-  latency trade-off, measured for Vietnamese.
-- `p_based` still closes 18.3% of VN turns early because Smart-Turn is
-  English-trained → argues for a Vietnamese turn model (future work).
+- Adaptive `p_based` drops cut-in **100% → 1.7%** and premature-close **61.7% →
+  5.0%** for ~1120 ms more patience — the FDB TOR vs response-latency trade-off,
+  measured for Vietnamese. A 1000–1800 ms sweep found no cheaper floor that kept
+  both error rates at or below 5%, so production remains at 1800 ms.
+- Smart Turn v3.2 is trained on Vietnamese; it is not English-only. The pinned
+  production ONNX measured **94.21% English vs 79.08% Vietnamese** accuracy, so
+  the accurate diagnosis is a 15.12-point Vietnamese quality gap.
 - The 400 ms sustained gate filters 400 ms backchannels only because it needs
   416 ms (13×32 ms); a 500 ms "vâng ạ" would leak → a backchannel classifier is
   the real fix. Honest, not hidden.

@@ -7,7 +7,7 @@ evidence behind each release decision. Superseded runs are compressed into
 [Appendix A](#appendix-a--superseded-results) rather than deleted, so every decision
 can be traced back to the measurement that caused it.
 
-> **Last verified:** 2026-08-03 · **Source commit for the newest gates:** `894f615`
+> **Last verified:** 2026-08-14 · **Source commit for the newest gates:** `40c5b38`
 > Raw predictions, private transcripts, audio, and per-run logs stay under ignored
 > local paths (`eval/results/`, `benchmarks/raw/`). Only sanitized aggregates,
 > hashes, and manifests are committed.
@@ -102,6 +102,7 @@ Nothing private is committed; private sets are referenced by manifest hash only.
 | FLEURS `vi_vn` test | 200 utterances | Heuristic threshold calibration and the tiny-model ablation, [A.1](#a1--anti-hallucination-ablation-phowhisper-tiny) | CC BY 4.0 |
 | FLEURS `vi_vn` test | pinned manifest `81de44e0…` | Qwen release WER, [§3.2](#32-qwen3-asr-release-qualification--decision-blocked) | CC BY 4.0 |
 | FLEURS `vi_vn` | 60 utterances → 120 timelines | Turn-taking scenarios, [§5.2](#52-turn-taking-120-scenarios-800-ms-within-turn-pause) | CC BY 4.0 |
+| Smart Turn v3.2 test | 1,004 `vie` + 7,820 `eng` rows | Production ONNX per-language accuracy, [§5.2](#52-turn-taking-120-scenarios-800-ms-within-turn-pause) | no dataset-level license declared; benchmark-only |
 | [ESC-50](https://github.com/karolpiczak/ESC-50) + synthetic | 800 built (500 ESC-50 after voice-contaminated class exclusion, 100 silence, 100 white, 100 pink); 50 evaluated | Non-speech hallucination, BoH construction | CC BY-NC — benchmark only |
 | Non-speech release manifest | pinned `48b01f48…` | Qwen hard-negative rejection | derived from the above |
 | [AEC-Challenge](https://github.com/microsoft/AEC-Challenge) `real/` | 13,626 pairs available; 150 per condition, 300 used (seed 42) | Barge-in under real echo, [§5.1](#51-barge-in-false-interrupt--full-duplex-bench-takeover-rate) | Microsoft AEC-Challenge terms |
@@ -381,8 +382,9 @@ stronger echo.
 *Figure 5 — Fixed-timer versus probability-based endpointing, and what the accuracy
 costs in patience.*
 
-Canonical run `985b9ce`, seed 42, endpoint floor 1,800 ms. Evidence:
-[`turn-taking-20260811.json`](docs/evidence/turn-taking-20260811.json).
+Canonical operating point: seed 42, endpoint floor 1,800 ms. The current sweep and
+per-language run used clean source `40c5b38`. Evidence:
+[`smart-turn-calibration-20260814.json`](docs/evidence/smart-turn-calibration-20260814.json).
 
 | Policy | Cut-in rate | Premature close | Median over-wait |
 | --- | ---: | ---: | ---: |
@@ -393,6 +395,20 @@ Adaptive endpointing drops cut-in **100% → 1.7%** and premature close
 **61.7% → 5.0%** — 60× and 12× — for about 1,120 ms more patience. That is the
 takeover-rate versus response-latency trade-off, measured for Vietnamese.
 
+The planned floor sweep does **not** find a cheaper passing operating point:
+
+| `floor_silence_ms` | Cut-in | Premature close | Median over-wait | Disposition |
+| ---: | ---: | ---: | ---: | --- |
+| 1,000 | 13.3% | 26.7% | 1,056 ms | fail |
+| 1,200 | 6.7% | 15.0% | 1,248 ms | fail |
+| 1,400 | 3.3% | 11.7% | 1,440 ms | fail |
+| 1,600 | 1.7% | 6.7% | 1,632 ms | fail |
+| **1,800** | **1.7%** | **5.0%** | **1,824 ms** | **keep current** |
+
+The predeclared gate requires both cut-in and premature close at or below 5%. Only
+1,800 ms passes, so production config stays unchanged and blocker #7 is **not**
+closed by tuning.
+
 **Superseded numbers.** Until 2026-08-05 this section reported 3.3% cut-in and
 18.3% premature close at 1,312 ms over-wait. Commit `587a93a` raised
 `floor_silence_ms` from 1,000 to 1,800 ms and fixed the window handed to Smart
@@ -402,12 +418,18 @@ numbers were correct for the code of the day and are kept in
 [A.2](#a2--decision-history); the endpoint constants are now stamped into the
 result file so the next tuning commit shows up as a diff rather than as drift.
 
-**One honest limit, one improved.** The 400 ms sustained gate filters 400 ms
+**The model supports Vietnamese, but the gap is real.** A full pinned run of the
+exact production ONNX measured English accuracy **94.21%** (7,820 rows) versus
+Vietnamese **79.08%** (1,004 rows), a **15.12-point gap**. Calling the model
+"English-trained" was wrong; the accurate statement is that v3.2 includes
+Vietnamese training data but performs substantially worse on its Vietnamese test
+slice. Model fine-tuning/export is explicitly deferred by product-owner scope, so
+this result remains a blocker diagnosis rather than a model-remediation claim.
+
+**Blocker #8 is separate.** The 400 ms sustained acoustic gate filters 400 ms
 backchannels only because it actually needs 416 ms (13 × 32 ms frames) — a 500 ms
-"vâng ạ" would leak through, and a backchannel classifier, not a longer timer, is
-the fix. Premature close is no longer a release blocker at 5.0%, but the residual
-3/60 are still English-trained-model errors: a Vietnamese turn model remains the
-principled fix, and the 1,824 ms over-wait is the price currently paid for it.
+"vâng ạ" would leak through. A backchannel classifier, not a longer endpoint timer
+or a Smart Turn floor change, is the fix.
 
 *Caveats:* latency here is a system number (sustained floor + VAD on read speech),
 not a pure front-end reaction time. The backchannel is a synthetic 400 ms FLEURS
@@ -737,6 +759,7 @@ uv run python eval/analyze_qwen_asr_release.py
 uv run python -m eval.eval_conversation
 uv run python -m eval.eval_barge_in_synth
 uv run python -m eval.eval_turn_taking
+uv run python -m eval.eval_smart_turn_languages --language vie --language eng
 
 # TTS: parity, chunk joining, device playback, first-clause A/B
 uv run python eval/eval_valtec_parity.py
