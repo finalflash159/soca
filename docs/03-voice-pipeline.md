@@ -239,10 +239,18 @@ benchmark record, not a claim that every device or room behaves identically.
 
 The acoustic tier measured 2.7% false interruption and 94.7% detection on the
 300-pair AEC-Challenge sample; the Vietnamese real-RIR synthetic tier measured
-2.5% false interruption and 92.5% detection. The adaptive endpoint policy cut
-premature closure from 61.7% to 18.3% versus the fixed policy, at the measured
-cost of 608 ms more median waiting. These figures expose the accuracy/latency
-trade-off; they do not hide the remaining Vietnamese turn-taking limitation.
+2.5% false interruption and 92.5% detection. At the selected 1,800 ms floor, the
+adaptive endpoint policy measures 1.7% cut-in, 5.0% premature close, and 1,824 ms
+median over-wait. These figures expose the accuracy/latency trade-off; they do not
+hide the remaining Vietnamese turn-taking limitation.
+
+`DuplexAecSink` also accepts an optional typed backchannel classifier after the
+400 ms sustained VAD window. Production keeps it disabled until a pinned model
+passes the reviewed Vietnamese audio gate; missing evidence is not treated as an
+`interruption` guess. The disfluency harness separately requires natural
+Vietnamese audio and controlled tool receipts for filler, pause, hesitation,
+false start, and self-correction. Those private inputs are not yet provisioned,
+so read-speech results are not promoted to disfluency evidence.
 
 ![Barge-in on real echo](assets/benchmarks/conversation_tier1_real.png)
 ![Synthetic Vietnamese barge-in](assets/benchmarks/conversation_tier1_synth.png)

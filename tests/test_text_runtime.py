@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,9 @@ from soca.memory import SessionMemory
 
 
 class FakeKnowledgeLLM:
+    def __init__(self) -> None:
+        self.structured_calls: list[str] = []
+
     def generate(
         self,
         user_msg: str,
@@ -25,10 +29,29 @@ class FakeKnowledgeLLM:
         inject_persona: bool = True,
     ) -> LLMResult:
         return LLMResult(
-            text="Protein hỗ trợ duy trì cơ bắp.",
+            text="Protein hỗ trợ duy trì cơ bắp [K1].",
             prompt=user_msg,
             n_prompt_tokens=10,
             n_completion_tokens=6,
+            ttft_ms=1.0,
+            total_latency_ms=2.0,
+            tokens_per_second=100.0,
+        )
+
+    def generate_structured(self, user_msg: str, *, schema_name: str, **kwargs) -> LLMResult:
+        del kwargs
+        self.structured_calls.append(schema_name)
+        return LLMResult(
+            text=json.dumps(
+                {
+                    "sufficient": True,
+                    "confidence": 0.99,
+                    "reason_code": "answer_explicitly_supported",
+                }
+            ),
+            prompt=user_msg,
+            n_prompt_tokens=20,
+            n_completion_tokens=8,
             ttft_ms=1.0,
             total_latency_ms=2.0,
             tokens_per_second=100.0,
@@ -55,6 +78,7 @@ def test_text_runtime_default_llm_follows_default_runtime_profile() -> None:
     assert config.knowledge_retrieval_mode == "hybrid"
     assert config.knowledge_dense_backend == "aiteamvn_v2"
     assert config.tool_router_response_mode == "json_schema"
+    assert config.sufficient_context_enabled is False
 
 
 def test_session_memory_enabled_without_vault(tmp_path: Path) -> None:
@@ -94,7 +118,13 @@ def test_text_runtime_uses_shared_source_and_k_query_returns_citation(
         encoding="utf-8",
     )
     bundle = build_text_runtime(
-        _config(tmp_path, no_llm=False, no_memory=True, knowledge_limit=2),
+        _config(
+            tmp_path,
+            no_llm=False,
+            no_memory=True,
+            knowledge_limit=2,
+            sufficient_context_enabled=True,
+        ),
         secret_store=object(),
         engine_factory=lambda *args, **kwargs: FakeKnowledgeLLM(),
     )
@@ -103,6 +133,11 @@ def test_text_runtime_uses_shared_source_and_k_query_returns_citation(
     search_tool = bundle.runtime.tool_runtime.get("knowledge.search")
     read_tool = bundle.runtime.tool_runtime.get("knowledge.read")
     user_text, metadata = normalize_text_turn("/k chất đạm")
+    source.search("warmup", limit=1)
+    slot_id = "text-runtime-prefetch"
+    receipt = bundle.runtime.prefetch_knowledge(slot_id, "chất đạm", limit=2)
+    assert receipt.wait(timeout=2).status == "ready"
+    metadata["speculative_retrieval_slot"] = slot_id
     result = bundle.runtime.run_text_turn(
         user_text,
         source="test",
@@ -114,7 +149,14 @@ def test_text_runtime_uses_shared_source_and_k_query_returns_citation(
     assert search_tool is not None and search_tool.source is source
     assert read_tool is not None and read_tool.source is source
     assert bundle.runtime.options.knowledge_limit == 2
+    assert bundle.runtime.options.require_sufficient_context is True
+    assert bundle.runtime.sufficiency_assessor is not None
     assert [citation.path for citation in result.citations] == ["wiki/protein.md"]
+    assert result.trace is not None
+    assert result.trace.tool_results[0].data["speculative_retrieval"] == {
+        "status": "hit",
+        "reason": "exact_identity_match",
+    }
 
 
 def test_no_evidence_memory_request_without_vault_returns_empty_evidence(tmp_path: Path) -> None:

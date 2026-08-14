@@ -1,0 +1,20 @@
+{
+  "schema_version": "soca-disfluency-scenarios-v1",
+  "language": "vi",
+  "scenario_file": "disfluency_vi.jsonl",
+  "scenario_count": 10,
+  "disfluency_types": [
+    "filler",
+    "pause",
+    "hesitation",
+    "false_start",
+    "self_correction"
+  ],
+  "method_source": {
+    "repository": "https://github.com/DanielLin94144/Full-Duplex-Bench",
+    "revision": "3e799c45a045256f47d5f1c9cda90157e2d2ec9e",
+    "paper": "arXiv:2604.04847"
+  },
+  "audio_policy": "reviewed private Vietnamese human speech; paths and audio stay local",
+  "materialization_schema": "soca-disfluency-audio-v1"
+}

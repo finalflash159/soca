@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import importlib.metadata
+import os
+import platform
 import subprocess
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from local import config as cfg
@@ -43,9 +48,53 @@ def run_provenance(**extra: Any) -> dict[str, Any]:
         "commit": head,
         "dirty": None if status is None else bool(status),
         "created_at": datetime.now(UTC).isoformat(),
+        "environment": {
+            "python": platform.python_version(),
+            "platform": platform.platform(),
+            "machine": platform.machine(),
+            "cpu_count": os.cpu_count(),
+        },
     }
     provenance.update(extra)
     return provenance
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def file_set_identity(paths: tuple[Path, ...]) -> dict[str, Any]:
+    """Digest an ordered file set without exposing private file contents."""
+    if not paths:
+        raise ValueError("file identity requires at least one file")
+    digest = hashlib.sha256()
+    total_bytes = 0
+    for index, path in enumerate(paths):
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        size = path.stat().st_size
+        item_hash = file_sha256(path)
+        digest.update(f"{index}:{size}:{item_hash}\n".encode())
+        total_bytes += size
+    return {
+        "file_count": len(paths),
+        "total_bytes": total_bytes,
+        "content_sha256": digest.hexdigest(),
+    }
+
+
+def package_versions(names: tuple[str, ...]) -> dict[str, str]:
+    versions: dict[str, str] = {}
+    for name in names:
+        try:
+            versions[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError as exc:
+            raise RuntimeError(f"required package is not installed: {name}") from exc
+    return versions
 
 
 def config_snapshot(config: Any, fields: tuple[str, ...]) -> dict[str, Any]:

@@ -1,0 +1,21 @@
+{
+  "schema_version": "soca-speculative-retrieval-selection-v1",
+  "decision": "blocked",
+  "reason": "paired_production_retrieval_latency_receipts_are_not_available",
+  "production_wiring": "explicit_prefetch_API_available_voice_partial_rollout_disabled",
+  "implemented_contract": [
+    "read-only tools only",
+    "exact canonical call arguments",
+    "exact knowledge generation identity",
+    "one named turn slot and single consume",
+    "canonical tool execution on pending, mismatch, identity change, or failure",
+    "controller synthesis and terminal verification remain mandatory"
+  ],
+  "required_gate": {
+    "minimum_paired_cases": 20,
+    "minimum_cache_hit_rate": 0.8,
+    "median_visible_latency_saved_ms": ">0",
+    "speculative_p95_must_not_exceed_baseline": true
+  },
+  "owner": "retrieval_runtime"
+}

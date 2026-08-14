@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "evaluated_source_commit": "1b1e1c6c211b3f3156e00e24473c6e5b642b069c",
+  "evaluated_source_tree_dirty": false,
+  "created_at_utc": "2026-08-14T13:24:28Z",
+  "system": {
+    "platform": "macOS-15.7.4-arm64-arm-64bit",
+    "python": "3.11.14",
+    "cpu_count": 12,
+    "memory_bytes": 51539607552
+  },
+  "scope": {
+    "excluded_by_product_owner": [
+      "cheap_non_LLM_detector",
+      "smart_turn_fine_tuning"
+    ],
+    "release_rule": "failed_or_unproven_gates_remain_disabled_or_blocked"
+  },
+  "verification": {
+    "python": {
+      "uv_lock_check": "pass",
+      "ruff": "pass",
+      "pyright": {
+        "status": "pass",
+        "errors": 0,
+        "warnings": 0
+      },
+      "pytest_non_real_model": {
+        "status": "pass",
+        "passed": 1746,
+        "deselected": 10,
+        "warnings": 3
+      }
+    },
+    "rust_edge": {
+      "cargo_fmt": "pass",
+      "cargo_test_locked": {
+        "status": "pass",
+        "passed": 9
+      },
+      "cargo_clippy_locked_all_targets_deny_warnings": "pass"
+    }
+  },
+  "tier1_real_aec": {
+    "status": "pass",
+    "dataset": {
+      "pair_count": 300,
+      "file_count": 600,
+      "total_bytes": 117686692,
+      "content_sha256": "c9cfdba1ad766afb6dc2f8c0b84fd456506b386b864e33ba94a0b0da2f5a2359"
+    },
+    "model": {
+      "name": "silero-vad",
+      "version": "6.2.1",
+      "sha256": "e1122837f4154c511485fe0b9c64455f7b929c96fbb8d79fbdb336383ebd3720"
+    },
+    "metrics": {
+      "false_interrupt_rate": 0.02666666666666667,
+      "detection_rate": 0.9466666666666667,
+      "static_detection_rate": 0.96,
+      "moving_detection_rate": 0.9333333333333333
+    }
+  },
+  "tier1_synthetic_replay": {
+    "status": "pass",
+    "scenario_count": 240,
+    "scenario_content_sha256": "31721448dc79e9851264222e5cfcf8535d95dd835fc717b93369cc930b126787",
+    "metrics": {
+      "false_interrupt_rate": 0.025,
+      "detection_rate": 0.925,
+      "backchannel_fire_rate": 0.0375,
+      "median_latency_ms": 2344.0,
+      "p90_latency_ms": 5336.0
+    }
+  },
+  "controlled_first_clause": {
+    "status": "pass",
+    "transcript_count": 8,
+    "model": "arcee_vylinh_3b_q4_k_m",
+    "capture_replay": true,
+    "flush_delta_ms": {
+      "p50": 42.49072901438922,
+      "p95": 479.92633399553597,
+      "min": -3.348917030962184,
+      "max": 479.92633399553597,
+      "helped_count": 5
+    },
+    "tts_ready_delta_ms": {
+      "p50": 120.52589550148696,
+      "p95": 910.7492509938311,
+      "min": -0.04049998824484646,
+      "max": 910.7492509938311,
+      "helped_count": 7
+    }
+  },
+  "vn_mteb_arguana": {
+    "status": "pass",
+    "dataset": {
+      "repo": "GreenNode/arguana-vn",
+      "revision": "137122e4a56c03399d31bce35a045f0034242a4c",
+      "source_lock_sha256": "559291c0812f16c9a0512847678106b4861826e15beca0aee08c01a5a70a1f45",
+      "provision_manifest_sha256": "1f2061f6a7f84ff53bec95254601a294093f11835a60d30ab76b8c0db05b37c5",
+      "document_count": 8674,
+      "chunk_count": 8702,
+      "upstream_query_count": 1295,
+      "evaluable_query_count": 1290,
+      "excluded_upstream_qrels": 5
+    },
+    "candidate": "hybrid_linear:bm25:aiteamvn_v2:0.75",
+    "embedding_model": {
+      "id": "AITeamVN/Vietnamese_Embedding_v2",
+      "revision": "18b44161e041bf1d3a333ab5144b5b7b93f914d2",
+      "artifact_digest": "2fa082ead5ade68225327b913339bbd5aa1e14bcd7888ff9b09d69752a8d1cee",
+      "tokenizer_digest": "5df1f55d60c9705a501ab9a75550728625740741fe4be308dac4806c16b7d51d"
+    },
+    "metrics": {
+      "recall_at_5": 0.5875968992248062,
+      "mrr_at_10": 0.24994370616463638,
+      "ndcg_at_10": 0.37745180722685606,
+      "precision_at_3": 0.1421188630490956,
+      "latency_p50_ms": 171.718709,
+      "latency_p95_ms": 301.483583,
+      "latency_p99_ms": 415.77675,
+      "build_seconds": 1209.0284115420072,
+      "peak_rss_bytes": 14247329792,
+      "artifact_bytes": 44834696
+    }
+  },
+  "sufficient_context": {
+    "decision": "fail",
+    "production_wiring": "disabled_until_quality_gate_passes",
+    "dataset": {
+      "repo": "taidng/UIT-ViQuAD2.0",
+      "revision": "406f09a45cc106a8f7b7fd0c25078883fe58cb1f",
+      "split": "validation"
+    },
+    "thresholds": {
+      "false_sufficient_rate_max": 0.05,
+      "sufficient_recall_min": 0.9
+    },
+    "clean_closed_world_probe": {
+      "case_count": 40,
+      "provider_failures": 0,
+      "model": "openai/gpt-5.6-luna-pro",
+      "false_sufficient_rate": 0.3,
+      "sufficient_recall": 0.85,
+      "accuracy": 0.775,
+      "decision": "fail"
+    },
+    "initial_full_characterization": {
+      "release_evidence": false,
+      "reason": "prompt_rejected_and_source_tree_was_dirty",
+      "case_count": 230,
+      "provider_failures": 0,
+      "false_sufficient_rate": 0.4956521739130435,
+      "sufficient_recall": 0.9043478260869565,
+      "accuracy": 0.7043478260869566,
+      "decision": "fail"
+    }
+  },
+  "blocked_gates": {
+    "hot_path_profile": "native_sampling_unsupported_on_available_macos_arm64_host",
+    "tts_quality": "reviewed_paired_vietnamese_human_reference_audio_not_provisioned",
+    "backchannel_model": "reviewed_vietnamese_target_hardware_evidence_not_available",
+    "speculative_voice_partial_rollout": "paired_production_latency_receipts_not_available",
+    "vietnamese_disfluency": "reviewed_private_audio_and_controlled_real_flow_receipts_not_provisioned",
+    "edge_daemon_linux_aarch64": "real_sbc_device_receipt_not_available"
+  },
+  "privacy": {
+    "contains_audio": false,
+    "contains_transcripts": false,
+    "contains_row_predictions": false,
+    "raw_outputs_committed": false
+  }
+}

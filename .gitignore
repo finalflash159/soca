@@ -99,3 +99,6 @@ models/*
 models/tts/*
 ui/node_modules/
 ui/dist/
+
+# Rust build artifacts
+edge/soca-edge/target/

@@ -31,7 +31,12 @@ from eval.aec_challenge import (
 )
 from eval.barge_in_replay import BargeInDecider, EchoCanceller, SpeechProb
 from eval.conversation_metrics import BargeInOutcome, BargeInReport, barge_in_report
-from eval.provenance import run_provenance
+from eval.provenance import (
+    file_set_identity,
+    file_sha256,
+    package_versions,
+    run_provenance,
+)
 from local import config as cfg
 
 _SAMPLE_RATE = 16000
@@ -126,6 +131,19 @@ def _make_real_adapters(
     return aec_factory, vad, vad_reset
 
 
+def _silero_identity() -> dict[str, str | int]:
+    import silero_vad
+
+    model_path = Path(silero_vad.__file__).resolve().parent / "data" / "silero_vad.jit"
+    if not model_path.is_file():
+        raise FileNotFoundError(f"Silero model artifact missing: {model_path}")
+    return {
+        "package_version": package_versions(("silero-vad",))["silero-vad"],
+        "model_sha256": file_sha256(model_path),
+        "model_bytes": model_path.stat().st_size,
+    }
+
+
 def _print_report(report: BargeInReport) -> None:
     from rich.console import Console
     from rich.table import Table
@@ -199,6 +217,28 @@ def main(
         sustained_ms=sustained_ms,
         vad_threshold=vad_threshold,
         stream_delay_ms=stream_delay_ms,
+        discovered_pair_count=len(pairs),
+        sampled_scenario_count=len(scenarios),
+        scored_pair_count=report.n_total,
+        dataset=file_set_identity(
+            tuple(
+                path
+                for scenario in scenarios
+                for path in (scenario.mic_path, scenario.lpb_path)
+            )
+        ),
+        models={"silero_vad": _silero_identity()},
+        software=package_versions(
+            ("numpy", "pywebrtc-audio", "silero-vad", "soundfile", "torch")
+        ),
+        gate={
+            "passed": report.n_echo_only == n_per_condition
+            and report.n_double_talk == n_per_condition,
+            "requirements": {
+                "echo_only_pairs": n_per_condition,
+                "double_talk_pairs": n_per_condition,
+            },
+        },
     )
     cfg.EVAL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = cfg.EVAL_RESULTS_DIR / "conversation_tier1.json"

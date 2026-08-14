@@ -1,0 +1,18 @@
+{
+  "schema_version": "soca-edge-daemon-selection-v1",
+  "decision": "blocked",
+  "reason": "real_linux_aarch64_sbc_receipt_required",
+  "native_validation": {
+    "platform": "macOS-arm64",
+    "cargo_test": "pass",
+    "test_count": 9,
+    "cargo_clippy_all_targets_all_features": "pass",
+    "linux_aarch64_device_run": "not_run"
+  },
+  "packaging": {
+    "executable": "Rust release binary",
+    "onnx_runtime": "pinned dynamic shared library",
+    "fully_static_binary": "deferred_pending_reproducible_aarch64_ORT_packaging"
+  },
+  "owner": "edge_runtime"
+}

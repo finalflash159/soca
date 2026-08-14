@@ -83,6 +83,27 @@ Missing evidence is never promoted to a passing skip. Automatic fallback is not
 a release repair strategy: an explicit selected production component fails
 closed, and changing it is an operator decision with a new gate.
 
+## SoCa upgrade gates
+
+The upgrade harnesses deliberately separate “implementation exists” from
+“production rollout is allowed”:
+
+| Capability | Harness / contract | Current release state |
+| --- | --- | --- |
+| Sufficient context | `eval.eval_sufficient_context_viquad` | `fail`; production default off |
+| Controlled first clause | `eval.measure_first_clause_ttfa` | paired capture/replay measured |
+| Native hot paths | `eval.profile_hot_paths` | `blocked` on macOS native sampling |
+| TTS naturalness + intelligibility | `eval.eval_tts_quality` + TTS WER report | `blocked` on paired human references |
+| Public Vietnamese retrieval | `eval.eval_vn_mteb` | full pinned ArguAna-VN comparison |
+| Backchannel classifier | `eval.eval_backchannel_classifier` | `blocked` on reviewed Vietnamese audio/model winner |
+| Speculative retrieval | `eval.eval_speculative_retrieval` | contract integrated; voice rollout blocked on paired latency |
+| Natural disfluency | `eval.eval_disfluency` | `blocked` on private audio and real-flow receipts |
+| ARM edge daemon | `eval.eval_edge_daemon` | native tests pass; device gate blocked on Linux aarch64 SBC |
+
+Gate decisions and owners live under `eval/gates/`. An implementation may be
+merged while a gate is `fail` or `blocked` only when its production wiring is
+disabled or fail-closed and the blocker is preserved in `BENCHMARKS.md`.
+
 ## Commands
 
 ```bash

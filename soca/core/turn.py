@@ -76,6 +76,7 @@ class RuntimeTrace:
     workflow_status: str = "not_run"
     workflow_error_code: str = ""
     workflow_unmet_criteria: tuple[str, ...] = ()
+    sufficiency_decision: Any | None = None
 
 
 @dataclass(frozen=True)

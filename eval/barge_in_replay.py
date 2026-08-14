@@ -24,11 +24,18 @@ Faithfulness anchors (keep these in lockstep with production):
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from typing import Protocol
 
 import numpy as np
 
+from soca.core.backchannel import (
+    BackchannelClassifier,
+    BackchannelDecision,
+    BargeInIntent,
+    classify_barge_in_window,
+)
 from soca.core.endpoint import EndpointConfig
 from soca.core.turn_taking import (
     SPEECH_CONFIRM_FRAMES,
@@ -74,6 +81,8 @@ class BargeInResult:
     frames_processed: int
     speech_frames: int  # frames whose post-AEC prob cleared the threshold
     max_run_ms: float  # longest sustained speech run seen (diagnostic)
+    backchannel_decisions: tuple[BackchannelDecision, ...] = ()
+    suppressed_backchannels: int = 0
 
 
 class BargeInDecider:
@@ -94,6 +103,8 @@ class BargeInDecider:
         block_ms: int = _BARGE_BLOCK_MS,
         sustained_ms: float = 400.0,
         vad_threshold: float = 0.7,
+        backchannel_classifier: BackchannelClassifier | None = None,
+        classification_window_ms: int = 1200,
     ) -> None:
         self.rate = sample_rate
         self.block_ms = block_ms
@@ -102,6 +113,8 @@ class BargeInDecider:
         self.vad_threshold = float(vad_threshold)
         self._aec = aec
         self._vad = vad
+        self._backchannel_classifier = backchannel_classifier
+        self._classification_window_frames = max(1, classification_window_ms // block_ms)
 
     def run(self, far: np.ndarray, near: np.ndarray) -> BargeInResult:
         """Replay a whole turn's worth of paired frames, stopping at the first fire."""
@@ -114,6 +127,9 @@ class BargeInDecider:
         run_ms = 0.0
         max_run_ms = 0.0
         speech_frames = 0
+        window: deque[np.ndarray] = deque(maxlen=self._classification_window_frames)
+        decisions: list[BackchannelDecision] = []
+        suppressed = 0
 
         for i in range(n_frames):
             sl = slice(i * self.frame, (i + 1) * self.frame)
@@ -121,6 +137,7 @@ class BargeInDecider:
             near_frame = np.ascontiguousarray(near_arr[sl], dtype=np.float32)
 
             clean = np.asarray(self._aec.process(near_frame, far_frame), dtype=np.float32)
+            window.append(clean)
             is_speech = float(self._vad(clean, self.rate)) >= self.vad_threshold
             run_ms = run_ms + self.block_ms if is_speech else 0.0
             if is_speech:
@@ -128,6 +145,17 @@ class BargeInDecider:
             max_run_ms = max(max_run_ms, run_ms)
 
             if run_ms >= self.sustained_ms:
+                if self._backchannel_classifier is not None:
+                    decision = classify_barge_in_window(
+                        self._backchannel_classifier,
+                        np.concatenate(tuple(window)),
+                        self.rate,
+                    )
+                    decisions.append(decision)
+                    if decision.intent is BargeInIntent.BACKCHANNEL:
+                        suppressed += 1
+                        run_ms = 0.0
+                        continue
                 return BargeInResult(
                     interrupted=True,
                     interrupt_frame=i,
@@ -135,6 +163,8 @@ class BargeInDecider:
                     frames_processed=i + 1,
                     speech_frames=speech_frames,
                     max_run_ms=max_run_ms,
+                    backchannel_decisions=tuple(decisions),
+                    suppressed_backchannels=suppressed,
                 )
 
         return BargeInResult(
@@ -144,6 +174,8 @@ class BargeInDecider:
             frames_processed=n_frames,
             speech_frames=speech_frames,
             max_run_ms=max_run_ms,
+            backchannel_decisions=tuple(decisions),
+            suppressed_backchannels=suppressed,
         )
 
 

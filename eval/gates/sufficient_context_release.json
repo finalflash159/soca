@@ -1,0 +1,41 @@
+{
+  "schema_version": "soca-sufficient-context-release-v1",
+  "decision": "fail",
+  "production_wiring": "disabled_until_quality_gate_passes",
+  "dataset": {
+    "repo": "taidng/UIT-ViQuAD2.0",
+    "revision": "406f09a45cc106a8f7b7fd0c25078883fe58cb1f",
+    "split": "validation",
+    "inventory": {
+      "rows": 3814,
+      "answerable": 2653,
+      "unanswerable": 1161
+    }
+  },
+  "full_run": {
+    "sample_seed": 73,
+    "cases_per_class": 115,
+    "model": "openai/gpt-5.6-luna-pro",
+    "provider_failures": 0,
+    "false_sufficient_rate": 0.4956521739130435,
+    "sufficient_recall": 0.9043478260869565,
+    "accuracy": 0.7043478260869566,
+    "decision": "fail"
+  },
+  "closed_world_prompt_probe": {
+    "sample_seed": 73,
+    "cases_per_class": 20,
+    "model": "openai/gpt-5.6-luna-pro",
+    "provider_failures": 0,
+    "false_sufficient_rate": 0.3,
+    "sufficient_recall": 0.85,
+    "accuracy": 0.775,
+    "decision": "fail"
+  },
+  "thresholds": {
+    "false_sufficient_rate_max": 0.05,
+    "sufficient_recall_min": 0.9
+  },
+  "owner": "groundedness",
+  "next_condition": "select_and_rerun_a_remediation_that_passes_both_pinned_UIT_ViQuAD_gates"
+}

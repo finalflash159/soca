@@ -95,6 +95,7 @@ class TurnNode(StrEnum):
     AUTHORIZE_ACTION = "authorize_action"
     EXECUTE_ACTION = "execute_action"
     ASSESS_OBSERVATION = "assess_observation"
+    ASSESS_CONTEXT = "assess_context"
     REVISE_QUERY = "revise_query"
     SYNTHESIZE = "synthesize"
     VERIFY_ANSWER = "verify_answer"

@@ -26,6 +26,7 @@ from soca.core.memory_setup import (
 from soca.core.profiles import DEFAULT_VOICE_RUNTIME_PROFILE_KEY, get_voice_runtime_profile
 from soca.core.router_setup import build_runtime_tool_router
 from soca.core.runtime import DEFAULT_VAULT_MANIFEST_CHARS
+from soca.core.sufficient_context import SufficientContextAutorater
 from soca.core.tool_routing import (
     RouterResponseMode,
     SemanticRouterConfig,
@@ -38,7 +39,7 @@ from soca.core.workflow import ActiveGoalStore, GoalCheckpointStore
 from soca.knowledge.factory import DenseBackend, RetrievalConfig, RetrievalMode
 from soca.knowledge.retrievers.dense import EmbeddingModel, FastEmbedModel
 from soca.knowledge.vault import default_vault_root
-from soca.llm import LLMEngine, LocalLlamaCppLLM
+from soca.llm import LLMEngine, LocalLlamaCppLLM, StructuredLLMEngine
 from soca.llm.factory import SecretReader, build_llm_engine
 from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.memory import (
@@ -48,7 +49,13 @@ from soca.memory import (
     WorkingMemoryPolicy,
     default_session_checkpoint_home,
 )
-from soca.tools import MemorySearchTool, Tool, ToolRuntime
+from soca.tools import (
+    MemorySearchTool,
+    SpeculativeToolRuntime,
+    Tool,
+    ToolRuntime,
+    knowledge_source_identity,
+)
 
 
 def default_text_llm_model_key() -> str:
@@ -96,6 +103,7 @@ class TextRuntimeConfig:
     memory_recency_weight: float = 0.20
     memory_importance_weight: float = 0.10
     memory_recency_half_life_days: float = 30.0
+    sufficient_context_enabled: bool = False
 
 
 def resolve_text_runtime_config(
@@ -131,6 +139,7 @@ def resolve_text_runtime_config(
     memory_recency_weight: float = 0.20,
     memory_importance_weight: float = 0.10,
     memory_recency_half_life_days: float = 30.0,
+    sufficient_context_enabled: bool = False,
 ) -> TextRuntimeConfig:
     """Resolve text-only runtime config from the same profile source as voice.
 
@@ -178,6 +187,7 @@ def resolve_text_runtime_config(
         memory_recency_weight=memory_recency_weight,
         memory_importance_weight=memory_importance_weight,
         memory_recency_half_life_days=memory_recency_half_life_days,
+        sufficient_context_enabled=sufficient_context_enabled,
     )
 
 
@@ -412,7 +422,19 @@ def build_text_runtime(
         else:
             llm_status = f"enabled:{selected_settings.model_id}"
 
-    tool_runtime = ToolRuntime(tools)
+    base_tool_runtime = ToolRuntime(tools)
+    tool_runtime = (
+        SpeculativeToolRuntime(
+            base_tool_runtime,
+            identity_provider=lambda name: (
+                knowledge_source_identity(knowledge_builder.source)
+                if name == "knowledge.search" and knowledge_builder is not None
+                else ""
+            ),
+        )
+        if knowledge_builder is not None
+        else base_tool_runtime
+    )
     router_config = ToolRouterConfig(
         mode=cast(ToolRouterMode, config.tool_router_mode),
         response_mode=cast(RouterResponseMode, config.tool_router_response_mode),
@@ -434,6 +456,20 @@ def build_text_runtime(
         except Exception as exc:
             abort_build(exc)
     try:
+        require_sufficient_context = (
+            config.sufficient_context_enabled
+            and knowledge_builder is not None
+            and llm is not None
+        )
+        sufficiency_assessor = (
+            SufficientContextAutorater(
+                cast(StructuredLLMEngine, llm),
+                model_id=selected_settings.model_id,
+            )
+            if require_sufficient_context
+            and callable(getattr(llm, "generate_structured", None))
+            else None
+        )
         tool_router = build_runtime_tool_router(
             llm=llm,
             tool_runtime=tool_runtime,
@@ -457,7 +493,9 @@ def build_text_runtime(
                 turn_workflow="controlled",
                 model_context_window=model_context_window,
                 model_max_output_tokens=selected_settings.model_max_output_tokens,
+                require_sufficient_context=require_sufficient_context,
             ),
+            sufficiency_assessor=sufficiency_assessor,
             active_goal_store=active_goal_store
             or (
                 ActiveGoalStore(

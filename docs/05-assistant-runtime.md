@@ -75,6 +75,38 @@ the caller. It must not claim that the goal was verified or silently switch to a
 different retrieval path. The limits are defined by `RuntimeOptions` and
 `TurnBudget` in `soca/core/runtime.py` and `soca/core/workflow/contracts.py`.
 
+### Sufficient-context assessment
+
+Knowledge retrieval and answer generation are separated by the controlled
+workflow's `assess_context` node. `SufficientContextAutorater` makes one bounded
+structured-output call over the goal and selected evidence. Its control record is
+only a typed verdict, confidence, stable reason code, evidence IDs, model/prompt
+identity, usage, latency, and provider trace; free-form reasoning is neither
+requested nor stored.
+
+An insufficient verdict terminates as `insufficient_evidence` before synthesis.
+An unavailable provider, invalid schema, or missing configured assessor is a typed
+`sufficiency_assessment_failed` system failure. No path silently reuses relevance
+as sufficiency. Production builders keep this feature off until the pinned
+Vietnamese quality gate passes; explicit evaluation can set
+`sufficient_context_enabled=True`, and an enabled-but-unavailable assessor fails
+closed.
+
+### Speculative knowledge retrieval
+
+`SpeculativeToolRuntime` provides an explicit
+`prefetch_knowledge(slot_id, query)` API for future-turn retrieval. Only read-only
+tools are admitted. A result is reused once only when the final controller call
+has byte-equivalent canonical JSON arguments and the active knowledge-generation
+identity is unchanged. Pending or failed work, argument drift, a replaced slot,
+or generation drift runs the normal tool and adds a typed cache-miss marker to
+its receipt.
+
+Prefetch never returns an answer. The canonical workflow still observes the tool
+receipt and owns context assessment, synthesis, answer verification, and terminal
+state. Automatic voice-partial rollout remains disabled until its paired latency
+gate passes.
+
 ## Guardrails: Multiple Stages
 
 `core/guardrails.py`. **Stage** means where the check runs; **Action** is the
@@ -121,8 +153,10 @@ token*  → sentence*  → result
 - `sentence`: guardrail-checked chunk ready for TTS.
 - `result`: full `RuntimeResult` with route, trace, citations, and usage.
 
-LLM routes, including `KNOWLEDGE_LLM`, stream token-by-token. Non-LLM tool,
-knowledge-direct, and blocked routes produce fixed text through
+Controlled free-chat LLM routes stream token-by-token. Retrieval-grounded turns
+hold factual output until synthesis, citation validation, and terminal verification
+finish, then emit verified chunks. Non-LLM tool, knowledge-direct, and blocked
+routes produce fixed text through
 `_emit_fixed_result`, chunked into sentences. This keeps pipeline handling uniform
 across routes.
 
