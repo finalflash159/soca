@@ -1,0 +1,84 @@
+{
+  "schema_version": "soca-sufficient-context-release-v2",
+  "decision": "fail",
+  "production_wiring": "disabled_until_quality_gate_passes",
+  "dataset": {
+    "repo": "taidng/UIT-ViQuAD2.0",
+    "revision": "406f09a45cc106a8f7b7fd0c25078883fe58cb1f",
+    "split": "validation",
+    "inventory": {
+      "rows": 3814,
+      "answerable": 2653,
+      "unanswerable": 1161
+    }
+  },
+  "full_run": {
+    "sample_seed": 73,
+    "cases_per_class": 115,
+    "model": "openai/gpt-5.6-luna-pro",
+    "provider_failures": 0,
+    "false_sufficient_rate": 0.4956521739130435,
+    "sufficient_recall": 0.9043478260869565,
+    "accuracy": 0.7043478260869566,
+    "decision": "fail"
+  },
+  "label_policy": {
+    "uit_viquad_is_impossible": "diagnostic_extractability_proxy_only",
+    "release_definition": "sufficient_context_semantic_v1",
+    "required_reviewers": 2,
+    "per_case_unanimous_labels_required": true,
+    "reviewed_manifest": "missing"
+  },
+  "diagnostic_prompt_matrix": [
+    {
+      "prompt": "strict_exact",
+      "model": "openai/gpt-5.6-luna-pro",
+      "cases": 40,
+      "false_sufficient_rate": 0.3,
+      "sufficient_recall": 0.85,
+      "accuracy": 0.775,
+      "decision": "fail"
+    },
+    {
+      "prompt": "strict_exact",
+      "model": "anthropic/claude-sonnet-4.6",
+      "cases": 40,
+      "false_sufficient_rate": 0.25,
+      "sufficient_recall": 0.9,
+      "accuracy": 0.825,
+      "decision": "fail"
+    },
+    {
+      "prompt": "paper_definition",
+      "model": "anthropic/claude-sonnet-4.6",
+      "cases": 40,
+      "false_sufficient_rate": 0.5,
+      "sufficient_recall": 0.95,
+      "accuracy": 0.725,
+      "decision": "diagnostic_only_proxy_label_conflict"
+    },
+    {
+      "prompt": "balanced_examples",
+      "model": "anthropic/claude-sonnet-4.6",
+      "cases": 40,
+      "false_sufficient_rate": 0.45,
+      "sufficient_recall": 0.9,
+      "accuracy": 0.725,
+      "decision": "diagnostic_only_proxy_label_conflict"
+    },
+    {
+      "prompt": "paper_definition",
+      "model": "gemini-3.6-flash",
+      "requested_cases": 40,
+      "evaluated_cases": 8,
+      "provider_failures": 32,
+      "decision": "invalid_incomplete_provider_quota"
+    }
+  ],
+  "thresholds": {
+    "false_sufficient_rate_max": 0.05,
+    "sufficient_recall_min": 0.9
+  },
+  "owner": "groundedness",
+  "next_condition": "adjudicate_the_frozen_sample_with_two_human_reviewers_then_shadow_candidates_against_semantic_labels"
+}

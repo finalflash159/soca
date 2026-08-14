@@ -353,13 +353,17 @@ class VoiceMonitorController:
             record_kwargs["prefix"] = self._pending_prefix
             self._pending_prefix = None
         if bundle.partial_enabled and self._recorder_accepts("on_partial"):
-            record_kwargs["on_partial"] = lambda committed, tentative: queue.put(
-                VoiceMonitorEvent(
-                    "asr_partial",
-                    f"{committed} {tentative}".strip(),
-                    metadata={"committed": committed, "tentative": tentative},
+            def on_partial(committed: str, tentative: str) -> None:
+                query = f"{committed} {tentative}".strip()
+                queue.put(
+                    VoiceMonitorEvent(
+                        "asr_partial",
+                        query,
+                        metadata={"committed": committed, "tentative": tentative},
+                    )
                 )
-            )
+
+            record_kwargs["on_partial"] = on_partial
             record_kwargs["partial_transcriber"] = self._build_partial_transcriber(bundle)
         audio = self.recorder(bundle.detector, **record_kwargs)
         latency_ms = (time.perf_counter() - t0) * 1000

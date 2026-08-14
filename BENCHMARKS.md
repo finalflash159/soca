@@ -86,6 +86,31 @@ These are development-machine numbers. **No result in this file was measured on 
 Raspberry Pi or any ARM single-board computer**, and none should be quoted as an
 embedded-device figure.
 
+### 1.4 Native hot-path and edge status
+
+Metadata commands (`soca status`, `profiles`, `asr-models`, `llm-models`) start in
+**0.25 s**, down from **2.53 s**. The old cost was entirely import graph: `soca.cli`
+reached `voice_loop → voice_runtime → robust_asr → whisper_onnx`, pulling
+`transformers` (813 ms), `torchaudio` (430 ms) and `torch` (416 ms) to print a
+config table, plus `scipy.signal` (332 ms) through `pipeline → audio_out`. The
+model stack is now imported at the point of use, and confidence-guard calibration —
+pure JSON parsing — moved out of the ASR module into `soca/asr/confidence_calibration.py`.
+
+The pinned profiler is `py-spy` 0.4.2. Its native-stack mode is unsupported on
+the available macOS arm64 host, so the required voice, text-retrieval, and
+120-scenario turn-taking profiles are all recorded as `blocked`; no Python/native
+percentage is inferred from Python-only samples. The same harness must be run on
+Linux before any language-port decision is made.
+
+The Rust edge daemon now has a bounded SPSC capture path, out-of-callback
+resampling, real Silero/Smart Turn ONNX adapters, adaptive endpointing, typed
+NDJSON, model hashes, failure events, and a five-minute device receipt. Native
+unit tests (9) and strict Clippy pass on macOS arm64. The release gate remains
+`blocked`: macOS arm64 is not a Linux aarch64 SBC, so it cannot close
+blocker #11. ONNX Runtime is a pinned dynamic dependency; the earlier “static binary”
+wording is an intentional plan deviation pending a reproducible static ORT
+package for aarch64.
+
 ---
 
 ## 2. Datasets and corpora
@@ -109,6 +134,7 @@ Nothing private is committed; private sets are referenced by manifest hash only.
 | MIT IR Survey RIR | 270 real 16 kHz impulse responses | Synthetic echo generation for the cross-validation set | MIT IR Survey terms |
 | Private Vietnamese–English code-switch | sealed; manifest `aed1ccd9…` | Code-switch WER and term recall, [§3.2](#32-qwen3-asr-release-qualification--decision-blocked) | private, never committed |
 | Recorded private voice samples | 8 per profile | Real-voice trajectories, [§3.3](#33-real-voice-trajectories) | private, never committed |
+| Vietnamese disfluency contract | 10 reviewed text scenarios, 2 per class; audio not provisioned | Endpoint/tool gate for filler, pause, hesitation, false start, self-correction | authored contract; private audio remains local |
 
 The ESC-50 exclusion list removes classes that contain human vocalisation
 (`crying_baby`, `sneezing`, `clapping`, `breathing`, `coughing`, `footsteps`,
@@ -124,6 +150,8 @@ so that "non-speech" means what it says.
 | ViRe ALQAC | 304 docs / 355 chunks, 50 queries | Cross-domain and reranker, [§6.3](#63-reranking-measured-and-rejected) | ibid. |
 | XQuAD Vietnamese | 48 Wikipedia articles, 1,193 questions | Historical hybrid-retrieval baseline, [A.2](#a2--decision-history) | CC BY-SA 4.0 |
 | XQuAD grounding split | 12 answerable + 8 unanswerable | Evidence-floor calibration, [§6.5](#65-evidence-floor-recalibration) | CC BY-SA 4.0 |
+| UIT-ViQuAD 2.0 validation | 3,814 rows: 2,653 answerable + 1,161 unanswerable; balanced 230-case gate | Sufficient-context autorater, [§9.1](#91-the-failing-gate) | dataset card terms; benchmark only |
+| GreenNode ArguAna-VN | 8,674 docs / 8,702 production chunks; 1,290 evaluable queries | Public VN-MTEB retrieval comparison, [§6.8](#68-public-vn-mteb-comparison) | source lock marks license verified; benchmark only |
 | Synthetic vectors | 250,000 × 1,024 dims, 1,000 queries, 3 seeds | Vector-backend gate, [§6.4](#64-vector-backend-exact-numpy-beats-approximate) | generated |
 | Capability routing corpus | 66 rows in 22 families; SHA-256 `4249290a…` | Semantic router, [§8](#8-capability-routing) | authored for this repo |
 | Remediation baseline | 14 cases (10 capability + 4 regression) | Runtime trajectory baseline | authored + XQuAD |
@@ -327,21 +355,25 @@ transcripts.
 
 | Δ (positive = first-clause faster) | p50 | range | Prompts helped |
 | --- | ---: | --- | ---: |
-| time to first sentence (text side) | +184 ms | −0 … +453 ms | 7 / 8 |
-| `tts_ready` (text + Valtec synthesis) | +395 ms | −14 … +928 ms | 7 / 8 |
+| time to first sentence (text side) | +42.5 ms | −3.3 … +479.9 ms | 5 / 8 |
+| `tts_ready` (text + Valtec synthesis) | +120.5 ms | −0.04 … +910.7 ms | 7 / 8 |
 
-The 1/8 no-benefit case is a response with no clause boundary before the first
-period, where on and off are identical by construction. This is the LLM →
-first-chunk delta attributable to first-clause flushing, **not** an absolute
-end-to-end TTFA figure.
+Seven `tts_ready` paths and five text-side paths exceed the declared 5 ms
+“helped” threshold. The smallest deltas (−0.04 ms TTS-ready and −3.3 ms text)
+are within replay noise. This is the LLM → first-chunk delta attributable to
+first-clause flushing, **not** an absolute end-to-end TTFA figure.
 
 **(d) End-to-end loop** — `output_underflow_count` is 0 on every row, confirming
 continuity holds through the full loop. The E2E TTFA p50 of 3,071 ms in that run is
 **ASR-bound** (per-row ASR ≈ 1.7–2.6 s on deliberately long fixtures) and is not a
 valid comparison against any first-clause number.
 
-**Not measured:** voice quality, prosody, and naturalness. Those remain a listening
-judgement.
+**Naturalness remains blocked, now explicitly.** `eval/eval_tts_quality.py`
+pairs pinned UTMOSv2 (`cc2700d…`) with TTS→ASR WER, accepts only text-aligned
+Valtec/reference manifests, hashes every WAV, and labels the score as a relative
+Vietnamese indicator rather than absolute MOS. No reviewed paired human
+Vietnamese reference recording is provisioned, so blocker #12 remains open; the
+harness does not substitute synthetic audio or a default score.
 
 ---
 
@@ -374,6 +406,22 @@ false interrupt, 92.5 vs 94.7% detection), so the RIR synthesis is realistic and
 barge-in survives real echo. Synthetic median stop latency 2,344 ms / p90 5,336 ms
 — gated by the 400 ms sustained floor plus read-speech VAD, and it grows under
 stronger echo.
+
+Both reruns now inventory the exact inputs rather than only naming a directory.
+The real set records 600 files / 117,686,692 bytes with content digest
+`c9cfdba1…`; the synthetic set records its 240-scenario digest `31721448…` and
+both source-manifest digests. Both also record the exact Silero model hash
+`e1122837…`, package versions, configuration, hardware, counts, and gate result.
+
+The runtime now exposes a typed optional classifier seam after the sustained VAD
+window and before interrupting playback. A `backchannel` decision resets the
+sustained run and preserves playback; an `interruption` decision follows the
+canonical barge-in path. Failure is typed and never interpreted as a default
+intent. The reviewed Vietnamese classifier gate requires at least 10 unique
+clips per class, recall ≥ 0.90 for both classes, and p95 ≤ 300 ms. Easy-Turn is
+pinned as the researched candidate, but production wiring remains disabled:
+there is no reviewed Vietnamese target-hardware result, so blocker #8 is not
+claimed closed.
 
 ### 5.2 Turn-taking (120 scenarios, 800 ms within-turn pause)
 
@@ -435,6 +483,20 @@ or a Smart Turn floor change, is the fix.
 not a pure front-end reaction time. The backchannel is a synthetic 400 ms FLEURS
 head, not recorded speech. Tier 1 synthesis uses one echo level (alpha 0.5) and MIT
 RIRs only.
+
+### 5.3 Vietnamese disfluency gate
+
+The committed scenario contract has 10 Vietnamese cases and exact coverage of
+the five Full-Duplex-Bench v3 classes: filler, pause, hesitation, false start,
+and self-correction. A private materialization must provide unique hashed 16 kHz
+mono WAV files, reviewed hold spans, true end times, production endpoint
+receipts, and controlled tool/provider/model receipts. The release gate requires
+both endpoint-hold and tool-terminal accuracy ≥ 0.95 with no more than 2,000 ms
+over-wait.
+
+No reviewed natural Vietnamese disfluency audio or real-flow receipts are
+available in this workspace. The status is therefore `blocked`, not a pass from
+the committed text scenarios and not a replacement with FLEURS read speech.
 
 ---
 
@@ -573,6 +635,29 @@ heading-only sections and persists the changed fingerprint; the rebuild reused a
 446 surviving vectors and embedded zero unchanged rows. Context selection now
 retrieves a 4× candidate pool and keeps one best chunk per document.
 
+### 6.8 Public VN-MTEB comparison
+
+The production candidate was also run unchanged on pinned
+`GreenNode/arguana-vn@137122e…`: the same AITeamVN model revision, tokenizer and
+artifact digests, production chunker, BM25, min-max linear fusion, and dense
+weight 0.75. Upstream contains 1,295 qrels, but five reference document IDs are
+absent from the pinned corpus parquet; the gate inventories those five explicitly
+and evaluates all 1,290 resolvable queries rather than silently shrinking the
+denominator.
+
+| Corpus / candidate | Recall@5 | MRR@10 | nDCG@10 | p95/query |
+| --- | ---: | ---: | ---: | ---: |
+| TVPL internal, production candidate | 0.9161 | 0.8275 | 0.8487 | 71.0 ms |
+| ArguAna-VN public, same candidate | 0.5876 | 0.2499 | 0.3775 | 301.5 ms |
+
+The public slice is materially harder and slower: 8,674 long documents become
+8,702 chunks, peak RSS is 14.25 GB, index build takes 1,209.0 s, and the persisted
+artifact is 44.8 MB. This result improves comparability but does **not** replace
+the private-domain selection or justify a new production winner on its own.
+
+Sanitized aggregate evidence for this run and the other upgrade gates is in
+[`soca-upgrade-release-gates-20260814.json`](docs/evidence/soca-upgrade-release-gates-20260814.json).
+
 ---
 
 ## 7. Working-memory summarization
@@ -687,6 +772,37 @@ contrast with [section 6.5](#65-evidence-floor-recalibration): 0/8 false evidenc
 the small XQuAD split versus 50% here. The XQuAD result was never strong enough to
 generalize, and this gate is exactly what that Wilson bound was warning about.
 
+The controlled workflow now has a distinct `assess_context` node after knowledge
+retrieval and before synthesis. It makes one bounded structured model call and
+stores only the typed verdict, confidence, stable reason code, evidence IDs,
+model/prompt identity, usage, latency, and provider trace—never chain-of-thought.
+`insufficient` ends as `insufficient_evidence`; provider/schema failure ends as a
+typed system failure; neither path calls the answer generator.
+
+The pinned UIT-ViQuAD 2.0 validation gate shows why this is not enabled by
+default yet:
+
+| Autorater run | Cases | False sufficient | Sufficient recall | Accuracy | Gate |
+| --- | ---: | ---: | ---: | ---: | :-: |
+| Initial one-call prompt | 230 (115/class) | **49.6%** | 90.4% | 70.4% | ❌ |
+| Closed-world exact-entailment probe | 40 (20/class) | **30.0%** | **85.0%** | 77.5% | ❌ |
+| Claude 4.6 strict exact | 40 (20/class) | **25.0%** | 90.0% | 82.5% | ❌ |
+| Claude 4.6 paper definition | 40 (20/class) | **50.0%** | 95.0% | 72.5% | proxy only |
+| Claude 4.6 balanced examples | 40 (20/class) | **45.0%** | 90.0% | 72.5% | proxy only |
+
+Both used OpenRouter `openai/gpt-5.6-luna-pro`, one attempt per case and zero
+provider failures. The probe improves false positives but misses both the ≤5%
+false-sufficient and ≥90% sufficient-recall thresholds, so spending another
+full run on that rejected prompt would not be release evidence. Manual error
+analysis also found proxy-label conflicts: several UIT “impossible” passages
+still support a semantic answer, while strict exact matching rejects typo and
+near-synonym cases. UIT `is_impossible` is therefore diagnostic extractability,
+not release truth. Artifact v2 requires exact sample coverage and matching
+per-case labels from at least two reviewers under
+`sufficient_context_semantic_v1`. This follows the original
+[Sufficient Context definition](https://arxiv.org/abs/2411.06037). Production
+remains `disabled_until_quality_gate_passes`.
+
 ### 9.2 Provider reliability
 
 Eight real receipts across Gemini, Groq, OpenAI-compatible, and OpenRouter
@@ -709,18 +825,19 @@ Consolidated from every section above. Nothing here is scheduled away or softene
 
 | # | Blocker | Section |
 | --- | --- | --- |
-| 1 | Unanswerable false-evidence rate 0.50 against a 0.05 threshold on the real vault | [9.1](#91-the-failing-gate) |
+| 1 | Sufficient-context production gate lacks two-reviewer semantic labels; UIT extractability proxy and all tested prompt/model candidates remain non-releasable | [9.1](#91-the-failing-gate) |
 | 2 | Repeated full-stack memory-pressure evidence with summary-worker overlap missing | [3.2](#32-qwen3-asr-release-qualification--decision-blocked) |
 | 3 | `resource_tracker` leaked-semaphore warning on the 1.7B worker, root cause unknown | [3.2](#32-qwen3-asr-release-qualification--decision-blocked) |
 | 4 | Remote tool-router generation failure telemetry path unaudited | [3.2](#32-qwen3-asr-release-qualification--decision-blocked) |
 | 5 | No microphone, speaker, or live barge-in device run | [9](#9-platform-provider-and-audio-gates) |
 | 6 | No PTY / IME matrix on iTerm2 or Terminal.app | [9](#9-platform-provider-and-audio-gates) |
 | 7 | Vietnamese turn-taking costs 1,824 ms median over-wait to hold premature close at 5.0% | [5.2](#52-turn-taking-120-scenarios-800-ms-within-turn-pause) |
-| 8 | Backchannels longer than ~416 ms leak through the sustained gate | [5.2](#52-turn-taking-120-scenarios-800-ms-within-turn-pause) |
+| 8 | Backchannels longer than ~416 ms leak; classifier seam exists but has no reviewed Vietnamese target-hardware winner | [5.1](#51-barge-in-false-interrupt--full-duplex-bench-takeover-rate) |
 | 9 | Summary mixed Vietnamese/code/path placement recall 8% | [7](#7-working-memory-summarization) |
 | 10 | Router goal-level pass rate 1/14 on the remediation baseline | [8](#8-capability-routing) |
-| 11 | No ARM single-board measurement of any kind | [1.3](#13-hardware-and-runtime) |
-| 12 | TTS voice quality, prosody, and naturalness are unmeasured | [4.2](#42-streaming-latency-and-playback-continuity) |
+| 11 | Rust edge daemon passes native tests, but no real Linux aarch64 SBC device receipt exists | [1.4](#14-native-hot-path-and-edge-status) |
+| 12 | UTMOSv2+WER harness exists, but reviewed paired human Vietnamese references are missing | [4.2](#42-streaming-latency-and-playback-continuity) |
+| 14 | Natural Vietnamese disfluency audio and controlled real-flow receipts are not provisioned | [5.3](#53-vietnamese-disfluency-gate) |
 
 ---
 
@@ -765,11 +882,23 @@ uv run python -m eval.eval_smart_turn_languages --language vie --language eng
 uv run python eval/eval_valtec_parity.py
 uv run python eval/eval_valtec_chunk_join.py
 uv run python eval/measure_device_playback.py
-uv run python eval/measure_first_clause_ttfa.py
+uv run python -m eval.measure_first_clause_ttfa
+# UTMOSv2 requires paired candidate/human manifests and a WER report:
+uv run python -m eval.eval_tts_quality --help
 
 # Retrieval bake-off and grounding
 uv run python scripts/run_benchmark.py
 uv run python eval/eval_grounding.py
+uv run python -m eval.eval_vn_mteb
+uv run python -m eval.eval_sufficient_context_viquad
+
+# Additional rollout/device gates (private receipts stay local)
+uv run python -m eval.eval_backchannel_classifier --help
+uv run python -m eval.eval_disfluency --help
+uv run python -m eval.eval_edge_daemon --help
+
+# Native profile gate; use Linux for Python/native percentages
+uv run python -m eval.profile_hot_paths --help
 
 # Release gates
 uv run python scripts/run_release_gates.py
@@ -849,5 +978,6 @@ matched 0/80 on the production model.
 | Voice/knowledge phases P0–P5 | 2026-07-29 | Consolidated into [§6](#6-knowledge-retrieval) and [§8](#8-capability-routing) |
 | Qwen3-ASR release matrix on CPU: partial p95 11,619 ms | 2026-08-02 | Re-run on MPS ([§3.2](#32-qwen3-asr-release-qualification--decision-blocked)); the CPU failure is retained, not overwritten |
 | Turn-taking `p_based` at a 1,000 ms floor: cut-in 3.3%, premature close 18.3%, over-wait 1,312 ms | 2026-08-03 | Correct for the code of the day; `587a93a` raised the floor to 1,800 ms and stopped stripping the trailing silence before Smart Turn inference, giving the 1.7% / 5.0% / 1,824 ms in [§5.2](#52-turn-taking-120-scenarios-800-ms-within-turn-pause) |
+| Speculative knowledge prefetch: 20/20 cache hit, 153.2 ms median retrieval-ready saving at a ~257 ms lead | 2026-08-15 | Removed. The saving is bounded by production retrieval cost (71 ms p95, [§6.2](#62-embedding-and-fusion-selection)); the fixture merely made it look larger. That ceiling is ~25× smaller than the 1,824 ms endpoint wait, and did not justify the slot lifecycle, cancellation, identity matching, isolated sources and receipt schema it required |
 
 Model licenses are listed in [README.md](README.md#licenses-and-attribution).

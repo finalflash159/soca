@@ -49,6 +49,9 @@ eval = [
     "matplotlib>=3.9",
     "pyahocorasick>=2.3.1",  # research-only BoH ablation
 ]
+mos-eval = [
+    "utmosv2 @ git+https://github.com/sarulab-speech/UTMOSv2.git@cc2700db57bb83ee13dc31ebe1b868c254e15d09",
+]
 valtec-build = [
     "onnx>=1.17,<2.0",
     "torch>=2.0",
@@ -94,6 +97,9 @@ ignore = ["E501"]  # line too long — let formatter handle
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["soca"]

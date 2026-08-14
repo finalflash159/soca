@@ -36,10 +36,12 @@ class FakePipeline:
         self.events = events
         self.audio_inputs: list[np.ndarray] = []
         self.audio_sink = None
+        self.stream_kwargs: list[dict] = []
 
-    def turn_streaming(self, audio: np.ndarray, audio_sink):
+    def turn_streaming(self, audio: np.ndarray, audio_sink, **kwargs):
         self.audio_inputs.append(audio)
         self.audio_sink = audio_sink
+        self.stream_kwargs.append(kwargs)
         yield from self.events
 
 
@@ -116,6 +118,7 @@ def make_bundle(
     detector: object | None = None,
     tts: object | None = None,
     llm: object | None = None,
+    assistant_runtime: object | None = None,
 ) -> VoiceRuntimeBundle:
     return VoiceRuntimeBundle(
         config=config,
@@ -123,7 +126,7 @@ def make_bundle(
         asr=FakeASR(),  # type: ignore[arg-type]
         llm=llm or object(),  # type: ignore[arg-type]
         tts=tts or object(),
-        assistant_runtime=object(),  # type: ignore[arg-type]
+        assistant_runtime=assistant_runtime or object(),  # type: ignore[arg-type]
         pipeline=pipeline,  # type: ignore[arg-type]
         memory_status="disabled:test",
         knowledge_status="enabled:test",
@@ -476,3 +479,9 @@ def test_build_partial_transcriber_passes_empty_context_for_a_context_aware_back
 
     assert text == "hypothesis"
     assert inner.calls == [{"audio_len": 160, "context": ""}]
+
+
+
+
+
+

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import soundfile as sf
@@ -11,6 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from eval.result_io import make_eval_artifact_metadata, write_json_artifact  # noqa: E402
 from eval.tts_intelligibility.corpora import build_all_corpora  # noqa: E402
 from eval.tts_intelligibility.manifest import (  # noqa: E402
     SynthManifest,
@@ -22,6 +24,44 @@ from eval.tts_intelligibility.scoring import aggregate, score_item  # noqa: E402
 
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "eval" / "results" / "tts_intelligibility"
 ASR_SAMPLE_RATE = 16_000
+
+
+def build_wer_report(
+    *,
+    group_label: str,
+    verdicts: list[Any],
+    summaries: dict[str, Any],
+    manifest: SynthManifest,
+    asr_label: str,
+) -> dict[str, Any]:
+    if not group_label.strip():
+        raise ValueError("WER group label is required")
+    if not verdicts:
+        raise ValueError("WER report requires at least one verdict")
+    return {
+        "schema_version": "soca-tts-wer-v1",
+        "groups": {
+            group_label.strip(): sum(float(verdict.wer) for verdict in verdicts)
+            / len(verdicts)
+        },
+        "details": {
+            group_label.strip(): {
+                "engine": manifest.engine,
+                "voice": manifest.voice,
+                "asr": asr_label,
+                "case_count": len(verdicts),
+                "corpora": {
+                    name: {
+                        "total": summary.total,
+                        "passed": summary.passed,
+                        "pass_rate": summary.pass_rate,
+                        "mean_wer": summary.mean_wer,
+                    }
+                    for name, summary in sorted(summaries.items())
+                },
+            }
+        },
+    }
 
 
 def _resample_to_asr(audio: np.ndarray, source_rate: int) -> np.ndarray:
@@ -204,6 +244,29 @@ def run_score(args: argparse.Namespace) -> int:
         for verdict in summary.failures[: args.max_failures]:
             print(f"  expected {verdict.expected!r}")
             print(f"  heard    {verdict.heard!r}")
+    if args.output is not None:
+        report = build_wer_report(
+            group_label=args.group_label,
+            verdicts=verdicts,
+            summaries=summaries,
+            manifest=manifest,
+            asr_label=asr_label,
+        )
+        report["artifact"] = make_eval_artifact_metadata(
+            suite="tts_intelligibility_wer",
+            run_type="benchmark",
+            data_files=(Path(args.manifest),)
+            + tuple(Path(record.wav_path) for record in manifest.records),
+            config={
+                "group_label": args.group_label,
+                "asr_backend": args.asr_backend,
+                "asr_model": asr_label,
+                "corpora": list(args.corpus),
+            },
+            ignored_untracked_paths=(args.output,),
+        ).to_dict()
+        write_json_artifact(args.output, report)
+        print(f"\nWrote WER evidence -> {args.output}")
     return 0
 
 
@@ -260,6 +323,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Restrict scoring to a corpus (repeatable).",
     )
     score.add_argument("--max-failures", type=int, default=15)
+    score.add_argument("--group-label", default="valtec")
+    score.add_argument("--output", type=Path)
     score.set_defaults(func=run_score)
 
     return parser

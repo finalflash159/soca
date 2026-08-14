@@ -93,13 +93,17 @@ class SpyStreamingRuntime:
         blocked: bool = False,
         used_tool: bool = False,
         used_llm: bool = True,
+        workflow_status: str = "not_run",
     ) -> None:
         self.sentences = sentences
         self.route = route
         self.blocked = blocked
         self.used_tool = used_tool
         self.used_llm = used_llm
+        self.workflow_status = workflow_status
         self.calls: list[dict] = []
+        self.discarded_slots: list[tuple[str, str]] = []
+
 
     def stream_text_turn(
         self,
@@ -132,6 +136,7 @@ class SpyStreamingRuntime:
             used_tool=self.used_tool,
             used_llm=self.used_llm,
             blocked=self.blocked,
+            workflow_status=self.workflow_status,
         )
         yield RuntimeStreamEvent(
             type="result",
@@ -171,6 +176,31 @@ def test_pipeline_prefers_stream_text_turn_and_emits_streaming_events() -> None:
     assert runtime.calls[0]["source"] == "asr"
     assert events[-1].metadata["runtime_route"] == RuntimeRoute.FREE_CHAT.value
     assert events[-1].metadata["rejected"] is False
+
+
+
+def test_pipeline_done_uses_insufficient_evidence_workflow_terminal() -> None:
+    runtime = SpyStreamingRuntime(
+        ["Mình chưa có đủ bằng chứng."],
+        workflow_status="insufficient_evidence",
+    )
+    pipeline = VoicePipeline(
+        asr=FakeASR("Ai viết tài liệu?"),
+        llm=object(),
+        tts=SpyTTS(),
+        assistant_runtime=runtime,
+    )
+
+    events = list(
+        pipeline.turn_streaming(
+            np.zeros(16000, dtype=np.float32),
+            audio_sink=NullAudioPlayer(),
+        )
+    )
+
+    assert events[-1].metadata["terminal_status"] == "insufficient_evidence"
+
+
 
 
 def test_runtime_summary_includes_memory_degradation() -> None:

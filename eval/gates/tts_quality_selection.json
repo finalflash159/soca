@@ -1,0 +1,19 @@
+{
+  "schema_version": "soca-tts-quality-selection-v1",
+  "decision": "blocked",
+  "reason": "reviewed_paired_vietnamese_human_reference_audio_is_not_provisioned",
+  "production_claim": "naturalness_unmeasured",
+  "predictor": {
+    "name": "UTMOSv2",
+    "repository": "https://github.com/sarulab-speech/UTMOSv2",
+    "revision": "cc2700db57bb83ee13dc31ebe1b868c254e15d09",
+    "interpretation": "relative_vietnamese_indicator_not_absolute_mos"
+  },
+  "required_evidence": [
+    "paired Valtec and reviewed human Vietnamese recordings for identical text",
+    "UTMOSv2 row receipts with audio hashes",
+    "TTS-to-ASR WER for each candidate group",
+    "clean source, model, dataset, software, and hardware provenance"
+  ],
+  "owner": "voice_quality"
+}

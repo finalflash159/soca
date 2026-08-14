@@ -12,8 +12,10 @@ Deterministic: replay time is the frame index; scenarios are seeded.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Callable
+from pathlib import Path
 
 import click
 
@@ -23,9 +25,23 @@ from eval.conversation_metrics import (
     SynthBargeReport,
     synth_barge_report,
 )
-from eval.eval_conversation import _make_real_adapters
+from eval.eval_conversation import _make_real_adapters, _silero_identity
+from eval.provenance import file_set_identity, package_versions, run_provenance
 from eval.scenarios_barge_in_synth import SynthScenario, build_scenarios
 from local import config as cfg
+
+_RIR_MANIFEST = Path("data/rir/mit/manifest.jsonl")
+
+
+def _scenario_digest(scenarios: list[SynthScenario]) -> str:
+    digest = hashlib.sha256()
+    for scenario in scenarios:
+        digest.update(scenario.kind.encode())
+        digest.update(str(scenario.onset_ms).encode())
+        digest.update(scenario.far.shape.__repr__().encode())
+        digest.update(scenario.far.tobytes())
+        digest.update(scenario.near.tobytes())
+    return digest.hexdigest()
 
 
 def evaluate_synth(
@@ -134,16 +150,34 @@ def main(
     report = synth_barge_report(outcomes)
     _print_report(report)
 
-    meta = {
-        "tier": "1_synth",
-        "n": n,
-        "onset_ms": onset_ms,
-        "alpha": alpha,
-        "backchannel_ms": backchannel_ms,
-        "sustained_ms": sustained_ms,
-        "vad_threshold": vad_threshold,
-        "seed": seed,
-    }
+    meta = run_provenance(
+        tier="1_synth",
+        n=n,
+        onset_ms=onset_ms,
+        alpha=alpha,
+        backchannel_ms=backchannel_ms,
+        sustained_ms=sustained_ms,
+        vad_threshold=vad_threshold,
+        stream_delay_ms=stream_delay_ms,
+        seed=seed,
+        scenario_count=len(scenarios),
+        scenario_content_sha256=_scenario_digest(scenarios),
+        source_manifests=file_set_identity((cfg.FLEURS_MANIFEST, _RIR_MANIFEST)),
+        models={"silero_vad": _silero_identity()},
+        software=package_versions(
+            ("numpy", "pywebrtc-audio", "scipy", "silero-vad", "soundfile", "torch")
+        ),
+        gate={
+            "passed": report.n_echo_only == n
+            and report.n_barge_in == n
+            and report.n_backchannel == n,
+            "requirements": {
+                "echo_only": n,
+                "barge_in": n,
+                "backchannel": n,
+            },
+        },
+    )
     cfg.EVAL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = cfg.EVAL_RESULTS_DIR / "conversation_tier1_synth.json"
     out_path.write_text(

@@ -18,6 +18,12 @@ from soca.core.audio_out import (
     _resample,
     _to_float32_mono,
 )
+from soca.core.backchannel import (
+    BackchannelClassifier,
+    BackchannelDecision,
+    BargeInIntent,
+    classify_barge_in_window,
+)
 
 _SAMPLE_RATE = 16000
 _FRAME = 512  # 32 ms @16k == Silero VAD frame
@@ -51,6 +57,7 @@ class DuplexAecSink:
         sustained_ms: float = 400,
         vad_threshold: float = 0.7,
         stream_delay_ms: int = 40,
+        backchannel_classifier: BackchannelClassifier | None = None,
     ) -> None:
         self.rate = sample_rate
         self.frame = int(sample_rate * block_ms / 1000)
@@ -74,6 +81,25 @@ class DuplexAecSink:
         # to the next recording so the user's first words survive.
         self.captured: np.ndarray | None = None
         self._playback_session: _DuplexPlaybackSession | None = None
+        self._backchannel_classifier = backchannel_classifier
+        self.last_backchannel_decision: BackchannelDecision | None = None
+        self.backchannel_classification_count = 0
+        self.suppressed_backchannel_count = 0
+
+    @property
+    def backchannel_readiness(self) -> dict[str, object]:
+        classifier = self._backchannel_classifier
+        return {
+            "status": "ready" if classifier is not None else "disabled",
+            "classifier": type(classifier).__name__ if classifier is not None else None,
+            "classification_count": self.backchannel_classification_count,
+            "suppressed_count": self.suppressed_backchannel_count,
+            "last_decision": (
+                self.last_backchannel_decision.as_dict()
+                if self.last_backchannel_decision is not None
+                else None
+            ),
+        }
 
     def _ensure_stream(self) -> None:
         """Open the duplex stream + reset per-turn state on the first chunk."""
@@ -83,6 +109,7 @@ class DuplexAecSink:
         self._run_ms = 0.0
         self._window.clear()
         self.captured = None
+        self.last_backchannel_decision = None
         self._stream = sd.Stream(
             samplerate=self.rate, blocksize=self.frame, channels=1, dtype="float32"
         )
@@ -142,10 +169,23 @@ class DuplexAecSink:
                     flush=True,
                 )
             if self._run_ms >= self.sustained_ms and interrupt_event is not None:
-                self.captured = np.concatenate(list(self._window)).astype(
+                candidate_audio = np.concatenate(list(self._window)).astype(
                     np.float32,
                     copy=False,
                 )
+                if self._backchannel_classifier is not None:
+                    decision = classify_barge_in_window(
+                        self._backchannel_classifier,
+                        candidate_audio,
+                        self.rate,
+                    )
+                    self.last_backchannel_decision = decision
+                    self.backchannel_classification_count += 1
+                    if decision.intent is BargeInIntent.BACKCHANNEL:
+                        self.suppressed_backchannel_count += 1
+                        self._run_ms = 0.0
+                        continue
+                self.captured = candidate_audio
                 if _DEBUG:
                     print(f"[duplex] -> INTERRUPT (prob={prob:.2f})", file=sys.stderr, flush=True)
                 interrupt_event.set()

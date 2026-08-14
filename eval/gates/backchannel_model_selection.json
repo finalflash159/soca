@@ -1,0 +1,24 @@
+{
+  "schema_version": "soca-backchannel-model-selection-v1",
+  "decision": "blocked",
+  "reason": "no_candidate_has_reviewed_vietnamese_audio_evidence_on_target_hardware",
+  "production_wiring": "disabled_until_gate_passes",
+  "candidate": {
+    "name": "ASLP-lab/Easy-Turn",
+    "repository": "https://github.com/ASLP-lab/Easy-Turn",
+    "revision": "fe175eaa8442c9a0834acf29f8640ee74c2aceca",
+    "license": "Apache-2.0",
+    "labels": ["complete", "incomplete", "backchannel", "wait"],
+    "known_tradeoffs": [
+      "approximately 850 MB model",
+      "published latency and memory measurements use an RTX 4090",
+      "no reviewed Vietnamese backchannel benchmark is published"
+    ]
+  },
+  "required_gate": {
+    "schema": "soca-backchannel-classifier-gate-v1",
+    "minimum_cases_per_class": 10,
+    "minimum_recall": 0.9,
+    "maximum_latency_p95_ms": 300.0
+  }
+}

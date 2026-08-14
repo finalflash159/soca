@@ -75,31 +75,22 @@ the caller. It must not claim that the goal was verified or silently switch to a
 different retrieval path. The limits are defined by `RuntimeOptions` and
 `TurnBudget` in `soca/core/runtime.py` and `soca/core/workflow/contracts.py`.
 
-## Guardrails: Multiple Stages
+### Sufficient-context assessment
 
-`core/guardrails.py`. **Stage** means where the check runs; **Action** is the
-result.
+Knowledge retrieval and answer generation are separated by the controlled
+workflow's `assess_context` node. `SufficientContextAutorater` makes one bounded
+structured-output call over the goal and selected evidence. Its control record is
+only a typed verdict, confidence, stable reason code, evidence IDs, model/prompt
+identity, usage, latency, and provider trace; free-form reasoning is neither
+requested nor stored.
 
-```mermaid
-flowchart LR
-    subgraph Stages["GuardrailStage"]
-        I[INPUT] --> R[RETRIEVAL] --> TI[TOOL_INPUT] --> TO[TOOL_OUTPUT] --> O[OUTPUT]
-    end
-    Stages -.-> A["GuardrailAction:<br/>ALLOW · WARN · BLOCK"]
-```
-
-| Function                    | Stage       | Checks                                                                |
-| --------------------------- | ----------- | --------------------------------------------------------------------- |
-| `check_input_text`          | INPUT       | Whether the user input violates policy                                |
-| `check_knowledge_read_path` | RETRIEVAL   | Whether a knowledge path is safe and cannot path-traverse             |
-| `check_untrusted_text`      | RETRIEVAL   | Whether retrieved untrusted content contains dangerous instructions   |
-| `check_tool_call`           | TOOL_INPUT  | Whether tool parameters and permissions are valid                     |
-| `check_tool_result`         | TOOL_OUTPUT | Whether tool output leaks private or unsafe content                   |
-| `check_final_output`        | OUTPUT      | Whether the final answer makes unsupported claims, e.g. realtime data |
-
-`GuardrailEvent` is frozen and records `stage`, `action`, `reason`, and
-`message`. All events are stored in `RuntimeTrace.guardrail_events` for the
-Inspector.
+An insufficient verdict terminates as `insufficient_evidence` before synthesis.
+An unavailable provider, invalid schema, or missing configured assessor is a typed
+`sufficiency_assessment_failed` system failure. No path silently reuses relevance
+as sufficiency. Production builders keep this feature off until the pinned
+Vietnamese quality gate passes; explicit evaluation can set
+`sufficient_context_enabled=True`, and an enabled-but-unavailable assessor fails
+closed.
 
 ### Why Streaming Remains Safe
 
@@ -121,8 +112,10 @@ token*  → sentence*  → result
 - `sentence`: guardrail-checked chunk ready for TTS.
 - `result`: full `RuntimeResult` with route, trace, citations, and usage.
 
-LLM routes, including `KNOWLEDGE_LLM`, stream token-by-token. Non-LLM tool,
-knowledge-direct, and blocked routes produce fixed text through
+Controlled free-chat LLM routes stream token-by-token. Retrieval-grounded turns
+hold factual output until synthesis, citation validation, and terminal verification
+finish, then emit verified chunks. Non-LLM tool, knowledge-direct, and blocked
+routes produce fixed text through
 `_emit_fixed_result`, chunked into sentences. This keeps pipeline handling uniform
 across routes.
 

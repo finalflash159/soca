@@ -1,0 +1,21 @@
+{
+  "schema_version": "soca-disfluency-release-v1",
+  "decision": "blocked",
+  "reason": "reviewed_private_vietnamese_disfluency_audio_and_real_flow_receipts_are_not_provisioned",
+  "scenario_manifest": "eval/prompts/disfluency_vi.jsonl",
+  "covered_types": [
+    "filler",
+    "pause",
+    "hesitation",
+    "false_start",
+    "self_correction"
+  ],
+  "required_gate": {
+    "minimum_endpoint_hold_accuracy": 0.95,
+    "minimum_tool_terminal_accuracy": 0.95,
+    "maximum_over_wait_ms": 2000.0,
+    "route": "controlled",
+    "provider_and_model_receipt_required": true
+  },
+  "owner": "conversation_evaluation"
+}

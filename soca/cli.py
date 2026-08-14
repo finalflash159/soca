@@ -12,17 +12,14 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from soca.app import run_voice_loop
 from soca.app.profiles import render_profiles, render_status
 from soca.app.style.palette import ALT, st
-from soca.app.text_chat import run_text_chat
-from soca.app.text_runtime import TextRuntimeConfig, resolve_text_runtime_config, run_text_ask
+from soca.app.text_runtime import TextRuntimeConfig, resolve_text_runtime_config
 from soca.asr.registry import ASR_MODEL_REGISTRY, DEFAULT_ASR_MODEL_KEY
 from soca.config import DEFAULT_MAX_TOKENS, load_voice_profile
 from soca.core import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
     VOICE_RUNTIME_PROFILES,
-    resolve_voice_runtime_config,
 )
 from soca.knowledge.index.persistence import default_index_home
 from soca.knowledge.indexing.coordinator import IndexCoordinator
@@ -648,6 +645,8 @@ def ask(
         memory_retrieval_mode=memory_retrieval,
         memory_dense_backend=memory_dense_backend,
     )
+    from soca.app.text_runtime import run_text_ask
+
     run_text_ask(" ".join(text), config, console=console, show_trace=trace, show_usage=usage)
 
 
@@ -789,6 +788,8 @@ def chat(
         memory_retrieval_mode=memory_retrieval,
         memory_dense_backend=memory_dense_backend,
     )
+    from soca.app.text_chat import run_text_chat
+
     ctx.exit(run_text_chat(config, console=console, show_trace=trace, show_usage=usage))
 
 
@@ -1044,6 +1045,8 @@ def engine(
     else:
         profile = quick_profile
     try:
+        from soca.core import resolve_voice_runtime_config
+
         voice_config = resolve_voice_runtime_config(
             profile_key=profile,
             llm_model=llm_model,
@@ -1262,6 +1265,8 @@ def voice(
         profile = explicit_profile
 
     try:
+        from soca.core import resolve_voice_runtime_config
+
         config = resolve_voice_runtime_config(
             profile_key=profile,
             asr_model=asr_model,
@@ -1300,6 +1305,8 @@ def voice(
         from soca.core.duplex_aec_sink import DuplexAecSink
 
         player = DuplexAecSink()
+    from soca.app import run_voice_loop
+
     ctx.exit(
         run_voice_loop(
             config,

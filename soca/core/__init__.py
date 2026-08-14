@@ -2,15 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .audio_out import (
-    AudioPlaybackSession,
-    AudioSink,
-    NullAudioPlayer,
-    PlaybackResult,
-    SoundDevicePlayer,
-    StreamingAudioSink,
-    WavFileSink,
-)
 from .context_budget import (
     DEFAULT_CONTEXT_SAFETY_MARGIN_TOKENS,
     EngineTokenCounter,
@@ -45,7 +36,6 @@ from .guardrails import (
     check_untrusted_text,
 )
 from .metrics import MetricsLogger
-from .pipeline import PipelineResult, VoicePipeline
 from .profiles import (
     DEFAULT_VOICE_RUNTIME_PROFILE_KEY,
     VOICE_RUNTIME_PROFILES,
@@ -126,6 +116,16 @@ from .workflow import (
 )
 
 if TYPE_CHECKING:
+    from .audio_out import (
+        AudioPlaybackSession,
+        AudioSink,
+        NullAudioPlayer,
+        PlaybackResult,
+        SoundDevicePlayer,
+        StreamingAudioSink,
+        WavFileSink,
+    )
+    from .pipeline import PipelineResult, VoicePipeline
     from .runtime import (
         AssistantRuntime,
         DefaultRuntimeToolRouter,
@@ -144,6 +144,23 @@ if TYPE_CHECKING:
 
 
 def __getattr__(name: str):
+    # audio_out imports sounddevice/soundfile, which no metadata command needs.
+    if name in {
+        "AudioPlaybackSession",
+        "AudioSink",
+        "NullAudioPlayer",
+        "PlaybackResult",
+        "SoundDevicePlayer",
+        "StreamingAudioSink",
+        "WavFileSink",
+    }:
+        from . import audio_out
+
+        return getattr(audio_out, name)
+    if name in {"PipelineResult", "VoicePipeline"}:
+        from . import pipeline
+
+        return getattr(pipeline, name)
     if name in {
         "AssistantRuntime",
         "DefaultRuntimeToolRouter",
