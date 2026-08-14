@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "source_commit": "40c5b380e441d2c1582b95bb92b4424d32fc6bbc",
+  "source_tree_dirty": false,
+  "created_at_utc": "2026-08-14T08:29:33.372814+00:00",
+  "system": {
+    "platform": "macOS-15.7.4-arm64-arm-64bit",
+    "machine": "MacBook Pro Mac16,8; Apple M4 Pro",
+    "python": "3.11.14",
+    "numpy": "2.4.4",
+    "datasets": "4.8.5",
+    "transformers": "5.14.1",
+    "onnxruntime": "1.26.0",
+    "provider": "CPUExecutionProvider"
+  },
+  "model": {
+    "repo_id": "pipecat-ai/smart-turn-v3",
+    "revision": "f766f81d3cfdf7737ac64aad813d91bbfd56bf93",
+    "filename": "smart-turn-v3.2-cpu.onnx",
+    "bytes": 8679182,
+    "sha256": "2bb026316b14a660486a75b1733cd3fbab8c2fd0314dc9af7be49f8cca967e4f"
+  },
+  "language_accuracy": {
+    "dataset": {
+      "repo_id": "pipecat-ai/smart-turn-data-v3.2-test",
+      "revision": "0500378e8ed6d38e37b016e24d261e8e6c6a6859",
+      "split": "train"
+    },
+    "method": {
+      "full_pinned_language_slices": true,
+      "batch_size": 32,
+      "classification_threshold": "P(endpoint_complete) > 0.5",
+      "characterization": false,
+      "elapsed_seconds": 315.06255241599865,
+      "samples_per_second": 28.007136780727496
+    },
+    "overall": {
+      "sample_count": 8824,
+      "accuracy_percent": 92.48640072529464,
+      "false_positive_percent_of_all_samples": 4.397098821396192,
+      "false_negative_percent_of_all_samples": 3.1165004533091567
+    },
+    "per_language": {
+      "eng": {
+        "sample_count": 7820,
+        "accuracy_percent": 94.2071611253197,
+        "precision": 0.9241967871485943,
+        "recall": 0.9606052700234803,
+        "f1": 0.9420493795573749,
+        "false_positive_percent_of_all_samples": 3.8618925831202042,
+        "false_negative_percent_of_all_samples": 1.9309462915601021,
+        "true_positive": 3682,
+        "true_negative": 3685,
+        "false_positive": 302,
+        "false_negative": 151
+      },
+      "vie": {
+        "sample_count": 1004,
+        "accuracy_percent": 79.08366533864542,
+        "precision": 0.8134490238611713,
+        "recall": 0.751503006012024,
+        "f1": 0.78125,
+        "false_positive_percent_of_all_samples": 8.565737051792828,
+        "false_negative_percent_of_all_samples": 12.350597609561753,
+        "true_positive": 375,
+        "true_negative": 419,
+        "false_positive": 86,
+        "false_negative": 124
+      }
+    },
+    "decision": {
+      "english_minus_vietnamese_accuracy_points": 15.123495786674283,
+      "vietnamese_model_gap": "confirmed",
+      "diagnostic_gate": "English accuracy exceeds Vietnamese by at least 5 points",
+      "fine_tune_disposition": "deferred_by_product_owner"
+    }
+  },
+  "floor_sweep": {
+    "created_at_utc": "2026-08-14T08:24:09.833117+00:00",
+    "scenario_contract": {
+      "n_utterances": 60,
+      "scenario_count": 120,
+      "pause_ms": 800.0,
+      "seed": 42,
+      "fleurs_manifest_sha256": "81de44e064d2925ca31ea5e911d560157e3b8e83319bdee66a750e3bab00978c",
+      "smart_turn_model_sha256": "2bb026316b14a660486a75b1733cd3fbab8c2fd0314dc9af7be49f8cca967e4f",
+      "ceil_silence_ms": 3000
+    },
+    "fixed": {
+      "floor_ms": 700,
+      "cut_in_rate": 1.0,
+      "premature_close_rate": 0.6166666666666667,
+      "median_over_wait_ms": 704.0
+    },
+    "p_based": {
+      "1000": {
+        "cut_in_rate": 0.13333333333333333,
+        "premature_close_rate": 0.26666666666666666,
+        "median_over_wait_ms": 1056.0
+      },
+      "1200": {
+        "cut_in_rate": 0.06666666666666667,
+        "premature_close_rate": 0.15,
+        "median_over_wait_ms": 1248.0
+      },
+      "1400": {
+        "cut_in_rate": 0.03333333333333333,
+        "premature_close_rate": 0.11666666666666667,
+        "median_over_wait_ms": 1440.0
+      },
+      "1600": {
+        "cut_in_rate": 0.016666666666666666,
+        "premature_close_rate": 0.06666666666666667,
+        "median_over_wait_ms": 1632.0
+      },
+      "1800": {
+        "cut_in_rate": 0.016666666666666666,
+        "premature_close_rate": 0.05,
+        "median_over_wait_ms": 1824.0
+      }
+    },
+    "decision": {
+      "max_cut_in_rate": 0.05,
+      "max_premature_close_rate": 0.05,
+      "selected_floor_ms": 1800,
+      "current_floor_ms": 1800,
+      "gate_status": "pass",
+      "disposition": "keep_current",
+      "turn_taking_blocker_closed": false
+    }
+  },
+  "privacy": {
+    "contains_audio": false,
+    "contains_transcripts": false,
+    "contains_row_predictions": false,
+    "raw_outputs": [
+      "eval/results/smart_turn_languages.json",
+      "eval/results/conversation_tier2_sweep.json"
+    ]
+  }
+}

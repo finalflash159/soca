@@ -59,7 +59,10 @@ def test_detector_builds_reference_features_and_returns_still_speaking(
 
         def run(self, _outputs, inputs):
             captured["input_features"] = inputs["input_features"]
-            return [np.array([[0.25]], dtype=np.float32)]
+            batch = inputs["input_features"].shape[0]
+            if batch == 1:
+                return [np.array([[0.25]], dtype=np.float32)]
+            return [np.array([[0.20], [0.70]], dtype=np.float32)]
 
     class FakeFeatureExtractor:
         def __init__(self, *, chunk_length):
@@ -84,12 +87,16 @@ def test_detector_builds_reference_features_and_returns_still_speaking(
 
     detector = SmartTurnDetector(tmp_path, providers=["CPUExecutionProvider"])
     p_still = detector.p_still_speaking(np.ones(160, dtype=np.float32))
+    p_complete = detector.p_complete_batch(
+        [np.ones(160, dtype=np.float32), np.zeros(320, dtype=np.float32)]
+    )
 
     assert p_still == pytest.approx(0.75)
+    assert p_complete.tolist() == pytest.approx([0.20, 0.70])
     assert captured["path"] == str(model_path)
     assert captured["providers"] == ["CPUExecutionProvider"]
     assert captured["chunk_length"] == smart_turn._N_SECONDS
-    assert captured["input_features"].shape == (1, 80, 800)
+    assert captured["input_features"].shape == (2, 80, 800)
     assert captured["kwargs"] == {
         "sampling_rate": smart_turn._SR,
         "return_tensors": "np",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
@@ -42,15 +43,31 @@ class SmartTurnDetector:
         )
         self._fe = WhisperFeatureExtractor(chunk_length=_N_SECONDS)
 
-    def p_still_speaking(self, audio_window: np.ndarray) -> float:
-        feats = self._fe(
+    def _input_features(self, audio_window: np.ndarray) -> np.ndarray:
+        return self._fe(
             _truncate_or_pad(audio_window), sampling_rate=_SR, return_tensors="np",
             padding="max_length", max_length=_N_SECONDS * _SR, truncation=True,
             do_normalize=True,
         ).input_features.squeeze(0).astype(np.float32)
-        feats = np.expand_dims(feats, axis=0)  # (1, 80, 800)
-        outputs = cast(list[np.ndarray], self._session.run(None, {"input_features": feats}))
-        prob_complete = float(outputs[0][0][0].item())
+
+    def p_complete_batch(self, audio_windows: Sequence[np.ndarray]) -> np.ndarray:
+        """Return P(turn complete) for a non-empty batch using the production model."""
+        if not audio_windows:
+            raise ValueError("Smart Turn batch must contain at least one audio window")
+        features = np.stack([self._input_features(audio) for audio in audio_windows])
+        outputs = cast(
+            list[np.ndarray], self._session.run(None, {"input_features": features})
+        )
+        probabilities = np.asarray(outputs[0], dtype=np.float32).reshape(-1)
+        if len(probabilities) != len(audio_windows):
+            raise RuntimeError(
+                "Smart Turn output batch mismatch: "
+                f"expected {len(audio_windows)}, got {len(probabilities)}"
+            )
+        return np.clip(probabilities, 0.0, 1.0)
+
+    def p_still_speaking(self, audio_window: np.ndarray) -> float:
+        prob_complete = float(self.p_complete_batch([audio_window])[0])
         return float(np.clip(1.0 - prob_complete, 0.0, 1.0))
 
     def warmup(self) -> None:
