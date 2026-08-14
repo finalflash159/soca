@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import replace
+from hashlib import sha256
 from pathlib import Path
 
 import click
@@ -39,6 +41,9 @@ from local import config as cfg
 from soca.core.endpoint import EndpointConfig
 
 _SMART_TURN_DIR = "models/smart-turn-v3-onnx"
+_FLOOR_SWEEP_MS = (1000, 1200, 1400, 1600, 1800)
+_MAX_CUT_IN_RATE = 0.05
+_MAX_PREMATURE_CLOSE_RATE = 0.05
 
 
 def evaluate_policies(
@@ -48,6 +53,7 @@ def evaluate_policies(
     vad_reset: Callable[[], None],
     turn_detector: TurnDetector,
     policies: tuple[str, ...] = (POLICY_FIXED, POLICY_P_BASED),
+    config: EndpointConfig | None = None,
 ) -> list[TurnOutcome]:
     """Run every scenario under every policy; reset the VAD before each replay."""
     outcomes: list[TurnOutcome] = []
@@ -58,6 +64,7 @@ def evaluate_policies(
                 vad=vad,
                 policy=policy,
                 turn_detector=turn_detector if policy == POLICY_P_BASED else None,
+                config=config,
             )
             result = decider.run(scenario.near)
             outcomes.append(
@@ -71,6 +78,60 @@ def evaluate_policies(
                 )
             )
     return outcomes
+
+
+def evaluate_floor_sweep(
+    scenarios: list[TurnScenario],
+    *,
+    vad: SpeechProb,
+    vad_reset: Callable[[], None],
+    turn_detector: TurnDetector,
+    floors_ms: tuple[int, ...] = _FLOOR_SWEEP_MS,
+) -> dict[str, dict[str, float | int | None]]:
+    """Run paired p-based replays at every requested floor."""
+    report: dict[str, dict[str, float | int | None]] = {}
+    for floor_ms in floors_ms:
+        config = replace(EndpointConfig(), floor_silence_ms=floor_ms)
+        outcomes = evaluate_policies(
+            scenarios,
+            vad=vad,
+            vad_reset=vad_reset,
+            turn_detector=turn_detector,
+            policies=(POLICY_P_BASED,),
+            config=config,
+        )
+        report[str(floor_ms)] = turn_taking_report(outcomes)[POLICY_P_BASED]
+    return report
+
+
+def choose_floor(
+    report: dict[str, dict[str, float | int | None]],
+    *,
+    max_cut_in_rate: float = _MAX_CUT_IN_RATE,
+    max_premature_close_rate: float = _MAX_PREMATURE_CLOSE_RATE,
+) -> int | None:
+    """Select the lowest-latency passing floor; never fall back implicitly."""
+    candidates: list[tuple[float, int]] = []
+    for raw_floor, metrics in report.items():
+        over_wait = metrics.get("median_over_wait_ms")
+        if over_wait is None:
+            continue
+        if float(metrics["cut_in_rate"]) > max_cut_in_rate:
+            continue
+        if float(metrics["premature_close_rate"]) > max_premature_close_rate:
+            continue
+        candidates.append((float(over_wait), int(raw_floor)))
+    if not candidates:
+        return None
+    return min(candidates)[1]
+
+
+def _file_sha256(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _make_real_adapters() -> tuple[SpeechProb, Callable[[], None], TurnDetector]:
@@ -120,7 +181,15 @@ def _print_report(report: dict) -> None:
 @click.option("--n-utterances", default=60, type=int, help="FLEURS utterances (× clean+pause).")
 @click.option("--pause-ms", default=800.0, type=float, help="Within-turn pause length.")
 @click.option("--seed", default=cfg.SEED, type=int, help="Deterministic sampling seed.")
-def main(n_utterances: int, pause_ms: float, seed: int) -> None:
+@click.option(
+    "--floor-ms",
+    "floors_ms",
+    multiple=True,
+    default=_FLOOR_SWEEP_MS,
+    type=click.IntRange(min=1),
+    show_default=True,
+)
+def main(n_utterances: int, pause_ms: float, seed: int, floors_ms: tuple[int, ...]) -> None:
     from rich.console import Console
 
     console = Console()
@@ -131,11 +200,29 @@ def main(n_utterances: int, pause_ms: float, seed: int) -> None:
     )
 
     vad, vad_reset, turn_detector = _make_real_adapters()
-    outcomes = evaluate_policies(
-        scenarios, vad=vad, vad_reset=vad_reset, turn_detector=turn_detector
+    fixed_outcomes = evaluate_policies(
+        scenarios,
+        vad=vad,
+        vad_reset=vad_reset,
+        turn_detector=turn_detector,
+        policies=(POLICY_FIXED,),
     )
-    report = turn_taking_report(outcomes)
-    _print_report(report)
+    fixed_report = turn_taking_report(fixed_outcomes)[POLICY_FIXED]
+    sweep_report = evaluate_floor_sweep(
+        scenarios,
+        vad=vad,
+        vad_reset=vad_reset,
+        turn_detector=turn_detector,
+        floors_ms=tuple(dict.fromkeys(floors_ms)),
+    )
+    selected_floor_ms = choose_floor(sweep_report)
+    current_floor_ms = EndpointConfig().floor_silence_ms
+    _print_report(
+        {
+            POLICY_FIXED: fixed_report,
+            **{f"{POLICY_P_BASED}@{floor}ms": row for floor, row in sweep_report.items()},
+        }
+    )
 
     # The endpoint constants decide this result as much as the audio does, so they
     # are stamped into the artifact: a later tuning commit then shows up as a diff
@@ -145,15 +232,44 @@ def main(n_utterances: int, pause_ms: float, seed: int) -> None:
         n_utterances=n_utterances,
         pause_ms=pause_ms,
         seed=seed,
-        endpoint_config=config_snapshot(
-            EndpointConfig(),
-            ("endpoint_silence_ms", "floor_silence_ms", "ceil_silence_ms"),
+        fleurs_manifest_sha256=_file_sha256(cfg.FLEURS_MANIFEST),
+        smart_turn_model_sha256=_file_sha256(
+            Path(_SMART_TURN_DIR) / "smart-turn-v3.2-cpu.onnx"
         ),
+        endpoint_base_config=config_snapshot(
+            EndpointConfig(), ("endpoint_silence_ms", "floor_silence_ms", "ceil_silence_ms")
+        ),
+        floor_sweep_ms=list(dict.fromkeys(floors_ms)),
     )
     cfg.EVAL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = cfg.EVAL_RESULTS_DIR / "conversation_tier2.json"
+    out_path = cfg.EVAL_RESULTS_DIR / "conversation_tier2_sweep.json"
     out_path.write_text(
-        json.dumps({"metadata": meta, "policies": report}, ensure_ascii=False, indent=2),
+        json.dumps(
+            {
+                "metadata": meta,
+                "fixed": fixed_report,
+                "p_based_by_floor": sweep_report,
+                "decision": {
+                    "selected_floor_ms": selected_floor_ms,
+                    "current_floor_ms": current_floor_ms,
+                    "max_cut_in_rate": _MAX_CUT_IN_RATE,
+                    "max_premature_close_rate": _MAX_PREMATURE_CLOSE_RATE,
+                    "gate_status": "pass" if selected_floor_ms is not None else "fail",
+                    "disposition": (
+                        "no_passing_floor"
+                        if selected_floor_ms is None
+                        else "keep_current"
+                        if selected_floor_ms == current_floor_ms
+                        else "change_recommended"
+                    ),
+                    "turn_taking_blocker_closed": (
+                        selected_floor_ms is not None and selected_floor_ms < current_floor_ms
+                    ),
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
     console.print(f"[green]✓ Saved {out_path}[/green]")
