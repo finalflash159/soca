@@ -395,9 +395,25 @@ Emitted through `WorkflowEventStream` with the versioned envelope from §3.
 `insufficient_evidence`, `safe_failure`, `budget_exhausted`, `cancelled`,
 `system_failure`.
 
-**`answer_delta` is not token streaming today.** It fires once, after the result
-exists, with the full `response_text`. A UI that animates per-token output will
-show one jump. Real streaming is pending on `feat/chat-text-streaming`.
+**`answer_delta` fires once per guardrail-passed chunk.** Concatenating every
+`payload.text` in order reproduces the final answer exactly, so a client appends
+rather than replaces. Citation labels are already stripped, matching the
+`chat/done` text; provenance arrives as the structured `citations` list, never as
+prose.
+
+How many deltas a turn produces, and how far apart they land, depends on the
+turn and the model:
+
+- A turn the router resolved to **no capability** (`smalltalk`, `out_of_scope`)
+  streams as the model generates, so deltas arrive progressively. This is the
+  case a composing animation has time to run.
+- A turn carrying a **tool or retrieval** is held by the bounded controller until
+  synthesis and verification finish, then emits every chunk at once. No
+  unverified answer text is ever published, so there is nothing to animate; drive
+  the intervening UI from `turn_progress.phase`, not from delta arrival.
+- Some hosted models return the whole completion in a single SSE chunk. The turn
+  is then one delta even on the streaming path. Treat a single delta as normal,
+  not as an error.
 
 `sequence` is monotonic per `run_id`. Ordering across `run_id`s is not defined.
 
