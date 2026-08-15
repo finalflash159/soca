@@ -460,6 +460,9 @@ def test_stream_finish_length_is_terminal_even_after_partial_text():
 
     assert excinfo.value.category == "output_limit"
     assert excinfo.value.retryable is False
+    # The generic "stream was interrupted" wording used to replace the specific
+    # cause, so the one actionable fact — raise the output budget — was lost.
+    assert "ngân sách output" in str(excinfo.value)
 
 
 # ---------------------------------------------------------------------------
