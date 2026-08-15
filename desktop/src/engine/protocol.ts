@@ -64,7 +64,6 @@ export type TurnNode =
   | "admit"
   | "resolve_goal"
   | "ask_clarification"
-  | "assess_context"
   | "choose_capability"
   | "make_plan"
   | "authorize_action"

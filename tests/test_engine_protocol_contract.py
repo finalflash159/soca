@@ -207,7 +207,7 @@ def test_workflow_enums_are_pinned() -> None:
         "cancelled",
         "system_failure",
     }
-    assert len({member.value for member in TurnNode}) == 14
+    assert len({member.value for member in TurnNode}) == 13
 
 
 def test_workflow_vocabulary_is_documented() -> None:

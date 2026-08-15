@@ -387,10 +387,9 @@ Emitted through `WorkflowEventStream` with the versioned envelope from §3.
 `status` (`EventStatus`): `started`, `active`, `completed`, `failed`, `cancelled`.
 
 `node` (`TurnNode`):
-`admit`, `resolve_goal`, `ask_clarification`, `assess_context`,
-`choose_capability`, `make_plan`, `authorize_action`, `execute_action`,
-`assess_observation`, `revise_query`, `synthesize`, `verify_answer`,
-`repair_answer`, `finalize`.
+`admit`, `resolve_goal`, `ask_clarification`, `choose_capability`,
+`make_plan`, `authorize_action`, `execute_action`, `assess_observation`,
+`revise_query`, `synthesize`, `verify_answer`, `repair_answer`, `finalize`.
 
 `turn_terminal` carries a `TerminalStatus`: `achieved`, `needs_clarification`,
 `insufficient_evidence`, `safe_failure`, `budget_exhausted`, `cancelled`,
