@@ -53,12 +53,6 @@ from soca.core.guardrails import (
     normalize_vi,
 )
 from soca.core.streaming import pop_ready_first_clause, pop_ready_sentence
-from soca.core.sufficient_context import (
-    ContextSufficiencyAssessor,
-    SufficiencyAssessmentError,
-    SufficiencyDecision,
-    retrieved_contexts_from_tool_results,
-)
 from soca.core.text_chunking import chunk_text_for_tts
 from soca.core.tool_routing import EvidenceCompletionDecision, ToolRouterDecision
 from soca.core.turn import (
@@ -116,7 +110,6 @@ from .workflow import (
     StructuredGoalResolver,
     StructuredWorkflowPlanner,
     TurnBudget,
-    WorkflowContextAssessment,
     WorkflowPlanner,
     WorkflowRevision,
     WorkflowRevisionError,
@@ -152,7 +145,6 @@ class RuntimeOptions:
     # long private note while keeping the controller finite and observable.
     max_evidence_completion_actions: int = 6
     asr_goal_repair_min_confidence: float = 0.70
-    require_sufficient_context: bool = False
 
     def __post_init__(self) -> None:
         if self.turn_workflow not in {"shadow", "controlled"}:
@@ -185,8 +177,6 @@ class RuntimeOptions:
             )
         if not 0.0 <= self.asr_goal_repair_min_confidence <= 1.0:
             raise ValueError("asr goal repair confidence must be between zero and one")
-        if not isinstance(self.require_sufficient_context, bool):
-            raise ValueError("require_sufficient_context must be a boolean")
 
     @property
     def effective_max_tokens(self) -> int:
@@ -349,7 +339,6 @@ class _TraceDraft:
     workflow_status: str = "not_run"
     workflow_error_code: str = ""
     workflow_unmet_criteria: tuple[str, ...] = ()
-    sufficiency_decision: SufficiencyDecision | None = None
 
 
 @dataclass(frozen=True)
@@ -421,7 +410,6 @@ class AssistantRuntime:
         guardrail_policy: GuardrailPolicy = DEFAULT_POLICY,
         options: RuntimeOptions | None = None,
         active_goal_store: ActiveGoalStore | None = None,
-        sufficiency_assessor: ContextSufficiencyAssessor | None = None,
     ) -> None:
         self.llm = llm
         self.tool_runtime = tool_runtime or ToolRuntime()
@@ -437,7 +425,6 @@ class AssistantRuntime:
         self._prompt_safety_margin_tokens = self.options.context_safety_margin_tokens
         self._progress_callback: Callable[[str], None] | None = None
         self._active_goal_store = active_goal_store or ActiveGoalStore()
-        self.sufficiency_assessor = sufficiency_assessor
         self._goal_resolver = GoalResolver(self._active_goal_store)
         self._closed = False
 
@@ -539,7 +526,6 @@ class AssistantRuntime:
         budget: TurnBudget | None = None,
         synthesize: WorkflowSynthesis | None = None,
         revise: WorkflowRevision | None = None,
-        assess_context: WorkflowContextAssessment | None = None,
         allow_empty_plan: bool = False,
     ) -> WorkflowRun:
         """Run the bounded workflow controller and return its typed run."""
@@ -604,7 +590,6 @@ class AssistantRuntime:
             ),
             synthesize=synthesize,
             revise=revise,
-            assess_context=assess_context,
             allow_empty_plan=allow_empty_plan,
         )
         self._active_goal_store.record_run(workflow_run)
@@ -711,26 +696,6 @@ class AssistantRuntime:
             del goal
             return self._revise_controlled_step(frame, draft, actions, observations)
 
-        assessment_callback: WorkflowContextAssessment | None = None
-        if self.sufficiency_assessor is not None or self.options.require_sufficient_context:
-
-            def perform_context_assessment(
-                goal: GoalContract,
-                actions: tuple[PlanStep, ...],
-                observations: tuple[ToolResult, ...],
-            ) -> SufficiencyDecision:
-                del actions
-                assessor = self.sufficiency_assessor
-                if assessor is None:
-                    raise SufficiencyAssessmentError("autorater_not_configured")
-                contexts = retrieved_contexts_from_tool_results(observations)
-                with self._stage(draft, "sufficient_context"):
-                    decision = assessor.assess(goal.objective, contexts)
-                draft.sufficiency_decision = decision
-                return decision
-
-            assessment_callback = perform_context_assessment
-
         surface: Literal["text", "voice"] = (
             "voice" if source in {"voice", "asr", "engine_voice"} else "text"
         )
@@ -762,7 +727,6 @@ class AssistantRuntime:
                     budget=TurnBudget(),
                     synthesize=synthesize,
                     revise=revise,
-                    assess_context=assessment_callback,
                     allow_empty_plan=True,
                 )
         except RemoteLLMError as exc:
@@ -791,11 +755,6 @@ class AssistantRuntime:
         draft.workflow_status = terminal.status.value
         draft.workflow_error_code = terminal.error_code or ""
         draft.workflow_unmet_criteria = terminal.unmet_criteria
-        if (
-            terminal.status.value == "insufficient_evidence"
-            and terminal.error_code == "insufficient_context"
-        ):
-            return self._sufficient_context_abstention(frame, draft)
         if self._workflow_has_unproven_read(workflow_run):
             return self._synthesize_unproven_read_abstention(frame, draft)
         if (
@@ -869,41 +828,6 @@ class AssistantRuntime:
                 terminal.final_text
                 or f"Workflow kết thúc ở trạng thái {terminal_reason}; chưa thể trả lời an toàn."
             ),
-        )
-
-    def _sufficient_context_abstention(
-        self,
-        frame: TurnFrame,
-        draft: _TraceDraft,
-    ) -> RuntimeResult:
-        """Return a typed no-citation abstention without invoking the generator."""
-        draft.knowledge_hits.clear()
-        draft.citations.clear()
-        draft.evidence_decisions[:] = [
-            decision for decision in draft.evidence_decisions if decision.source != "knowledge"
-        ]
-        draft.evidence_decisions.append(
-            decide_evidence(
-                "knowledge",
-                (),
-                status="insufficient",
-                reason=(
-                    draft.sufficiency_decision.reason_code
-                    if draft.sufficiency_decision is not None
-                    else "insufficient_context"
-                ),
-                source_state="ready",
-            )
-        )
-        draft.evidence_bundle = EvidenceReconciler().reconcile(tuple(draft.evidence_decisions))
-        return self._result(
-            frame,
-            draft,
-            response_text="Mình chưa đủ bằng chứng trong knowledge vault để trả lời chắc chắn.",
-            route=RuntimeRoute.KNOWLEDGE_LLM,
-            used_tool=True,
-            used_llm=True,
-            blocked=False,
         )
 
     @staticmethod
@@ -3663,7 +3587,6 @@ class AssistantRuntime:
             workflow_status=draft.workflow_status,
             workflow_error_code=draft.workflow_error_code,
             workflow_unmet_criteria=draft.workflow_unmet_criteria,
-            sufficiency_decision=draft.sufficiency_decision,
         )
         return RuntimeResult(
             response_text=response_text,

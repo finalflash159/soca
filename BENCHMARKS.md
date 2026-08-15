@@ -151,7 +151,6 @@ so that "non-speech" means what it says.
 | ViRe ALQAC | 304 docs / 355 chunks, 50 queries | Cross-domain and reranker, [§6.3](#63-reranking-measured-and-rejected) | ibid. |
 | XQuAD Vietnamese | 48 Wikipedia articles, 1,193 questions | Historical hybrid-retrieval baseline, [A.2](#a2--decision-history) | CC BY-SA 4.0 |
 | XQuAD grounding split | 12 answerable + 8 unanswerable | Evidence-floor calibration, [§6.5](#65-evidence-floor-recalibration) | CC BY-SA 4.0 |
-| UIT-ViQuAD 2.0 validation | 3,814 rows: 2,653 answerable + 1,161 unanswerable; balanced 230-case gate | Sufficient-context autorater, [§9.1](#91-the-failing-gate) | dataset card terms; benchmark only |
 | GreenNode ArguAna-VN | 8,674 docs / 8,702 production chunks; 1,290 evaluable queries | Public VN-MTEB retrieval comparison, [§6.8](#68-public-vn-mteb-comparison) | source lock marks license verified; benchmark only |
 | Synthetic vectors | 250,000 × 1,024 dims, 1,000 queries, 3 seeds | Vector-backend gate, [§6.4](#64-vector-backend-exact-numpy-beats-approximate) | generated |
 | Capability routing corpus | 66 rows in 22 families; SHA-256 `4249290a…` | Semantic router, [§8](#8-capability-routing) | authored for this repo |
@@ -773,36 +772,19 @@ contrast with [section 6.5](#65-evidence-floor-recalibration): 0/8 false evidenc
 the small XQuAD split versus 50% here. The XQuAD result was never strong enough to
 generalize, and this gate is exactly what that Wilson bound was warning about.
 
-The controlled workflow now has a distinct `assess_context` node after knowledge
-retrieval and before synthesis. It makes one bounded structured model call and
-stores only the typed verdict, confidence, stable reason code, evidence IDs,
-model/prompt identity, usage, latency, and provider trace—never chain-of-thought.
-`insufficient` ends as `insufficient_evidence`; provider/schema failure ends as a
-typed system failure; neither path calls the answer generator.
+An LLM sufficient-context autorater was built to gate this and has been removed.
+It was never enabled in production. Its release evidence depended on two-reviewer
+semantic labels that were never collected, and the UIT-ViQuAD `is_impossible`
+proxy it was scored against measures extractability, not sufficiency: of the 57
+"false sufficient" cases in the frozen 230-case sample, the inspected ones are
+adversarial questions with a swapped entity or a reversed premise, which the
+autorater silently repaired before answering. The product decision is that a
+voice assistant should tolerate malformed questions, so the strict-entailment
+gate was dropped rather than tuned — see A.2.
 
-The pinned UIT-ViQuAD 2.0 validation gate shows why this is not enabled by
-default yet:
-
-| Autorater run | Cases | False sufficient | Sufficient recall | Accuracy | Gate |
-| --- | ---: | ---: | ---: | ---: | :-: |
-| Initial one-call prompt | 230 (115/class) | **49.6%** | 90.4% | 70.4% | ❌ |
-| Closed-world exact-entailment probe | 40 (20/class) | **30.0%** | **85.0%** | 77.5% | ❌ |
-| Claude 4.6 strict exact | 40 (20/class) | **25.0%** | 90.0% | 82.5% | ❌ |
-| Claude 4.6 paper definition | 40 (20/class) | **50.0%** | 95.0% | 72.5% | proxy only |
-| Claude 4.6 balanced examples | 40 (20/class) | **45.0%** | 90.0% | 72.5% | proxy only |
-
-Both used OpenRouter `openai/gpt-5.6-luna-pro`, one attempt per case and zero
-provider failures. The probe improves false positives but misses both the ≤5%
-false-sufficient and ≥90% sufficient-recall thresholds, so spending another
-full run on that rejected prompt would not be release evidence. Manual error
-analysis also found proxy-label conflicts: several UIT “impossible” passages
-still support a semantic answer, while strict exact matching rejects typo and
-near-synonym cases. UIT `is_impossible` is therefore diagnostic extractability,
-not release truth. Artifact v2 requires exact sample coverage and matching
-per-case labels from at least two reviewers under
-`sufficient_context_semantic_v1`. This follows the original
-[Sufficient Context definition](https://arxiv.org/abs/2411.06037). Production
-remains `disabled_until_quality_gate_passes`.
+**This leaves the 50% false-evidence rate above unmitigated.** Nothing now sits
+between retrieval and synthesis to reject insufficient evidence. Groundedness
+enforcement remains off and no release-quality claim may be made.
 
 ### 9.2 Provider reliability
 
@@ -826,7 +808,7 @@ Consolidated from every section above. Nothing here is scheduled away or softene
 
 | # | Blocker | Section |
 | --- | --- | --- |
-| 1 | Sufficient-context production gate lacks two-reviewer semantic labels; UIT extractability proxy and all tested prompt/model candidates remain non-releasable | [9.1](#91-the-failing-gate) |
+| 1 | Unanswerable questions accept false evidence at 50% on the real vault against a ≤5% threshold, and the autorater built to gate it was removed by product decision, so no mitigation is in place | [9.1](#91-the-failing-gate) |
 | 2 | Repeated full-stack memory-pressure evidence with summary-worker overlap missing | [3.2](#32-qwen3-asr-release-qualification--decision-blocked) |
 | 3 | `resource_tracker` leaked-semaphore warning on the 1.7B worker, root cause unknown | [3.2](#32-qwen3-asr-release-qualification--decision-blocked) |
 | 4 | Remote tool-router generation failure telemetry path unaudited | [3.2](#32-qwen3-asr-release-qualification--decision-blocked) |
@@ -891,7 +873,6 @@ uv run python -m eval.eval_tts_quality --help
 uv run python scripts/run_benchmark.py
 uv run python eval/eval_grounding.py
 uv run python -m eval.eval_vn_mteb
-uv run python -m eval.eval_sufficient_context_viquad
 
 # Additional rollout/device gates (private receipts stay local)
 uv run python -m eval.eval_backchannel_classifier --help
@@ -977,6 +958,7 @@ matched 0/80 on the production model.
 | Qwen3-ASR release matrix on CPU: partial p95 11,619 ms | 2026-08-02 | Re-run on MPS ([§3.2](#32-qwen3-asr-release-qualification--decision-blocked)); the CPU failure is retained, not overwritten |
 | Turn-taking `p_based` at a 1,000 ms floor: cut-in 3.3%, premature close 18.3%, over-wait 1,312 ms | 2026-08-03 | Correct for the code of the day; `587a93a` raised the floor to 1,800 ms and stopped stripping the trailing silence before Smart Turn inference, giving the 1.7% / 5.0% / 1,824 ms in [§5.2](#52-turn-taking-120-scenarios-800-ms-within-turn-pause) |
 | Speculative knowledge prefetch: 20/20 cache hit, 153.2 ms median retrieval-ready saving at a ~257 ms lead | 2026-08-15 | Removed. The saving is bounded by production retrieval cost (71 ms p95, [§6.2](#62-embedding-and-fusion-selection)); the fixture merely made it look larger. That ceiling is ~25× smaller than the 1,824 ms endpoint wait, and did not justify the slot lifecycle, cancellation, identity matching, isolated sources and receipt schema it required |
+| Sufficient-context autorater: best candidate 25% false-sufficient / 90% recall against a ≤5% / ≥90% gate | 2026-08-15 | Removed by product decision, never enabled in production. The gate scored against UIT-ViQuAD `is_impossible`, which marks a question unanswerable when no span can be extracted — not when the passage lacks the information. Inspected false positives are adversarial questions carrying a swapped entity or reversed premise ("các dịch vụ" for "năm đạo luật", a role-reversed Gandhi question), which the autorater repaired and answered at 0.98–0.99 confidence. Closing the gate required a written semantic definition plus 460 human judgements; the product decision is that an assistant should read a misspoken question charitably, so strict closed-world entailment is the wrong contract for SoCa |
 | `py-spy` 0.4.2 hot-path profile gate: voice, text-retrieval and 120-scenario turn-taking | 2026-08-15 | Removed without ever producing a measurement. Native-stack sampling requires Linux, and no workload driver was ever written to emit the receipts its validator demanded. Its voice scenario additionally requires a Linux host with a real microphone and speaker, so at least one of the three could never pass on available hardware. The port decisions it was meant to inform were settled by targeted measurement instead: BM25 is 0.383 ms of the 71.019 ms retrieval path ([§6.2](#62-embedding-and-fusion-selection)), i.e. 0.5%, so replacing it in another language is bounded at 0.4 ms |
 
 Model licenses are listed in [README.md](README.md#licenses-and-attribution).

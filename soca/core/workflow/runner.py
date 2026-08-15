@@ -15,11 +15,6 @@ from soca.core.guardrails import (
     check_tool_call,
     knowledge_paths_from_results,
 )
-from soca.core.sufficient_context import (
-    SufficiencyAssessmentError,
-    SufficiencyDecision,
-    SufficiencyStatus,
-)
 from soca.tools import (
     SideEffectLevel,
     ToolCall,
@@ -32,9 +27,6 @@ from .budget import BudgetLedger, BudgetSnapshot
 from .contracts import (
     Advance,
     Capability,
-    EvidenceRecord,
-    EvidenceSet,
-    EvidenceStatus,
     GoalContract,
     GoalStatus,
     NodeTrace,
@@ -92,15 +84,6 @@ class WorkflowRevision(Protocol):
         actions: tuple[PlanStep, ...],
         observations: tuple[ToolResult, ...],
     ) -> PlanStep | None: ...
-
-
-class WorkflowContextAssessment(Protocol):
-    def __call__(
-        self,
-        goal: GoalContract,
-        actions: tuple[PlanStep, ...],
-        observations: tuple[ToolResult, ...],
-    ) -> SufficiencyDecision: ...
 
 
 @dataclass(frozen=True)
@@ -238,12 +221,10 @@ _TRANSITIONS: Mapping[TurnNode, frozenset[TurnNode]] = {
     TurnNode.ASSESS_OBSERVATION: frozenset(
         {
             TurnNode.AUTHORIZE_ACTION,
-            TurnNode.ASSESS_CONTEXT,
             TurnNode.REVISE_QUERY,
             TurnNode.SYNTHESIZE,
         }
     ),
-    TurnNode.ASSESS_CONTEXT: frozenset({TurnNode.SYNTHESIZE}),
     TurnNode.REVISE_QUERY: frozenset({TurnNode.AUTHORIZE_ACTION}),
     TurnNode.SYNTHESIZE: frozenset({TurnNode.VERIFY_ANSWER}),
     TurnNode.VERIFY_ANSWER: frozenset({TurnNode.REPAIR_ANSWER, TurnNode.FINALIZE}),
@@ -274,7 +255,6 @@ class ControlledWorkflowRunner:
         admission_error: str = "",
         synthesize: WorkflowSynthesis | None = None,
         revise: WorkflowRevision | None = None,
-        assess_context: WorkflowContextAssessment | None = None,
         allow_empty_plan: bool = False,
     ) -> WorkflowRun:
         if initial_model_calls < 0:
@@ -355,14 +335,6 @@ class ControlledWorkflowRunner:
             )
             if execution.failure is not None:
                 return self._terminal_run(context, execution.failure)
-            context_failure = self._assess_context(
-                context,
-                goal,
-                execution,
-                assess_context=assess_context,
-            )
-            if context_failure is not None:
-                return self._terminal_run(context, context_failure)
             response = self._synthesize_and_verify(
                 context,
                 goal,
@@ -546,93 +518,6 @@ class ControlledWorkflowRunner:
                 )
             index += 1
         return execution
-
-    def _assess_context(
-        self,
-        context: _RunContext,
-        goal: GoalContract,
-        execution: _ActionExecution,
-        *,
-        assess_context: WorkflowContextAssessment | None,
-    ) -> TerminalOutcome | None:
-        if assess_context is None or not any(
-            result.name in {"knowledge.search", "knowledge.read"}
-            for result in context.results
-        ):
-            return None
-        self._transition(context, TurnNode.ASSESS_CONTEXT)
-        context.ledger.consume("model")
-        try:
-            decision = assess_context(
-                goal,
-                tuple(execution.executed_steps),
-                tuple(context.results),
-            )
-        except SufficiencyAssessmentError as exc:
-            context.stream.emit(
-                EventType.VERIFICATION_COMPLETED,
-                context.state.node,
-                status=EventStatus.FAILED,
-                payload={"operation": "assess_context", "error_code": exc.code},
-            )
-            return self._failed_outcome(
-                "sufficiency_assessment_failed",
-                detail=exc.code,
-            )
-        if not isinstance(decision, SufficiencyDecision):
-            return self._failed_outcome(
-                "sufficiency_assessment_failed",
-                detail="invalid_result_type",
-            )
-        workflow_status = (
-            EvidenceStatus.SUPPORTED
-            if decision.status is SufficiencyStatus.SUFFICIENT
-            else EvidenceStatus.INSUFFICIENT
-        )
-        records = tuple(
-            EvidenceRecord(
-                evidence_id=evidence_id,
-                source=SourceKind.KNOWLEDGE,
-                content="",
-                provenance={
-                    "autorater_model": decision.model_id,
-                    "prompt_sha256": decision.prompt_sha256,
-                    "reason_code": decision.reason_code,
-                },
-            )
-            for evidence_id in decision.evidence_ids
-        )
-        context.state = replace(
-            context.state,
-            evidence=EvidenceSet(
-                status=workflow_status,
-                records=records,
-                reason_code=decision.reason_code,
-            ),
-        )
-        context.stream.emit(
-            EventType.VERIFICATION_COMPLETED,
-            context.state.node,
-            status=(
-                EventStatus.COMPLETED
-                if decision.status is SufficiencyStatus.SUFFICIENT
-                else EventStatus.FAILED
-            ),
-            payload={
-                "operation": "assess_context",
-                "status": decision.status.value,
-                "confidence": decision.confidence,
-                "reason_code": decision.reason_code,
-                "evidence_ids": list(decision.evidence_ids),
-            },
-        )
-        if decision.status is SufficiencyStatus.INSUFFICIENT:
-            failure = self._failed_outcome("insufficient_context")
-            return replace(
-                failure,
-                metadata={"sufficiency": decision.as_dict()},
-            )
-        return None
 
     def _process_action(
         self,
@@ -1155,7 +1040,6 @@ class ControlledWorkflowRunner:
         elif code == "cancelled" or tool_status is ToolExecutionStatus.CANCELLED:
             terminal_status = TerminalStatus.CANCELLED
         elif tool_status is ToolExecutionStatus.NOT_FOUND or code in {
-            "insufficient_context",
             "no_matching_observation",
             "required_source_not_used",
             "expected_observation_missing",

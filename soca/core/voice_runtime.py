@@ -49,7 +49,6 @@ from soca.core.runtime import (
     RuntimeOptions,
 )
 from soca.core.smart_turn import SmartTurnDetector
-from soca.core.sufficient_context import SufficientContextAutorater
 from soca.core.tool_routing import (
     RouterResponseMode,
     SemanticRouterConfig,
@@ -61,7 +60,7 @@ from soca.core.workflow import ActiveGoalStore, GoalCheckpointStore
 from soca.knowledge.factory import DenseBackend, RetrievalConfig, RetrievalMode
 from soca.knowledge.retrievers.dense import FastEmbedModel
 from soca.knowledge.vault import default_vault_root
-from soca.llm import LLMEngine, StructuredLLMEngine
+from soca.llm import LLMEngine
 from soca.llm.factory import EngineBuilder, SecretReader, build_llm_engine
 from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.memory import (
@@ -132,7 +131,6 @@ class ResolvedVoiceRuntimeConfig:
     top_p_is_override: bool = False
     # Kept off until the pinned Vietnamese quality gate passes. The runtime
     # seam remains available for explicit evaluation and operator rollout.
-    sufficient_context_enabled: bool = False
 
     @property
     def asr_model(self) -> str:
@@ -661,20 +659,6 @@ def _build_voice_runtime_components(
         voice=True,
         vault_manifest_provider=manifest_provider,
     )
-    require_sufficient_context = (
-        config.sufficient_context_enabled
-        and knowledge_builder is not None
-        and llm is not None
-    )
-    sufficiency_assessor = (
-        SufficientContextAutorater(
-            cast(StructuredLLMEngine, llm),
-            model_id=selected_settings.model_id,
-        )
-        if require_sufficient_context
-        and callable(getattr(llm, "generate_structured", None))
-        else None
-    )
     assistant_runtime = AssistantRuntime(
         llm=llm,
         tool_runtime=tool_runtime,
@@ -689,9 +673,7 @@ def _build_voice_runtime_components(
             turn_workflow="controlled",
             model_context_window=model_context_window,
             model_max_output_tokens=selected_settings.model_max_output_tokens,
-            require_sufficient_context=require_sufficient_context,
         ),
-        sufficiency_assessor=sufficiency_assessor,
         active_goal_store=active_goal_store
         or (
             ActiveGoalStore(

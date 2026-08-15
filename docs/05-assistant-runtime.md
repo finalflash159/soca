@@ -75,23 +75,6 @@ the caller. It must not claim that the goal was verified or silently switch to a
 different retrieval path. The limits are defined by `RuntimeOptions` and
 `TurnBudget` in `soca/core/runtime.py` and `soca/core/workflow/contracts.py`.
 
-### Sufficient-context assessment
-
-Knowledge retrieval and answer generation are separated by the controlled
-workflow's `assess_context` node. `SufficientContextAutorater` makes one bounded
-structured-output call over the goal and selected evidence. Its control record is
-only a typed verdict, confidence, stable reason code, evidence IDs, model/prompt
-identity, usage, latency, and provider trace; free-form reasoning is neither
-requested nor stored.
-
-An insufficient verdict terminates as `insufficient_evidence` before synthesis.
-An unavailable provider, invalid schema, or missing configured assessor is a typed
-`sufficiency_assessment_failed` system failure. No path silently reuses relevance
-as sufficiency. Production builders keep this feature off until the pinned
-Vietnamese quality gate passes; explicit evaluation can set
-`sufficient_context_enabled=True`, and an enabled-but-unavailable assessor fails
-closed.
-
 ### Why Streaming Remains Safe
 
 On LLM routes, `check_final_output` is a **stateless substring scan** that catches
