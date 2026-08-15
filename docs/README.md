@@ -46,6 +46,7 @@ map is [00-system-map](./00-system-map.md).
 | [15-capability-router](./15-capability-router.md) | Capability selection and typed tool routing |
 | [16-llm-providers](./16-llm-providers.md) | Local/remote settings, key boundary and model capabilities |
 | [17-evaluation-and-release](./17-evaluation-and-release.md) | Evidence hierarchy, trajectory matrix and release status |
+| [18-engine-protocol](./18-engine-protocol.md) | NDJSON command/event contract every external UI depends on |
 | [Architecture diagrams](./diagrams.md) | Reviewed SVGs and editable Lucid sources |
 
 ## Design principles
