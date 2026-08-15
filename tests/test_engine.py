@@ -18,7 +18,7 @@ from soca.app.engine import (
 from soca.app.text_runtime import TextRuntimeBundle, TextRuntimeConfig
 from soca.asr.selection import ASRSelection
 from soca.core import ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
-from soca.core.turn import RuntimeResult, RuntimeRoute, RuntimeTrace
+from soca.core.turn import RuntimeResult, RuntimeRoute, RuntimeStreamEvent, RuntimeTrace
 from soca.knowledge import KnowledgeCitation
 
 
@@ -427,9 +427,39 @@ def test_voice_profile_selection_surfaces_oserror_without_applying(monkeypatch) 
     )
 
 
+def _stream_of(result: RuntimeResult):
+    """Mirror AssistantRuntime._emit_fixed_result for a non-streaming double."""
+    if result.response_text:
+        yield RuntimeStreamEvent(type="sentence", text=result.response_text)
+    yield RuntimeStreamEvent(type="result", result=result)
+
+
 class _FakeAssistantRuntime:
     def run_text_turn(self, text: str, *, source: str, metadata: dict) -> RuntimeResult:
         return RuntimeResult(response_text=f"echo: {text}", route=RuntimeRoute.FREE_CHAT)
+
+    def stream_text_turn(self, text: str, *, source: str, metadata: dict, **kwargs):
+        del kwargs
+        yield from _stream_of(self.run_text_turn(text, source=source, metadata=metadata))
+
+
+class _StreamingAssistantRuntime:
+    """Emits several guardrail-passed chunks, like a real free-chat turn."""
+
+    CHUNKS = ("Chào bạn. ", "Mình nghe đây. ", "Bạn cần gì nào?")
+
+    def run_text_turn(self, text: str, *, source: str, metadata: dict) -> RuntimeResult:
+        del text, source, metadata
+        return RuntimeResult(response_text="".join(self.CHUNKS), route=RuntimeRoute.FREE_CHAT)
+
+    def stream_text_turn(self, text: str, *, source: str, metadata: dict, **kwargs):
+        del kwargs
+        for chunk in self.CHUNKS:
+            yield RuntimeStreamEvent(type="sentence", text=chunk)
+        yield RuntimeStreamEvent(
+            type="result",
+            result=self.run_text_turn(text, source=source, metadata=metadata),
+        )
 
 
 class _ManifestAssistantRuntime:
@@ -469,6 +499,10 @@ class _ManifestAssistantRuntime:
             trace=trace,
         )
 
+    def stream_text_turn(self, text: str, *, source: str, metadata: dict, **kwargs):
+        del kwargs
+        yield from _stream_of(self.run_text_turn(text, source=source, metadata=metadata))
+
 
 class _CitedAssistantRuntime:
     def run_text_turn(self, text: str, *, source: str, metadata: dict) -> RuntimeResult:
@@ -485,6 +519,10 @@ class _CitedAssistantRuntime:
                 ),
             ),
         )
+
+    def stream_text_turn(self, text: str, *, source: str, metadata: dict, **kwargs):
+        del kwargs
+        yield from _stream_of(self.run_text_turn(text, source=source, metadata=metadata))
 
 
 class _FailingAssistantRuntime:
@@ -1103,3 +1141,47 @@ def test_engine_memory_and_usage_commands() -> None:
     assert compaction["status"] == "idle"
     usage = next(e for e in events if e["event"] == "usage")
     assert usage["turns"] == 1
+
+
+def _streaming_text_builder(
+    config: TextRuntimeConfig, *, session_memory=None, **_runtime_dependencies
+) -> TextRuntimeBundle:
+    return TextRuntimeBundle(
+        runtime=_StreamingAssistantRuntime(),  # type: ignore[arg-type]
+        session_memory=session_memory,
+        llm_status="fake",
+        knowledge_status="fake",
+        memory_status="fake",
+    )
+
+
+def test_engine_chat_emits_one_answer_delta_per_streamed_chunk() -> None:
+    """A UI that animates composing needs the answer to arrive in pieces.
+
+    The chat turn used to call the blocking run_text_turn and emit a single
+    answer_delta holding the whole response, so any per-chunk animation
+    finished before it started.
+    """
+    capture = ProtocolCapture()
+    code = run_engine(
+        voice_config=None,
+        text_config=make_text_config(),
+        profile="baseline",
+        stdin=_commands(capture, {"cmd": "chat", "text": "xin chào"}, '"done"'),
+        stdout=capture,
+        text_runtime_builder=_streaming_text_builder,
+    )
+
+    assert code == 0
+    deltas = [event for event in capture.events() if event["event"] == "answer_delta"]
+    assert [delta["payload"]["text"] for delta in deltas] == list(
+        _StreamingAssistantRuntime.CHUNKS
+    )
+    ordered = [
+        event["event"]
+        for event in capture.events()
+        if event["event"] in {"answer_delta", "turn_terminal"}
+    ]
+    assert ordered[-1] == "turn_terminal", "every delta must precede the terminal"
+    done = [e for e in capture.events() if e["event"] == "chat" and e["type"] == "done"]
+    assert done[0]["text"] == "".join(_StreamingAssistantRuntime.CHUNKS)
