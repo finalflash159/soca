@@ -12,6 +12,8 @@ import { listen } from "@tauri-apps/api/event";
 
 import type { ConversationState } from "./conversation";
 import { initialConversation, reduceConversation } from "./conversation";
+import type { KnowledgeState } from "./knowledge";
+import { initialKnowledge, reduceKnowledge } from "./knowledge";
 import type { OrbActivity } from "./orb";
 import { initialActivity, orbStateFor, reduceActivity } from "./orb";
 import type {
@@ -21,6 +23,8 @@ import type {
   StatusFrame,
 } from "./protocol";
 import { helloIsCompatible, PROTOCOL_VERSION } from "./protocol";
+import type { SettingsState } from "./settings";
+import { initialSettings, reduceSettings } from "./settings";
 import type { VoiceState } from "./voice";
 import { initialVoice, reduceVoice } from "./voice";
 
@@ -48,6 +52,8 @@ export interface EngineSnapshot {
   activity: OrbActivity;
   conversation: ConversationState;
   voice: VoiceState;
+  knowledge: KnowledgeState;
+  settings: SettingsState;
   /** Most recent frames, newest last. */
   log: EngineFrame[];
   errors: string[];
@@ -61,6 +67,8 @@ export function useEngine() {
   const [activity, setActivity] = useState<OrbActivity>(initialActivity);
   const [conversation, setConversation] = useState<ConversationState>(initialConversation);
   const [voice, setVoice] = useState<VoiceState>(initialVoice);
+  const [knowledge, setKnowledge] = useState<KnowledgeState>(initialKnowledge);
+  const [settings, setSettings] = useState<SettingsState>(initialSettings);
   const [log, setLog] = useState<EngineFrame[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
 
@@ -98,6 +106,8 @@ export function useEngine() {
       voiceRef.current = reduceVoice(voiceRef.current, frame);
       voiceDirty.current = true;
       setConversation((previous) => reduceConversation(previous, frame));
+      setKnowledge((previous) => reduceKnowledge(previous, frame));
+      setSettings((previous) => reduceSettings(previous, frame));
 
       if (frame.event === "hello") {
         const helloFrame = frame as HelloFrame;
@@ -146,6 +156,8 @@ export function useEngine() {
     setConversation(initialConversation);
     voiceRef.current = initialVoice;
     setVoice(initialVoice);
+    setKnowledge(initialKnowledge);
+    setSettings(initialSettings);
     try {
       await invoke("engine_start", { options: options ?? null });
     } catch (error) {
@@ -179,6 +191,8 @@ export function useEngine() {
     activity,
     conversation,
     voice,
+    knowledge,
+    settings,
     log,
     errors,
   };

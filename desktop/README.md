@@ -15,8 +15,8 @@ the TUI, not a fork of the runtime.
 | 1 — app shell + sidecar | done — start/stop engine, status screen, orb |
 | 2 — text conversation | done — streamed turns, blocked/terminal states, citations |
 | 3 — voice | done — HUD with engine-sourced level meter, partial transcript, barge-in |
-| 4 — knowledge & memory | not started |
-| 5 — settings & packaging | not started |
+| 4 — knowledge & memory | done — retrieval inspector, memory traces, proposals, vault/index |
+| 5 — settings & packaging | settings done; `.app` bundles and launches, Python sidecar **not** bundled |
 
 ## Run
 
@@ -30,8 +30,9 @@ PATH, override the program in the UI field, or pass args (`uv` with
 `args: ["run", "soca"]`).
 
 ```bash
-npm test          # orb-state mapping and protocol helpers
+npm test          # 101 unit tests over the engine-facing modules
 npm run build     # tsc + vite
+npm run tauri build -- --bundles app
 cd src-tauri && cargo clippy --all-targets
 ```
 
@@ -42,6 +43,8 @@ src/engine/protocol.ts   read-shapes for docs/18; no validation (§7 tolerates u
 src/engine/orb.ts        engine frames → one of nine thinking-orbs states
 src/engine/conversation.ts  chat turn assembly from the answer_delta stream
 src/engine/voice.ts      voice-loop state from the 20 voice event types
+src/engine/knowledge.ts  retrieval traces, memory traces, proposals, index jobs
+src/engine/settings.ts   providers, catalogs, key status, LLM config, profiles
 src/engine/useEngine.ts  Tauri event bridge; transport state only
 src/components/ui/       shadcn registry components — do not hand-edit structurally
 src-tauri/src/engine.rs  sidecar process manager and the docs/18 §7 shutdown sequence
@@ -55,10 +58,17 @@ escalate — needs direct control of the child's stdio and exit. The plugin's
 abstraction does not expose enough of it, and `bye` is the only evidence the
 engine released the microphone and its provider clients.
 
-**Sidecar packaging is deferred to phase 5, deliberately.** The plan flags
-bundling a Python runtime as the highest risk. Phase 1 uses the documented
-fallback — the app expects `soca` to be installed — so the boundary can be
-proven before the packaging problem is attacked.
+**The shell packages; the Python sidecar does not.** `npm run tauri build`
+produces a working `SoCa.app` (8.6 MB, launches, quits without orphans), but it
+contains only the Rust shell and the web assets. It still shells out to whatever
+`soca` is on PATH. The plan's highest-listed risk — bundling a Python runtime,
+its ports and its update path — is **not** solved here, and no claim is made
+that it is. What is settled is that everything downstream of that risk works.
+
+For reference, the plan quotes "under ~600 KB" for a Tauri app. That figure is a
+dependency-free hello world. A real app with this component tree measures
+**8.6 MB** — still roughly an order of magnitude under an Electron equivalent,
+which is the comparison that actually motivated the choice.
 
 **Answers are assembled by appending, never replacing.** `docs/18` §6:
 concatenating every `answer_delta` `payload.text` in order reproduces the final
@@ -70,6 +80,16 @@ per-chunk text handling has regressed before.
 bounded controller until synthesis and verification finish, then emits every
 chunk at once. Between deltas the UI is driven by `turn_progress.phase`, not by
 delta arrival.
+
+**API keys are write-only in this process.** The key field is sent with
+`llm_set_key` and cleared immediately; the engine's keyring owns it. The only
+key material that ever comes back is the `masked` form in `llm_key_status`, and
+nothing here stores or logs a raw key.
+
+**One settings surface, not six.** SoCa answers "how is this configured?"
+through `/settings`, `soca status`, `soca profiles`, `soca llm-models`,
+`soca asr-models` and `soca knowledge model`. The Settings tab is one place for
+provider, key, model, LLM config and runtime profiles.
 
 **The WebView never opens a microphone.** The level meter is driven by the
 engine's `voice_level.rms`, not by Web Audio. A second browser capture would be
