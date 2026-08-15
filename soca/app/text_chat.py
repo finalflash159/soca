@@ -14,6 +14,7 @@ from soca.app.text_runtime import (
     build_text_runtime,
     normalize_text_turn,
     render_text_result,
+    stream_text_answer,
 )
 from soca.app.usage_view import print_turn_usage, render_session_usage
 from soca.core.usage import SessionUsage, TurnUsage
@@ -123,12 +124,14 @@ def run_text_chat(
             continue
 
         normalized_text, metadata = normalize_text_turn(user_text)
-        result = bundle.runtime.run_text_turn(
+        result = stream_text_answer(
+            console,
+            bundle.runtime,
             normalized_text,
             source="cli_chat",
             metadata=metadata,
         )
-        render_text_result(console, result, show_trace=show_trace)
+        render_text_result(console, result, show_trace=show_trace, answer_printed=True)
 
         turn_usage = TurnUsage.from_runtime_result(result)
         session_usage = session_usage.add(turn_usage)

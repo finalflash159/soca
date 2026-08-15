@@ -485,3 +485,27 @@ def test_session_pcm_matches_offline_crossfade_when_second_chunk_catches_up() ->
     streamed = np.concatenate(session.writes)
     expected = crossfade_pcm(first, second, sample_rate=24_000, fade_ms=12.0)
     np.testing.assert_allclose(streamed, expected, atol=1e-6)
+
+
+def test_streamed_caption_chunks_keep_their_spacing_and_drop_labels() -> None:
+    """A UI concatenates caption chunks, so a stripped chunk glues two words.
+
+    The whole-answer cleaner ends with .strip(); applying it per chunk turned
+    "cơ bắp. " + "Nó tạo" into "cơ bắp.Nó tạo" on screen. TTS never showed this
+    because each sentence is spoken on its own.
+    """
+    asr = FakeASR("chất đạm")
+    runtime = SpyStreamingRuntime(["Protein giữ cơ bắp [K1]. ", "Nó tạo cảm giác no."])
+    pipeline = VoicePipeline(asr=asr, llm=object(), tts=SpyTTS(), assistant_runtime=runtime)
+
+    events = list(
+        pipeline.turn_streaming(
+            np.zeros(16000, dtype=np.float32),
+            audio_sink=NullAudioPlayer(),
+            min_sentence_chars=8,
+        )
+    )
+
+    captions = [event.text for event in events if event.type == "sentence"]
+    assert captions == ["Protein giữ cơ bắp. ", "Nó tạo cảm giác no."]
+    assert "".join(captions) == "Protein giữ cơ bắp. Nó tạo cảm giác no."

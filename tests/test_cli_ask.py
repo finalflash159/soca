@@ -27,6 +27,11 @@ class FakeLLM:
         self.n_gpu_layers = n_gpu_layers
         self.instances.append(self)
 
+    def count_tokens(self, text: str) -> int:
+        # Both shipped engines expose a tokenizer; without one the streaming
+        # usage builder falls back to counting whitespace-separated words.
+        return round(len(text) * 8 / len("Xin chào, tôi là SoCa."))
+
     def generate(
         self,
         user_msg: str,
