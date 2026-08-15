@@ -84,6 +84,23 @@ def answer_text_without_citation_labels(
     return cleaned.strip()
 
 
+def answer_chunk_without_citation_labels(chunk: str) -> str:
+    """Strip citation labels from one streamed chunk without touching its edges.
+
+    Only the position-independent label rule is safe per chunk. The whole-answer
+    cleaner also removes a trailing "Nguồn:" footer, and whether a given line is
+    *the last* footer cannot be decided from one chunk; the model is instructed
+    not to write one at all, so that rule stays a whole-answer safety net.
+
+    Leading and trailing whitespace is preserved: a client concatenates chunks
+    to display the answer as it arrives, and stripping each one glues the last
+    word of a chunk to the first word of the next.
+    """
+    cleaned = _LABEL_CITATION_RE.sub("", unicodedata.normalize("NFC", chunk))
+    cleaned = re.sub(r"[ \t]+([,.;:!?])", r"\1", cleaned)
+    return re.sub(r"[ \t]{2,}", " ", cleaned)
+
+
 def citation_records(
     citations: tuple[KnowledgeCitation, ...],
 ) -> tuple[dict[str, str | int | None], ...]:

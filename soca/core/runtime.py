@@ -342,6 +342,22 @@ class _TraceDraft:
 
 
 @dataclass(frozen=True)
+class _ControlledRouting:
+    """Guardrail and capability decision for one controlled turn.
+
+    Held separately so the blocking and the streaming entry points can share a
+    single router pass; the cascade router costs a model call.
+    """
+
+    frame: TurnFrame
+    draft: _TraceDraft
+    decision: ToolRouterDecision
+    initial_call: ToolCall | None
+    direct_no_tool: bool
+    blocked: RuntimeResult | None = None
+
+
+@dataclass(frozen=True)
 class _SemanticContextPlan:
     memory_context: MemoryContext | None
     knowledge_context: KnowledgeContext | None
@@ -600,20 +616,14 @@ class AssistantRuntime:
             self._active_goal_store.clear()
         return workflow_run
 
-    def run_controlled_turn(
+    def _route_controlled_turn(
         self,
         text: str,
         *,
-        source: str = "text",
-        metadata: dict[str, Any] | None = None,
-    ) -> RuntimeResult:
-        """Execute a production turn through the bounded controller.
-
-        The controller owns goal/action/observation/terminal state. The runtime
-        remains responsible for building the evidence prompt and validating the
-        final answer, so a tool acknowledgement can never become the product
-        answer before synthesis has completed.
-        """
+        source: str,
+        metadata: dict[str, Any] | None,
+    ) -> _ControlledRouting:
+        """Run the input guardrail and the capability router exactly once."""
         frame_text, frame_metadata = self._prepare_turn_input(
             text,
             source=source,
@@ -625,10 +635,17 @@ class AssistantRuntime:
             input_event = check_input_text(frame.text, self.guardrail_policy)
         draft.guardrail_events.append(input_event)
         if input_event.blocked:
-            return self._blocked_result(
-                frame,
-                draft,
-                reason=input_event.message or self._safe_block_message(input_event.reason),
+            return _ControlledRouting(
+                frame=frame,
+                draft=draft,
+                decision=ToolRouterDecision(),
+                initial_call=None,
+                direct_no_tool=False,
+                blocked=self._blocked_result(
+                    frame,
+                    draft,
+                    reason=input_event.message or self._safe_block_message(input_event.reason),
+                ),
             )
         self._set_router_context(frame)
         with self._stage(draft, "tool_router"):
@@ -647,11 +664,50 @@ class AssistantRuntime:
             # a call. Resolve that capability through the canonical tool
             # contract before asking the workflow planner to invent a plan.
             initial_call = self._single_source_retrieval_call(frame, decision)
-        direct_goal_decision: GoalDecision | None = None
+        # A turn with no capability to execute has no observation to verify, so
+        # the answer is the only product and streaming it is faithful. A router
+        # that failed reports ``unresolved`` and is deliberately excluded: a
+        # failure is not a decision that no evidence is needed.
         direct_no_tool = initial_call is None and (
             isinstance(self.tool_router, DefaultRuntimeToolRouter)
             or decision.disposition in {"smalltalk", "out_of_scope"}
         )
+        return _ControlledRouting(
+            frame=frame,
+            draft=draft,
+            decision=decision,
+            initial_call=initial_call,
+            direct_no_tool=direct_no_tool,
+        )
+
+    def run_controlled_turn(
+        self,
+        text: str,
+        *,
+        source: str = "text",
+        metadata: dict[str, Any] | None = None,
+        routing: _ControlledRouting | None = None,
+    ) -> RuntimeResult:
+        """Execute a production turn through the bounded controller.
+
+        The controller owns goal/action/observation/terminal state. The runtime
+        remains responsible for building the evidence prompt and validating the
+        final answer, so a tool acknowledgement can never become the product
+        answer before synthesis has completed.
+
+        ``routing`` lets the streaming entry point hand over a decision it has
+        already made. The cascade router spends a model call per turn, so
+        re-selecting here would double that cost.
+        """
+        routing = routing or self._route_controlled_turn(text, source=source, metadata=metadata)
+        if routing.blocked is not None:
+            return routing.blocked
+        frame = routing.frame
+        draft = routing.draft
+        decision = routing.decision
+        initial_call = routing.initial_call
+        direct_no_tool = routing.direct_no_tool
+        direct_goal_decision: GoalDecision | None = None
         if direct_no_tool:
             direct_goal_decision = GoalDecision(
                 kind=(
@@ -722,7 +778,7 @@ class AssistantRuntime:
                     goal_decision=direct_goal_decision,
                     working_summary=working_summary,
                     recent_turns=recent_turns,
-                    asr_alternatives=tuple(frame_metadata.get("asr_alternatives", ())),
+                    asr_alternatives=tuple(frame.metadata.get("asr_alternatives", ())),
                     turn_id=uuid4().hex,
                     budget=TurnBudget(),
                     synthesize=synthesize,
@@ -1325,24 +1381,17 @@ class AssistantRuntime:
         ``min_sentence_chars``.
         """
         if self.options.turn_workflow == "controlled":
-            if isinstance(self.tool_router, DefaultRuntimeToolRouter):
-                yield from self._stream_default_controlled_turn(
-                    text,
-                    source=source,
-                    metadata=metadata,
-                    min_sentence_chars=min_sentence_chars,
-                    first_sentence_min_chars=first_sentence_min_chars,
-                    first_clause_enabled=first_clause_enabled,
-                    first_clause_min_chars=first_clause_min_chars,
-                    first_clause_min_words=first_clause_min_words,
-                    first_clause_max_scan_chars=first_clause_max_scan_chars,
-                )
-                return
-            result = self.run_controlled_turn(text, source=source, metadata=metadata)
-            if result.response_text:
-                yield RuntimeStreamEvent(type="token", text=result.response_text)
-                yield RuntimeStreamEvent(type="sentence", text=result.response_text)
-            yield RuntimeStreamEvent(type="result", result=result)
+            yield from self._stream_controlled_turn(
+                text,
+                source=source,
+                metadata=metadata,
+                min_sentence_chars=min_sentence_chars,
+                first_sentence_min_chars=first_sentence_min_chars,
+                first_clause_enabled=first_clause_enabled,
+                first_clause_min_chars=first_clause_min_chars,
+                first_clause_min_words=first_clause_min_words,
+                first_clause_max_scan_chars=first_clause_max_scan_chars,
+            )
             return
         frame_text, frame_metadata = self._prepare_turn_input(
             text,
@@ -1613,7 +1662,7 @@ class AssistantRuntime:
             tokens_per_second=tps,
         )
 
-    def _stream_default_controlled_turn(
+    def _stream_controlled_turn(
         self,
         text: str,
         *,
@@ -1626,45 +1675,30 @@ class AssistantRuntime:
         first_clause_min_words: int,
         first_clause_max_scan_chars: int,
     ) -> Iterator[RuntimeStreamEvent]:
-        """Stream a default-router no-tool turn without bypassing guardrails.
+        """Stream a controlled turn that has no capability to execute.
 
-        The production cascade router owns controlled workflow turns. The
-        default router is also used by lightweight callers and tests; for its
-        typed no-tool disposition there is no tool action to execute or
-        verify, so the normal streaming LLM path is the faithful surface.
-        Tool-bearing turns remain on the controlled path.
+        A turn the router resolved to no tool has no observation to verify, so
+        the generated answer is the whole product and streaming it is faithful.
+        Every other turn — a tool, a retrieval request, or a router that failed
+        and reported ``unresolved`` — stays on the bounded controller and is
+        emitted only after synthesis and verification finish, per ADR 0003.
+
+        This holds for any router. Keying it on the default router's class made
+        every cascade turn, which is every production text turn, collapse into
+        one blocking call plus a single fake token event.
         """
-        frame_text, frame_metadata = self._prepare_turn_input(
-            text,
-            source=source,
-            metadata=metadata,
-        )
-        frame = TurnFrame(text=frame_text, source=source, metadata=frame_metadata)
-        draft = _TraceDraft([], [], [], [], [], {})
-        with self._stage(draft, "input_guardrail"):
-            input_event = check_input_text(frame.text, self.guardrail_policy)
-        draft.guardrail_events.append(input_event)
-        if input_event.blocked:
-            result = self._blocked_result(
-                frame,
-                draft,
-                reason=input_event.message or self._safe_block_message(input_event.reason),
+        routing = self._route_controlled_turn(text, source=source, metadata=metadata)
+        if routing.blocked is not None:
+            yield from self._emit_fixed_result(
+                routing.blocked, min_sentence_chars=min_sentence_chars
             )
-            yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
             return
-
-        self._set_router_context(frame)
-        with self._stage(draft, "tool_router"):
-            tool_call = self.tool_router.select(
-                frame.text,
-                knowledge_limit=self.options.knowledge_limit,
+        frame = routing.frame
+        draft = routing.draft
+        if not routing.direct_no_tool:
+            result = self.run_controlled_turn(
+                frame.text, source=source, metadata=metadata, routing=routing
             )
-        decision = getattr(self.tool_router, "last_decision", ToolRouterDecision())
-        draft.tool_router_tier = str(getattr(self.tool_router, "last_tier", "deterministic"))
-        draft.tool_router_reason = str(getattr(decision, "reason", "no_match"))
-        self._record_router_decision(draft, decision)
-        if tool_call is not None:
-            result = self.run_controlled_turn(frame.text, source=source, metadata=metadata)
             yield from self._emit_fixed_result(result, min_sentence_chars=min_sentence_chars)
             return
 

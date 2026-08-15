@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 
 from soca.core.answer_validation import (
+    answer_chunk_without_citation_labels,
     answer_text_without_citation_labels,
     citation_records,
 )
@@ -400,7 +401,7 @@ class VoicePipeline:
                         pending_sentences.append(event.text)
                         yield StreamingEvent(
                             type="sentence",
-                            text=answer_text_without_citation_labels(event.text, ()),
+                            text=answer_chunk_without_citation_labels(event.text),
                             metadata={"delivery": "answer_delta", "terminal": False},
                         )
                     elif event.type == "result":

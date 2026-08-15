@@ -7,10 +7,10 @@ import json
 import logging
 import sys
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from queue import Queue
-from typing import Any, Protocol, TextIO
+from typing import Any, Protocol, TextIO, cast
 from uuid import uuid4
 
 import numpy as np
@@ -37,6 +37,7 @@ from soca.config import (
 )
 from soca.core import AudioSink, ResolvedVoiceRuntimeConfig
 from soca.core.answer_validation import (
+    answer_chunk_without_citation_labels,
     answer_text_without_citation_labels,
     citation_records,
 )
@@ -1856,7 +1857,53 @@ class SocaEngine:
         item = context.workflow.emit(event, node, status=status, payload=payload)
         self.writer.emit(workflow_event_to_protocol(item))
 
-    def _emit_workflow_for_result(self, result: Any, context: _TurnProgressContext) -> None:
+    def _stream_chat_answer(
+        self,
+        bundle: Any,
+        text: str,
+        metadata: dict[str, Any],
+        context: _TurnProgressContext,
+    ) -> Any:
+        """Emit one `answer_delta` per guardrail-passed chunk and return the result.
+
+        A free-chat turn streams its chunks as the model produces them. A turn
+        the controller held for verification yields the same chunk events, but
+        only once the validated answer exists, so no unverified text is ever
+        published.
+
+        Each chunk is stripped of citation labels the same way the voice
+        pipeline strips them, so a delta never shows a ``[K1]`` marker that the
+        final answer removes. Provenance reaches the client as the structured
+        ``citations`` list, never as prose the model wrote.
+        """
+        stream = cast(
+            Callable[..., Iterable[Any]],
+            getattr(bundle.runtime, "stream_text_turn", None),
+        )
+        if not callable(stream):
+            raise TypeError("text runtime must implement stream_text_turn")
+        result: Any = None
+        for event in stream(text, source="engine_chat", metadata=metadata):
+            if event.type == "sentence" and event.text.strip():
+                self._emit_workflow_event(
+                    context,
+                    EventType.ANSWER_DELTA,
+                    TurnNode.SYNTHESIZE,
+                    payload={"text": answer_chunk_without_citation_labels(event.text)},
+                )
+            elif event.type == "result" and event.result is not None:
+                result = event.result
+        if result is None:
+            raise RuntimeError("text runtime stream ended without a result event")
+        return result
+
+    def _emit_workflow_for_result(
+        self,
+        result: Any,
+        context: _TurnProgressContext,
+        *,
+        answer_streamed: bool = False,
+    ) -> None:
         self._emit_workflow_event(
             context,
             EventType.STEP_COMPLETED,
@@ -1864,7 +1911,7 @@ class SocaEngine:
             EventStatus.COMPLETED,
             {"route": result.route.value},
         )
-        if result.response_text.strip():
+        if not answer_streamed and result.response_text.strip():
             self._emit_workflow_event(
                 context,
                 EventType.ANSWER_DELTA,
@@ -1940,15 +1987,13 @@ class SocaEngine:
                 context=progress,
             )
             try:
-                result = bundle.runtime.run_text_turn(
-                    normalized_text, source="engine_chat", metadata=metadata
-                )
+                result = self._stream_chat_answer(bundle, normalized_text, metadata, progress)
             finally:
                 if callable(progress_setter):
                     progress_setter(None)
             usage = TurnUsage.from_runtime_result(result)
             self._track_usage(usage)
-            self._emit_workflow_for_result(result, progress)
+            self._emit_workflow_for_result(result, progress, answer_streamed=True)
             self.writer.emit(
                 {
                     "event": "chat",

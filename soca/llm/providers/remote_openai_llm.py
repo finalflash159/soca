@@ -442,9 +442,16 @@ class RemoteOpenAILLM:
                     state.stream = None
 
                 if emitted:
+                    # Keep the cause. Replacing it with the generic wording hid
+                    # the only actionable fact a caller has — for an output
+                    # limit, that the budget must be raised — behind a message
+                    # that reads like a network fault.
                     mapped = replace_remote_error(
                         mapped,
-                        message=f"Luồng {self.provider.label} bị ngắt sau một phần nội dung.",
+                        message=(
+                            f"Luồng {self.provider.label} bị ngắt sau một phần nội dung: "
+                            f"{mapped.args[0] if mapped.args else mapped.category}"
+                        ),
                         retryable=False,
                     )
                 elapsed = self._clock() - started
