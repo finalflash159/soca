@@ -21,6 +21,8 @@ import type {
   StatusFrame,
 } from "./protocol";
 import { helloIsCompatible, PROTOCOL_VERSION } from "./protocol";
+import type { VoiceState } from "./voice";
+import { initialVoice, reduceVoice } from "./voice";
 
 const EVENT_CHANNEL = "soca://engine-event";
 const STATUS_CHANNEL = "soca://engine-status";
@@ -45,6 +47,7 @@ export interface EngineSnapshot {
   engineStatus: StatusFrame | null;
   activity: OrbActivity;
   conversation: ConversationState;
+  voice: VoiceState;
   /** Most recent frames, newest last. */
   log: EngineFrame[];
   errors: string[];
@@ -57,6 +60,7 @@ export function useEngine() {
   const [engineStatus, setEngineStatus] = useState<StatusFrame | null>(null);
   const [activity, setActivity] = useState<OrbActivity>(initialActivity);
   const [conversation, setConversation] = useState<ConversationState>(initialConversation);
+  const [voice, setVoice] = useState<VoiceState>(initialVoice);
   const [log, setLog] = useState<EngineFrame[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
 
@@ -64,12 +68,20 @@ export function useEngine() {
   // in a ref and flushed on a timer rather than driving a render per frame.
   const activityRef = useRef<OrbActivity>(initialActivity);
   const activityDirty = useRef(false);
+  // `voice_level` arrives per audio frame, so voice state is folded in a ref and
+  // flushed on the same timer rather than rendering once per frame (§7 obl. 5).
+  const voiceRef = useRef<VoiceState>(initialVoice);
+  const voiceDirty = useRef(false);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
       if (activityDirty.current) {
         activityDirty.current = false;
         setActivity(activityRef.current);
+      }
+      if (voiceDirty.current) {
+        voiceDirty.current = false;
+        setVoice(voiceRef.current);
       }
     }, 100);
     return () => window.clearInterval(interval);
@@ -83,6 +95,8 @@ export function useEngine() {
 
       activityRef.current = reduceActivity(activityRef.current, frame);
       activityDirty.current = true;
+      voiceRef.current = reduceVoice(voiceRef.current, frame);
+      voiceDirty.current = true;
       setConversation((previous) => reduceConversation(previous, frame));
 
       if (frame.event === "hello") {
@@ -111,6 +125,8 @@ export function useEngine() {
       if (event.payload.state === "stopped" || event.payload.state === "failed") {
         activityRef.current = initialActivity;
         activityDirty.current = true;
+        voiceRef.current = initialVoice;
+        voiceDirty.current = true;
       }
     }).then((unlisten) => unlisteners.push(unlisten));
 
@@ -128,6 +144,8 @@ export function useEngine() {
     setEngineStatus(null);
     setVersionMismatch(null);
     setConversation(initialConversation);
+    voiceRef.current = initialVoice;
+    setVoice(initialVoice);
     try {
       await invoke("engine_start", { options: options ?? null });
     } catch (error) {
@@ -160,6 +178,7 @@ export function useEngine() {
     engineStatus,
     activity,
     conversation,
+    voice,
     log,
     errors,
   };

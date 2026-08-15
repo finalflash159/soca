@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { ChatView } from "@/components/ChatView";
+import { VoiceHud } from "@/components/VoiceHud";
 import { orbLabel } from "@/engine/orb";
 import { useEngine } from "@/engine/useEngine";
 
@@ -148,6 +149,13 @@ export default function App() {
           </AlertDescription>
         </Alert>
       )}
+
+      <VoiceHud
+        voice={engine.voice}
+        connected={engine.status.state === "running"}
+        onStart={() => void engine.send({ cmd: "voice_start" })}
+        onStop={() => void engine.send({ cmd: "voice_stop" })}
+      />
 
       <ChatView
         conversation={engine.conversation}

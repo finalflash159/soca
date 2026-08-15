@@ -14,7 +14,7 @@ the TUI, not a fork of the runtime.
 | 0 — protocol contract | done — `docs/18-engine-protocol.md` + `tests/test_engine_protocol_contract.py` |
 | 1 — app shell + sidecar | done — start/stop engine, status screen, orb |
 | 2 — text conversation | done — streamed turns, blocked/terminal states, citations |
-| 3 — voice | not started |
+| 3 — voice | done — HUD with engine-sourced level meter, partial transcript, barge-in |
 | 4 — knowledge & memory | not started |
 | 5 — settings & packaging | not started |
 
@@ -40,6 +40,8 @@ cd src-tauri && cargo clippy --all-targets
 ```text
 src/engine/protocol.ts   read-shapes for docs/18; no validation (§7 tolerates unknown fields)
 src/engine/orb.ts        engine frames → one of nine thinking-orbs states
+src/engine/conversation.ts  chat turn assembly from the answer_delta stream
+src/engine/voice.ts      voice-loop state from the 20 voice event types
 src/engine/useEngine.ts  Tauri event bridge; transport state only
 src/components/ui/       shadcn registry components — do not hand-edit structurally
 src-tauri/src/engine.rs  sidecar process manager and the docs/18 §7 shutdown sequence
@@ -68,6 +70,16 @@ per-chunk text handling has regressed before.
 bounded controller until synthesis and verification finish, then emits every
 chunk at once. Between deltas the UI is driven by `turn_progress.phase`, not by
 delta arrival.
+
+**The WebView never opens a microphone.** The level meter is driven by the
+engine's `voice_level.rms`, not by Web Audio. A second browser capture would be
+the two-stream arrangement that failed on clock drift, and it would compete with
+AEC3 for the device — barge-in depends entirely on AEC. See
+[`docs/ui-components.md`](../docs/ui-components.md).
+
+**No endpoint countdown is shown.** The engine publishes the silence floor and
+ceiling once, at `recording`, and never a remaining-time figure. Counting down
+client-side would invent a decision the engine owns.
 
 **Markdown is not rendered.** `SOCA_RUNTIME_SYSTEM_PROMPT` forbids markdown in
 answers because this is spoken conversation, so the registry's Streamdown-based
