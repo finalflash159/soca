@@ -1188,3 +1188,62 @@ def test_engine_chat_emits_one_answer_delta_per_streamed_chunk() -> None:
     assert done[0]["text"] == "".join(_StreamingAssistantRuntime.CLEANED).strip(), (
         "concatenating the deltas must reproduce the authoritative answer"
     )
+
+
+def _memory_token_voice_builder(
+    config: ResolvedVoiceRuntimeConfig, *, session_memory=None
+) -> VoiceRuntimeBundle:
+    """A voice turn whose streamed tokens carry a memory citation label."""
+    del session_memory
+    pipeline = _FakePipeline(
+        [
+            StreamingEvent(type="asr", text="tôi đã ghi gì"),
+            StreamingEvent(type="llm_token", text="Bạn đã ghi "),
+            StreamingEvent(type="llm_token", text="lịch họp [M1]."),
+            StreamingEvent(
+                type="done",
+                text="Bạn đã ghi lịch họp.",
+                latency_ms=5.0,
+                metadata={"rejected": False},
+            ),
+        ]
+    )
+    return VoiceRuntimeBundle(
+        config=config,
+        detector=_FakeDetector(),
+        asr=_FakeASR(),  # type: ignore[arg-type]
+        llm=object(),  # type: ignore[arg-type]
+        tts=object(),
+        assistant_runtime=object(),  # type: ignore[arg-type]
+        pipeline=pipeline,  # type: ignore[arg-type]
+        memory_status="disabled:test",
+        knowledge_status="enabled:test",
+    )
+
+
+def test_voice_answer_delta_strips_citation_labels_like_the_chat_turn() -> None:
+    """Both surfaces publish the same text; only the chat one used to be cleaned.
+
+    The voice deltas come from raw `llm_token` events. A smalltalk turn still
+    receives memory context, and MEMORY_GROUNDING_INSTRUCTIONS teaches the model
+    to write [M1], so a label can reach a caption that `done` then strips.
+    """
+    capture = ProtocolCapture()
+    code = run_engine(
+        voice_config=make_voice_config(),
+        text_config=make_text_config(),
+        profile="baseline",
+        stdin=_commands(capture, {"cmd": "voice_start", "max_turns": 1}, "loop_stopped"),
+        stdout=capture,
+        voice_runtime_builder=_memory_token_voice_builder,
+        voice_recorder=_fake_recorder,
+        voice_player=_FakeAudioSink(),
+        warmup_voice=False,
+    )
+
+    assert code == 0
+    deltas = [event for event in capture.events() if event["event"] == "answer_delta"]
+    assert [delta["payload"]["text"] for delta in deltas] == [
+        "Bạn đã ghi ",
+        "lịch họp.",
+    ]

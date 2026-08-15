@@ -395,11 +395,16 @@ Emitted through `WorkflowEventStream` with the versioned envelope from §3.
 `insufficient_evidence`, `safe_failure`, `budget_exhausted`, `cancelled`,
 `system_failure`.
 
-**`answer_delta` fires once per guardrail-passed chunk.** Concatenating every
-`payload.text` in order reproduces the final answer exactly, so a client appends
-rather than replaces. Citation labels are already stripped, matching the
-`chat/done` text; provenance arrives as the structured `citations` list, never as
-prose.
+**`answer_delta` fires once per chunk of answer text.** Both surfaces strip
+citation labels (`[K1]`, `[M1]`) before publishing, so a delta never shows a
+marker the final text removes. Provenance arrives as the structured `citations`
+list, never as prose.
+
+On the chat surface the chunks are guardrail-passed sentences, and concatenating
+every `payload.text` in order reproduces `chat/done.text` exactly, so a client
+appends rather than replaces. On the voice surface a delta is a raw model token,
+so chunk boundaries fall mid-word and the concatenation is not byte-identical to
+the caption; `voice/done.text` is authoritative there.
 
 How many deltas a turn produces, and how far apart they land, depends on the
 turn and the model:

@@ -1897,13 +1897,8 @@ class SocaEngine:
             raise RuntimeError("text runtime stream ended without a result event")
         return result
 
-    def _emit_workflow_for_result(
-        self,
-        result: Any,
-        context: _TurnProgressContext,
-        *,
-        answer_streamed: bool = False,
-    ) -> None:
+    def _emit_workflow_for_result(self, result: Any, context: _TurnProgressContext) -> None:
+        """Close the workflow for a turn whose answer was already streamed."""
         self._emit_workflow_event(
             context,
             EventType.STEP_COMPLETED,
@@ -1911,13 +1906,6 @@ class SocaEngine:
             EventStatus.COMPLETED,
             {"route": result.route.value},
         )
-        if not answer_streamed and result.response_text.strip():
-            self._emit_workflow_event(
-                context,
-                EventType.ANSWER_DELTA,
-                TurnNode.SYNTHESIZE,
-                payload={"text": result.response_text},
-            )
         terminal = context.workflow.emit_terminal(terminal_from_runtime_result(result))
         self.writer.emit(workflow_event_to_protocol(terminal))
 
@@ -1993,7 +1981,7 @@ class SocaEngine:
                     progress_setter(None)
             usage = TurnUsage.from_runtime_result(result)
             self._track_usage(usage)
-            self._emit_workflow_for_result(result, progress, answer_streamed=True)
+            self._emit_workflow_for_result(result, progress)
             self.writer.emit(
                 {
                     "event": "chat",
@@ -2390,11 +2378,15 @@ class SocaEngine:
                 with self._progress_lock:
                     progress = self._progress_contexts.get("voice")
                 if progress is not None and event.text:
+                    # Same rule as the chat turn. A voice turn still receives
+                    # memory context, and MEMORY_GROUNDING_INSTRUCTIONS teaches
+                    # the model to write [M1], so a raw token can carry a label
+                    # that the final text strips.
                     self._emit_workflow_event(
                         progress,
                         EventType.ANSWER_DELTA,
                         TurnNode.SYNTHESIZE,
-                        payload={"text": event.text},
+                        payload={"text": answer_chunk_without_citation_labels(event.text)},
                     )
             elif event.type == "recording":
                 self._emit_turn_progress(
