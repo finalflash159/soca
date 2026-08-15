@@ -10,6 +10,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+import type { ConversationState } from "./conversation";
+import { initialConversation, reduceConversation } from "./conversation";
 import type { OrbActivity } from "./orb";
 import { initialActivity, orbStateFor, reduceActivity } from "./orb";
 import type {
@@ -42,6 +44,7 @@ export interface EngineSnapshot {
   versionMismatch: string | null;
   engineStatus: StatusFrame | null;
   activity: OrbActivity;
+  conversation: ConversationState;
   /** Most recent frames, newest last. */
   log: EngineFrame[];
   errors: string[];
@@ -53,6 +56,7 @@ export function useEngine() {
   const [versionMismatch, setVersionMismatch] = useState<string | null>(null);
   const [engineStatus, setEngineStatus] = useState<StatusFrame | null>(null);
   const [activity, setActivity] = useState<OrbActivity>(initialActivity);
+  const [conversation, setConversation] = useState<ConversationState>(initialConversation);
   const [log, setLog] = useState<EngineFrame[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
 
@@ -79,6 +83,7 @@ export function useEngine() {
 
       activityRef.current = reduceActivity(activityRef.current, frame);
       activityDirty.current = true;
+      setConversation((previous) => reduceConversation(previous, frame));
 
       if (frame.event === "hello") {
         const helloFrame = frame as HelloFrame;
@@ -122,6 +127,7 @@ export function useEngine() {
     setHello(null);
     setEngineStatus(null);
     setVersionMismatch(null);
+    setConversation(initialConversation);
     try {
       await invoke("engine_start", { options: options ?? null });
     } catch (error) {
@@ -153,6 +159,7 @@ export function useEngine() {
     versionMismatch,
     engineStatus,
     activity,
+    conversation,
     log,
     errors,
   };

@@ -13,7 +13,7 @@ the TUI, not a fork of the runtime.
 | --- | --- |
 | 0 — protocol contract | done — `docs/18-engine-protocol.md` + `tests/test_engine_protocol_contract.py` |
 | 1 — app shell + sidecar | done — start/stop engine, status screen, orb |
-| 2 — text conversation | not started |
+| 2 — text conversation | done — streamed turns, blocked/terminal states, citations |
 | 3 — voice | not started |
 | 4 — knowledge & memory | not started |
 | 5 — settings & packaging | not started |
@@ -58,9 +58,21 @@ bundling a Python runtime as the highest risk. Phase 1 uses the documented
 fallback — the app expects `soca` to be installed — so the boundary can be
 proven before the packaging problem is attacked.
 
-**`answer_delta` is not token streaming yet.** It fires once with the full
-answer, so `composing` shows as one step rather than an animation. Real
-streaming is pending on `feat/chat-text-streaming`; phase 2 depends on it.
+**Answers are assembled by appending, never replacing.** `docs/18` §6:
+concatenating every `answer_delta` `payload.text` in order reproduces the final
+answer exactly. `conversation.ts` also compares the reassembly against
+`chat/done` and surfaces a mismatch instead of silently trusting the final text —
+per-chunk text handling has regressed before.
+
+**Not every turn animates.** A turn with a tool or retrieval is held by the
+bounded controller until synthesis and verification finish, then emits every
+chunk at once. Between deltas the UI is driven by `turn_progress.phase`, not by
+delta arrival.
+
+**Markdown is not rendered.** `SOCA_RUNTIME_SYSTEM_PROMPT` forbids markdown in
+answers because this is spoken conversation, so the registry's Streamdown-based
+`MessageResponse` is deliberately unused; answers render with
+`whitespace-pre-wrap`.
 
 ## Deviations from the plan
 
@@ -72,3 +84,5 @@ Recorded per plan §5.7 rule 4.
 | ASR `transcribing` / `asr_partial` map to `working` | The plan's nine states cover assistant reasoning, not speech recognition. Adding a tenth state would break the §0.2 single-source rule. |
 | The `memory` turn phase maps to `searching`, not `weaving` | `weaving` is reserved for compaction, which is what the plan means by "nén working memory". The `memory` phase is archive retrieval. |
 | `connecting` is bounded by time, not by backend | A remote backend is not an activity. `connecting` shows while synthesis is open and no answer text has arrived, then becomes `composing`. |
+| Deleted the vendored `prompt-input` and `inline-citation` from AI Elements; the composer is a plain textarea | Both fail to compile against `@base-ui/react@1.7.0` — they pass `openDelay`/`closeDelay` to a PreviewCard root that has neither, and `prompt-input` calls `Array.prototype.at` under an ES2020 lib target. `@base-ui/react` is already at its latest version, so this is an upstream defect, not a version we can bump past. Revisit when the registry catches up. |
+| Bundle is ~750 kB | `message.tsx` pulls `streamdown` and `shiki` at module scope, so the markdown path cannot be tree-shaken even though it is unused. Acceptable for a desktop app loading from local disk; it would not be for a web page. |

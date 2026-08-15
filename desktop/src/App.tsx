@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { ChatView } from "@/components/ChatView";
 import { orbLabel } from "@/engine/orb";
 import { useEngine } from "@/engine/useEngine";
 
@@ -148,31 +149,28 @@ export default function App() {
         </Alert>
       )}
 
-      <Card className="flex-1">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle className="text-base">Protocol frames</CardTitle>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => void engine.send({ cmd: "status" })}
-            disabled={engine.status.state !== "running"}
-          >
-            Send status
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <ScrollArea className="h-64">
-            <ul className="flex flex-col gap-1 font-mono text-xs">
-              {engine.log.map((frame, index) => (
-                <li key={index} className="text-muted-foreground">
-                  <span className="text-foreground">{frame.event}</span>
-                  {"type" in frame && typeof frame.type === "string" ? `:${frame.type}` : ""}
-                </li>
-              ))}
-            </ul>
-          </ScrollArea>
-        </CardContent>
-      </Card>
+      <ChatView
+        conversation={engine.conversation}
+        connected={engine.status.state === "running"}
+        onSend={(text) => void engine.send({ cmd: "chat", text })}
+      />
+
+      <details className="text-muted-foreground text-xs">
+        <summary className="cursor-pointer select-none">
+          Protocol frames ({engine.log.length})
+        </summary>
+        <ScrollArea className="mt-2 h-40">
+          <ul className="flex flex-col gap-1 font-mono text-[10px]">
+            {engine.log.map((frame, index) => (
+              <li key={index}>
+                <span className="text-foreground">{frame.event}</span>
+                {"type" in frame && typeof frame.type === "string" ? `:${frame.type}` : ""}
+              </li>
+            ))}
+          </ul>
+        </ScrollArea>
+      </details>
+
     </main>
   );
 }
