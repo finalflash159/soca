@@ -446,7 +446,8 @@ class _FakeAssistantRuntime:
 class _StreamingAssistantRuntime:
     """Emits several guardrail-passed chunks, like a real free-chat turn."""
 
-    CHUNKS = ("Chào bạn. ", "Mình nghe đây. ", "Bạn cần gì nào?")
+    CHUNKS = ("Protein giữ cơ bắp [K1]. ", "Nó tạo cảm giác no [K2]. ", "Vậy nhé.")
+    CLEANED = ("Protein giữ cơ bắp. ", "Nó tạo cảm giác no. ", "Vậy nhé.")
 
     def run_text_turn(self, text: str, *, source: str, metadata: dict) -> RuntimeResult:
         del text, source, metadata
@@ -1175,8 +1176,8 @@ def test_engine_chat_emits_one_answer_delta_per_streamed_chunk() -> None:
     assert code == 0
     deltas = [event for event in capture.events() if event["event"] == "answer_delta"]
     assert [delta["payload"]["text"] for delta in deltas] == list(
-        _StreamingAssistantRuntime.CHUNKS
-    )
+        _StreamingAssistantRuntime.CLEANED
+    ), "a delta must not publish citation labels the final answer strips"
     ordered = [
         event["event"]
         for event in capture.events()
@@ -1184,4 +1185,6 @@ def test_engine_chat_emits_one_answer_delta_per_streamed_chunk() -> None:
     ]
     assert ordered[-1] == "turn_terminal", "every delta must precede the terminal"
     done = [e for e in capture.events() if e["event"] == "chat" and e["type"] == "done"]
-    assert done[0]["text"] == "".join(_StreamingAssistantRuntime.CHUNKS)
+    assert done[0]["text"] == "".join(_StreamingAssistantRuntime.CLEANED).strip(), (
+        "concatenating the deltas must reproduce the authoritative answer"
+    )

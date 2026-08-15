@@ -37,6 +37,7 @@ from soca.config import (
 )
 from soca.core import AudioSink, ResolvedVoiceRuntimeConfig
 from soca.core.answer_validation import (
+    answer_chunk_without_citation_labels,
     answer_text_without_citation_labels,
     citation_records,
 )
@@ -1869,6 +1870,11 @@ class SocaEngine:
         the controller held for verification yields the same chunk events, but
         only once the validated answer exists, so no unverified text is ever
         published.
+
+        Each chunk is stripped of citation labels the same way the voice
+        pipeline strips them, so a delta never shows a ``[K1]`` marker that the
+        final answer removes. Provenance reaches the client as the structured
+        ``citations`` list, never as prose the model wrote.
         """
         stream = cast(
             Callable[..., Iterable[Any]],
@@ -1883,7 +1889,7 @@ class SocaEngine:
                     context,
                     EventType.ANSWER_DELTA,
                     TurnNode.SYNTHESIZE,
-                    payload={"text": event.text},
+                    payload={"text": answer_chunk_without_citation_labels(event.text)},
                 )
             elif event.type == "result" and event.result is not None:
                 result = event.result
