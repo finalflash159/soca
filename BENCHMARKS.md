@@ -86,7 +86,7 @@ These are development-machine numbers. **No result in this file was measured on 
 Raspberry Pi or any ARM single-board computer**, and none should be quoted as an
 embedded-device figure.
 
-### 1.4 Native hot-path and edge status
+### 1.4 Startup cost and edge status
 
 Metadata commands (`soca status`, `profiles`, `asr-models`, `llm-models`) start in
 **0.25 s**, down from **2.53 s**. The old cost was entirely import graph: `soca.cli`
@@ -96,11 +96,12 @@ config table, plus `scipy.signal` (332 ms) through `pipeline → audio_out`. The
 model stack is now imported at the point of use, and confidence-guard calibration —
 pure JSON parsing — moved out of the ASR module into `soca/asr/confidence_calibration.py`.
 
-The pinned profiler is `py-spy` 0.4.2. Its native-stack mode is unsupported on
-the available macOS arm64 host, so the required voice, text-retrieval, and
-120-scenario turn-taking profiles are all recorded as `blocked`; no Python/native
-percentage is inferred from Python-only samples. The same harness must be run on
-Linux before any language-port decision is made.
+There is no sampling-profiler gate. A `py-spy` harness existed and never produced
+a number: its native-stack mode needs Linux, and its voice scenario needs a Linux
+host with a real microphone and speaker, which this project does not have. It was
+removed rather than kept as a permanently `blocked` gate — see A.2. Per-component
+costs quoted in this document come from the targeted measurements in each section,
+not from a whole-system profile.
 
 The Rust edge daemon now has a bounded SPSC capture path, out-of-callback
 resampling, real Silero/Smart Turn ONNX adapters, adaptive endpointing, typed
@@ -835,7 +836,7 @@ Consolidated from every section above. Nothing here is scheduled away or softene
 | 8 | Backchannels longer than ~416 ms leak; classifier seam exists but has no reviewed Vietnamese target-hardware winner | [5.1](#51-barge-in-false-interrupt--full-duplex-bench-takeover-rate) |
 | 9 | Summary mixed Vietnamese/code/path placement recall 8% | [7](#7-working-memory-summarization) |
 | 10 | Router goal-level pass rate 1/14 on the remediation baseline | [8](#8-capability-routing) |
-| 11 | Rust edge daemon passes native tests, but no real Linux aarch64 SBC device receipt exists | [1.4](#14-native-hot-path-and-edge-status) |
+| 11 | Rust edge daemon passes native tests, but no real Linux aarch64 SBC device receipt exists | [1.4](#14-startup-cost-and-edge-status) |
 | 12 | UTMOSv2+WER harness exists, but reviewed paired human Vietnamese references are missing | [4.2](#42-streaming-latency-and-playback-continuity) |
 | 14 | Natural Vietnamese disfluency audio and controlled real-flow receipts are not provisioned | [5.3](#53-vietnamese-disfluency-gate) |
 
@@ -896,9 +897,6 @@ uv run python -m eval.eval_sufficient_context_viquad
 uv run python -m eval.eval_backchannel_classifier --help
 uv run python -m eval.eval_disfluency --help
 uv run python -m eval.eval_edge_daemon --help
-
-# Native profile gate; use Linux for Python/native percentages
-uv run python -m eval.profile_hot_paths --help
 
 # Release gates
 uv run python scripts/run_release_gates.py
@@ -979,5 +977,6 @@ matched 0/80 on the production model.
 | Qwen3-ASR release matrix on CPU: partial p95 11,619 ms | 2026-08-02 | Re-run on MPS ([§3.2](#32-qwen3-asr-release-qualification--decision-blocked)); the CPU failure is retained, not overwritten |
 | Turn-taking `p_based` at a 1,000 ms floor: cut-in 3.3%, premature close 18.3%, over-wait 1,312 ms | 2026-08-03 | Correct for the code of the day; `587a93a` raised the floor to 1,800 ms and stopped stripping the trailing silence before Smart Turn inference, giving the 1.7% / 5.0% / 1,824 ms in [§5.2](#52-turn-taking-120-scenarios-800-ms-within-turn-pause) |
 | Speculative knowledge prefetch: 20/20 cache hit, 153.2 ms median retrieval-ready saving at a ~257 ms lead | 2026-08-15 | Removed. The saving is bounded by production retrieval cost (71 ms p95, [§6.2](#62-embedding-and-fusion-selection)); the fixture merely made it look larger. That ceiling is ~25× smaller than the 1,824 ms endpoint wait, and did not justify the slot lifecycle, cancellation, identity matching, isolated sources and receipt schema it required |
+| `py-spy` 0.4.2 hot-path profile gate: voice, text-retrieval and 120-scenario turn-taking | 2026-08-15 | Removed without ever producing a measurement. Native-stack sampling requires Linux, and no workload driver was ever written to emit the receipts its validator demanded. Its voice scenario additionally requires a Linux host with a real microphone and speaker, so at least one of the three could never pass on available hardware. The port decisions it was meant to inform were settled by targeted measurement instead: BM25 is 0.383 ms of the 71.019 ms retrieval path ([§6.2](#62-embedding-and-fusion-selection)), i.e. 0.5%, so replacing it in another language is bounded at 0.4 ms |
 
 Model licenses are listed in [README.md](README.md#licenses-and-attribution).

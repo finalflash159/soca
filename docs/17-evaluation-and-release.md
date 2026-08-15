@@ -92,7 +92,6 @@ The upgrade harnesses deliberately separate “implementation exists” from
 | --- | --- | --- |
 | Sufficient context | `eval.eval_sufficient_context_viquad` | prompt/model matrix available; proxy labels cannot release; production default off |
 | Controlled first clause | `eval.measure_first_clause_ttfa` | paired capture/replay measured |
-| Native hot paths | `eval.profile_hot_paths` | `blocked` on macOS native sampling |
 | TTS naturalness + intelligibility | `eval.eval_tts_quality` + TTS WER report | `blocked` on paired human references |
 | Public Vietnamese retrieval | `eval.eval_vn_mteb` | full pinned ArguAna-VN comparison |
 | Backchannel classifier | `eval.eval_backchannel_classifier` | `blocked` on reviewed Vietnamese audio/model winner |
