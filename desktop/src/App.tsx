@@ -162,7 +162,17 @@ export default function App() {
                   void engine.send({ cmd: "llm_models", provider, query })
                 }
                 onSelectModel={(provider, modelId) =>
-                  void engine.send({ cmd: "llm_select", provider, model: modelId })
+                  // `backend` is mandatory: _cmd_llm_select rejects the command
+                  // outright without it. max_tokens and reasoning_enabled are
+                  // resent so selecting a model does not silently reset them.
+                  void engine.send({
+                    cmd: "llm_select",
+                    backend: "remote",
+                    provider,
+                    model: modelId,
+                    max_tokens: engine.settings.config?.maxTokens ?? 4096,
+                    reasoning_enabled: engine.settings.config?.reasoningEnabled ?? false,
+                  })
                 }
                 onSelectProfile={(profileKey) =>
                   void engine.send({ cmd: "voice_profile_select", profile: profileKey })
