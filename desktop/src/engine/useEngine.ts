@@ -33,6 +33,14 @@ import { initialVoice, reduceVoice } from "./voice";
 const EVENT_CHANNEL = "soca://engine-event";
 const STATUS_CHANNEL = "soca://engine-status";
 
+/** Mirrors `LaunchOptions` in `src-tauri/src/engine.rs`. Built by `launch.ts`. */
+export interface LaunchOptions {
+  program?: string;
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
 /** `voice_level` arrives per audio frame; §7 obligation 5 requires throttling. */
 const HIGH_FREQUENCY_EVENTS = new Set(["voice_level"]);
 /** Frames kept for the on-screen log. Older ones are dropped, not paged. */
@@ -172,7 +180,7 @@ export function useEngine() {
     };
   }, []);
 
-  const start = useCallback(async (options?: { program?: string; args?: string[]; cwd?: string }) => {
+  const start = useCallback(async (options?: LaunchOptions) => {
     setErrors([]);
     setLog([]);
     setHello(null);

@@ -31,6 +31,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { documentIndex } from "@/engine/documents";
+import { launchOptions } from "@/engine/launch";
 import { useEngine } from "@/engine/useEngine";
 
 export default function App() {
@@ -48,7 +49,7 @@ export default function App() {
       return;
     }
     autoStarted.current = true;
-    void start({ program: "soca" });
+    void start(launchOptions());
   }, [ready, start]);
 
   const connected = engine.status.state === "running";
@@ -72,7 +73,7 @@ export default function App() {
         <StartupView
           starting={false}
           problem={startupProblem}
-          onStart={(program) => void engine.start({ program })}
+          onStart={(program) => void engine.start({ ...launchOptions(), program })}
         />
       </main>
     );
@@ -95,7 +96,7 @@ export default function App() {
 
   const restartEngine = async () => {
     await engine.stop();
-    await engine.start({ program: "soca" });
+    await engine.start(launchOptions());
   };
 
   return (

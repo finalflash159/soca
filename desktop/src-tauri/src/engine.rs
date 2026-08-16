@@ -9,6 +9,7 @@
 //!   audio devices and provider clients were released, so SIGKILL is a last
 //!   resort, not the normal path.
 
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -49,7 +50,7 @@ pub enum EngineStatus {
     },
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LaunchOptions {
     /// Executable to run. Defaults to `soca` resolved on PATH.
@@ -61,6 +62,14 @@ pub struct LaunchOptions {
     /// Working directory for the child process.
     #[serde(default)]
     pub cwd: Option<String>,
+    /// Extra environment variables for the child, merged over the inherited set.
+    ///
+    /// This exists for `PYTHONPATH`. `soca` on PATH is an editable install that
+    /// pins one checkout, so a dev running this app from a git worktree would
+    /// otherwise launch the *other* checkout's Python source and never see
+    /// their own changes.
+    #[serde(default)]
+    pub env: HashMap<String, String>,
 }
 
 impl LaunchOptions {
@@ -176,11 +185,7 @@ pub fn engine_start(
         return Err("engine already running".to_string());
     }
 
-    let options = options.unwrap_or(LaunchOptions {
-        program: None,
-        args: Vec::new(),
-        cwd: None,
-    });
+    let options = options.unwrap_or_default();
     let (program, args) = options.resolve();
     emit_status(
         &app,
@@ -198,6 +203,19 @@ pub fn engine_start(
     if let Some(cwd) = &options.cwd {
         command.current_dir(cwd);
     }
+    command.envs(&options.env);
+
+    // Which interpreter and which source tree actually ran is the first thing
+    // anyone needs when the engine misbehaves, and it is invisible otherwise.
+    eprintln!(
+        "[soca-desktop] launching `{program} {}`{}",
+        args.join(" "),
+        options
+            .env
+            .iter()
+            .map(|(key, value)| format!(" {key}={value}"))
+            .collect::<String>()
+    );
 
     let mut child = command.spawn().map_err(|error| {
         format!("could not start `{program}`: {error}. Is soca on PATH, or set a program override?")
