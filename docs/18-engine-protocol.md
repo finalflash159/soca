@@ -400,16 +400,29 @@ citation labels (`[K1]`, `[M1]`) before publishing, so a delta never shows a
 marker the final text removes. Provenance arrives as the structured `citations`
 list, never as prose.
 
-On the chat surface the chunks are guardrail-passed sentences, and concatenating
-every `payload.text` in order reproduces `chat/done.text` **up to the outer
-edges**, so a client appends rather than replaces. The qualifier is load-bearing:
-`answer_chunk_without_citation_labels` deliberately preserves each chunk's
-leading and trailing whitespace — stripping it would glue the last word of one
-chunk to the first word of the next — while the whole-answer cleaner ends with
-`.strip()`. A client verifying the reassembly must compare the **trimmed** pair;
-an exact comparison fires on any answer ending in a space or newline, which is
-most of them. A divergence that survives trimming is real: a dropped frame, or a
-trailing `Nguồn:` footer that only the whole-answer cleaner removes. On the voice surface a delta is a raw model token,
+On the chat surface the chunks are guardrail-passed sentences, **stripped of
+their surrounding whitespace**, so a client appends them **with a separator**
+rather than concatenating them.
+
+`pop_ready_sentence` (`soca/core/streaming.py`) returns `buffer[:end].strip()`
+and hands back `buffer[end:].lstrip()`; the tail is `buffer.strip()` too. The
+space between two sentences is therefore discarded on both sides, while
+`chat/done.text` — built from the raw token join — keeps it:
+
+```text
+chunks : ["Xin chào! Mình là Sơn Ca.", "Hôm nay mình giúp gì được?"]
+"".join → "Xin chào! Mình là Sơn Ca.Hôm nay mình giúp gì được?"   ✗ glued
+" ".join → "Xin chào! Mình là Sơn Ca. Hôm nay mình giúp gì được?"  ✓
+```
+
+A client verifying its reassembly must therefore compare with whitespace
+collapsed. What survives that is real: a dropped frame, or a trailing `Nguồn:`
+footer that only the whole-answer cleaner removes.
+
+> This is a rough edge, not a designed contract. Making chunk boundaries
+> whitespace-preserving is an engine-side change in `pop_ready_sentence`, and it
+> would touch every consumer of that splitter — including TTS — so it is
+> recorded here rather than taken unilaterally. On the voice surface a delta is a raw model token,
 so chunk boundaries fall mid-word and the concatenation is not byte-identical to
 the caption; `voice/done.text` is authoritative there.
 

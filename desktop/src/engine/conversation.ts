@@ -117,6 +117,26 @@ function indexForRun(turns: Turn[], runId: string): number {
   return -1;
 }
 
+/**
+ * Join a chat chunk onto the text so far.
+ *
+ * A separator is inserted when neither side carries one, because the sentence
+ * splitter strips it away. Voice chunks keep their own edges, but those never
+ * reach here — see the surface guard in `reduceWorkflow`.
+ */
+function appendChunk(sofar: string, chunk: string): string {
+  if (sofar === "") {
+    return chunk;
+  }
+  const joined = /\s$/.test(sofar) || /^\s/.test(chunk);
+  return joined ? sofar + chunk : `${sofar} ${chunk}`;
+}
+
+/** Whitespace-insensitive comparison for the reassembly check. */
+function normalise(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
 function patch(state: ConversationState, index: number, change: Partial<Turn>): ConversationState {
   if (index < 0) {
     return state;
@@ -146,7 +166,7 @@ function reduceWorkflow(state: ConversationState, frame: WorkflowFrame): Convers
     }
     const turn = state.turns[target];
     return patch(state, target, {
-      streamedText: turn.streamedText + text,
+      streamedText: appendChunk(turn.streamedText, text),
       deltaCount: turn.deltaCount + 1,
     });
   }
@@ -190,7 +210,7 @@ export function reduceConversation(
       const turn = state.turns[index];
       const finalText = frame.text ?? "";
       const mismatch =
-        turn.deltaCount > 0 && turn.streamedText.trim() !== finalText.trim()
+        turn.deltaCount > 0 && normalise(turn.streamedText) !== normalise(finalText)
           ? true
           : state.reassemblyMismatch;
       const next = patch(state, index, {

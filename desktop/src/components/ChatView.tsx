@@ -7,10 +7,11 @@
  * 14px text across a 1100px window is a wall, and SoCa's answers are spoken
  * sentences, not documents.
  *
- * So: a 46rem reading column, metadata at 10px in muted, and no chrome around a
- * message unless it carries meaning. The one place colour is spent is the
- * assistant's left rule — gold for an answer, dashed for a refusal, red for a
- * failure — because that distinction is the product's whole point.
+ * So: a narrow reading column, metadata at 10px in muted, and no chrome around
+ * an answer at all. An earlier revision drew a gold rule down the left of every
+ * assistant turn; it decorated the ordinary case and drew the eye to nothing in
+ * particular. Only the two exceptional outcomes are marked now — a refusal and a
+ * failure — because those are the ones a reader must not mistake for an answer.
  *
  * Rendering rules from `docs/18-engine-protocol.md`: answers are plain speech
  * text, never markdown; provenance is the structured `citations` list; and a
@@ -59,15 +60,17 @@ function AssistantTurn({
   const status = turnStatus(turn);
   const text = turnText(turn);
 
+  // No rule on the ordinary path: an answer is the default, and marking the
+  // default marks nothing.
   const rule =
     status === "failed"
-      ? "border-destructive/70"
+      ? "border-destructive/70 border-l-2 pl-4"
       : status === "blocked"
-        ? "border-muted-foreground/40 border-dashed"
-        : "border-primary/70";
+        ? "border-muted-foreground/40 border-l-2 border-dashed pl-4"
+        : "";
 
   return (
-    <div className={`border-l-2 pl-4 ${rule}`}>
+    <div className={rule}>
       {status === "failed" && <p className="text-destructive text-sm">{turn.error}</p>}
 
       {status === "blocked" && (

@@ -53,14 +53,14 @@ const terminal = (status: string, runId = RUN): EngineFrame =>
 
 describe("streaming assembly", () => {
   it("appends deltas rather than replacing them", () => {
-    const state = fold([start("hỏi gì đó"), delta("Cơ bắp "), delta("tạo lực."), done("Cơ bắp tạo lực.")]);
+    const state = fold([start("hỏi gì đó"), delta("Cơ bắp"), delta("tạo lực."), done("Cơ bắp tạo lực.")]);
     expect(state.turns[0].streamedText).toBe("Cơ bắp tạo lực.");
     expect(state.turns[0].deltaCount).toBe(2);
   });
 
-  it("preserves chunk-boundary whitespace exactly", () => {
-    // Regression shape for the caption bug: per-chunk cleaning that strips
-    // leading/trailing space reassembles as "cơ bắp.Nó tạo".
+  it("does not double the separator when a chunk already carries one", () => {
+    // Voice chunks keep their edges; only stripped chat sentences need a
+    // separator inserted.
     const state = fold([
       start("q"),
       delta("Nó làm khỏe cơ bắp. "),
@@ -71,8 +71,29 @@ describe("streaming assembly", () => {
     expect(state.reassemblyMismatch).toBe(false);
   });
 
-  it("flags a stream that does not reassemble into the final answer", () => {
-    const state = fold([start("q"), delta("Cơ bắp."), delta("Nó tạo"), done("Cơ bắp. Nó tạo")]);
+  it("joins stripped sentences with a separator", () => {
+    // pop_ready_sentence returns buffer[:end].strip() and lstrips the rest, so
+    // the space between two sentences reaches no client. Concatenating gives
+    // "Sơn Ca.Hôm nay"; joining with a separator gives the answer.
+    const state = fold([
+      start("q"),
+      delta("Xin chào! Mình là Sơn Ca."),
+      delta("Hôm nay mình giúp gì được?"),
+      done("Xin chào! Mình là Sơn Ca. Hôm nay mình giúp gì được?"),
+    ]);
+    expect(state.turns[0].streamedText).toBe(
+      "Xin chào! Mình là Sơn Ca. Hôm nay mình giúp gì được?",
+    );
+    expect(state.reassemblyMismatch).toBe(false);
+  });
+
+  it("flags a dropped frame", () => {
+    const state = fold([
+      start("q"),
+      delta("Câu một."),
+      delta("Câu ba."),
+      done("Câu một. Câu hai. Câu ba."),
+    ]);
     expect(state.reassemblyMismatch).toBe(true);
   });
 
@@ -82,15 +103,22 @@ describe("streaming assembly", () => {
     // every answer (docs/18 §6).
     const state = fold([
       start("q"),
-      delta("Xin chào. "),
-      delta("Bạn khỏe không?\n"),
-      done("Xin chào. Bạn khỏe không?"),
+      delta("Xin chào."),
+      delta("Bạn khỏe không?"),
+      done("Xin chào. Bạn khỏe không?\n"),
     ]);
     expect(state.reassemblyMismatch).toBe(false);
   });
 
-  it("still flags an interior divergence", () => {
-    const state = fold([start("q"), delta("Cơ bắp."), delta("Nó tạo"), done("Cơ bắp. Nó tạo")]);
+  it("flags a footer only the whole-answer cleaner removes", () => {
+    // The model is told not to write one; when it does, the stream shows text
+    // the final answer hides, and that is worth surfacing.
+    const state = fold([
+      start("q"),
+      delta("Câu trả lời."),
+      delta("Nguồn: wiki/a.md"),
+      done("Câu trả lời."),
+    ]);
     expect(state.reassemblyMismatch).toBe(true);
   });
 
