@@ -24,6 +24,17 @@ def _doc() -> str:
     return PROTOCOL_DOC.read_text(encoding="utf-8")
 
 
+def _doc_cells() -> str:
+    """The document with table-cell padding collapsed.
+
+    A markdown formatter pads every cell to align the column, turning
+    ``| `done` |`` into ``| `done`    |``. That padding is layout, not content,
+    and matching on it made these assertions fail on a pure reformat. Collapsing
+    runs of spaces around the pipes keeps the checks about what the table says.
+    """
+    return re.sub(r"[ \t]*\|[ \t]*", " | ", _doc())
+
+
 def _engine_source() -> str:
     return ENGINE_SOURCE.read_text(encoding="utf-8")
 
@@ -69,8 +80,13 @@ def _documented_commands() -> frozenset[str]:
     not mistaken for a command name.
     """
     section = _doc_section("## 2. Commands", "## 3. Event envelope")
-    body = section[section.index("| --- |") :]
-    return frozenset(re.findall(r"^\| `([a-z_]+)` \|", body, re.MULTILINE))
+    body = re.sub(r"[ \t]*\|[ \t]*", " | ", section)
+    # The separator row is matched by shape, not by a literal: a formatter sets
+    # each run of dashes to the column width, so `| --- |` becomes `| ------ |`.
+    separator = re.search(r"^\s*\|[\s|:-]*-[\s|:-]*\|\s*$", body, re.MULTILINE)
+    assert separator is not None, "§2 command table has no separator row"
+    body = body[separator.end() :]
+    return frozenset(re.findall(r"^ \| `([a-z_]+)` \|", body, re.MULTILINE))
 
 
 def test_protocol_version_is_pinned() -> None:
@@ -78,7 +94,7 @@ def test_protocol_version_is_pinned() -> None:
     assert PROTOCOL_VERSION == 2
     assert CURRENT_PROTOCOL_VERSION == PROTOCOL_VERSION
     assert SUPPORTED_PROTOCOL_VERSIONS == (2,)
-    assert "| Protocol version | `2`" in _doc()
+    assert "| Protocol version | `2`" in _doc_cells()
 
 
 def test_every_emitted_event_is_documented() -> None:
@@ -143,7 +159,9 @@ def test_chat_event_types_are_pinned() -> None:
     ) | set(re.findall(r'\{"event": "chat", "type": "([a-z_]+)"', source))
     assert chat_types == {"loading", "ready", "start", "done", "error"}
     for chat_type in sorted(chat_types):
-        assert f"| `{chat_type}` |" in _doc(), f"chat type {chat_type} missing from docs/18 §4"
+        assert f"| `{chat_type}` |" in _doc_cells(), (
+            f"chat type {chat_type} missing from docs/18 §4"
+        )
 
 
 def test_voice_event_types_are_pinned() -> None:

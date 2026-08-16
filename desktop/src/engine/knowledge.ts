@@ -100,6 +100,37 @@ export interface IndexJob {
   detail: string;
   vault: string;
   errorCode: string | null;
+  /**
+   * Build progress, which the engine reports on every step and this used to
+   * discard.
+   *
+   * `_cmd_knowledge_index` emits a `knowledge_setup` frame per phase carrying
+   * `phase`, `completed_chunks`, `total_chunks`, `reused_chunks`,
+   * `embedded_chunks` and `documents`. Keeping only `detail` left the panel
+   * showing one unchanging line for the whole build, which is indistinguishable
+   * from a hang.
+   */
+  phase: string | null;
+  completedChunks: number | null;
+  totalChunks: number | null;
+  reusedChunks: number | null;
+  embeddedChunks: number | null;
+}
+
+/** The vault, as `status` reports it. */
+export interface VaultInfo {
+  path: string;
+  /** False before `knowledge_init` creates the `wiki/` scaffold. */
+  initialized: boolean;
+}
+
+/** A built index, as `status` reports it. */
+export interface IndexInfo {
+  documents: number;
+  chunks: number;
+  sparseState: string;
+  denseState: string;
+  revision: number | null;
 }
 
 export interface KnowledgeState {
@@ -109,10 +140,17 @@ export interface KnowledgeState {
   memory: MemorySnapshot | null;
   proposals: MemoryProposal[];
   /** Result of the last approve/reject, so the UI can confirm or explain. */
-  lastAction: { proposalId: string; action: string; ok: boolean; errorCode: string | null } | null;
+  lastAction: {
+    proposalId: string;
+    action: string;
+    ok: boolean;
+    errorCode: string | null;
+  } | null;
   indexJob: IndexJob | null;
   compaction: { status: string; detail: string | null } | null;
-  vault: string | null;
+  vault: VaultInfo | null;
+  index: IndexInfo | null;
+  /** Null until a `status` frame arrives; false means no index exists yet. */
   indexPresent: boolean | null;
 }
 
@@ -125,6 +163,7 @@ export const initialKnowledge: KnowledgeState = {
   indexJob: null,
   compaction: null,
   vault: null,
+  index: null,
   indexPresent: null,
 };
 
@@ -227,7 +266,9 @@ export function reduceKnowledge(state: KnowledgeState, frame: EngineFrame): Know
         },
       };
 
-    case "knowledge_setup":
+    case "knowledge_setup": {
+      const optionalNum = (value: unknown): number | null =>
+        typeof value === "number" && Number.isFinite(value) ? value : null;
       return {
         ...state,
         indexJob: {
@@ -236,16 +277,55 @@ export function reduceKnowledge(state: KnowledgeState, frame: EngineFrame): Know
           detail: str(frame.detail),
           vault: str(frame.vault),
           errorCode: typeof frame.error_code === "string" ? frame.error_code : null,
+          phase: typeof frame.phase === "string" ? frame.phase : null,
+          completedChunks: optionalNum(frame.completed_chunks),
+          totalChunks: optionalNum(frame.total_chunks),
+          reusedChunks: optionalNum(frame.reused_chunks),
+          embeddedChunks: optionalNum(frame.embedded_chunks),
         },
-        vault: str(frame.vault) || state.vault,
+        // `knowledge_setup.vault` is a plain path string, unlike `status`.
+        vault:
+          str(frame.vault) !== ""
+            ? {
+                path: str(frame.vault),
+                initialized: state.vault?.initialized ?? false,
+              }
+            : state.vault,
       };
+    }
 
-    case "status":
+    case "status": {
+      // `knowledge_vault` is an object — `{path, initialized, index_home}` —
+      // not a string. Testing `typeof … === "string"` never matched, so the
+      // vault path was dropped on every status frame and the panel claimed it
+      // had none while the engine was reporting one.
+      const vaultFrame = frame.knowledge_vault;
+      const vault =
+        vaultFrame !== null && typeof vaultFrame === "object"
+          ? {
+              path: str((vaultFrame as Record<string, unknown>).path),
+              initialized: (vaultFrame as Record<string, unknown>).initialized === true,
+            }
+          : state.vault;
+
+      const indexFrame = frame.knowledge_index;
+      const hasIndex = indexFrame !== null && typeof indexFrame === "object";
+      const record = indexFrame as Record<string, unknown> | null;
       return {
         ...state,
-        indexPresent: frame.knowledge_index !== null && frame.knowledge_index !== undefined,
-        vault: typeof frame.knowledge_vault === "string" ? frame.knowledge_vault : state.vault,
+        vault,
+        indexPresent: hasIndex,
+        index: hasIndex
+          ? {
+              documents: num(record?.documents),
+              chunks: num(record?.chunks),
+              sparseState: str(record?.sparse_state, "unknown"),
+              denseState: str(record?.dense_state, "unknown"),
+              revision: typeof record?.revision === "number" ? (record.revision as number) : null,
+            }
+          : null,
       };
+    }
 
     default:
       return state;

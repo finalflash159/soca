@@ -223,3 +223,96 @@ describe("unknown frames", () => {
     expect(fold([{ event: "usage" } as EngineFrame])).toEqual(initialKnowledge);
   });
 });
+
+describe("vault and index status", () => {
+  // Captured from a live `status` frame on 2026-08-17.
+  const status = {
+    event: "status",
+    knowledge_vault: {
+      path: "/w/Knowledge",
+      initialized: true,
+      index_home: "/w/Knowledge/.soca/knowledge_index",
+    },
+    knowledge_index: {
+      sparse_state: "ready",
+      dense_state: "ready",
+      revision: 2,
+      documents: 31,
+      chunks: 396,
+    },
+  } as EngineFrame;
+
+  it("reads the vault path, which is an object and not a string", () => {
+    // The reducer used to test `typeof knowledge_vault === "string"`. That never
+    // matched, so the panel reported no vault while the engine named one.
+    const state = fold([status]);
+    expect(state.vault?.path).toBe("/w/Knowledge");
+  });
+
+  it("knows the vault is already initialised", () => {
+    // This is what decides whether Init is offered at all. Without it the app
+    // showed a button that recreates a scaffold that exists.
+    expect(fold([status]).vault?.initialized).toBe(true);
+  });
+
+  it("keeps the index size and backend states", () => {
+    const index = fold([status]).index;
+    expect(index?.documents).toBe(31);
+    expect(index?.chunks).toBe(396);
+    expect(index?.sparseState).toBe("ready");
+    expect(index?.denseState).toBe("ready");
+  });
+
+  it("reports no index when the engine reports none", () => {
+    const state = fold([
+      { event: "status", knowledge_vault: { path: "/w", initialized: false } } as EngineFrame,
+    ]);
+    expect(state.indexPresent).toBe(false);
+    expect(state.index).toBeNull();
+    expect(state.vault?.initialized).toBe(false);
+  });
+});
+
+describe("index build progress", () => {
+  const running = (extra: Record<string, unknown>): EngineFrame =>
+    ({
+      event: "knowledge_setup",
+      action: "index",
+      status: "running",
+      vault: "/w/Knowledge",
+      detail: "Đang tạo embedding…",
+      ...extra,
+    }) as EngineFrame;
+
+  it("keeps the counters the engine sends on every step", () => {
+    // Dropping these is what made a build look frozen: one unchanging line for
+    // its whole duration.
+    const job = fold([
+      running({ phase: "embedding", completed_chunks: 120, total_chunks: 396, reused_chunks: 40 }),
+    ]).indexJob;
+    expect(job?.phase).toBe("embedding");
+    expect(job?.completedChunks).toBe(120);
+    expect(job?.totalChunks).toBe(396);
+    expect(job?.reusedChunks).toBe(40);
+  });
+
+  it("leaves counters null in the scanning phase, before a total is known", () => {
+    const job = fold([running({ phase: "scanning" })]).indexJob;
+    expect(job?.phase).toBe("scanning");
+    expect(job?.totalChunks).toBeNull();
+  });
+
+  it("is running until a terminal status arrives", () => {
+    expect(indexJobRunning(fold([running({ phase: "embedding" })]).indexJob)).toBe(true);
+    const done = fold([
+      {
+        event: "knowledge_setup",
+        action: "index",
+        status: "ok",
+        vault: "/w",
+        detail: "xong",
+      } as EngineFrame,
+    ]);
+    expect(indexJobRunning(done.indexJob)).toBe(false);
+  });
+});

@@ -1,30 +1,34 @@
 /**
- * Phase 4 surface: retrieval inspector, memory, and vault/index management.
+ * Knowledge: the vault, its index, session memory, and the last retrieval.
  *
- * The retrieval inspector is not a debug view. Groundedness is the repository's
- * top open blocker, and the plan's argument is that a UI which makes evidence
- * cheap to check is the second line of defence: people only verify when
- * verifying is one glance rather than one navigation. So the passages, their
- * per-backend scores and the gate's verdict sit on the same screen as the
- * answer's provenance — nothing is re-scored or re-judged here.
+ * Rebuilt after four defects that all had the same shape — the engine reported
+ * something and the client threw it away, so the screen showed less than was
+ * known and offered actions that made no sense:
+ *
+ * 1. `status.knowledge_vault` is an object, and the reducer tested it with
+ *    `typeof … === "string"`. The path never matched, so the panel claimed
+ *    there was no vault while the engine was naming one.
+ * 2. `initialized` was never read, so **Init was offered on an already
+ *    initialised vault** — a button that recreates a scaffold that exists.
+ * 3. `documents`, `chunks`, `sparse_state` and `dense_state` were reduced to
+ *    one boolean, so a built index could only ever say "present".
+ * 4. Build progress — phase and per-chunk counters, emitted on every step — was
+ *    dropped, so an index build looked frozen for its whole duration.
+ *
+ * Ordering follows what a person asks, not how the engine is built: where are
+ * my documents, are they searchable, what does the assistant remember, and only
+ * then what did the last turn actually retrieve.
  */
 
-import { ThinkingOrb } from "thinking-orbs";
+import { BookOpen, Database, FolderOpen, Search } from "lucide-react";
 
+import { EmptyState, Field, Section, Stat } from "@/components/Page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { PanelEmpty, PanelSection } from "@/components/PanelSection";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import type { KnowledgeState } from "@/engine/knowledge";
+import type { IndexJob, KnowledgeState } from "@/engine/knowledge";
 import { evidenceSummary, indexJobRunning, memoryModeSummary } from "@/engine/knowledge";
+import { cn } from "@/lib/utils";
 
 interface KnowledgePanelProps {
   knowledge: KnowledgeState;
@@ -41,81 +45,160 @@ function score(value: number | null | undefined): string {
   return typeof value === "number" ? value.toFixed(3) : "—";
 }
 
-function RetrievalInspector({ knowledge }: { knowledge: KnowledgeState }) {
-  const trace = knowledge.retrieval;
+const PHASE_LABEL: Record<string, string> = {
+  scanning: "Đang quét tài liệu",
+  chunking: "Đang chia chunk",
+  embedding: "Đang tạo embedding",
+  persisting: "Đang ghi vector index",
+  verifying: "Đang kiểm tra",
+  complete: "Đã xong",
+};
+
+/**
+ * What the build is doing, with a bar that actually moves.
+ *
+ * The engine sends `completed_chunks` and `total_chunks` on every step. A
+ * spinner alone cannot distinguish a long embedding pass from a wedged thread,
+ * which is why this screen used to read as hung.
+ */
+function IndexProgress({ job }: { job: IndexJob }) {
+  const done = job.completedChunks;
+  const total = job.totalChunks;
+  const fraction = total !== null && total > 0 && done !== null ? Math.min(1, done / total) : null;
 
   return (
-    <PanelSection
-      title="Retrieval"
-      description={trace?.query ?? "nothing retrieved yet"}
-      status={
-        trace !== null ? (
-          <>
-            <Badge variant="outline">tier {trace.tier}</Badge>
-            <span className="text-muted-foreground text-xs">{trace.latencyMs.toFixed(0)} ms</span>
-          </>
+    <div className="flex flex-col gap-2">
+      <div className="flex items-baseline justify-between gap-3 text-sm">
+        <span>{job.phase !== null ? (PHASE_LABEL[job.phase] ?? job.detail) : job.detail}</span>
+        {done !== null && total !== null && total > 0 && (
+          <span className="text-muted-foreground font-mono text-xs tabular-nums">
+            {done}/{total}
+          </span>
+        )}
+      </div>
+      <div className="bg-secondary h-1.5 w-full overflow-hidden rounded-full">
+        <div
+          className={cn(
+            "bg-primary h-full rounded-full",
+            // With no total yet — the scanning phase — a fixed sliver that
+            // pulses says "working" without claiming a position it cannot know.
+            fraction === null ? "w-1/4 animate-pulse" : "transition-[width] duration-300",
+          )}
+          style={fraction === null ? undefined : { width: `${fraction * 100}%` }}
+        />
+      </div>
+      {(job.reusedChunks ?? 0) > 0 && (
+        <p className="text-muted-foreground text-xs">
+          Dùng lại {job.reusedChunks} chunk chưa đổi · nhúng mới {job.embeddedChunks ?? 0}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function VaultSection({
+  knowledge,
+  connected,
+  onInit,
+}: Pick<KnowledgePanelProps, "knowledge" | "connected" | "onInit">) {
+  const running = indexJobRunning(knowledge.indexJob);
+  const vault = knowledge.vault;
+  const initialized = vault?.initialized === true;
+
+  return (
+    <Section
+      icon={FolderOpen}
+      title="Vault"
+      description="Thư mục markdown mà trợ lý được phép đọc."
+      actions={
+        // Init only when there is something to initialise. Offering it on a
+        // ready vault is what made the button unexplainable.
+        !initialized ? (
+          <Button size="sm" disabled={!connected || running} onClick={onInit}>
+            Tạo vault
+          </Button>
         ) : null
       }
     >
-      <div className="flex flex-col gap-3">
-        {trace === null ? (
-          <PanelEmpty>
-            A turn the router resolves to no capability never reaches the vault, so an empty
-            inspector is a normal outcome rather than a fault.
-          </PanelEmpty>
-        ) : (
-          <>
-            <div className="bg-muted/40 rounded-md px-3 py-2 text-sm">
-              {evidenceSummary(trace.evidence)}
-              {trace.evidence !== null && (
-                <div className="text-muted-foreground mt-1 flex flex-wrap gap-3 font-mono text-[10px]">
-                  <span>status {trace.evidence.status ?? "—"}</span>
-                  <span>top {score(trace.evidence.top_score)}</span>
-                  <span>margin {score(trace.evidence.margin)}</span>
-                  <span>hits {trace.evidence.hit_count ?? 0}</span>
-                  <span>rejected {trace.rejectedCount}</span>
-                  {trace.evidence.reason != null && (
-                    <span>reason {String(trace.evidence.reason)}</span>
-                  )}
-                </div>
-              )}
+      {vault === null ? (
+        <p className="text-muted-foreground text-sm">Chưa nhận được trạng thái vault từ engine.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <Field label="Đường dẫn">
+            <div className="border-border bg-muted/40 flex h-10 items-center rounded-lg border px-3">
+              <span className="truncate font-mono text-xs">{vault.path}</span>
             </div>
+          </Field>
+          {!initialized && (
+            <p className="text-muted-foreground text-sm leading-6">
+              Thư mục này chưa có cấu trúc vault. “Tạo vault” dựng thư mục{" "}
+              <code className="bg-secondary rounded px-1 py-0.5 font-mono text-xs">wiki/</code> và
+              các file mẫu; nó không xoá gì sẵn có. Phải làm bước này trước khi dựng chỉ mục.
+            </p>
+          )}
+        </div>
+      )}
+    </Section>
+  );
+}
 
-            {trace.columns.map((column) => (
-              <div key={column.source} className="flex flex-col gap-1">
-                <span className="text-muted-foreground text-xs font-medium">{column.source}</span>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>path</TableHead>
-                      <TableHead className="w-20 text-right">score</TableHead>
-                      <TableHead className="w-20 text-right">sparse</TableHead>
-                      <TableHead className="w-20 text-right">dense</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {column.hits.map((hit, index) => (
-                      <TableRow key={`${hit.path}-${index}`}>
-                        <TableCell className="font-mono text-[11px]">{hit.path}</TableCell>
-                        <TableCell className="text-right font-mono text-[11px]">
-                          {score(hit.score)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-[11px]">
-                          {score(hit.sparse_score)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-[11px]">
-                          {score(hit.dense_score)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            ))}
-          </>
-        )}
-      </div>
-    </PanelSection>
+function IndexSection({
+  knowledge,
+  connected,
+  onIndex,
+}: Pick<KnowledgePanelProps, "knowledge" | "connected" | "onIndex">) {
+  const running = indexJobRunning(knowledge.indexJob);
+  const index = knowledge.index;
+  const job = knowledge.indexJob;
+  const initialized = knowledge.vault?.initialized === true;
+
+  return (
+    <Section
+      icon={Database}
+      title="Chỉ mục truy xuất"
+      description="Không có chỉ mục thì trợ lý không tìm được gì trong vault."
+      actions={
+        <Button
+          size="sm"
+          variant={index === null ? "default" : "outline"}
+          disabled={!connected || running || !initialized}
+          onClick={onIndex}
+        >
+          {running ? "Đang dựng…" : index === null ? "Dựng chỉ mục" : "Dựng lại"}
+        </Button>
+      }
+    >
+      {running && job !== null ? (
+        <IndexProgress job={job} />
+      ) : index === null ? (
+        <p className="text-muted-foreground text-sm leading-6">
+          {initialized
+            ? "Chưa có chỉ mục. Dựng một lần, rồi chỉ dựng lại khi tài liệu đổi."
+            : "Tạo vault trước đã."}
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <Stat label="Tài liệu">{index.documents}</Stat>
+          <Stat label="Chunk">{index.chunks}</Stat>
+          <Stat label="Tìm theo từ khoá">
+            <Badge variant={index.sparseState === "ready" ? "secondary" : "outline"}>
+              {index.sparseState}
+            </Badge>
+          </Stat>
+          <Stat label="Tìm theo ngữ nghĩa">
+            <Badge variant={index.denseState === "ready" ? "secondary" : "outline"}>
+              {index.denseState}
+            </Badge>
+          </Stat>
+        </div>
+      )}
+
+      {job?.errorCode != null && !running && (
+        <p className="text-destructive text-sm">
+          {job.detail} ({job.errorCode})
+        </p>
+      )}
+    </Section>
   );
 }
 
@@ -128,98 +211,65 @@ function MemorySection({
   onReject,
 }: Omit<KnowledgePanelProps, "onInit" | "onIndex">) {
   const trace = knowledge.memoryTrace;
+  const proposals = knowledge.proposals;
 
   return (
-    <PanelSection
-      title="Memory"
+    <Section
+      icon={BookOpen}
+      title="Bộ nhớ"
       description={memoryModeSummary(trace)}
-      status={
-        trace !== null && trace.backgroundStatus !== "idle" ? (
-          <Badge variant="secondary">{trace.backgroundStatus}</Badge>
-        ) : null
-      }
-      action={
+      actions={
         <>
           <Button size="sm" variant="ghost" disabled={!connected} onClick={onRefreshMemory}>
-            Refresh
+            Tải lại
           </Button>
           <Button size="sm" variant="outline" disabled={!connected} onClick={onCompact}>
-            Compact
+            Nén
           </Button>
         </>
       }
     >
-      <div className="flex flex-col gap-3">
-        {trace !== null && (
-          <div className="text-muted-foreground flex flex-wrap gap-3 font-mono text-[10px]">
-            <span>worker {trace.summaryWorkerState}</span>
-            {trace.recentTurnCount !== null && <span>recent {trace.recentTurnCount}</span>}
-            {trace.compactedTurnCount !== null && <span>compacted {trace.compactedTurnCount}</span>}
-            {trace.pendingCompaction && <span>compaction pending</span>}
-          </div>
-        )}
+      {trace !== null && (
+        <div className="flex flex-col gap-2">
+          {trace.recentTurnCount !== null && (
+            <Stat label="Lượt gần đây">{trace.recentTurnCount}</Stat>
+          )}
+          {trace.compactedTurnCount !== null && (
+            <Stat label="Đã nén">{trace.compactedTurnCount}</Stat>
+          )}
+          {trace.backgroundStatus !== "idle" && (
+            <Stat label="Tiến trình nền">
+              <Badge variant="secondary">{trace.backgroundStatus}</Badge>
+            </Stat>
+          )}
+        </div>
+      )}
 
-        {trace !== null && trace.hits.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>id</TableHead>
-                <TableHead className="w-24">corpus</TableHead>
-                <TableHead className="w-20 text-right">relevance</TableHead>
-                <TableHead className="w-20 text-right">recency</TableHead>
-                <TableHead className="w-20 text-right">total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {trace.hits.map((hit) => (
-                <TableRow key={hit.id}>
-                  <TableCell className="font-mono text-[11px]">{hit.id}</TableCell>
-                  <TableCell className="text-[11px]">{hit.corpus}</TableCell>
-                  <TableCell className="text-right font-mono text-[11px]">
-                    {score(hit.relevance)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-[11px]">
-                    {score(hit.recency)}
-                  </TableCell>
-                  <TableCell className="text-right font-mono text-[11px]">
-                    {score(hit.total)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-
-        {knowledge.memory?.summary !== undefined && knowledge.memory.summary !== "" && (
-          <ScrollArea className="h-24">
-            <p className="text-muted-foreground text-xs whitespace-pre-wrap">
+      {knowledge.memory?.summary !== undefined && knowledge.memory.summary !== "" && (
+        <Field label="Tóm tắt phiên">
+          <ScrollArea className="border-border h-28 rounded-lg border p-3">
+            <p className="text-muted-foreground text-sm leading-6 whitespace-pre-wrap">
               {knowledge.memory.summary}
             </p>
           </ScrollArea>
-        )}
+        </Field>
+      )}
 
-        <div className="flex flex-col gap-2">
-          <span className="text-muted-foreground text-xs font-medium">
-            Proposals ({knowledge.proposals.length})
-          </span>
-          {knowledge.proposals.length === 0 ? (
-            <PanelEmpty>
-              Nothing in the production runtime creates memory proposals today, so an empty inbox is
-              the expected state rather than a failure.
-            </PanelEmpty>
-          ) : (
-            knowledge.proposals.map((proposal) => (
-              <div
-                key={proposal.id}
-                className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
-              >
+      {/* The proposal inbox is rendered only when something is in it. Nothing in
+          the production runtime creates proposals today, so an always-visible
+          empty section was a control that could never do anything. */}
+      {proposals.length > 0 && (
+        <Field label={`Đề xuất chờ duyệt (${proposals.length})`}>
+          <ul className="border-border divide-border flex flex-col divide-y rounded-lg border">
+            {proposals.map((proposal) => (
+              <li key={proposal.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
                 <Badge variant="outline">{proposal.kind}</Badge>
-                <span className="flex-1">{proposal.statement}</span>
+                <span className="min-w-0 flex-1">{proposal.statement}</span>
                 <span className="text-muted-foreground font-mono text-[10px]">
                   {proposal.confidence.toFixed(2)}
                 </span>
                 <Button size="sm" disabled={!connected} onClick={() => onApprove(proposal.id)}>
-                  Approve
+                  Duyệt
                 </Button>
                 <Button
                   size="sm"
@@ -227,75 +277,113 @@ function MemorySection({
                   disabled={!connected}
                   onClick={() => onReject(proposal.id)}
                 >
-                  Reject
+                  Bỏ
                 </Button>
-              </div>
-            ))
-          )}
-          {knowledge.lastAction !== null && !knowledge.lastAction.ok && (
-            <p className="text-destructive text-xs">
-              {knowledge.lastAction.action} failed · {knowledge.lastAction.errorCode ?? "unknown"}
-            </p>
-          )}
-        </div>
-      </div>
-    </PanelSection>
+              </li>
+            ))}
+          </ul>
+        </Field>
+      )}
+
+      {knowledge.lastAction !== null && !knowledge.lastAction.ok && (
+        <p className="text-destructive text-sm">
+          {knowledge.lastAction.action} thất bại · {knowledge.lastAction.errorCode ?? "không rõ"}
+        </p>
+      )}
+    </Section>
   );
 }
 
-function VaultSection({
-  knowledge,
-  connected,
-  onInit,
-  onIndex,
-}: Pick<KnowledgePanelProps, "knowledge" | "connected" | "onInit" | "onIndex">) {
-  const running = indexJobRunning(knowledge.indexJob);
+/**
+ * The last retrieval.
+ *
+ * Kept because groundedness is the repository's top open blocker and a UI that
+ * makes evidence cheap to check is the second line of defence. Nothing is
+ * re-scored here; it shows what the engine decided.
+ */
+function RetrievalSection({ knowledge }: { knowledge: KnowledgeState }) {
+  const trace = knowledge.retrieval;
+
+  if (trace === null) {
+    return (
+      <Section icon={Search} title="Truy xuất gần nhất">
+        <p className="text-muted-foreground text-sm leading-6">
+          Chưa có lượt nào truy xuất. Một câu hỏi mà router xử lý thẳng thì không chạm tới vault —
+          bảng trống ở đây là bình thường, không phải lỗi.
+        </p>
+      </Section>
+    );
+  }
 
   return (
-    <PanelSection
-      title="Vault & index"
-      description={knowledge.vault ?? "no vault path yet"}
-      /* The plan reserves `shaping` for index builds; this is that state. */
-      status={running ? <ThinkingOrb state="shaping" size={20} /> : null}
-      action={
-        <>
-          <Button size="sm" variant="outline" disabled={!connected || running} onClick={onInit}>
-            Init
-          </Button>
-          <Button size="sm" disabled={!connected || running} onClick={onIndex}>
-            Build index
-          </Button>
-        </>
+    <Section
+      icon={Search}
+      title="Truy xuất gần nhất"
+      description={trace.query !== "" ? trace.query : undefined}
+      actions={
+        <Badge variant="outline">
+          {trace.tier} · {trace.latencyMs.toFixed(0)} ms
+        </Badge>
       }
     >
-      <div className="flex flex-col gap-2 text-sm">
-        <p>
-          Index{" "}
-          {knowledge.indexPresent === null
-            ? "unknown — ask for status"
-            : knowledge.indexPresent
-              ? "present"
-              : "not built"}
-        </p>
-        {knowledge.indexJob !== null && (
-          <p className="text-muted-foreground text-xs">
-            {knowledge.indexJob.action} · {knowledge.indexJob.status} · {knowledge.indexJob.detail}
-          </p>
-        )}
-        {knowledge.indexJob?.errorCode != null && (
-          <p className="text-destructive text-xs">{knowledge.indexJob.errorCode}</p>
-        )}
-      </div>
-    </PanelSection>
+      <p className="text-sm leading-6">{evidenceSummary(trace.evidence)}</p>
+
+      {trace.evidence !== null && (
+        <div className="flex flex-col gap-2">
+          <Stat label="Điểm cao nhất">
+            <span className="font-mono text-xs">{score(trace.evidence.top_score)}</span>
+          </Stat>
+          <Stat label="Khoảng cách với hạng 2">
+            <span className="font-mono text-xs">{score(trace.evidence.margin)}</span>
+          </Stat>
+          <Stat label="Đoạn khớp">
+            {trace.evidence.hit_count ?? 0} nhận · {trace.rejectedCount} loại
+          </Stat>
+        </div>
+      )}
+
+      {trace.columns.map((column) => (
+        <Field key={column.source} label={column.source}>
+          <ul className="border-border divide-border flex flex-col divide-y rounded-lg border">
+            {column.hits.map((hit, index) => (
+              <li
+                key={`${hit.path}-${index}`}
+                className="flex items-center gap-3 px-3 py-2 text-sm"
+              >
+                <span className="min-w-0 flex-1 truncate font-mono text-xs">{hit.path}</span>
+                <span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
+                  {score(hit.score)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Field>
+      ))}
+    </Section>
   );
 }
 
 export function KnowledgePanel(props: KnowledgePanelProps) {
+  const { knowledge } = props;
+
+  // Nothing at all yet: one clear next step instead of four empty sections.
+  if (knowledge.vault === null && knowledge.indexJob === null) {
+    return (
+      <EmptyState
+        icon={FolderOpen}
+        title="Chưa có dữ liệu kiến thức"
+        description="Engine chưa báo trạng thái vault. Trang này hiện thư mục tài liệu, chỉ mục truy xuất và bộ nhớ phiên."
+        hint={props.connected ? "Đang chờ engine trả lời…" : "Engine chưa chạy."}
+      />
+    );
+  }
+
   return (
-    <div className="flex w-full flex-col gap-3">
-      <RetrievalInspector knowledge={props.knowledge} />
-      <MemorySection {...props} />
+    <div className="divide-border flex flex-col divide-y">
       <VaultSection {...props} />
+      <IndexSection {...props} />
+      <MemorySection {...props} />
+      <RetrievalSection knowledge={knowledge} />
     </div>
   );
 }
