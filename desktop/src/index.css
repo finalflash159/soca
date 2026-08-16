@@ -49,41 +49,47 @@
 }
 
 :root {
-    /* SoCa dawn palette — single source of truth is soca/app/style/palette.py,
-       mirrored in ui/src/theme.ts. The product is dark-first: the TUI and the
-       console renderers both paint warm gold on pre-dawn indigo, so a white
-       desktop shell would be the odd surface out. */
-    --background: #14131c;
+    /* SoCa dawn palette. The accent, the text and the semantic colours are
+       exactly `soca/app/style/palette.py`, which the TUI mirrors in
+       `ui/src/theme.ts`.
+
+       The three neutrals are deliberately darker here — iron black rather than
+       pre-dawn indigo. In a terminal `BG` is a contrast token used on a single
+       highlighted row; the surface behind everything else belongs to the user's
+       terminal. In a window it is the whole canvas, and indigo across 1100x780
+       px reads as a colour choice rather than as absence. Gold on iron is the
+       same idea the palette encodes, sized for a screen. */
+    --background: #0b0b0e;
     --foreground: #e8e3d8;
-    --card: #1b1a26;
+    --card: #131317;
     --card-foreground: #e8e3d8;
-    --popover: #1b1a26;
+    --popover: #131317;
     --popover-foreground: #e8e3d8;
     --primary: #e6c07b;
-    --primary-foreground: #14131c;
-    --secondary: #2a2838;
+    --primary-foreground: #0b0b0e;
+    --secondary: #1f1f24;
     --secondary-foreground: #e8e3d8;
-    --muted: #1b1a26;
-    --muted-foreground: #767287;
-    --accent: #2a2838;
+    --muted: #131317;
+    --muted-foreground: #6f6f78;
+    --accent: #1f1f24;
     --accent-foreground: #e6c07b;
     --destructive: #e08398;
-    --destructive-foreground: #14131c;
-    --border: #2a2838;
-    --input: #2a2838;
+    --destructive-foreground: #0b0b0e;
+    --border: #1f1f24;
+    --input: #1f1f24;
     --ring: #e6c07b;
     --chart-1: #e6c07b;
     --chart-2: #a49ac9;
     --chart-3: #8ac79a;
     --chart-4: #e09652;
     --chart-5: #f2d9a4;
-    --sidebar: #1b1a26;
+    --sidebar: #131317;
     --sidebar-foreground: #e8e3d8;
     --sidebar-primary: #e6c07b;
-    --sidebar-primary-foreground: #14131c;
-    --sidebar-accent: #2a2838;
+    --sidebar-primary-foreground: #0b0b0e;
+    --sidebar-accent: #1f1f24;
     --sidebar-accent-foreground: #e6c07b;
-    --sidebar-border: #2a2838;
+    --sidebar-border: #1f1f24;
     --sidebar-ring: #e6c07b;
     --radius: 0.5rem;
 }
@@ -93,37 +99,37 @@
    only palette. A light variant would need its own review against the dawn
    ramp, and inventing one here would drift from palette.py. */
 .dark {
-    --background: #14131c;
+    --background: #0b0b0e;
     --foreground: #e8e3d8;
-    --card: #1b1a26;
+    --card: #131317;
     --card-foreground: #e8e3d8;
-    --popover: #1b1a26;
+    --popover: #131317;
     --popover-foreground: #e8e3d8;
     --primary: #e6c07b;
-    --primary-foreground: #14131c;
-    --secondary: #2a2838;
+    --primary-foreground: #0b0b0e;
+    --secondary: #1f1f24;
     --secondary-foreground: #e8e3d8;
-    --muted: #1b1a26;
-    --muted-foreground: #767287;
-    --accent: #2a2838;
+    --muted: #131317;
+    --muted-foreground: #6f6f78;
+    --accent: #1f1f24;
     --accent-foreground: #e6c07b;
     --destructive: #e08398;
-    --destructive-foreground: #14131c;
-    --border: #2a2838;
-    --input: #2a2838;
+    --destructive-foreground: #0b0b0e;
+    --border: #1f1f24;
+    --input: #1f1f24;
     --ring: #e6c07b;
     --chart-1: #e6c07b;
     --chart-2: #a49ac9;
     --chart-3: #8ac79a;
     --chart-4: #e09652;
     --chart-5: #f2d9a4;
-    --sidebar: #1b1a26;
+    --sidebar: #131317;
     --sidebar-foreground: #e8e3d8;
     --sidebar-primary: #e6c07b;
-    --sidebar-primary-foreground: #14131c;
-    --sidebar-accent: #2a2838;
+    --sidebar-primary-foreground: #0b0b0e;
+    --sidebar-accent: #1f1f24;
     --sidebar-accent-foreground: #e6c07b;
-    --sidebar-border: #2a2838;
+    --sidebar-border: #1f1f24;
     --sidebar-ring: #e6c07b;
 }
 

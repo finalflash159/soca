@@ -81,6 +81,19 @@ rejected are in [`zplan/desktop_ui_research_round2.vi.md`](../zplan/desktop_ui_r
 
 ## Decisions worth knowing
 
+**The local LLM loads on first use, never on construction.** `LocalLlamaCppLLM`
+validates its model path eagerly — a stat, so a missing file still fails when the
+engine is selected — but defers `Llama(...)` until something actually generates.
+Before that, every surface which merely *built* a runtime paid gigabytes of RAM
+and seconds of load: `soca chat` at startup, a status query, a provider switch
+that ended up remote. Releasing is symmetric: `close()` on an engine that never
+loaded is a no-op, and using one after close raises rather than silently
+reloading a released model.
+
+**The neutrals are darker than the shared palette; the accent is not.** See the
+comment at the top of `src/index.css` — `BG` is a contrast token in a terminal
+and the whole canvas in a window.
+
 **Process management is hand-rolled, not `tauri-plugin-shell`.** The shutdown
 sequence in `docs/18` §7 — send `quit`, close stdin, wait for `bye`, then
 escalate — needs direct control of the child's stdio and exit. The plugin's
