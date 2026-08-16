@@ -453,6 +453,25 @@ turns there is no partial answer to render.
   is then one delta even on the streaming path. Treat a single delta as normal,
   not as an error.
 
+**This last case is the current default, not a corner case.** Measured
+2026-08-16 through the same adapter and the same OpenRouter account, only the
+model differing:
+
+| Model | Provider chunks | Spread |
+| --- | ---: | --- |
+| `openai/gpt-5.6-luna-pro` | **1** | 0 ms |
+| `google/gemini-2.5-flash` | 4 | 103 ms |
+
+`remote_openai_llm.generate_stream` sends `stream: True` and yields per chunk, so
+the adapter is not the limiter — the model is. A UI cannot turn one chunk into
+progressive text without inventing it.
+
+There is a second gate behind that one. Even a model that streams tokens reaches
+a client as *sentences*: `pop_ready_sentence` buffers to `min_chars` and the
+sentence guardrail runs before anything is published. Token-level streaming to
+the UI would mean publishing text the guardrail has not seen, which is the same
+line ADR 0003 draws for capability turns.
+
 `sequence` is monotonic per `run_id`. Ordering across `run_id`s is not defined.
 
 ## 7. Client obligations
