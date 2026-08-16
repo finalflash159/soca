@@ -37,15 +37,16 @@ export default function App() {
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("knowledge");
   const autoStarted = useRef(false);
 
-  const { start } = engine;
-  // No button whose only job is to make the app usable.
+  const { start, ready } = engine;
+  // No button whose only job is to make the app usable — but wait for the
+  // listeners first, or the engine's opening frames are emitted into the void.
   useEffect(() => {
-    if (autoStarted.current) {
+    if (!ready || autoStarted.current) {
       return;
     }
     autoStarted.current = true;
     void start({ program: "soca" });
-  }, [start]);
+  }, [ready, start]);
 
   const connected = engine.status.state === "running";
   const starting = engine.status.state === "starting";

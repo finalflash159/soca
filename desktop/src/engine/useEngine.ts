@@ -57,6 +57,8 @@ export interface EngineSnapshot {
   /** Most recent frames, newest last. */
   log: EngineFrame[];
   errors: string[];
+  /** True once frame and status listeners are attached. */
+  ready: boolean;
 }
 
 export function useEngine() {
@@ -71,6 +73,11 @@ export function useEngine() {
   const [settings, setSettings] = useState<SettingsState>(initialSettings);
   const [log, setLog] = useState<EngineFrame[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
+  // `listen()` resolves asynchronously. Starting the engine before both
+  // listeners are attached loses the first burst of frames — hello, context
+  // and the Running status — and the UI then sits at `idle` forever while a
+  // perfectly healthy engine talks to nobody.
+  const [ready, setReady] = useState(false);
 
   // Activity must fold every frame, including the throttled ones, so it is kept
   // in a ref and flushed on a timer rather than driving a render per frame.
@@ -96,9 +103,10 @@ export function useEngine() {
   }, []);
 
   useEffect(() => {
+    let disposed = false;
     const unlisteners: Array<() => void> = [];
 
-    void listen<EngineFrame>(EVENT_CHANNEL, (event) => {
+    const frameListener = listen<EngineFrame>(EVENT_CHANNEL, (event) => {
       const frame = event.payload;
 
       activityRef.current = reduceActivity(activityRef.current, frame);
@@ -128,9 +136,9 @@ export function useEngine() {
       if (!HIGH_FREQUENCY_EVENTS.has(frame.event)) {
         setLog((previous) => [...previous.slice(-(LOG_LIMIT - 1)), frame]);
       }
-    }).then((unlisten) => unlisteners.push(unlisten));
+    });
 
-    void listen<SidecarStatus>(STATUS_CHANNEL, (event) => {
+    const statusListener = listen<SidecarStatus>(STATUS_CHANNEL, (event) => {
       setStatus(event.payload);
       if (event.payload.state === "stopped" || event.payload.state === "failed") {
         activityRef.current = initialActivity;
@@ -138,9 +146,21 @@ export function useEngine() {
         voiceRef.current = initialVoice;
         voiceDirty.current = true;
       }
-    }).then((unlisten) => unlisteners.push(unlisten));
+    });
+
+    void Promise.all([frameListener, statusListener]).then((attached) => {
+      if (disposed) {
+        for (const unlisten of attached) {
+          unlisten();
+        }
+        return;
+      }
+      unlisteners.push(...attached);
+      setReady(true);
+    });
 
     return () => {
+      disposed = true;
       for (const unlisten of unlisteners) {
         unlisten();
       }
@@ -160,6 +180,10 @@ export function useEngine() {
     setSettings(initialSettings);
     try {
       await invoke("engine_start", { options: options ?? null });
+      // The Running status also arrives as an event, but a resolved invoke is
+      // proof enough that the child spawned. Do not depend on event ordering
+      // for the one piece of state that gates the whole interface.
+      setStatus((previous) => (previous.state === "running" ? previous : { state: "running" }));
     } catch (error) {
       setStatus({ state: "failed", message: String(error) });
     }
@@ -189,6 +213,7 @@ export function useEngine() {
     versionMismatch,
     engineStatus,
     activity,
+    ready,
     conversation,
     voice,
     knowledge,
