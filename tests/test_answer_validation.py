@@ -3,6 +3,7 @@ from __future__ import annotations
 import unicodedata
 
 from soca.core.answer_validation import (
+    answer_chunk_without_citation_labels,
     answer_text_without_citation_labels,
     expected_citation_labels,
     validate_grounded_answer,
@@ -226,3 +227,37 @@ def test_answer_validation_rejects_zero_padded_citation_label() -> None:
 
     assert decision.status == "invalid"
     assert decision.unknown_labels == ("[K01]",)
+
+
+def test_chunk_cleaner_preserves_the_whitespace_that_joins_chunks() -> None:
+    """Clients concatenate chunks, so the edges carry the sentence spacing."""
+    chunks = ("Protein giữ cơ bắp [K1]. ", "Nó tạo cảm giác no [K2].")
+
+    cleaned = [answer_chunk_without_citation_labels(chunk) for chunk in chunks]
+
+    assert cleaned == ["Protein giữ cơ bắp. ", "Nó tạo cảm giác no."]
+    assert "".join(cleaned) == "Protein giữ cơ bắp. Nó tạo cảm giác no."
+
+
+def test_chunk_cleaner_matches_the_whole_answer_cleaner_when_no_footer_exists() -> None:
+    """The prompt forbids a source footer, so both cleaners must agree."""
+    answer = "Protein giữ cơ bắp [K1]. Nó tạo cảm giác no [M1]."
+
+    assert answer_chunk_without_citation_labels(answer) == (
+        answer_text_without_citation_labels(answer, ())
+    )
+
+
+def test_chunk_cleaner_leaves_a_source_footer_for_the_whole_answer_cleaner() -> None:
+    """Whether a line is the *last* footer cannot be decided from one chunk."""
+    chunk = "Nguồn:\n"
+
+    assert answer_chunk_without_citation_labels(chunk) == chunk
+
+
+def test_chunk_cleaner_normalizes_decomposed_vietnamese_before_stripping() -> None:
+    decomposed = unicodedata.normalize("NFD", "Nó tạo cảm giác no [K1].")
+
+    cleaned = answer_chunk_without_citation_labels(decomposed)
+
+    assert cleaned == "Nó tạo cảm giác no."

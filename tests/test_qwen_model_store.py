@@ -344,6 +344,63 @@ def test_quick_verify_detects_post_activation_mutation(tmp_path: Path) -> None:
     assert store.inspect(spec).state is ArtifactState.INVALID
 
 
+def test_quick_verify_survives_a_volume_device_change(tmp_path: Path) -> None:
+    """A remount must not invalidate an artifact.
+
+    `st_dev` names the mount, not the file. APFS reassigns volume device numbers
+    across reboots, so treating it as file identity invalidated every file at
+    once — observed as `artifact changed after activation: .gitattributes` with
+    all 22 files differing by exactly one in `device` and nothing else.
+
+    The receipt is rewritten with the old device rather than the filesystem
+    being mocked: that is the state a reboot actually leaves behind.
+    """
+    spec, source, root = _fixture(tmp_path)
+    store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 3)
+    _install(
+        store,
+        spec,
+        source,
+        source_kind=ArtifactSourceKind.UPSTREAM,
+        health_probe=lambda _: {"transcript": "ok"},
+    )
+
+    receipt_path = spec.receipt_path(root)
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    for entry in payload["files"]:
+        entry["device"] += 1
+    mode = stat.S_IMODE(receipt_path.stat().st_mode)
+    receipt_path.chmod(0o600)
+    receipt_path.write_text(json.dumps(payload), encoding="utf-8")
+    receipt_path.chmod(mode)
+
+    store.verify(spec, deep=False)
+    assert store.inspect(spec).state is ArtifactState.PROVISIONED
+
+
+def test_quick_verify_names_the_fields_that_changed(tmp_path: Path) -> None:
+    spec, source, root = _fixture(tmp_path)
+    store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 3)
+    _install(
+        store,
+        spec,
+        source,
+        source_kind=ArtifactSourceKind.UPSTREAM,
+        health_probe=lambda _: {"transcript": "ok"},
+    )
+    # Same bytes, so the size and digest checks pass and the per-field identity
+    # check is what fires.
+    config = spec.model_path(root) / "config.json"
+    mode = stat.S_IMODE(config.stat().st_mode)
+    config.chmod(0o600)
+    config.write_bytes(config.read_bytes())
+    config.chmod(mode)
+
+    # A path alone made a whole-volume change look like one tampered file.
+    with pytest.raises(ArtifactInvalid, match=r"config\.json \(.*mtime_ns .* -> .*\)"):
+        store.verify(spec, deep=False)
+
+
 def test_deep_verify_runs_health_probe_without_storing_transcript(tmp_path: Path) -> None:
     spec, source, root = _fixture(tmp_path)
     store = QwenArtifactStore(root, disk_free=lambda _: spec.total_bytes * 3)

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import NoReturn, Protocol, cast
+from typing import Any, NoReturn, Protocol, cast
 
 from rich.console import Console
 from rich.panel import Panel
@@ -15,6 +15,7 @@ from soca.app.usage_view import print_turn_usage
 from soca.config import DEFAULT_MAX_TOKENS, LlmSettings, SecretStore, load_settings
 from soca.core import AssistantRuntime, DefaultRuntimeToolRouter, RuntimeOptions
 from soca.core.answer_validation import (
+    answer_chunk_without_citation_labels,
     answer_text_without_citation_labels,
     expected_citation_labels,
 )
@@ -461,6 +462,10 @@ def build_text_runtime(
                 turn_workflow="controlled",
                 model_context_window=model_context_window,
                 model_max_output_tokens=selected_settings.model_max_output_tokens,
+                # This runtime's answers are read, not spoken. Voice builds its
+                # own runtime and keeps the speech prompt, so TTS never has to
+                # pronounce a bullet.
+                answer_format="markdown",
             ),
             active_goal_store=active_goal_store
             or (
@@ -512,8 +517,10 @@ def run_text_ask(
 
     user_text, metadata = normalize_text_turn(text)
     try:
-        result = bundle.runtime.run_text_turn(user_text, source="cli", metadata=metadata)
-        render_text_result(console, result, show_trace=show_trace)
+        result = stream_text_answer(
+            console, bundle.runtime, user_text, source="cli", metadata=metadata
+        )
+        render_text_result(console, result, show_trace=show_trace, answer_printed=True)
         if show_usage:
             print_turn_usage(console, TurnUsage.from_runtime_result(result))
         return result
@@ -523,19 +530,62 @@ def run_text_ask(
             close()
 
 
+def stream_text_answer(
+    console: Console,
+    runtime: Any,
+    text: str,
+    *,
+    source: str,
+    metadata: dict[str, Any],
+) -> RuntimeResult:
+    """Print the answer as the runtime produces it and return the result.
+
+    A turn that resolves to no capability arrives chunk by chunk; a turn the
+    controller held for verification yields every chunk at once, once the
+    validated answer exists. Either way the terminal only ever shows text that
+    has passed the output guardrail.
+    """
+    stream = cast(
+        Callable[..., Iterable[Any]], getattr(runtime, "stream_text_turn", None)
+    )
+    if not callable(stream):
+        raise TypeError("text runtime must implement stream_text_turn")
+    console.print(RichText(f"{ICON.BIRD} ", style=st(f"bold {ACCENT}")), end="")
+    result: RuntimeResult | None = None
+    printed = False
+    for event in stream(text, source=source, metadata=metadata):
+        if event.type == "sentence" and event.text:
+            console.print(
+                RichText(answer_chunk_without_citation_labels(event.text), style=st(TEXT)),
+                end="",
+            )
+            printed = True
+        elif event.type == "result" and event.result is not None:
+            result = event.result
+    if result is None:
+        raise RuntimeError("text runtime stream ended without a result event")
+    if not printed:
+        console.print(RichText("<empty>", style=st(TEXT)), end="")
+    console.print()
+    return result
+
+
 def render_text_result(
     console: Console,
     result: RuntimeResult,
     *,
     show_trace: bool = False,
+    answer_printed: bool = False,
 ) -> None:
-    reply = RichText()
-    reply.append(f"{ICON.BIRD} ", style=st(f"bold {ACCENT}"))
-    reply.append(
-        answer_text_without_citation_labels(result.response_text, result.citations) or "<empty>",
-        style=st(TEXT),
-    )
-    console.print(reply)
+    if not answer_printed:
+        reply = RichText()
+        reply.append(f"{ICON.BIRD} ", style=st(f"bold {ACCENT}"))
+        reply.append(
+            answer_text_without_citation_labels(result.response_text, result.citations)
+            or "<empty>",
+            style=st(TEXT),
+        )
+        console.print(reply)
     note_style = BAD if result.blocked else MUTED
     console.print(RichText(f"  {ICON.DOT} Route: {result.route.value}", style=st(note_style)))
 

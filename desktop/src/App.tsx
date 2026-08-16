@@ -1,178 +1,337 @@
 /**
- * Phase 1 surface: prove the sidecar boundary works.
+ * Shell.
  *
- * The plan's phase-1 milestone is narrow on purpose — start the engine, show
- * `soca status`, exit without orphaning a process. Conversation, voice and
- * knowledge are phases 2–4 and are intentionally absent here.
+ * Sidebar, top bar, one page. The arrangement is the reference app's and it
+ * replaced an icon rail plus a tabbed sheet — see
+ * the design notes for the image-by-image reading behind it.
+ *
+ * Three decisions carried over from the previous shell, each still true:
+ *
+ * 1. **The engine starts itself.** A first-run screen whose only content is a
+ *    button to make the app work is a step, not a feature. `StartupView` is
+ *    kept for the case that actually needs a human — a launch that failed.
+ * 2. **Voice is a page, not an overlay.** It used to cover the window, which
+ *    took the settings and the engine restart away exactly while running the
+ *    part most likely to hang.
+ * 3. **Entering voice starts the loop, leaving it stops the loop.** There is no
+ *    state where the microphone is open with nothing on screen saying so.
  */
 
-import { useState } from "react";
-import { ThinkingOrb } from "thinking-orbs";
+import { BookOpen } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
+import { ChatPage } from "@/components/ChatPage";
+import { KnowledgePanel } from "@/components/KnowledgePanel";
+import { EmptyState, PageBody, PageHeader } from "@/components/Page";
+import { SessionPanel } from "@/components/SessionPanel";
+import { SettingsPanel } from "@/components/SettingsPanel";
+import type { PageId } from "@/components/Sidebar";
+import { Sidebar } from "@/components/Sidebar";
+import { StartupView } from "@/components/StartupView";
+import { TopBar } from "@/components/TopBar";
+import { VoiceMode } from "@/components/VoiceMode";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { orbLabel } from "@/engine/orb";
+import { documentIndex } from "@/engine/documents";
+import { launchOptions } from "@/engine/launch";
 import { useEngine } from "@/engine/useEngine";
+import { useTheme } from "@/theme";
 
-function StatusBadge({ status }: { status: ReturnType<typeof useEngine>["status"] }) {
-  switch (status.state) {
-    case "running":
-      return <Badge>running</Badge>;
-    case "starting":
-      return <Badge variant="secondary">starting</Badge>;
-    case "stopped":
-      return (
-        <Badge variant={status.graceful ? "secondary" : "destructive"}>
-          {status.graceful ? "stopped cleanly" : "stopped without bye"}
-        </Badge>
-      );
-    case "failed":
-      return <Badge variant="destructive">failed</Badge>;
-    default:
-      return <Badge variant="outline">idle</Badge>;
+/** First words of the opening turn — the only session label that is real. */
+function sessionTitle(text: string | undefined): string | null {
+  if (text === undefined || text.trim() === "") {
+    return null;
   }
+  const trimmed = text.trim();
+  return trimmed.length > 48 ? `${trimmed.slice(0, 48)}…` : trimmed;
 }
 
 export default function App() {
   const engine = useEngine();
-  const [program, setProgram] = useState("soca");
-  const running = engine.status.state === "running" || engine.status.state === "starting";
+  const theme = useTheme();
+  const [page, setPage] = useState<PageId>("chat");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [transcriptOpen, setTranscriptOpen] = useState(true);
+  const autoStarted = useRef(false);
+
+  const { start, ready } = engine;
+  // No button whose only job is to make the app usable — but wait for the
+  // listeners first, or the engine's opening frames are emitted into the void.
+  useEffect(() => {
+    if (!ready || autoStarted.current) {
+      return;
+    }
+    autoStarted.current = true;
+    void start(launchOptions());
+  }, [ready, start]);
+
+  const connected = engine.status.state === "running";
+  const starting = engine.status.state === "starting";
+  const documents = documentIndex(engine.knowledge, engine.conversation.turns);
+  const voiceRunning = engine.voice.phase !== "off";
+
+  // One string for the startup view: a launch failure, or an engine that exited
+  // without saying `bye`.
+  const startupProblem =
+    engine.status.state === "failed"
+      ? engine.status.message
+      : engine.status.state === "stopped" && !engine.status.graceful
+        ? "Engine đã thoát mà không gửi `bye`. Kiểm tra log ở terminal."
+        : engine.versionMismatch;
+
+  // The startup view is only for a launch that actually failed. A normal cold
+  // start shows the session with a composer that says it is coming up.
+  if (engine.status.state === "failed" || engine.status.state === "stopped") {
+    return (
+      <main className="h-screen">
+        <StartupView
+          starting={false}
+          problem={startupProblem}
+          onStart={(program) => void engine.start({ ...launchOptions(), program })}
+        />
+      </main>
+    );
+  }
+
+  /** Panels fetch on open rather than on a timer: polling would compete with a
+   *  running turn for the engine's attention. */
+  const openPage = (next: PageId) => {
+    setPage(next);
+    if (!connected) {
+      return;
+    }
+    if (next === "session") {
+      for (const cmd of ["status", "context", "usage"] as const) {
+        void engine.send({ cmd });
+      }
+    }
+    if (next === "knowledge") {
+      for (const cmd of ["memory", "memory_proposals", "status"] as const) {
+        void engine.send({ cmd });
+      }
+    }
+    if (next === "settings") {
+      for (const cmd of ["llm_providers", "llm_config", "status"] as const) {
+        void engine.send({ cmd });
+      }
+    }
+    if (next === "voice" && engine.voice.phase === "off") {
+      void engine.send({ cmd: "voice_start" });
+    }
+  };
+
+  /**
+   * Leaving the voice page stops the loop.
+   *
+   * Navigating away is leaving — there is no meaning to a microphone that stays
+   * open on the settings page.
+   */
+  const leaveVoice = (next: PageId) => {
+    if (page === "voice" && next !== "voice" && engine.voice.phase !== "off") {
+      void engine.send({ cmd: "voice_stop" });
+    }
+    openPage(next);
+  };
+
+  /** Pause and resume capture without leaving the page. */
+  const toggleMic = () =>
+    void engine.send(engine.voice.phase === "off" ? { cmd: "voice_start" } : { cmd: "voice_stop" });
+
+  const restartEngine = async () => {
+    await engine.stop();
+    await engine.start(launchOptions());
+  };
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8">
-      <header className="flex items-center gap-4">
-        <ThinkingOrb state={engine.orbState} size={64} />
-        <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold tracking-tight">SoCa</h1>
-          <p className="text-muted-foreground text-sm">{orbLabel(engine.orbState)}</p>
-        </div>
-        <div className="ml-auto">
-          <StatusBadge status={engine.status} />
-        </div>
-      </header>
+    <main className="bg-background flex h-screen w-screen overflow-hidden">
+      {sidebarOpen && (
+        <Sidebar
+          page={page}
+          onNavigate={leaveVoice}
+          onNewConversation={() => leaveVoice("chat")}
+          sessionTitle={sessionTitle(engine.conversation.turns[0]?.userText)}
+          connected={connected}
+          starting={starting}
+          voiceRunning={voiceRunning}
+          onRestartEngine={() => void restartEngine()}
+          onCollapse={() => setSidebarOpen(false)}
+        />
+      )}
 
-      <Separator />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar
+          orbState={engine.orbState}
+          sidebarOpen={sidebarOpen}
+          onOpenSidebar={() => setSidebarOpen(true)}
+          onToggleTheme={theme.toggle}
+        />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Engine</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex items-center gap-2">
-            <input
-              className="border-input bg-background flex h-9 w-full rounded-md border px-3 py-1 text-sm shadow-xs"
-              value={program}
-              onChange={(event) => setProgram(event.target.value)}
-              disabled={running}
-              aria-label="Engine executable"
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {engine.errors.length > 0 && (
+            <Alert variant="destructive" className="mx-6 mt-4 w-auto">
+              <AlertTitle>Engine báo lỗi</AlertTitle>
+              <AlertDescription>
+                <ul className="list-disc pl-4">
+                  {engine.errors.slice(-3).map((error, index) => (
+                    <li key={index}>{error}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {page === "chat" && (
+            <ChatPage
+              orbState={engine.orbState}
+              conversation={engine.conversation}
+              documents={documents}
+              model={engine.settings.config?.model ?? null}
+              connected={connected}
+              starting={starting}
+              onSend={(text) => void engine.send({ cmd: "chat", text })}
+              onCommand={(command) => {
+                if (command.id === "memory_compact") {
+                  void engine.send({
+                    cmd: "memory_compact",
+                    action: "request",
+                  });
+                  return;
+                }
+                void engine.send({ cmd: command.id } as never);
+              }}
+              onEnterVoiceMode={() => openPage("voice")}
+              onOpenSettings={() => openPage("settings")}
             />
-            <Button
-              onClick={() => void engine.start({ program })}
-              disabled={running}
-            >
-              Start
-            </Button>
-            <Button variant="outline" onClick={() => void engine.stop()} disabled={!running}>
-              Stop
-            </Button>
-          </div>
-          <p className="text-muted-foreground text-xs">
-            Runs <code>{program} engine</code>. Packaging a Python sidecar is a phase-5
-            problem; for now the app expects <code>soca</code> on PATH — use{" "}
-            <code>uv</code> with args if it is not.
-          </p>
-
-          {engine.versionMismatch !== null && (
-            <Alert variant="destructive">
-              <AlertTitle>Protocol mismatch</AlertTitle>
-              <AlertDescription>{engine.versionMismatch}</AlertDescription>
-            </Alert>
           )}
 
-          {engine.status.state === "failed" && (
-            <Alert variant="destructive">
-              <AlertTitle>Sidecar failed</AlertTitle>
-              <AlertDescription>{engine.status.message}</AlertDescription>
-            </Alert>
+          {page === "voice" && (
+            <VoiceMode
+              orbState={engine.orbState}
+              voice={engine.voice}
+              conversation={engine.conversation}
+              documents={documents}
+              connected={connected}
+              transcriptOpen={transcriptOpen}
+              onToggleTranscript={() => setTranscriptOpen((open) => !open)}
+              onToggleMic={toggleMic}
+              onLeave={() => leaveVoice("chat")}
+            />
           )}
 
-          {engine.hello !== null && (
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-              <dt className="text-muted-foreground">profile</dt>
-              <dd>{engine.hello.profile}</dd>
-              <dt className="text-muted-foreground">protocol</dt>
-              <dd>{engine.hello.protocol_version}</dd>
-              {Object.entries(engine.hello.stack).map(([key, value]) => (
-                <div key={key} className="contents">
-                  <dt className="text-muted-foreground">{key}</dt>
-                  <dd className="font-mono text-xs">{value}</dd>
-                </div>
-              ))}
-            </dl>
+          {page === "knowledge" && (
+            <div className="min-h-0 flex-1 overflow-auto">
+              <PageBody wide>
+                <PageHeader
+                  title="Kiến thức"
+                  description="Vault, chỉ mục truy xuất và bộ nhớ phiên."
+                />
+                <KnowledgePanel
+                  knowledge={engine.knowledge}
+                  connected={connected}
+                  onInit={() => void engine.send({ cmd: "knowledge_init" })}
+                  onIndex={() => void engine.send({ cmd: "knowledge_index" })}
+                  onRefreshMemory={() => {
+                    void engine.send({ cmd: "memory" });
+                    void engine.send({ cmd: "memory_proposals" });
+                  }}
+                  onCompact={() =>
+                    void engine.send({
+                      cmd: "memory_compact",
+                      action: "request",
+                    })
+                  }
+                  onApprove={(id) => void engine.send({ cmd: "memory_approve", proposal_id: id })}
+                  onReject={(id) => void engine.send({ cmd: "memory_reject", proposal_id: id })}
+                />
+              </PageBody>
+            </div>
           )}
-        </CardContent>
-      </Card>
 
-      {engine.engineStatus?.runtime_components && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Runtime components</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            {engine.engineStatus.runtime_components.map((component, index) => (
-              <div key={index} className="flex items-center justify-between text-sm">
-                <span>{String(component.name ?? "component")}</span>
-                <Badge variant={component.status === "ok" ? "secondary" : "outline"}>
-                  {String(component.status ?? "unknown")}
-                </Badge>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+          {page === "session" && (
+            <div className="min-h-0 flex-1 overflow-auto">
+              <PageBody>
+                <PageHeader
+                  title="Phiên"
+                  description="Ngân sách prompt và mức dùng của phiên đang chạy."
+                />
+                {engine.session.context === null && engine.session.usage === null ? (
+                  <EmptyState
+                    icon={BookOpen}
+                    title="Chưa có số liệu"
+                    description="Engine gửi manifest ngân sách sau mỗi lượt, và bảng mức dùng khi được hỏi."
+                    hint={connected ? "Mở lại trang này sau một lượt." : "Engine chưa chạy."}
+                  />
+                ) : (
+                  <SessionPanel
+                    session={engine.session}
+                    connected={connected}
+                    onRefresh={() => {
+                      void engine.send({ cmd: "context" });
+                      void engine.send({ cmd: "usage" });
+                    }}
+                  />
+                )}
+              </PageBody>
+            </div>
+          )}
 
-      {engine.errors.length > 0 && (
-        <Alert variant="destructive">
-          <AlertTitle>Engine errors</AlertTitle>
-          <AlertDescription>
-            <ul className="list-disc pl-4">
-              {engine.errors.map((error, index) => (
-                <li key={index}>{error}</li>
-              ))}
-            </ul>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <Card className="flex-1">
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle className="text-base">Protocol frames</CardTitle>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => void engine.send({ cmd: "status" })}
-            disabled={engine.status.state !== "running"}
-          >
-            Send status
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <ScrollArea className="h-64">
-            <ul className="flex flex-col gap-1 font-mono text-xs">
-              {engine.log.map((frame, index) => (
-                <li key={index} className="text-muted-foreground">
-                  <span className="text-foreground">{frame.event}</span>
-                  {"type" in frame && typeof frame.type === "string" ? `:${frame.type}` : ""}
-                </li>
-              ))}
-            </ul>
-          </ScrollArea>
-        </CardContent>
-      </Card>
+          {page === "settings" && (
+            <div className="min-h-0 flex-1 overflow-auto">
+              <PageBody>
+                <SettingsPanel
+                  settings={engine.settings}
+                  connected={connected}
+                  themeChoice={theme.choice}
+                  onSetTheme={theme.setChoice}
+                  onLoadProviders={() => {
+                    void engine.send({ cmd: "llm_providers" });
+                    void engine.send({ cmd: "llm_config" });
+                    void engine.send({ cmd: "status" });
+                  }}
+                  onSetKey={(provider, key) =>
+                    void engine.send({ cmd: "llm_set_key", provider, key })
+                  }
+                  onLoadModels={(provider, query) =>
+                    void engine.send({ cmd: "llm_models", provider, query })
+                  }
+                  onSelectModel={(provider, modelId) =>
+                    // `backend` is mandatory: _cmd_llm_select rejects the command
+                    // outright without it. max_tokens and reasoning_enabled are
+                    // resent so selecting a model does not silently reset them.
+                    void engine.send({
+                      cmd: "llm_select",
+                      backend: "remote",
+                      provider,
+                      model: modelId,
+                      max_tokens: engine.settings.config?.maxTokens ?? 4096,
+                      reasoning_enabled: engine.settings.config?.reasoningEnabled ?? false,
+                    })
+                  }
+                  onSelectProfile={(profileKey) =>
+                    void engine.send({
+                      cmd: "voice_profile_select",
+                      profile: profileKey,
+                    })
+                  }
+                  onApplyGeneration={(change) => {
+                    const config = engine.settings.config;
+                    // llm_select is the whole-settings command: anything omitted
+                    // is reset, so every field is resent from current state.
+                    void engine.send({
+                      cmd: "llm_select",
+                      backend: change.backend ?? config?.backend ?? "remote",
+                      provider: config?.provider ?? "openrouter",
+                      model: config?.model ?? "",
+                      max_tokens: change.maxTokens ?? config?.maxTokens ?? 4096,
+                      reasoning_enabled:
+                        change.reasoningEnabled ?? config?.reasoningEnabled ?? false,
+                    });
+                  }}
+                />
+              </PageBody>
+            </div>
+          )}
+        </div>
+      </div>
     </main>
   );
 }

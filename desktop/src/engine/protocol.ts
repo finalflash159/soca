@@ -102,9 +102,14 @@ export type VoiceEventType =
   | "recorded"
   | "transcribing"
   | "asr_partial"
+  | "asr"
   | "repair"
   | "turn_start"
   | "progress"
+  | "llm_token"
+  | "sentence"
+  | "interrupted"
+  | "runtime"
   | "turn_end"
   | "done"
   | "tts"
@@ -152,7 +157,11 @@ export interface StatusFrame {
   profiles?: unknown[];
   knowledge_vault?: unknown;
   knowledge_index?: unknown | null;
-  runtime_components?: Array<{ name?: string; status?: string; [key: string]: unknown }>;
+  runtime_components?: Array<{
+    name?: string;
+    status?: string;
+    [key: string]: unknown;
+  }>;
 }
 
 export interface EngineErrorFrame {
@@ -169,6 +178,21 @@ export interface KnowledgeSetupFrame {
   vault: string;
   detail: string;
   error_code?: string;
+  /**
+   * Index-build progress, present on `action: "index"`, `status: "running"`.
+   *
+   * `_cmd_knowledge_index` emits one frame per phase change or counter change.
+   * These were missing from this type, so the client had no way to render a
+   * build and showed a single unchanging line for its whole duration.
+   */
+  phase?: "scanning" | "chunking" | "embedding" | "persisting" | "verifying" | "complete";
+  completed_chunks?: number;
+  total_chunks?: number;
+  reused_chunks?: number;
+  embedded_chunks?: number;
+  documents?: number;
+  chunks?: number;
+  dense_state?: string;
 }
 
 export interface LlmConfigFrame {
@@ -223,7 +247,6 @@ export function isVoiceFrame(frame: EngineFrame): frame is VoiceFrame {
 export function helloIsCompatible(hello: HelloFrame): boolean {
   return (
     hello.protocol_version === PROTOCOL_VERSION ||
-    (Array.isArray(hello.supported_versions) &&
-      hello.supported_versions.includes(PROTOCOL_VERSION))
+    (Array.isArray(hello.supported_versions) && hello.supported_versions.includes(PROTOCOL_VERSION))
   );
 }

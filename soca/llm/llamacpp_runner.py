@@ -48,7 +48,7 @@ class LocalLlamaCppLLM:
 
         self.n_ctx = n_ctx or self.config.context_window
 
-        llama_kwargs: dict[str, Any] = {
+        self._llama_kwargs: dict[str, Any] = {
             "model_path": str(self.model_path),
             "n_ctx": self.n_ctx,
             "n_threads": n_threads,
@@ -58,10 +58,35 @@ class LocalLlamaCppLLM:
             "use_mlock": False,
         }
         if self.config.chat_format is not None:
-            llama_kwargs["chat_format"] = self.config.chat_format
+            self._llama_kwargs["chat_format"] = self.config.chat_format
 
-        self.llm = Llama(**llama_kwargs)
+        self._llama: Llama | None = None
         self._native_closed = False
+
+    @property
+    def llm(self) -> Llama:
+        """The native model, loaded on first use.
+
+        Construction stays cheap on purpose. Weights are gigabytes and loading
+        them takes seconds and holds RAM for the life of the process, so paying
+        that at construction meant every surface that merely *built* a runtime —
+        `soca chat` at startup, a status query, a provider switch that ends up
+        remote — loaded a model nobody asked for.
+
+        Validation is still eager: the path check in ``__init__`` fails fast and
+        costs a stat, so a missing model is still reported when the engine is
+        selected rather than mid-turn.
+        """
+        if self._native_closed:
+            raise RuntimeError("local LLM handle is closed")
+        if self._llama is None:
+            self._llama = Llama(**self._llama_kwargs)
+        return self._llama
+
+    @property
+    def is_loaded(self) -> bool:
+        """True once weights are resident. Lets callers assert laziness."""
+        return self._llama is not None
 
     def close(self) -> None:
         """Release the native llama.cpp model handle.
@@ -70,11 +95,18 @@ class LocalLlamaCppLLM:
         cleanup is required because relying on ``__del__`` is not reliable at
         interpreter shutdown, especially when native resources are still
         referenced by worker threads.
+
+        Closing a model that was never loaded is a no-op, which is the common
+        case now: selecting a remote provider disposes the local engine before
+        anything asked it to generate.
         """
         if self._native_closed:
             return
         self._native_closed = True
-        close = getattr(self.llm, "close", None)
+        loaded, self._llama = self._llama, None
+        if loaded is None:
+            return
+        close = getattr(loaded, "close", None)
         if callable(close):
             close()
 

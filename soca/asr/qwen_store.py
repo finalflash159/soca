@@ -718,21 +718,33 @@ class QwenArtifactStore:
         self.verify_directory(spec, target, deep=False)
         for expected, recorded in zip(spec.files, receipt.files, strict=True):
             metadata = (target / expected.path).stat()
-            identity = (
-                metadata.st_dev,
-                metadata.st_ino,
-                metadata.st_size,
-                metadata.st_mtime_ns,
-                metadata.st_ctime_ns,
-            )
-            if identity != (
-                recorded.device,
-                recorded.inode,
-                recorded.size,
-                recorded.mtime_ns,
-                recorded.ctime_ns,
-            ):
-                raise ArtifactInvalid(f"artifact changed after activation: {expected.path}")
+            # `st_dev` is deliberately excluded. It identifies the mount, not the
+            # file: APFS reassigns volume device numbers across reboots and
+            # remounts, so every file on the volume appears to change at once and
+            # activation is invalidated for a reason that has nothing to do with
+            # the artifact. It stays in the receipt for diagnostics.
+            #
+            # Nothing is lost by dropping it. An attacker able to replace a file
+            # in place keeps the device; what actually pins the bytes is the
+            # inode, size and timestamps below, under a root this store owns.
+            changed = [
+                f"{field} {expected_value} -> {actual}"
+                for field, expected_value, actual in (
+                    ("inode", recorded.inode, metadata.st_ino),
+                    ("size", recorded.size, metadata.st_size),
+                    ("mtime_ns", recorded.mtime_ns, metadata.st_mtime_ns),
+                    ("ctime_ns", recorded.ctime_ns, metadata.st_ctime_ns),
+                )
+                if expected_value != actual
+            ]
+            if changed:
+                # Naming the fields matters: the previous message gave only a
+                # path, which made a whole-volume device change look like one
+                # tampered file.
+                raise ArtifactInvalid(
+                    f"artifact changed after activation: {expected.path} "
+                    f"({', '.join(changed)})"
+                )
         return receipt
 
     def load_receipt(self, spec: QwenASRArtifactSpec) -> ArtifactReceipt:

@@ -6,125 +6,212 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
-    --color-ring: var(--ring);
-    --color-input: var(--input);
-    --color-border: var(--border);
-    --color-destructive: var(--destructive);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-accent: var(--accent);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-muted: var(--muted);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-secondary: var(--secondary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-primary: var(--primary);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-popover: var(--popover);
-    --color-card-foreground: var(--card-foreground);
-    --color-card: var(--card);
-    --color-foreground: var(--foreground);
-    --color-background: var(--background);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
-    --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: calc(var(--radius) * 2.2);
-    --radius-4xl: calc(var(--radius) * 2.6);
+  --font-heading: var(--font-sans);
+  --font-sans: "Geist Variable", sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Light is the default declaration and dark overrides it, so a window that
+   renders before the theme script runs shows light rather than a flash of
+   unstyled dark. `useTheme` puts `.dark` on <html> and keeps it in sync with
+   the OS when the preference is `system`. */
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+  /* Light.
+       `soca/app/style/palette.py` has one ramp, and it is built for a dark
+       terminal: gold #e6c07b on white measures 1.6:1, which is not readable
+       text. So light mode keeps the dawn *hue* and moves down the ramp —
+       #8f6914 is the same gold at 5.0:1 on white. The bright #e6c07b survives
+       as a fill (`--chart-1`), where contrast is not a legibility question. */
+  --background: #ffffff;
+  --foreground: #1a1a1e;
+  --card: #ffffff;
+  --card-foreground: #1a1a1e;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1e;
+  --primary: #8f6914;
+  --primary-foreground: #ffffff;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #1a1a1e;
+  --muted: #f7f7f8;
+  --muted-foreground: #71717a;
+  --accent: #f6f0e2;
+  --accent-foreground: #7a5a15;
+  --destructive: #b3261e;
+  --destructive-foreground: #ffffff;
+  --border: #e6e6e9;
+  --input: #e6e6e9;
+  --ring: #8f6914;
+  --chart-1: #e6c07b;
+  --chart-2: #6b5fa8;
+  --chart-3: #2e7d32;
+  --chart-4: #b45309;
+  --chart-5: #1565c0;
+  --sidebar: #fafafa;
+  --sidebar-foreground: #1a1a1e;
+  --sidebar-primary: #8f6914;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #efefef;
+  --sidebar-accent-foreground: #1a1a1e;
+  --sidebar-border: #e6e6e9;
+  --sidebar-ring: #8f6914;
+  --radius: 0.625rem;
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+  /* SoCa dawn palette. The accent, the text and the semantic colours are
+       exactly `soca/app/style/palette.py`, which the TUI mirrors in
+       `ui/src/theme.ts`.
+
+       The neutrals are deliberately darker here — iron black rather than
+       pre-dawn indigo. In a terminal `BG` is a contrast token used on a single
+       highlighted row; the surface behind everything else belongs to the user's
+       terminal. In a window it is the whole canvas, and indigo across 1100x780
+       px reads as a colour choice rather than as absence. Gold on iron is the
+       same idea the palette encodes, sized for a screen.
+
+       `--sidebar` is one step *darker* than `--background`, not lighter: the
+       reference app anchors the navigation and lets the reading surface float. */
+  --background: #131316;
+  --foreground: #e8e3d8;
+  --card: #17171b;
+  --card-foreground: #e8e3d8;
+  --popover: #17171b;
+  --popover-foreground: #e8e3d8;
+  --primary: #e6c07b;
+  --primary-foreground: #0b0b0e;
+  --secondary: #232329;
+  --secondary-foreground: #e8e3d8;
+  --muted: #1b1b1f;
+  --muted-foreground: #8a8a94;
+  --accent: #232329;
+  --accent-foreground: #e6c07b;
+  --destructive: #e08398;
+  --destructive-foreground: #0b0b0e;
+  --border: #26262c;
+  --input: #26262c;
+  --ring: #e6c07b;
+  --chart-1: #e6c07b;
+  --chart-2: #a49ac9;
+  --chart-3: #8ac79a;
+  --chart-4: #e09652;
+  --chart-5: #7fb3e8;
+  --sidebar: #0d0d10;
+  --sidebar-foreground: #e8e3d8;
+  --sidebar-primary: #e6c07b;
+  --sidebar-primary-foreground: #0b0b0e;
+  --sidebar-accent: #232329;
+  --sidebar-accent-foreground: #e8e3d8;
+  --sidebar-border: #1f1f25;
+  --sidebar-ring: #e6c07b;
+}
+
+/* Syntax highlighting.
+   `rehype-highlight` only attaches `hljs-*` classes; the colours are ours. A
+   stock highlight.js stylesheet would hard-code one background and one set of
+   hexes, which is exactly how a code block ends up as the single element on
+   screen that ignores the theme. These map onto the chart ramp, so both
+   palettes get it for free. */
+@layer components {
+  .hljs-comment,
+  .hljs-quote {
+    color: var(--muted-foreground);
+    font-style: italic;
+  }
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-literal,
+  .hljs-type {
+    color: var(--chart-2);
+  }
+  .hljs-string,
+  .hljs-regexp,
+  .hljs-addition {
+    color: var(--chart-3);
+  }
+  .hljs-number,
+  .hljs-symbol,
+  .hljs-attr,
+  .hljs-variable,
+  .hljs-template-variable {
+    color: var(--chart-4);
+  }
+  .hljs-title,
+  .hljs-name,
+  .hljs-section,
+  .hljs-built_in {
+    color: var(--chart-5);
+  }
+  .hljs-meta,
+  .hljs-deletion {
+    color: var(--destructive);
+  }
+  .hljs-emphasis {
+    font-style: italic;
+  }
+  .hljs-strong {
+    font-weight: 600;
+  }
+}
+
+/* KaTeX inherits the surrounding size rather than imposing its own, so a
+   formula sits on the same baseline grid as the sentence around it. */
+@layer components {
+  .katex {
+    font-size: 1.05em;
+  }
+  .katex-display {
+    margin: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.25rem 0;
+  }
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    }
+  }
   body {
     @apply bg-background text-foreground;
-    }
+  }
   html {
     @apply font-sans;
-    }
+  }
 }

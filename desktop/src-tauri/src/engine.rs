@@ -9,7 +9,9 @@
 //!   audio devices and provider clients were released, so SIGKILL is a last
 //!   resort, not the normal path.
 
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -49,7 +51,7 @@ pub enum EngineStatus {
     },
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LaunchOptions {
     /// Executable to run. Defaults to `soca` resolved on PATH.
@@ -61,17 +63,112 @@ pub struct LaunchOptions {
     /// Working directory for the child process.
     #[serde(default)]
     pub cwd: Option<String>,
+    /// Extra environment variables for the child, merged over the inherited set.
+    ///
+    /// This exists for `PYTHONPATH`. `soca` on PATH is an editable install that
+    /// pins one checkout, so a dev running this app from a git worktree would
+    /// otherwise launch the *other* checkout's Python source and never see
+    /// their own changes.
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+}
+
+/// Where an engine executable is looked for, in order.
+///
+/// **A double-clicked macOS app does not get your shell's `PATH`.** It gets
+/// launchd's, which on this machine is unset and therefore defaults to
+/// `/usr/bin:/bin:/usr/sbin:/sbin`. `soca` installed in a virtualenv, in
+/// `~/.local/bin` or by Homebrew is on none of those, so a bundled app that
+/// only ever ran `Command::new("soca")` could not start its own engine — it
+/// worked in development purely because a terminal had exported `PATH` first.
+///
+/// The chain below is what replaces that assumption. `which`-style `PATH`
+/// lookup stays last so a developer's shell still wins when there is one.
+fn engine_candidates(app: &AppHandle) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    // 1. An explicit override wins over everything, including a bundled binary:
+    //    it is how someone points the app at a checkout they are working on.
+    if let Ok(value) = std::env::var("SOCA_ENGINE") {
+        if !value.is_empty() {
+            candidates.push(PathBuf::from(value));
+        }
+    }
+
+    // 2. A sidecar shipped inside the bundle, once one is built. Tauri puts
+    //    `externalBin` next to the app executable.
+    if let Ok(dir) = app.path().resource_dir() {
+        candidates.push(dir.join("soca"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("soca"));
+        }
+    }
+
+    // 3. The usual user-level install locations, none of which are on the
+    //    launchd PATH.
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        candidates.push(home.join(".local/bin/soca"));
+    }
+    candidates.push(PathBuf::from("/opt/homebrew/bin/soca"));
+    candidates.push(PathBuf::from("/usr/local/bin/soca"));
+
+    // 4. PATH, which is populated when launched from a terminal.
+    if let Some(path) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path) {
+            candidates.push(dir.join("soca"));
+        }
+    }
+
+    candidates
+}
+
+#[cfg(unix)]
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path)
+        .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
 }
 
 impl LaunchOptions {
-    fn resolve(&self) -> (String, Vec<String>) {
-        let program = self
-            .program
-            .clone()
-            .unwrap_or_else(|| "soca".to_string());
+    fn resolve(&self, app: &AppHandle) -> Result<(String, Vec<String>), String> {
         let mut args = self.args.clone();
         args.push("engine".to_string());
-        (program, args)
+
+        // An explicit program from the UI is taken at face value — including a
+        // bare name, which the caller may intend to resolve through PATH.
+        if let Some(program) = self.program.clone().filter(|value| !value.is_empty()) {
+            return Ok((program, args));
+        }
+
+        let candidates = engine_candidates(app);
+        for candidate in &candidates {
+            if is_executable(candidate) {
+                return Ok((candidate.display().to_string(), args));
+            }
+        }
+
+        // Name what was tried. "command not found" on its own sends people to
+        // check a PATH that was never going to be consulted.
+        let tried = candidates
+            .iter()
+            .take(6)
+            .map(|path| format!("  {}", path.display()))
+            .collect::<Vec<_>>()
+            .join("\n");
+        Err(format!(
+            "Không tìm thấy engine `soca`. Đã thử:\n{tried}\n\n\
+             Ứng dụng khi mở từ Finder không dùng PATH của terminal. Đặt biến \
+             môi trường SOCA_ENGINE trỏ tới đường dẫn đầy đủ, hoặc nhập đường \
+             dẫn đó ở màn hình khởi động."
+        ))
     }
 }
 
@@ -176,12 +273,8 @@ pub fn engine_start(
         return Err("engine already running".to_string());
     }
 
-    let options = options.unwrap_or(LaunchOptions {
-        program: None,
-        args: Vec::new(),
-        cwd: None,
-    });
-    let (program, args) = options.resolve();
+    let options = options.unwrap_or_default();
+    let (program, args) = options.resolve(&app)?;
     emit_status(
         &app,
         EngineStatus::Starting {
@@ -198,6 +291,19 @@ pub fn engine_start(
     if let Some(cwd) = &options.cwd {
         command.current_dir(cwd);
     }
+    command.envs(&options.env);
+
+    // Which interpreter and which source tree actually ran is the first thing
+    // anyone needs when the engine misbehaves, and it is invisible otherwise.
+    eprintln!(
+        "[soca-desktop] launching `{program} {}`{}",
+        args.join(" "),
+        options
+            .env
+            .iter()
+            .map(|(key, value)| format!(" {key}={value}"))
+            .collect::<String>()
+    );
 
     let mut child = command.spawn().map_err(|error| {
         format!("could not start `{program}`: {error}. Is soca on PATH, or set a program override?")

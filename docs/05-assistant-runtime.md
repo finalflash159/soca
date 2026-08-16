@@ -102,6 +102,15 @@ routes produce fixed text through
 `_emit_fixed_result`, chunked into sentences. This keeps pipeline handling uniform
 across routes.
 
+Which controlled turns stream is decided by `_route_controlled_turn`, once per
+turn, from the router's typed `disposition`. A turn that resolves to no
+capability — `smalltalk` or `out_of_scope`, with no call and no retrieval source —
+has no observation to verify, so its answer is the whole product and is streamed.
+Everything else stays on the bounded controller, including a router that *failed*
+and reported `unresolved`: a failure is not a decision that no evidence is needed.
+The routing decision is handed to `run_controlled_turn` rather than recomputed,
+because the cascade router spends a model call per turn.
+
 `first_sentence_min_chars` lets the first sentence flush earlier than later
 sentences so audio reaches the speaker faster.
 

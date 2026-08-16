@@ -83,10 +83,13 @@ def test_chat_model_uses_chat_completion_api(tmp_path: Path) -> None:
 
 
 def test_chat_format_is_passed_when_registry_requires_fallback(tmp_path: Path) -> None:
-    LocalLlamaCppLLM(
+    llm = LocalLlamaCppLLM(
         model_key="vinallama_2_7b_q5_0",
         model_path=touch_model(tmp_path),
     )
+
+    # Weights load on first use, so the kwargs are only observable after one.
+    _ = llm.llm
 
     assert FakeLlama.instances[0].kwargs["chat_format"] == "chatml"
 
@@ -98,11 +101,60 @@ def test_missing_model_error_points_to_generic_downloader(tmp_path: Path) -> Non
         LocalLlamaCppLLM(model_key="phogpt_4b_q4_k_m", model_path=missing_model)
 
 
+def test_construction_does_not_load_the_weights(tmp_path: Path) -> None:
+    """Building an engine must not cost gigabytes of RAM.
+
+    Every surface that merely builds a runtime — `soca chat` starting up, a
+    status query, a provider switch that ends up remote — used to load a model
+    nobody had asked for.
+    """
+    llm = LocalLlamaCppLLM(
+        model_key="arcee_vylinh_3b_q4_k_m",
+        model_path=touch_model(tmp_path),
+    )
+
+    assert llm.is_loaded is False
+    assert FakeLlama.instances == []
+
+    _ = llm.llm
+
+    assert llm.is_loaded is True
+    assert len(FakeLlama.instances) == 1
+
+
+def test_close_is_a_no_op_when_the_model_was_never_loaded(tmp_path: Path) -> None:
+    # The common case once loading is lazy: a local engine built, then disposed
+    # by a switch to remote before anything generated.
+    llm = LocalLlamaCppLLM(
+        model_key="arcee_vylinh_3b_q4_k_m",
+        model_path=touch_model(tmp_path),
+    )
+
+    llm.close()
+
+    assert FakeLlama.instances == []
+    assert llm._native_closed is True
+
+
+def test_use_after_close_fails_instead_of_reloading(tmp_path: Path) -> None:
+    # Without this the lazy property would silently resurrect a released model.
+    llm = LocalLlamaCppLLM(
+        model_key="arcee_vylinh_3b_q4_k_m",
+        model_path=touch_model(tmp_path),
+    )
+    _ = llm.llm
+    llm.close()
+
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = llm.llm
+
+
 def test_close_releases_native_model_handle_idempotently(tmp_path: Path) -> None:
     llm = LocalLlamaCppLLM(
         model_key="arcee_vylinh_3b_q4_k_m",
         model_path=touch_model(tmp_path),
     )
+    _ = llm.llm
 
     llm.close()
     llm.close()

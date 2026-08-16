@@ -18,7 +18,7 @@ from soca.app.engine import (
 from soca.app.text_runtime import TextRuntimeBundle, TextRuntimeConfig
 from soca.asr.selection import ASRSelection
 from soca.core import ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
-from soca.core.turn import RuntimeResult, RuntimeRoute, RuntimeTrace
+from soca.core.turn import RuntimeResult, RuntimeRoute, RuntimeStreamEvent, RuntimeTrace
 from soca.knowledge import KnowledgeCitation
 
 
@@ -427,9 +427,40 @@ def test_voice_profile_selection_surfaces_oserror_without_applying(monkeypatch) 
     )
 
 
+def _stream_of(result: RuntimeResult):
+    """Mirror AssistantRuntime._emit_fixed_result for a non-streaming double."""
+    if result.response_text:
+        yield RuntimeStreamEvent(type="sentence", text=result.response_text)
+    yield RuntimeStreamEvent(type="result", result=result)
+
+
 class _FakeAssistantRuntime:
     def run_text_turn(self, text: str, *, source: str, metadata: dict) -> RuntimeResult:
         return RuntimeResult(response_text=f"echo: {text}", route=RuntimeRoute.FREE_CHAT)
+
+    def stream_text_turn(self, text: str, *, source: str, metadata: dict, **kwargs):
+        del kwargs
+        yield from _stream_of(self.run_text_turn(text, source=source, metadata=metadata))
+
+
+class _StreamingAssistantRuntime:
+    """Emits several guardrail-passed chunks, like a real free-chat turn."""
+
+    CHUNKS = ("Protein giữ cơ bắp [K1]. ", "Nó tạo cảm giác no [K2]. ", "Vậy nhé.")
+    CLEANED = ("Protein giữ cơ bắp. ", "Nó tạo cảm giác no. ", "Vậy nhé.")
+
+    def run_text_turn(self, text: str, *, source: str, metadata: dict) -> RuntimeResult:
+        del text, source, metadata
+        return RuntimeResult(response_text="".join(self.CHUNKS), route=RuntimeRoute.FREE_CHAT)
+
+    def stream_text_turn(self, text: str, *, source: str, metadata: dict, **kwargs):
+        del kwargs
+        for chunk in self.CHUNKS:
+            yield RuntimeStreamEvent(type="sentence", text=chunk)
+        yield RuntimeStreamEvent(
+            type="result",
+            result=self.run_text_turn(text, source=source, metadata=metadata),
+        )
 
 
 class _ManifestAssistantRuntime:
@@ -469,6 +500,10 @@ class _ManifestAssistantRuntime:
             trace=trace,
         )
 
+    def stream_text_turn(self, text: str, *, source: str, metadata: dict, **kwargs):
+        del kwargs
+        yield from _stream_of(self.run_text_turn(text, source=source, metadata=metadata))
+
 
 class _CitedAssistantRuntime:
     def run_text_turn(self, text: str, *, source: str, metadata: dict) -> RuntimeResult:
@@ -485,6 +520,10 @@ class _CitedAssistantRuntime:
                 ),
             ),
         )
+
+    def stream_text_turn(self, text: str, *, source: str, metadata: dict, **kwargs):
+        del kwargs
+        yield from _stream_of(self.run_text_turn(text, source=source, metadata=metadata))
 
 
 class _FailingAssistantRuntime:
@@ -1103,3 +1142,108 @@ def test_engine_memory_and_usage_commands() -> None:
     assert compaction["status"] == "idle"
     usage = next(e for e in events if e["event"] == "usage")
     assert usage["turns"] == 1
+
+
+def _streaming_text_builder(
+    config: TextRuntimeConfig, *, session_memory=None, **_runtime_dependencies
+) -> TextRuntimeBundle:
+    return TextRuntimeBundle(
+        runtime=_StreamingAssistantRuntime(),  # type: ignore[arg-type]
+        session_memory=session_memory,
+        llm_status="fake",
+        knowledge_status="fake",
+        memory_status="fake",
+    )
+
+
+def test_engine_chat_emits_one_answer_delta_per_streamed_chunk() -> None:
+    """A UI that animates composing needs the answer to arrive in pieces.
+
+    The chat turn used to call the blocking run_text_turn and emit a single
+    answer_delta holding the whole response, so any per-chunk animation
+    finished before it started.
+    """
+    capture = ProtocolCapture()
+    code = run_engine(
+        voice_config=None,
+        text_config=make_text_config(),
+        profile="baseline",
+        stdin=_commands(capture, {"cmd": "chat", "text": "xin chào"}, '"done"'),
+        stdout=capture,
+        text_runtime_builder=_streaming_text_builder,
+    )
+
+    assert code == 0
+    deltas = [event for event in capture.events() if event["event"] == "answer_delta"]
+    assert [delta["payload"]["text"] for delta in deltas] == list(
+        _StreamingAssistantRuntime.CLEANED
+    ), "a delta must not publish citation labels the final answer strips"
+    ordered = [
+        event["event"]
+        for event in capture.events()
+        if event["event"] in {"answer_delta", "turn_terminal"}
+    ]
+    assert ordered[-1] == "turn_terminal", "every delta must precede the terminal"
+    done = [e for e in capture.events() if e["event"] == "chat" and e["type"] == "done"]
+    assert done[0]["text"] == "".join(_StreamingAssistantRuntime.CLEANED).strip(), (
+        "concatenating the deltas must reproduce the authoritative answer"
+    )
+
+
+def _memory_token_voice_builder(
+    config: ResolvedVoiceRuntimeConfig, *, session_memory=None
+) -> VoiceRuntimeBundle:
+    """A voice turn whose streamed tokens carry a memory citation label."""
+    del session_memory
+    pipeline = _FakePipeline(
+        [
+            StreamingEvent(type="asr", text="tôi đã ghi gì"),
+            StreamingEvent(type="llm_token", text="Bạn đã ghi "),
+            StreamingEvent(type="llm_token", text="lịch họp [M1]."),
+            StreamingEvent(
+                type="done",
+                text="Bạn đã ghi lịch họp.",
+                latency_ms=5.0,
+                metadata={"rejected": False},
+            ),
+        ]
+    )
+    return VoiceRuntimeBundle(
+        config=config,
+        detector=_FakeDetector(),
+        asr=_FakeASR(),  # type: ignore[arg-type]
+        llm=object(),  # type: ignore[arg-type]
+        tts=object(),
+        assistant_runtime=object(),  # type: ignore[arg-type]
+        pipeline=pipeline,  # type: ignore[arg-type]
+        memory_status="disabled:test",
+        knowledge_status="enabled:test",
+    )
+
+
+def test_voice_answer_delta_strips_citation_labels_like_the_chat_turn() -> None:
+    """Both surfaces publish the same text; only the chat one used to be cleaned.
+
+    The voice deltas come from raw `llm_token` events. A smalltalk turn still
+    receives memory context, and MEMORY_GROUNDING_INSTRUCTIONS teaches the model
+    to write [M1], so a label can reach a caption that `done` then strips.
+    """
+    capture = ProtocolCapture()
+    code = run_engine(
+        voice_config=make_voice_config(),
+        text_config=make_text_config(),
+        profile="baseline",
+        stdin=_commands(capture, {"cmd": "voice_start", "max_turns": 1}, "loop_stopped"),
+        stdout=capture,
+        voice_runtime_builder=_memory_token_voice_builder,
+        voice_recorder=_fake_recorder,
+        voice_player=_FakeAudioSink(),
+        warmup_voice=False,
+    )
+
+    assert code == 0
+    deltas = [event for event in capture.events() if event["event"] == "answer_delta"]
+    assert [delta["payload"]["text"] for delta in deltas] == [
+        "Bạn đã ghi ",
+        "lịch họp.",
+    ]

@@ -99,10 +99,7 @@ describe("synthesis is backend-aware", () => {
 
   it("goes straight to composing on a local backend", () => {
     expect(
-      stateAfter([
-        { event: "llm_config", backend: "local" } as EngineFrame,
-        progress("synthesis"),
-      ]),
+      stateAfter([{ event: "llm_config", backend: "local" } as EngineFrame, progress("synthesis")]),
     ).toBe("composing");
   });
 });
@@ -231,5 +228,36 @@ describe("unknown frames", () => {
     expect(fold([{ event: "some_event_added_later", foo: 1 } as EngineFrame])).toEqual(
       initialActivity,
     );
+  });
+});
+
+describe("voice startup", () => {
+  // Measured 2026-08-16 by timestamping a live `voice_start`: the first
+  // `recording` lands 9.2 s after the command, and none of the frames in
+  // between used to reach this reducer.
+  const voice = (type: string): EngineFrame =>
+    ({ event: "voice", type, metadata: {} }) as EngineFrame;
+
+  const afterVoice = (types: string[]) => stateAfter(types.map(voice));
+
+  it("does not rest while the runtime loads", () => {
+    // `breathing` here is the bug: nine seconds of loading that reads as
+    // "ready and ignoring you".
+    expect(afterVoice(["loading"])).not.toBe("breathing");
+    expect(afterVoice(["loading", "ready"])).not.toBe("breathing");
+    expect(afterVoice(["loading", "ready", "warmup"])).not.toBe("breathing");
+  });
+
+  it("settles only once the loop actually started", () => {
+    expect(afterVoice(["loading", "ready", "warmup", "loop_started"])).toBe("breathing");
+  });
+
+  it("shows listening once capture opens", () => {
+    expect(afterVoice(["loading", "warmup", "loop_started", "recording"])).toBe("listening");
+  });
+
+  it("clears the loading state if voice fails to start", () => {
+    expect(afterVoice(["loading", "error"])).toBe("breathing");
+    expect(afterVoice(["loading", "loop_stopped"])).toBe("breathing");
   });
 });

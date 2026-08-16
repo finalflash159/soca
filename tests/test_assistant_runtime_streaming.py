@@ -636,3 +636,69 @@ def test_controlled_stream_emits_sentences_for_the_tts_pump() -> None:
     sentences = [event.text for event in events if event.type == "sentence"]
 
     assert sentences == ["Xin chào bạn.", "Mình là SoCa."]
+
+
+class _DispositionRouter:
+    """Non-default router that reports a typed disposition, like the cascade."""
+
+    last_tier = "llm"
+
+    def __init__(self, disposition: str) -> None:
+        self.last_decision = ToolRouterDecision(
+            reason=f"llm_{disposition}",
+            disposition=disposition,  # type: ignore[arg-type]
+            selected_routes=(disposition,),  # type: ignore[arg-type]
+        )
+        self.select_calls = 0
+
+    def select(self, text: str, *, knowledge_limit: int):
+        del text, knowledge_limit
+        self.select_calls += 1
+        return None
+
+    def set_context(self, *, turn_context: str = "") -> None:
+        del turn_context
+
+
+def _controlled_runtime(**kwargs):
+    kwargs.setdefault("options", RuntimeOptions(turn_workflow="controlled"))
+    return AssistantRuntime(**kwargs)
+
+
+def test_controlled_smalltalk_streams_tokens_on_a_non_default_router() -> None:
+    """A typed no-tool disposition has no evidence to verify, so it must stream.
+
+    The production cascade router is not a DefaultRuntimeToolRouter, and keying
+    the streaming path off that class collapsed every cascade turn into one
+    blocking call plus a single fake token event.
+    """
+    llm = StreamSpyLLM(["Chào ", "bạn", "!"])
+    runtime = _controlled_runtime(llm=llm, tool_router=_DispositionRouter("smalltalk"))
+
+    events = list(runtime.stream_text_turn("Chào bạn", source="test"))
+
+    tokens = [event.text for event in events if event.type == "token"]
+    assert tokens == ["Chào ", "bạn", "!"]
+    assert llm.stream_calls, "smalltalk must reach generate_stream, not generate"
+
+
+def test_controlled_unresolved_does_not_stream_and_stays_on_the_bounded_path() -> None:
+    """A failed router is not a no-tool decision; it must not bypass the controller."""
+    llm = StreamSpyLLM(["không ", "nên ", "stream"])
+    runtime = _controlled_runtime(llm=llm, tool_router=_DispositionRouter("unresolved"))
+
+    events = list(runtime.stream_text_turn("Tra giúp tôi", source="test"))
+
+    assert not llm.stream_calls, "unresolved must stay on the controlled path"
+    assert [event.type for event in events][-1] == "result"
+
+
+def test_controlled_streaming_routes_once_per_turn() -> None:
+    """The streaming wrapper must not re-run an expensive LLM router."""
+    llm = StreamSpyLLM(["ừ"])
+    router = _DispositionRouter("unresolved")
+    runtime = _controlled_runtime(llm=llm, tool_router=router)
+
+    list(runtime.stream_text_turn("Tra giúp tôi", source="test"))
+
+    assert router.select_calls == 1

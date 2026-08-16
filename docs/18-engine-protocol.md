@@ -2,7 +2,7 @@
 
 `soca engine` is the headless boundary every external UI speaks to. The Ink TUI
 in [`ui/`](../ui/) is one client; the desktop app planned in
-[`zplan/soca_desktop_app_plan.vi.md`](../zplan/soca_desktop_app_plan.vi.md) is a
+a desktop app is a
 second. This page is the contract both depend on.
 
 Until this page existed the contract lived implicitly in
@@ -14,14 +14,14 @@ now fails when the engine emits an event this page does not describe.
 
 ## 1. Transport
 
-| Property | Value |
-| --- | --- |
-| Framing | Newline-delimited JSON — one object per line, UTF-8, `ensure_ascii=False` |
-| Commands | Client → engine on **stdin** |
-| Events | Engine → client on **stdout** |
-| Diagnostics | Everything else on **stderr** |
-| Writer | `_ProtocolWriter`, mutex-guarded, flushed per line — safe from worker threads |
-| Protocol version | `2` (`soca.core.workflow.events.PROTOCOL_VERSION`) |
+| Property         | Value                                                                         |
+| ---------------- | ----------------------------------------------------------------------------- |
+| Framing          | Newline-delimited JSON — one object per line, UTF-8, `ensure_ascii=False`     |
+| Commands         | Client → engine on **stdin**                                                  |
+| Events           | Engine → client on **stdout**                                                 |
+| Diagnostics      | Everything else on **stderr**                                                 |
+| Writer           | `_ProtocolWriter`, mutex-guarded, flushed per line — safe from worker threads |
+| Protocol version | `2` (`soca.core.workflow.events.PROTOCOL_VERSION`)                            |
 
 Stdout is kept pristine: `run_engine` wraps the command loop in
 `contextlib.redirect_stdout(sys.stderr)`, so a model loader that prints a banner
@@ -52,12 +52,12 @@ Cleanup failures do not block `bye`. They surface as `engine_error` with
 
 ### Malformed input
 
-| Input | Result |
-| --- | --- |
-| Blank line | Ignored |
-| Invalid JSON | `engine_error` with `line` (first 200 chars); loop continues |
-| Valid JSON, not an object | `engine_error` `"command must be a JSON object"` |
-| Unknown `cmd` | `engine_error` `"unknown command: ..."` |
+| Input                     | Result                                                       |
+| ------------------------- | ------------------------------------------------------------ |
+| Blank line                | Ignored                                                      |
+| Invalid JSON              | `engine_error` with `line` (first 200 chars); loop continues |
+| Valid JSON, not an object | `engine_error` `"command must be a JSON object"`             |
+| Unknown `cmd`             | `engine_error` `"unknown command: ..."`                      |
 
 None of these terminate the engine.
 
@@ -65,28 +65,28 @@ None of these terminate the engine.
 
 Every command is an object with a `cmd` key. Unlisted keys are ignored.
 
-| `cmd` | Extra fields | Emits |
-| --- | --- | --- |
-| `status` | — | `status` |
-| `context` | — | `context` |
-| `memory` | — | `memory` |
-| `memory_compact` | `action`: `request` \| `status` \| `cancel` (default `request`) | `memory_compaction`, then `context` and possibly `memory` |
-| `memory_proposals` | — | `memory_proposals` |
-| `memory_approve` | `proposal_id` (string) | `memory_action` |
-| `memory_reject` | `proposal_id` (string) | `memory_action` |
-| `usage` | — | `usage` |
-| `llm_providers` | — | `llm_providers` |
-| `llm_models` | `provider`, `query` (string) | `llm_catalog` |
-| `llm_set_key` | `provider`, `key` | `llm_key_status` |
-| `llm_select` | provider/model selection | `llm_config`, `context` |
-| `llm_config` | — | `llm_config`, `context` |
-| `chat` | `text` (string) | `chat` stream + traces (§4) |
-| `voice_start` | `max_turns` (int, optional) | `voice` stream (§5) |
-| `voice_stop` | — | `voice` `loop_stopped` |
-| `voice_profile_select` | profile selection | `status` |
-| `knowledge_init` | — | `knowledge_setup`, `status` |
-| `knowledge_index` | — | `knowledge_setup` progress, `status` |
-| `quit` | — | `bye`, then exit |
+| `cmd`                  | Extra fields                                                    | Emits                                                     |
+| ---------------------- | --------------------------------------------------------------- | --------------------------------------------------------- |
+| `status`               | —                                                               | `status`                                                  |
+| `context`              | —                                                               | `context`                                                 |
+| `memory`               | —                                                               | `memory`                                                  |
+| `memory_compact`       | `action`: `request` \| `status` \| `cancel` (default `request`) | `memory_compaction`, then `context` and possibly `memory` |
+| `memory_proposals`     | —                                                               | `memory_proposals`                                        |
+| `memory_approve`       | `proposal_id` (string)                                          | `memory_action`                                           |
+| `memory_reject`        | `proposal_id` (string)                                          | `memory_action`                                           |
+| `usage`                | —                                                               | `usage`                                                   |
+| `llm_providers`        | —                                                               | `llm_providers`                                           |
+| `llm_models`           | `provider`, `query` (string)                                    | `llm_catalog`                                             |
+| `llm_set_key`          | `provider`, `key`                                               | `llm_key_status`                                          |
+| `llm_select`           | provider/model selection                                        | `llm_config`, `context`                                   |
+| `llm_config`           | —                                                               | `llm_config`, `context`                                   |
+| `chat`                 | `text` (string)                                                 | `chat` stream + traces (§4)                               |
+| `voice_start`          | `max_turns` (int, optional)                                     | `voice` stream (§5)                                       |
+| `voice_stop`           | —                                                               | `voice` `loop_stopped`                                    |
+| `voice_profile_select` | profile selection                                               | `status`                                                  |
+| `knowledge_init`       | —                                                               | `knowledge_setup`, `status`                               |
+| `knowledge_index`      | —                                                               | `knowledge_setup` progress, `status`                      |
+| `quit`                 | —                                                               | `bye`, then exit                                          |
 
 `chat` with empty/whitespace text is rejected with `engine_error`
 `"chat text is empty"` — no turn starts.
@@ -98,7 +98,7 @@ Two envelope shapes exist and a client must handle both.
 **Flat events** carry `event` plus payload keys at the top level:
 
 ```json
-{"event": "usage", "turns": 3, "llm_turns": 2, "prompt_tokens": 1840}
+{ "event": "usage", "turns": 3, "llm_turns": 2, "prompt_tokens": 1840 }
 ```
 
 **Workflow events** use the versioned envelope from
@@ -109,13 +109,15 @@ Two envelope shapes exist and a client must handle both.
 {
   "event": "step_progress",
   "protocol_version": 2,
-  "session_id": "…", "run_id": "…", "goal_id": "…",
+  "session_id": "…",
+  "run_id": "…",
+  "goal_id": "…",
   "sequence": 7,
   "surface": "chat",
   "timestamp": "2026-08-15T09:12:44.318Z",
   "node": "synthesize",
   "status": "active",
-  "payload": {"operation": "retrieval"}
+  "payload": { "operation": "retrieval" }
 }
 ```
 
@@ -129,8 +131,15 @@ First frame. `stack` describes the configured components — `{"llm": …}` for 
 text-only engine, or `{"asr", "llm", "tts", "voice"}` when voice is configured.
 
 ```json
-{"event":"hello","version":2,"protocol_version":2,"supported_versions":[2],
- "profile":"qwen-release","no_model":false,"stack":{"llm":"openai:gpt-5.6-luna"}}
+{
+  "event": "hello",
+  "version": 2,
+  "protocol_version": 2,
+  "supported_versions": [2],
+  "profile": "qwen-release",
+  "no_model": false,
+  "stack": { "llm": "openai:gpt-5.6-luna" }
+}
 ```
 
 A client must reject an engine whose `protocol_version` is not in its own
@@ -168,10 +177,10 @@ when no index exists (see [11 — index lifecycle](11-index-lifecycle.md)).
 
 Prompt-budget manifest. Two variants share the discriminator `ready`:
 
-| `ready` | Meaning | Key fields |
-| --- | --- | --- |
-| `true` | Manifest built | `prompt_hash`, `prompt_manifest`, `resident_prompt_tokens`, `input_budget_tokens`, `available_dynamic_tokens`, `components[]` |
-| `false` | `PromptBudgetError` | `context_error`, `context_error_detail`, `components: []` |
+| `ready` | Meaning             | Key fields                                                                                                                    |
+| ------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `true`  | Manifest built      | `prompt_hash`, `prompt_manifest`, `resident_prompt_tokens`, `input_budget_tokens`, `available_dynamic_tokens`, `components[]` |
+| `false` | `PromptBudgetError` | `context_error`, `context_error_detail`, `components: []`                                                                     |
 
 `estimated` distinguishes a projection (`true`, built from resident state) from
 the manifest of a turn that actually ran (`false`). Do not present an estimated
@@ -207,7 +216,13 @@ At most 64 proposals; `statement` truncated to 400 chars. `createdAt` is ISO-860
 ### `memory_action`
 
 ```json
-{"event":"memory_action","proposal_id":"…","action":"approved","ok":true,"error_code":null}
+{
+  "event": "memory_action",
+  "proposal_id": "…",
+  "action": "approved",
+  "ok": true,
+  "error_code": null
+}
 ```
 
 `action` is `approved`/`rejected` — the past tense reflects the attempt, not the
@@ -262,20 +277,48 @@ Always followed by `context`.
 ### `knowledge_setup`
 
 `{action, status, vault, detail}` plus optional `error_code`. `action` is `init`
-or `index`; `status` is `ok`, `failed`, or a progress state. This is the only
-event stream for vault creation and index builds.
+or `index`; `status` is `ok`, `failed`, `busy`, `ready`, or `running`. This is
+the only event stream for vault creation and index builds.
+
+**An index build reports progress on every step**, and a client that renders
+only `detail` shows one unchanging line for the whole build — which is
+indistinguishable from a hang. On `action: "index"`, `status: "running"` the
+frame also carries:
+
+| Field                               | Meaning                                                                    |
+| ----------------------------------- | -------------------------------------------------------------------------- |
+| `phase`                             | `scanning`, `chunking`, `embedding`, `persisting`, `verifying`, `complete` |
+| `completed_chunks` / `total_chunks` | the fraction to draw; `total_chunks` is 0 until `chunking`                 |
+| `reused_chunks` / `embedded_chunks` | unchanged chunks skipped versus newly embedded                             |
+| `documents` / `chunks`              | corpus size as discovered                                                  |
+| `dense_state`                       | `building` while the vector index is being written                         |
+
+A frame is emitted only when one of these values changes, so the stream is
+already de-duplicated.
+
+`status` reports the settled state of both, and its shapes are **objects, not
+strings**:
+
+```json
+"knowledge_vault": {"path": "…", "initialized": true, "index_home": "…"}
+"knowledge_index": {"documents": 31, "chunks": 396,
+                    "sparse_state": "ready", "dense_state": "ready", "revision": 2}
+```
+
+`knowledge_vault.initialized` is what decides whether a client should offer to
+create the vault at all. `knowledge_index` is `null` when no index exists.
 
 ### `chat`
 
 Discriminated by `type`:
 
-| `type` | Fields | Meaning |
-| --- | --- | --- |
-| `loading` | `text` | Building the text runtime (first turn only) |
-| `ready` | `llm_status`, `knowledge_status`, `memory_status` | Runtime built |
-| `start` | `text`, `run_id`, `goal_id` | Turn accepted; `text` echoes the input |
-| `done` | see below | **Terminal.** Exactly one per successful turn |
-| `error` | `text` | **Terminal.** Only when the turn failed before producing a result |
+| `type`    | Fields                                            | Meaning                                                           |
+| --------- | ------------------------------------------------- | ----------------------------------------------------------------- |
+| `loading` | `text`                                            | Building the text runtime (first turn only)                       |
+| `ready`   | `llm_status`, `knowledge_status`, `memory_status` | Runtime built                                                     |
+| `start`   | `text`, `run_id`, `goal_id`                       | Turn accepted; `text` echoes the input                            |
+| `done`    | see below                                         | **Terminal.** Exactly one per successful turn                     |
+| `error`   | `text`                                            | **Terminal.** Only when the turn failed before producing a result |
 
 `done` payload:
 
@@ -335,9 +378,16 @@ Background compaction state is folded in: `accepted` → `queued`,
 Coarse per-turn progress, independent of the workflow stream:
 
 ```json
-{"event":"turn_progress","surface":"chat","phase":"analyzing",
- "operation":"normalize_input","status":"active",
- "run_id":"…","goal_id":"…","sequence":3}
+{
+  "event": "turn_progress",
+  "surface": "chat",
+  "phase": "analyzing",
+  "operation": "normalize_input",
+  "status": "active",
+  "run_id": "…",
+  "goal_id": "…",
+  "sequence": 3
+}
 ```
 
 `sequence` is monotonic **per turn context**, not global. Optional
@@ -355,14 +405,37 @@ One event type with 20 `type` values, mirroring `VoiceMonitorEvent`:
  "metadata":{…},"usage":{…}}
 ```
 
-| Group | `type` values |
-| --- | --- |
-| Session | `loading`, `warmup`, `ready`, `loop_started`, `loop_stopped` |
-| Capture | `recording`, `voice_level`, `audio`, `recorded` |
-| Recognition | `transcribing`, `asr_partial`, `repair` |
-| Turn | `turn_start`, `progress`, `turn_end`, `done` |
-| Output | `tts`, `playback_started`, `barge_in` |
-| Failure | `error` |
+| Group       | `type` values                                                                 |
+| ----------- | ----------------------------------------------------------------------------- |
+| Session     | `loading`, `warmup`, `ready`, `loop_started`, `loop_stopped`                  |
+| Capture     | `recording`, `voice_level`, `audio`, `recorded`                               |
+| Recognition | `transcribing`, `asr_partial`, `asr`, `repair`                                |
+| Turn        | `turn_start`, `progress`, `runtime`, `turn_end`, `done`                       |
+| Output      | `llm_token`, `sentence`, `tts`, `playback_started`, `barge_in`, `interrupted` |
+| Failure     | `error`                                                                       |
+
+### 5.1 Reconstructing a spoken turn
+
+A voice turn is fully recoverable from three of those types, and a client that
+wants spoken history needs no other source:
+
+| `type`     | `text`                                                     |
+| ---------- | ---------------------------------------------------------- |
+| `asr`      | the recognised utterance, `""` when nothing was understood |
+| `sentence` | one guardrail-passed answer sentence, emitted repeatedly   |
+| `done`     | the authoritative full answer                              |
+
+`sentence` — not `answer_delta` — is what a caption should render. It is the
+same text handed to TTS, already citation-stripped, and it lands progressively.
+The voice `answer_delta` is a raw model token (§6): it breaks mid-word and can
+still carry a label the final text removes.
+
+`repair` replaces the answer when the utterance was rejected, and `interrupted`
+marks an answer that barge-in cut short. Both are turn outcomes, not failures.
+
+`runtime` and `llm_token` are consumed by the engine itself — to derive
+`router_trace`, the memory trace and the voice `answer_delta` stream — and are
+forwarded verbatim. A client may ignore them.
 
 `turn_start` opens a turn-progress context and emits `turn_progress`
 `preparing`. `runtime` metadata drives the voice `router_trace` and refreshes
@@ -395,9 +468,96 @@ Emitted through `WorkflowEventStream` with the versioned envelope from §3.
 `insufficient_evidence`, `safe_failure`, `budget_exhausted`, `cancelled`,
 `system_failure`.
 
-**`answer_delta` is not token streaming today.** It fires once, after the result
-exists, with the full `response_text`. A UI that animates per-token output will
-show one jump. Real streaming is pending on `feat/chat-text-streaming`.
+**`answer_delta` fires once per chunk of answer text.** Both surfaces strip
+citation labels (`[K1]`, `[M1]`) before publishing, so a delta never shows a
+marker the final text removes. Provenance arrives as the structured `citations`
+list, never as prose.
+
+On the chat surface a chunk is **one whole markdown block**, and blocks are
+separated by a blank line. A client joins them with `\n\n`; the result is
+byte-identical to `chat/done.text`.
+
+The unit follows the surface, and both are picked by
+`RuntimeOptions.answer_format`:
+
+| `answer_format` | Chunker                                          | One chunk is                                                    |
+| --------------- | ------------------------------------------------ | --------------------------------------------------------------- |
+| `markdown`      | `pop_ready_block` / `chunk_markdown_for_display` | a heading, a paragraph, a whole list, a table, a fenced snippet |
+| `speech`        | `pop_ready_sentence` / `chunk_text_for_tts`      | a sentence, sometimes a clause                                  |
+
+This split exists because the speech chunkers actively damage markdown. Measured
+on a live turn before it was made:
+
+````text
+### Ví dụ   → ### Ví dụ,
+```json     → ```json,
+````
+
+`_join_with_pause` inserts a comma wherever a fragment ends on an alphanumeric,
+which is an audible pause for TTS and a typo on screen — the second one breaks
+the code fence's language tag. `pop_ready_first_clause` cuts mid-sentence at a
+comma, and `pop_ready_sentence` returns `buffer[:end].strip()`, discarding the
+newlines that make a list a list.
+
+A block ends where the model already put a blank line, so nothing is invented.
+Fenced code is exempt: a blank line inside a snippet belongs to the snippet, and
+the block ends at the closing fence. One escape hatch — a paragraph longer than
+400 characters carries no blank line, so past that length the block is released
+at the next sentence end, and a single long paragraph may show as two while
+streaming until `chat/done.text` corrects it.
+
+A client verifying its reassembly should still compare with whitespace
+collapsed. What survives that is real: a dropped frame, or a trailing `Nguồn:`
+footer that only the whole-answer cleaner removes. On the voice surface a delta is a raw model token,
+so chunk boundaries fall mid-word and the concatenation is not byte-identical to
+the caption; `voice/done.text` is authoritative there.
+
+How many deltas a turn produces, and how far apart they land, depends on the
+turn and the model:
+
+- A turn the router resolved to **no capability** (`smalltalk`, `out_of_scope`)
+  streams as the model generates, so deltas arrive progressively. This is the
+  case a composing animation has time to run.
+- A turn carrying a **tool or retrieval** is held by the bounded controller until
+  synthesis and verification finish, then emits every chunk at once. No
+  unverified answer text is ever published, so there is nothing to animate; drive
+  the intervening UI from `turn_progress.phase`, not from delta arrival.
+
+Measured on 2026-08-16 against `openai/gpt-5.6-luna`, one turn each:
+
+| Route           | Deltas | Arrival                          |
+| --------------- | -----: | -------------------------------- |
+| `free_chat`     |      2 | +7007 ms, +7068 ms — 61 ms apart |
+| `knowledge_llm` |      5 | all at +10190 ms — 0 ms apart    |
+
+So "does chat stream?" has two answers, and the split is architectural rather
+than incidental: publishing a capability turn progressively would put unverified
+answer text on screen, which is what ADR 0003 forbids. A client that wants the
+wait to read as progress must render `turn_progress.phase`, because for those
+turns there is no partial answer to render.
+
+- Some hosted models return the whole completion in a single SSE chunk. The turn
+  is then one delta even on the streaming path. Treat a single delta as normal,
+  not as an error.
+
+**This last case is the current default, not a corner case.** Measured
+2026-08-16 through the same adapter and the same OpenRouter account, only the
+model differing:
+
+| Model                     | Provider chunks | Spread |
+| ------------------------- | --------------: | ------ |
+| `openai/gpt-5.6-luna-pro` |           **1** | 0 ms   |
+| `google/gemini-2.5-flash` |               4 | 103 ms |
+
+`remote_openai_llm.generate_stream` sends `stream: True` and yields per chunk, so
+the adapter is not the limiter — the model is. A UI cannot turn one chunk into
+progressive text without inventing it.
+
+There is a second gate behind that one. Even a model that streams tokens reaches
+a client as _sentences_: `pop_ready_sentence` buffers to `min_chars` and the
+sentence guardrail runs before anything is published. Token-level streaming to
+the UI would mean publishing text the guardrail has not seen, which is the same
+line ADR 0003 draws for capability turns.
 
 `sequence` is monotonic per `run_id`. Ordering across `run_id`s is not defined.
 
