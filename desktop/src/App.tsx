@@ -27,7 +27,6 @@ import { StartupView } from "@/components/StartupView";
 import { VoiceMode } from "@/components/VoiceMode";
 import { VoiceHud } from "@/components/VoiceHud";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { documentIndex } from "@/engine/documents";
@@ -38,6 +37,9 @@ export default function App() {
   const engine = useEngine();
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [voiceModeOpen, setVoiceModeOpen] = useState(false);
+  // Opens with the transcript showing: the complaint that started this redesign
+  // was that voice had no history, and hiding it by default keeps it hidden.
+  const [transcriptOpen, setTranscriptOpen] = useState(true);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("session");
   const autoStarted = useRef(false);
 
@@ -89,10 +91,34 @@ export default function App() {
     }
   };
 
-  const toggleVoice = () =>
-    void engine.send(
-      engine.voice.phase === "off" ? { cmd: "voice_start" } : { cmd: "voice_stop" },
-    );
+  /**
+   * Voice mode has exactly one way in and one way out.
+   *
+   * Entering starts the loop; leaving stops it. The earlier arrangement had
+   * four controls with three different meanings — a rail button that opened the
+   * screen and silently started capture, a composer mic that toggled the loop
+   * without changing the view, a mic inside voice mode, and Start/Stop in the
+   * inspector — and closing the screen left the microphone live with nothing on
+   * screen saying so. LiveKit's reference bar makes leaving end the session for
+   * the same reason (`zplan/desktop_ui_research_round3.vi.md` §3).
+   */
+  const enterVoiceMode = () => {
+    setVoiceModeOpen(true);
+    if (engine.voice.phase === "off") {
+      void engine.send({ cmd: "voice_start" });
+    }
+  };
+
+  const leaveVoiceMode = () => {
+    setVoiceModeOpen(false);
+    if (engine.voice.phase !== "off") {
+      void engine.send({ cmd: "voice_stop" });
+    }
+  };
+
+  /** Pause and resume capture without leaving the screen. */
+  const toggleMic = () =>
+    void engine.send(engine.voice.phase === "off" ? { cmd: "voice_start" } : { cmd: "voice_stop" });
 
   const restartEngine = async () => {
     await engine.stop();
@@ -117,26 +143,22 @@ export default function App() {
           }
           void engine.send({ cmd: command.id } as never);
         }}
-        onToggleVoice={toggleVoice}
         onOpenInspector={openInspector}
         onRestartEngine={() => void restartEngine()}
-        onOpenVoiceMode={() => {
-          setVoiceModeOpen(true);
-          // Entering voice mode with the loop off would show a dead sphere.
-          if (engine.voice.phase === "off") {
-            void engine.send({ cmd: "voice_start" });
-          }
-        }}
+        onEnterVoiceMode={enterVoiceMode}
       />
 
       {voiceModeOpen && (
         <VoiceMode
           orbState={engine.orbState}
           voice={engine.voice}
+          conversation={engine.conversation}
+          documents={documents}
           connected={connected}
-          onSend={(text) => void engine.send({ cmd: "chat", text })}
-          onToggleMic={toggleVoice}
-          onClose={() => setVoiceModeOpen(false)}
+          transcriptOpen={transcriptOpen}
+          onToggleTranscript={() => setTranscriptOpen((open) => !open)}
+          onToggleMic={toggleMic}
+          onLeave={leaveVoiceMode}
         />
       )}
 
@@ -146,13 +168,20 @@ export default function App() {
             <SheetTitle>Inspector</SheetTitle>
           </SheetHeader>
 
-          <Tabs value={inspectorTab} onValueChange={(value) => setInspectorTab(value as InspectorTab)} className="flex min-h-0 flex-1 flex-col px-4 pb-4">
+          <Tabs
+            value={inspectorTab}
+            onValueChange={(value) => setInspectorTab(value as InspectorTab)}
+            className="flex min-h-0 flex-1 flex-col px-4 pb-4"
+          >
+            {/* A "Frames" tab used to sit here listing raw NDJSON event names —
+                no time, no payload, no direction. It could not answer a
+                question anyone actually has, and every real diagnostic it
+                hinted at is already in one of these four panels. */}
             <TabsList>
-              <TabsTrigger value="session">Session</TabsTrigger>
-              <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
-              <TabsTrigger value="voice">Voice</TabsTrigger>
-              <TabsTrigger value="settings">Settings</TabsTrigger>
-              <TabsTrigger value="frames">Frames</TabsTrigger>
+              <TabsTrigger value="session">Phiên</TabsTrigger>
+              <TabsTrigger value="knowledge">Kiến thức</TabsTrigger>
+              <TabsTrigger value="voice">Thoại</TabsTrigger>
+              <TabsTrigger value="settings">Cài đặt</TabsTrigger>
             </TabsList>
 
             <TabsContent value="session" className="min-h-0 flex-1 overflow-auto">
@@ -183,12 +212,7 @@ export default function App() {
             </TabsContent>
 
             <TabsContent value="voice" className="min-h-0 flex-1 overflow-auto">
-              <VoiceHud
-                voice={engine.voice}
-                connected={connected}
-                onStart={() => void engine.send({ cmd: "voice_start" })}
-                onStop={() => void engine.send({ cmd: "voice_stop" })}
-              />
+              <VoiceHud voice={engine.voice} />
             </TabsContent>
 
             <TabsContent value="settings" className="min-h-0 flex-1 overflow-auto">
@@ -200,7 +224,9 @@ export default function App() {
                   void engine.send({ cmd: "llm_config" });
                   void engine.send({ cmd: "status" });
                 }}
-                onSetKey={(provider, key) => void engine.send({ cmd: "llm_set_key", provider, key })}
+                onSetKey={(provider, key) =>
+                  void engine.send({ cmd: "llm_set_key", provider, key })
+                }
                 onLoadModels={(provider, query) =>
                   void engine.send({ cmd: "llm_models", provider, query })
                 }
@@ -218,7 +244,10 @@ export default function App() {
                   })
                 }
                 onSelectProfile={(profileKey) =>
-                  void engine.send({ cmd: "voice_profile_select", profile: profileKey })
+                  void engine.send({
+                    cmd: "voice_profile_select",
+                    profile: profileKey,
+                  })
                 }
                 onApplyGeneration={(change) => {
                   const config = engine.settings.config;
@@ -230,24 +259,10 @@ export default function App() {
                     provider: config?.provider ?? "openrouter",
                     model: config?.model ?? "",
                     max_tokens: change.maxTokens ?? config?.maxTokens ?? 4096,
-                    reasoning_enabled:
-                      change.reasoningEnabled ?? config?.reasoningEnabled ?? false,
+                    reasoning_enabled: change.reasoningEnabled ?? config?.reasoningEnabled ?? false,
                   });
                 }}
               />
-            </TabsContent>
-
-            <TabsContent value="frames" className="min-h-0 flex-1">
-              <ScrollArea className="h-full">
-                <ul className="flex flex-col gap-1 font-mono text-[10px]">
-                  {engine.log.map((frame, index) => (
-                    <li key={index} className="text-muted-foreground">
-                      <span className="text-foreground">{frame.event}</span>
-                      {"type" in frame && typeof frame.type === "string" ? `:${frame.type}` : ""}
-                    </li>
-                  ))}
-                </ul>
-              </ScrollArea>
             </TabsContent>
           </Tabs>
 

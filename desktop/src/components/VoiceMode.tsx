@@ -1,30 +1,35 @@
 /**
- * Full-screen voice mode.
+ * Voice mode.
  *
- * One object on an empty field, and a control bar. Everything else is gone —
- * no rail, no transcript, no inspector — because during a spoken turn there is
- * nothing to read and nothing to click.
+ * Shape taken from LiveKit's reference session view and Pipecat's voice kit
+ * (see `zplan/desktop_ui_research_round3.vi.md`), which agree on three things
+ * this screen previously got wrong:
  *
- * Two layers, and the split matters:
+ * 1. **Voice is a view of the same conversation, not a separate place.** The
+ *    transcript here is `conversation.turns` — the very list the chat surface
+ *    renders. An earlier revision showed no history at all: a spoken turn
+ *    scrolled past and was gone, because voice reduced only into live signals.
+ * 2. **Three layers of text, not one.** The caption is what is being said *now*
+ *    and disappears when the turn ends; the transcript is the record and is
+ *    toggled; the phase label is status. Conflating them is why the old screen
+ *    felt empty during a turn and blank after it.
+ * 3. **Leaving ends the loop.** There is no state where this screen is closed
+ *    and the microphone is still hot.
  *
- * * The **orb** is agent state, and stays `thinking-orbs` at its tuned 64 px.
- *   Plan §0.2 makes it the single source for that, and the library ships two
- *   separate designs rather than one scalable one — CSS-scaling the canvas to
- *   fill a screen would just blur it.
- * * The **halo** around it is microphone amplitude, which is not agent state.
- *   It is a plain gradient whose size and opacity track `voice_level.rms`, the
- *   same reading the recogniser sees. The WebView still never opens a mic.
- *
- * So the sphere reacts to your voice while the orb reports what the system is
- * doing, and neither pretends to be the other.
+ * The orb stays `thinking-orbs` at its tuned 64px per plan §0.2 — the library
+ * ships two fixed designs rather than one scalable one, so CSS-scaling the
+ * canvas to fill a screen would only blur it. Size is conveyed by the halo
+ * around it, which is amplitude, not agent state.
  */
 
-import { Mic, MicOff, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { Mic, MicOff, MessageSquareText, X } from "lucide-react";
 import type { OrbState } from "thinking-orbs";
 import { ThinkingOrb } from "thinking-orbs";
 
 import { Button } from "@/components/ui/button";
+import { VoiceTranscript } from "@/components/VoiceTranscript";
+import type { ConversationState } from "@/engine/conversation";
+import type { VaultDocument } from "@/engine/documents";
 import { orbLabel } from "@/engine/orb";
 import type { VoiceState } from "@/engine/voice";
 import { partialText, peakLevel } from "@/engine/voice";
@@ -33,10 +38,13 @@ import { cn } from "@/lib/utils";
 interface VoiceModeProps {
   orbState: OrbState;
   voice: VoiceState;
+  conversation: ConversationState;
+  documents: VaultDocument[];
   connected: boolean;
-  onSend: (text: string) => void;
+  transcriptOpen: boolean;
+  onToggleTranscript: () => void;
   onToggleMic: () => void;
-  onClose: () => void;
+  onLeave: () => void;
 }
 
 /**
@@ -49,34 +57,81 @@ function recentLevel(levels: number[]): number {
   return peakLevel(levels.slice(-6));
 }
 
+/**
+ * What is being said right now.
+ *
+ * Ephemeral by design, following Pipecat's `TranscriptOverlay`: it carries the
+ * live partial while the user speaks and the repair prompt when speech was
+ * rejected, and it is empty the rest of the time. The record lives in the
+ * transcript; duplicating it here would give two places to read the same thing.
+ */
+function Caption({ voice }: { voice: VoiceState }) {
+  const partial = partialText(voice.partial);
+
+  if (voice.repairPrompt !== null) {
+    // docs/18 §5: rejected speech becomes a question, never an invented
+    // transcript. It must not be styled as an error.
+    return (
+      <p className="text-muted-foreground max-w-xl text-center text-[15px] leading-7 italic">
+        {voice.repairPrompt}
+      </p>
+    );
+  }
+
+  if (partial === "") {
+    return null;
+  }
+
+  return (
+    <p className="max-w-xl text-center text-[17px] leading-8">
+      <span>{voice.partial?.committed}</span>{" "}
+      <span className="text-muted-foreground">{voice.partial?.tentative}</span>
+    </p>
+  );
+}
+
 export function VoiceMode({
   orbState,
   voice,
+  conversation,
+  documents,
   connected,
-  onSend,
+  transcriptOpen,
+  onToggleTranscript,
   onToggleMic,
-  onClose,
+  onLeave,
 }: VoiceModeProps) {
-  const [draft, setDraft] = useState("");
   const running = voice.phase !== "off";
   const level = running ? recentLevel(voice.levels) : 0;
-  const partial = partialText(voice.partial);
-
-  const submit = () => {
-    const text = draft.trim();
-    if (text === "" || !connected) {
-      return;
-    }
-    onSend(text);
-    setDraft("");
-  };
 
   return (
-    <div className="bg-background fixed inset-0 z-50 flex flex-col">
-      <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-10">
-        <div className="relative flex size-[22rem] items-center justify-center">
-          {/* Amplitude halo. Scale and opacity are the only things driven by
-              rms, so a silent room reads as a still sphere rather than noise. */}
+    <div
+      className="bg-background fixed inset-0 z-50 flex flex-col"
+      role="dialog"
+      aria-label="Chế độ thoại"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          onLeave();
+        }
+      }}
+      tabIndex={-1}
+    >
+      <div
+        className={cn(
+          "relative flex min-h-0 flex-col items-center justify-center gap-6",
+          // The orb yields the screen to the transcript rather than overlapping
+          // it — the same trade LiveKit's tile layout makes.
+          transcriptOpen ? "shrink-0 pt-10 pb-4" : "flex-1",
+        )}
+      >
+        <div
+          className={cn(
+            "relative flex items-center justify-center transition-[width,height] duration-300",
+            transcriptOpen ? "size-32" : "size-[22rem]",
+          )}
+        >
+          {/* Amplitude halo. Only scale and opacity are driven by rms, so a
+              silent room reads as a still sphere rather than as noise. */}
           <div
             className="from-primary/70 via-primary/25 absolute inset-0 rounded-full bg-gradient-to-b to-transparent blur-2xl transition-transform duration-100"
             style={{
@@ -86,82 +141,76 @@ export function VoiceMode({
             aria-hidden
           />
           <div
-            className="from-primary/40 to-primary/5 absolute inset-8 rounded-full bg-gradient-to-b transition-transform duration-100"
+            className="from-primary/40 to-primary/5 absolute inset-[12%] rounded-full bg-gradient-to-b transition-transform duration-100"
             style={{ transform: `scale(${0.9 + level * 0.12})` }}
             aria-hidden
           />
-          <div className="relative">
-            <ThinkingOrb state={orbState} size={64} />
-          </div>
+          <ThinkingOrb state={orbState} size={64} />
         </div>
 
-        <div className="flex min-h-16 max-w-xl flex-col items-center gap-3 px-8 text-center">
-          <p className="text-muted-foreground text-sm">
-            {running ? orbLabel(orbState) : "Voice đang tắt"}
+        <div className="flex min-h-14 flex-col items-center gap-3 px-8">
+          <p className="text-muted-foreground text-sm" role="status">
+            {running ? orbLabel(orbState) : "Đang tắt mic"}
           </p>
-          {partial !== "" && (
-            <p className="text-[17px] leading-8">
-              <span>{voice.partial?.committed}</span>{" "}
-              <span className="text-muted-foreground">{voice.partial?.tentative}</span>
-            </p>
-          )}
-          {voice.repairPrompt !== null && (
-            // docs/18 §5: a rejected transcript becomes a repair prompt. It is a
-            // turn, not an error.
-            <p className="text-muted-foreground text-sm italic">{voice.repairPrompt}</p>
-          )}
+          {!transcriptOpen && <Caption voice={voice} />}
           {voice.error !== null && <p className="text-destructive text-sm">{voice.error}</p>}
         </div>
       </div>
 
-      <div className="px-6 pb-6">
-        <div className="border-border/70 bg-card mx-auto flex max-w-2xl items-center gap-2 rounded-full border px-3 py-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-muted-foreground size-9 shrink-0 rounded-full p-0"
-            title="Tài liệu — gõ @ trong khung chat"
-            disabled
-          >
-            <Plus className="size-4" />
-          </Button>
-          <input
-            className="flex-1 bg-transparent text-sm outline-none placeholder:opacity-60"
-            value={draft}
-            placeholder={connected ? "Hoặc gõ…" : "Engine chưa chạy"}
-            disabled={!connected}
-            aria-label="Message"
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                submit();
-              }
-              if (event.key === "Escape") {
-                onClose();
-              }
-            }}
-          />
+      {transcriptOpen && (
+        <VoiceTranscript
+          conversation={conversation}
+          documents={documents}
+          orbState={orbState}
+          voice={voice}
+        />
+      )}
+
+      <div className="shrink-0 px-6 pb-8">
+        <div className="border-border/70 bg-card mx-auto flex w-fit items-center gap-2 rounded-full border p-2">
           <Button
             size="sm"
             variant="ghost"
             className={cn(
-              "size-9 shrink-0 rounded-full p-0",
+              "size-11 rounded-full p-0",
               running ? "text-primary" : "text-muted-foreground",
             )}
             title={running ? "Tắt mic" : "Bật mic"}
+            aria-label={running ? "Tắt mic" : "Bật mic"}
+            aria-pressed={running}
             disabled={!connected}
             onClick={onToggleMic}
           >
-            {running ? <Mic className="size-4" /> : <MicOff className="size-4" />}
+            {running ? <Mic className="size-5" /> : <MicOff className="size-5" />}
           </Button>
+
           <Button
             size="sm"
-            className="size-9 shrink-0 rounded-full p-0"
-            title="Đóng voice mode (Esc)"
-            onClick={onClose}
+            variant="ghost"
+            className={cn(
+              "size-11 rounded-full p-0",
+              transcriptOpen ? "text-primary" : "text-muted-foreground",
+            )}
+            title={transcriptOpen ? "Ẩn hội thoại" : "Hiện hội thoại"}
+            aria-label={transcriptOpen ? "Ẩn hội thoại" : "Hiện hội thoại"}
+            aria-pressed={transcriptOpen}
+            onClick={onToggleTranscript}
           >
-            <X className="size-4" />
+            <MessageSquareText className="size-5" />
+          </Button>
+
+          <div className="bg-border mx-1 h-6 w-px" aria-hidden />
+
+          {/* Leaving stops the loop. There is no "closed but still listening". */}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-muted-foreground hover:text-destructive size-11 rounded-full p-0"
+            title="Thoát chế độ thoại (Esc)"
+            aria-label="Thoát chế độ thoại"
+            onClick={onLeave}
+          >
+            <X className="size-5" />
           </Button>
         </div>
       </div>

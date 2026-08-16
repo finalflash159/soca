@@ -17,6 +17,7 @@
  * `blocked` turn is a terminal outcome, not an error.
  */
 
+import { Mic } from "lucide-react";
 import type { OrbState } from "thinking-orbs";
 import { ThinkingOrb } from "thinking-orbs";
 
@@ -50,6 +51,18 @@ function AssistantTurn({
 }) {
   const status = turnStatus(turn);
   const text = turnText(turn);
+
+  // A repair is the engine asking again after rejecting an utterance (docs/18
+  // §5). It replaces the answer and is a turn outcome, so it renders as speech
+  // rather than as a blocked or failed state.
+  if (turn.repair !== null) {
+    return (
+      <div className="mr-10 flex flex-col gap-1.5">
+        <p className="text-[15px] leading-7">{turn.repair}</p>
+        <span className="text-muted-foreground text-[10px]">chưa nghe rõ</span>
+      </div>
+    );
+  }
 
   const rule =
     status === "failed"
@@ -91,6 +104,12 @@ function AssistantTurn({
         </p>
       )}
 
+      {turn.interrupted && (
+        // Barge-in cut the answer short. What was said stands; saying so is the
+        // difference between an incomplete answer and a wrong one.
+        <span className="text-muted-foreground text-[10px]">bị ngắt giữa chừng</span>
+      )}
+
       {(turn.citations.length > 0 || turn.route !== null) && (
         <div className="flex flex-wrap items-center gap-2">
           {turn.citations.map((citation, index) => (
@@ -124,11 +143,22 @@ export function ChatView({ conversation, documents, orbState, orbLabel }: ChatVi
 
         {conversation.turns.map((turn, index) => (
           <div key={`${turn.runId}-${index}`} className="flex flex-col gap-4">
-            <div className="flex justify-end">
-              <p className="bg-card border-border/60 ml-10 max-w-[80%] rounded-2xl border px-4 py-2.5 text-[15px] leading-7 whitespace-pre-wrap">
-                {turn.userText}
-              </p>
-            </div>
+            {/* A rejected utterance has no transcript to show — the engine
+                declined to invent one — so there is no bubble, only the repair
+                question below. An empty bubble would read as a lost message. */}
+            {turn.userText !== "" && (
+              <div className="flex justify-end">
+                <p className="bg-card border-border/60 ml-10 flex max-w-[80%] items-start gap-2 rounded-2xl border px-4 py-2.5 text-[15px] leading-7 whitespace-pre-wrap">
+                  {turn.surface === "voice" && (
+                    <Mic
+                      className="text-muted-foreground mt-1.5 size-3.5 shrink-0"
+                      aria-label="Nói"
+                    />
+                  )}
+                  {turn.userText}
+                </p>
+              </div>
+            )}
             <AssistantTurn
               turn={turn}
               documents={documents}

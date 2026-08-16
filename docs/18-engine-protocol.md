@@ -359,10 +359,33 @@ One event type with 20 `type` values, mirroring `VoiceMonitorEvent`:
 | --- | --- |
 | Session | `loading`, `warmup`, `ready`, `loop_started`, `loop_stopped` |
 | Capture | `recording`, `voice_level`, `audio`, `recorded` |
-| Recognition | `transcribing`, `asr_partial`, `repair` |
-| Turn | `turn_start`, `progress`, `turn_end`, `done` |
-| Output | `tts`, `playback_started`, `barge_in` |
+| Recognition | `transcribing`, `asr_partial`, `asr`, `repair` |
+| Turn | `turn_start`, `progress`, `runtime`, `turn_end`, `done` |
+| Output | `llm_token`, `sentence`, `tts`, `playback_started`, `barge_in`, `interrupted` |
 | Failure | `error` |
+
+### 5.1 Reconstructing a spoken turn
+
+A voice turn is fully recoverable from three of those types, and a client that
+wants spoken history needs no other source:
+
+| `type` | `text` |
+| --- | --- |
+| `asr` | the recognised utterance, `""` when nothing was understood |
+| `sentence` | one guardrail-passed answer sentence, emitted repeatedly |
+| `done` | the authoritative full answer |
+
+`sentence` — not `answer_delta` — is what a caption should render. It is the
+same text handed to TTS, already citation-stripped, and it lands progressively.
+The voice `answer_delta` is a raw model token (§6): it breaks mid-word and can
+still carry a label the final text removes.
+
+`repair` replaces the answer when the utterance was rejected, and `interrupted`
+marks an answer that barge-in cut short. Both are turn outcomes, not failures.
+
+`runtime` and `llm_token` are consumed by the engine itself — to derive
+`router_trace`, the memory trace and the voice `answer_delta` stream — and are
+forwarded verbatim. A client may ignore them.
 
 `turn_start` opens a turn-progress context and emits `turn_progress`
 `preparing`. `runtime` metadata drives the voice `router_trace` and refreshes
@@ -449,6 +472,7 @@ than incidental: publishing a capability turn progressively would put unverified
 answer text on screen, which is what ADR 0003 forbids. A client that wants the
 wait to read as progress must render `turn_progress.phase`, because for those
 turns there is no partial answer to render.
+
 - Some hosted models return the whole completion in a single SSE chunk. The turn
   is then one delta even on the streaming path. Treat a single delta as normal,
   not as an error.

@@ -238,3 +238,120 @@ describe("unknown frames", () => {
     expect(fold([{ event: "usage", turns: 2 } as EngineFrame])).toEqual(initialConversation);
   });
 });
+
+const voice = (
+  type: string,
+  text = "",
+  metadata: Record<string, unknown> = {},
+): EngineFrame => ({ event: "voice", type, text, metadata }) as EngineFrame;
+
+describe("voice turns", () => {
+  it("builds a spoken turn from asr, sentence and done", () => {
+    // The regression this exists for: voice reduced only into live signals, so
+    // a finished spoken turn left no history behind at all.
+    const state = fold([
+      voice("asr", "Thời tiết hôm nay thế nào?"),
+      voice("sentence", "Hôm nay trời nắng."),
+      voice("sentence", "Nhiệt độ khoảng 30 độ."),
+      voice("done", "Hôm nay trời nắng. Nhiệt độ khoảng 30 độ.", {
+        terminal_status: "achieved",
+      }),
+    ]);
+    expect(state.turns).toHaveLength(1);
+    expect(state.turns[0].surface).toBe("voice");
+    expect(state.turns[0].userText).toBe("Thời tiết hôm nay thế nào?");
+    expect(turnText(state.turns[0])).toBe("Hôm nay trời nắng. Nhiệt độ khoảng 30 độ.");
+    expect(turnStatus(state.turns[0])).toBe("achieved");
+  });
+
+  it("shows sentences before done lands", () => {
+    const state = fold([voice("asr", "Chào bạn"), voice("sentence", "Chào bạn!")]);
+    expect(turnText(state.turns[0])).toBe("Chào bạn!");
+    expect(turnStatus(state.turns[0])).toBe("streaming");
+  });
+
+  it("separates sentences the splitter stripped", () => {
+    // Same rule as chat: pop_ready_sentence discards the space on both sides.
+    const state = fold([
+      voice("asr", "hỏi"),
+      voice("sentence", "Câu một."),
+      voice("sentence", "Câu hai."),
+    ]);
+    expect(turnText(state.turns[0])).toBe("Câu một. Câu hai.");
+  });
+
+  it("ignores an empty transcript rather than showing a blank bubble", () => {
+    expect(fold([voice("asr", "   ")]).turns).toHaveLength(0);
+  });
+
+  it("renders a repair as a turn, not a failure", () => {
+    // docs/18 §5: rejected speech becomes a question, never an invented
+    // transcript. Styling it as an error would be wrong.
+    const state = fold([
+      voice("asr", ""),
+      voice("repair", "Bạn nói lại giúp mình nhé?"),
+      voice("done", "", { rejected: true, terminal_status: "needs_clarification" }),
+    ]);
+    expect(state.turns).toHaveLength(1);
+    expect(state.turns[0].repair).toBe("Bạn nói lại giúp mình nhé?");
+    expect(state.turns[0].error).toBeNull();
+  });
+
+  it("keeps the repair prompt when done carries no text", () => {
+    const state = fold([
+      voice("repair", "Mình chưa nghe rõ."),
+      voice("done", "", { rejected: true }),
+    ]);
+    expect(state.turns[0].repair).toBe("Mình chưa nghe rõ.");
+  });
+
+  it("marks a barge-in answer interrupted instead of dropping it", () => {
+    const state = fold([
+      voice("asr", "kể chuyện đi"),
+      voice("sentence", "Ngày xửa ngày xưa."),
+      voice("interrupted"),
+      voice("done", "Ngày xửa ngày xưa.", { terminal_status: "cancelled" }),
+    ]);
+    expect(state.turns[0].interrupted).toBe(true);
+    expect(turnText(state.turns[0])).toBe("Ngày xửa ngày xưa.");
+  });
+
+  it("closes an open turn when the loop stops mid-answer", () => {
+    // Otherwise the bubble spins forever after the user turns voice off.
+    const state = fold([
+      voice("asr", "câu hỏi"),
+      voice("sentence", "Đang trả lời"),
+      voice("loop_stopped"),
+    ]);
+    expect(turnStatus(state.turns[0])).not.toBe("streaming");
+    expect(state.turns[0].terminal).toBe("cancelled");
+  });
+
+  it("does not let a voice turn close an open chat turn", () => {
+    // Both surfaces run at once and neither `done` carries a run_id.
+    const state = fold([
+      start("gõ câu này"),
+      voice("asr", "nói câu này"),
+      voice("done", "trả lời nói", { terminal_status: "achieved" }),
+    ]);
+    const [chatTurn, voiceTurn] = state.turns;
+    expect(chatTurn.finalText).toBeNull();
+    expect(voiceTurn.finalText).toBe("trả lời nói");
+  });
+
+  it("does not let a chat turn close an open voice turn", () => {
+    const state = fold([voice("asr", "nói"), start("gõ"), done("trả lời gõ")]);
+    const [voiceTurn, chatTurn] = state.turns;
+    expect(voiceTurn.finalText).toBeNull();
+    expect(chatTurn.finalText).toBe("trả lời gõ");
+  });
+
+  it("ignores voice answer_delta so tokens never double the sentences", () => {
+    const raw = {
+      ...(delta("tok") as Record<string, unknown>),
+      surface: "voice",
+    } as EngineFrame;
+    const state = fold([voice("asr", "hỏi"), raw, voice("sentence", "Câu.")]);
+    expect(turnText(state.turns[0])).toBe("Câu.");
+  });
+});

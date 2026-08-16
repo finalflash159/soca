@@ -1,8 +1,11 @@
 /**
- * The voice loop.
+ * Voice diagnostics.
  *
- * This is where a graphical app earns its keep over the TUI — a level meter and
- * a live partial transcript are genuinely hard to render in a terminal.
+ * Read-only on purpose. This panel used to carry its own Start/Stop, which made
+ * it the fourth place in the app that could turn the microphone on, each with
+ * slightly different consequences. Capture is now started and stopped in exactly
+ * one place — entering and leaving voice mode — and this reports what that loop
+ * is doing: levels, endpointing, and the last turn's outcome.
  *
  * What it deliberately does **not** do:
  *
@@ -17,15 +20,11 @@
 
 import { PanelEmpty, PanelRow, PanelSection } from "@/components/PanelSection";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import type { VoiceState } from "@/engine/voice";
 import { LEVEL_HISTORY, partialText, peakLevel, voicePhaseLabel } from "@/engine/voice";
 
 interface VoiceHudProps {
   voice: VoiceState;
-  connected: boolean;
-  onStart: () => void;
-  onStop: () => void;
 }
 
 /**
@@ -57,7 +56,7 @@ function LevelMeter({ levels, active }: { levels: number[]; active: boolean }) {
   );
 }
 
-export function VoiceHud({ voice, connected, onStart, onStop }: VoiceHudProps) {
+export function VoiceHud({ voice }: VoiceHudProps) {
   const running = voice.phase !== "off";
   const capturing = voice.phase === "listening";
   const partial = partialText(voice.partial);
@@ -79,16 +78,6 @@ export function VoiceHud({ voice, connected, onStart, onStop }: VoiceHudProps) {
             </Badge>
           </>
         }
-        action={
-          <Button
-            size="sm"
-            variant={running ? "outline" : "default"}
-            disabled={!connected}
-            onClick={running ? onStop : onStart}
-          >
-            {running ? "Stop" : "Start"}
-          </Button>
-        }
       >
         <div className="flex flex-col gap-3">
           <LevelMeter levels={voice.levels} active={capturing} />
@@ -101,8 +90,8 @@ export function VoiceHud({ voice, connected, onStart, onStop }: VoiceHudProps) {
           ) : (
             <PanelEmpty>
               {running
-                ? "Nothing captured yet."
-                : "The loop is stopped. Levels come from the engine, not from the browser."}
+                ? "Chưa bắt được tiếng nào."
+                : "Vòng thoại đang tắt. Mở chế độ thoại để bắt đầu."}
             </PanelEmpty>
           )}
 

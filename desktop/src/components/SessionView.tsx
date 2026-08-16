@@ -40,10 +40,9 @@ import type { ConversationState } from "@/engine/conversation";
 import type { SlashCommand, VaultDocument } from "@/engine/documents";
 import { orbLabel } from "@/engine/orb";
 import type { VoiceState } from "@/engine/voice";
-import { LEVEL_HISTORY, partialText } from "@/engine/voice";
 import { cn } from "@/lib/utils";
 
-export type InspectorTab = "session" | "knowledge" | "voice" | "settings" | "frames";
+export type InspectorTab = "session" | "knowledge" | "voice" | "settings";
 
 interface SessionViewProps {
   orbState: OrbState;
@@ -55,10 +54,9 @@ interface SessionViewProps {
   starting: boolean;
   onSend: (text: string) => void;
   onCommand: (command: SlashCommand) => void;
-  onToggleVoice: () => void;
   onOpenInspector: (tab: InspectorTab) => void;
   onRestartEngine: () => void;
-  onOpenVoiceMode: () => void;
+  onEnterVoiceMode: () => void;
 }
 
 /** Time-of-day greeting. No name — the app does not reliably know one. */
@@ -76,33 +74,16 @@ function greeting(): string {
   return "Chào buổi tối";
 }
 
-/** Compact level strip. Readings are the engine's rms, never a browser mic. */
-function LevelStrip({ levels }: { levels: number[] }) {
-  const window = levels.slice(-Math.floor(LEVEL_HISTORY / 2));
-  const padded = [...Array(Math.max(0, 40 - window.length)).fill(0), ...window];
-  return (
-    <div className="flex h-5 items-center gap-[2px]" aria-hidden>
-      {padded.map((level, index) => (
-        <div
-          key={index}
-          className="bg-primary/70 w-[2px] rounded-full transition-[height] duration-75"
-          style={{ height: `${Math.max(10, level * 100)}%` }}
-        />
-      ))}
-    </div>
-  );
-}
-
 function Rail({
   orbState,
   connected,
   voiceRunning,
   onOpenInspector,
   onRestartEngine,
-  onOpenVoiceMode,
+  onEnterVoiceMode,
 }: Pick<
   SessionViewProps,
-  "orbState" | "onOpenInspector" | "onRestartEngine" | "onOpenVoiceMode"
+  "orbState" | "onOpenInspector" | "onRestartEngine" | "onEnterVoiceMode"
 > & {
   connected: boolean;
   voiceRunning: boolean;
@@ -124,9 +105,9 @@ function Rail({
           "size-9 rounded-lg p-0",
           voiceRunning ? "text-primary" : "text-muted-foreground hover:text-foreground",
         )}
-        title="Voice mode"
-        aria-label="Voice mode"
-        onClick={onOpenVoiceMode}
+        title="Chế độ thoại"
+        aria-label="Chế độ thoại"
+        onClick={onEnterVoiceMode}
       >
         <AudioLines className="size-4" />
       </Button>
@@ -183,13 +164,11 @@ export function SessionView({
   starting,
   onSend,
   onCommand,
-  onToggleVoice,
   onOpenInspector,
   onRestartEngine,
-  onOpenVoiceMode,
+  onEnterVoiceMode,
 }: SessionViewProps) {
   const voiceRunning = voice.phase !== "off";
-  const partial = partialText(voice.partial);
   const hasTurns = conversation.turns.length > 0;
   const lastTurn = conversation.turns[conversation.turns.length - 1];
   // A turn that has not produced text yet renders its own orb inline; anything
@@ -208,7 +187,7 @@ export function SessionView({
       variant={hasTurns ? "docked" : "hero"}
       onSend={onSend}
       onCommand={onCommand}
-      onToggleVoice={onToggleVoice}
+      onEnterVoiceMode={onEnterVoiceMode}
       onOpenSettings={() => onOpenInspector("settings")}
     />
   );
@@ -221,7 +200,7 @@ export function SessionView({
         voiceRunning={voiceRunning}
         onOpenInspector={onOpenInspector}
         onRestartEngine={onRestartEngine}
-        onOpenVoiceMode={onOpenVoiceMode}
+        onEnterVoiceMode={onEnterVoiceMode}
       />
 
       <section className="relative flex min-w-0 flex-1 flex-col">
@@ -260,20 +239,12 @@ export function SessionView({
                 {greeting()}
               </h1>
               {composer}
+              {/* No voice readout here. Capture only runs while voice mode is
+                  open, and voice mode covers this screen — a meter and a
+                  partial transcript rendered underneath it could never be
+                  seen. */}
               {busyOutsideTurn && (
                 <p className="text-muted-foreground text-center text-xs">{orbLabel(orbState)}</p>
-              )}
-              {voiceRunning && (
-                <div className="flex flex-col items-center gap-2">
-                  {voice.phase === "listening" && <LevelStrip levels={voice.levels} />}
-                  <p className="text-muted-foreground text-xs">{orbLabel(orbState)}</p>
-                  {partial !== "" && (
-                    <p className="max-w-md text-center text-[15px] leading-7">
-                      <span>{voice.partial?.committed}</span>{" "}
-                      <span className="text-muted-foreground">{voice.partial?.tentative}</span>
-                    </p>
-                  )}
-                </div>
               )}
             </div>
           </div>

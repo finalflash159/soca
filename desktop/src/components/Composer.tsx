@@ -40,7 +40,7 @@ interface ComposerProps {
   variant?: "hero" | "docked";
   onSend: (text: string) => void;
   onCommand: (command: SlashCommand) => void;
-  onToggleVoice: () => void;
+  onEnterVoiceMode: () => void;
   onOpenSettings: () => void;
 }
 
@@ -53,7 +53,7 @@ export function Composer({
   variant = "docked",
   onSend,
   onCommand,
-  onToggleVoice,
+  onEnterVoiceMode,
   onOpenSettings,
 }: ComposerProps) {
   const [draft, setDraft] = useState("");
@@ -210,6 +210,9 @@ export function Composer({
                 {model}
               </button>
             )}
+            {/* Goes to voice mode rather than toggling capture in place. This
+                app has no dictation-into-the-box: a hot microphone with no
+                screen to show for it was the confusing state. */}
             <Button
               size="sm"
               variant="ghost"
@@ -217,9 +220,10 @@ export function Composer({
                 "size-8 rounded-full p-0",
                 voiceRunning ? "text-primary" : "text-muted-foreground",
               )}
-              title={voiceRunning ? "Tắt voice" : "Bật voice"}
+              title="Chế độ thoại"
+              aria-label="Chế độ thoại"
               disabled={!connected}
-              onClick={onToggleVoice}
+              onClick={onEnterVoiceMode}
             >
               <Mic className="size-4" />
             </Button>

@@ -1,8 +1,8 @@
 /**
- * Turn assembly for the text surface.
+ * Turn assembly — one transcript, both surfaces.
  *
- * Implements `docs/18-engine-protocol.md` §4 (`chat`) and §6 (`answer_delta`).
- * Two rules from those sections shape everything here:
+ * Implements `docs/18-engine-protocol.md` §4 (`chat`), §5 (`voice`) and §6
+ * (`answer_delta`). Three rules from those sections shape everything here:
  *
  * * **Append, never replace.** Concatenating every `answer_delta` `payload.text`
  *   in order reproduces the final answer exactly. A client that replaces on each
@@ -10,12 +10,29 @@
  * * **`blocked` is a terminal outcome, not an error.** Per ADR 0003 a blocked
  *   turn is the system declining to answer without evidence, so it gets its own
  *   status rather than being folded into `failed`.
+ * * **A spoken turn is a turn.** Voice and chat produce the same `Turn`, tagged
+ *   by `surface`, in one ordered list.
+ *
+ * That last rule is why this file grew. Voice used to reduce into a separate
+ * live-signals-only state, so the app had no spoken history at all: the moment
+ * a voice turn ended, everything said in it was gone. The transcript was never
+ * missing from the wire — `voice/asr` carries the recognised user text and
+ * `voice/sentence` carries each guardrail-passed answer sentence — the client
+ * simply dropped both.
+ *
+ * Voice text comes from `voice/sentence`, not from `answer_delta`. On the voice
+ * surface a delta is a raw model token (§6), so it can carry a citation label
+ * the final text strips and it breaks mid-word; `sentence` is the same text TTS
+ * speaks, which is what a caption should show.
  */
 
-import type { EngineFrame, TerminalStatus, WorkflowFrame } from "./protocol";
-import { isChatFrame, isWorkflowFrame } from "./protocol";
+import type { EngineFrame, TerminalStatus, VoiceFrame, WorkflowFrame } from "./protocol";
+import { isChatFrame, isVoiceFrame, isWorkflowFrame } from "./protocol";
 
 export type TurnStatus = "streaming" | "achieved" | "blocked" | "failed";
+
+/** Which surface produced a turn. Both render the same way. */
+export type Surface = "chat" | "voice";
 
 export interface Citation {
   label?: string;
@@ -26,7 +43,17 @@ export interface Citation {
 export interface Turn {
   runId: string;
   goalId: string;
+  surface: Surface;
   userText: string;
+  /**
+   * A repair prompt shown in place of an answer (§5).
+   *
+   * Rejected speech becomes a Vietnamese question rather than an invented
+   * transcript, so this is a turn outcome, never an error.
+   */
+  repair: string | null;
+  /** Barge-in cut the answer short; what was said stands, but it is incomplete. */
+  interrupted: boolean;
   /** Deltas concatenated in arrival order. Empty until the first delta lands. */
   streamedText: string;
   /** `chat/done` text — authoritative once present. */
@@ -81,11 +108,14 @@ export function turnText(turn: Turn): string {
   return turn.finalText ?? turn.streamedText;
 }
 
-function newTurn(runId: string, goalId: string, userText: string): Turn {
+function newTurn(runId: string, goalId: string, userText: string, surface: Surface): Turn {
   return {
     runId,
     goalId,
+    surface,
     userText,
+    repair: null,
+    interrupted: false,
     streamedText: "",
     finalText: null,
     route: null,
@@ -98,10 +128,17 @@ function newTurn(runId: string, goalId: string, userText: string): Turn {
   };
 }
 
-/** Index of the newest turn that has not reached a terminal, or -1. */
-function openTurnIndex(turns: Turn[]): number {
+/**
+ * Index of the newest open turn on a surface, or -1.
+ *
+ * Scoped by surface because the two interleave: talking while a chat turn is
+ * still streaming must not let `voice/done` close the typed turn, and the
+ * reverse. Neither `chat/done` nor `voice/done` carries a `run_id` to match on.
+ */
+function openTurnIndex(turns: Turn[], surface: Surface): number {
   for (let index = turns.length - 1; index >= 0; index -= 1) {
-    if (turns[index].finalText === null && turns[index].error === null) {
+    const turn = turns[index];
+    if (turn.surface === surface && turn.finalText === null && turn.error === null) {
       return index;
     }
   }
@@ -160,7 +197,7 @@ function reduceWorkflow(state: ConversationState, frame: WorkflowFrame): Convers
     // Prefer the run_id match; fall back to the open turn so a delta is never
     // dropped just because turn bookkeeping drifted.
     const index = indexForRun(state.turns, frame.run_id);
-    const target = index >= 0 ? index : openTurnIndex(state.turns);
+    const target = index >= 0 ? index : openTurnIndex(state.turns, "chat");
     if (target < 0) {
       return state;
     }
@@ -182,10 +219,121 @@ function reduceWorkflow(state: ConversationState, frame: WorkflowFrame): Convers
   return state;
 }
 
+/**
+ * Build spoken turns from the voice event stream.
+ *
+ * The shape of a voice turn on the wire (§5), in order:
+ *
+ * ```text
+ * asr        text = recognised utterance ("" when nothing was understood)
+ * sentence   text = one guardrail-passed answer sentence, repeated
+ * done       text = the authoritative full answer
+ * ```
+ *
+ * `repair` replaces the answer when the utterance was rejected, and
+ * `interrupted` marks an answer that barge-in cut short.
+ */
+function reduceVoiceTurn(state: ConversationState, frame: VoiceFrame): ConversationState {
+  const text = typeof frame.text === "string" ? frame.text : "";
+  const metadata = frame.metadata ?? {};
+
+  switch (frame.type) {
+    case "asr": {
+      // An empty transcript is not a turn yet: `repair` decides whether the
+      // engine asks again, and inventing a blank user bubble here would show
+      // one for every cough the VAD opened on.
+      if (text.trim() === "") {
+        return state;
+      }
+      return {
+        ...state,
+        turns: [...state.turns, newTurn("", "", text, "voice")],
+      };
+    }
+
+    case "repair": {
+      const index = openTurnIndex(state.turns, "voice");
+      if (index >= 0) {
+        return patch(state, index, { repair: text, finalText: "" });
+      }
+      // Rejected before any transcript existed — the common case. The turn is
+      // the engine asking again, with nothing recognised on the user's side.
+      const turn = {
+        ...newTurn("", "", "", "voice"),
+        repair: text,
+        finalText: "",
+      };
+      return { ...state, turns: [...state.turns, turn] };
+    }
+
+    case "sentence": {
+      const index = openTurnIndex(state.turns, "voice");
+      if (index < 0 || text === "") {
+        return state;
+      }
+      const turn = state.turns[index];
+      return patch(state, index, {
+        streamedText: appendChunk(turn.streamedText, text),
+        deltaCount: turn.deltaCount + 1,
+      });
+    }
+
+    case "interrupted": {
+      const index = openTurnIndex(state.turns, "voice");
+      return patch(state, index, { interrupted: true });
+    }
+
+    case "done": {
+      const index = openTurnIndex(state.turns, "voice");
+      if (index < 0) {
+        return state;
+      }
+      const status = metadata.terminal_status;
+      return patch(state, index, {
+        // A rejected turn already showed its repair prompt; keeping the empty
+        // `done.text` would blank it out.
+        finalText: state.turns[index].repair !== null ? "" : text,
+        terminal: typeof status === "string" ? (status as TerminalStatus) : null,
+        blocked: metadata.rejected === true,
+        phase: null,
+      });
+    }
+
+    case "error": {
+      const index = openTurnIndex(state.turns, "voice");
+      return patch(state, index, {
+        error: text !== "" ? text : "voice turn failed",
+      });
+    }
+
+    case "loop_stopped": {
+      // Stopping mid-turn leaves a bubble that would spin forever.
+      const index = openTurnIndex(state.turns, "voice");
+      if (index < 0) {
+        return state;
+      }
+      const turn = state.turns[index];
+      return patch(state, index, {
+        finalText: turn.streamedText,
+        interrupted: turn.streamedText !== "" || turn.repair !== null,
+        terminal: turn.terminal ?? "cancelled",
+        phase: null,
+      });
+    }
+
+    default:
+      return state;
+  }
+}
+
 export function reduceConversation(
   state: ConversationState,
   frame: EngineFrame,
 ): ConversationState {
+  if (isVoiceFrame(frame)) {
+    return reduceVoiceTurn(state, frame);
+  }
+
   if (isWorkflowFrame(frame)) {
     return reduceWorkflow(state, frame);
   }
@@ -196,14 +344,15 @@ export function reduceConversation(
         ...state,
         turns: [
           ...state.turns,
-          newTurn(frame.run_id ?? "", frame.goal_id ?? "", frame.text ?? ""),
+          newTurn(frame.run_id ?? "", frame.goal_id ?? "", frame.text ?? "", "chat"),
         ],
       };
     }
 
     if (frame.type === "done") {
-      // `chat/done` carries no run_id (docs/18 §4), so it closes the open turn.
-      const index = openTurnIndex(state.turns);
+      // `chat/done` carries no run_id (docs/18 §4), so it closes the open
+      // turn — the open *chat* turn, since a voice turn may be open too.
+      const index = openTurnIndex(state.turns, "chat");
       if (index < 0) {
         return state;
       }
@@ -224,8 +373,11 @@ export function reduceConversation(
     }
 
     if (frame.type === "error") {
-      const index = openTurnIndex(state.turns);
-      return patch(state, index, { error: frame.text ?? "turn failed", phase: null });
+      const index = openTurnIndex(state.turns, "chat");
+      return patch(state, index, {
+        error: frame.text ?? "turn failed",
+        phase: null,
+      });
     }
 
     return state;
@@ -233,7 +385,9 @@ export function reduceConversation(
 
   if (frame.event === "turn_progress") {
     const runId = typeof frame.run_id === "string" ? frame.run_id : "";
-    const index = runId !== "" ? indexForRun(state.turns, runId) : openTurnIndex(state.turns);
+    const surface = frame.surface === "voice" ? "voice" : "chat";
+    const index =
+      runId !== "" ? indexForRun(state.turns, runId) : openTurnIndex(state.turns, surface);
     const phase = typeof frame.phase === "string" ? frame.phase : null;
     return patch(state, index, { phase });
   }
