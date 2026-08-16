@@ -28,7 +28,7 @@ import { ThinkingOrb } from "thinking-orbs";
 
 import { Button } from "@/components/ui/button";
 import { VoiceTranscript } from "@/components/VoiceTranscript";
-import type { ConversationState } from "@/engine/conversation";
+import type { ConversationState, Turn } from "@/engine/conversation";
 import type { VaultDocument } from "@/engine/documents";
 import { orbLabel } from "@/engine/orb";
 import type { VoiceState } from "@/engine/voice";
@@ -58,14 +58,19 @@ function recentLevel(levels: number[]): number {
 }
 
 /**
- * What is being said right now.
+ * The live turn, centre stage.
  *
- * Ephemeral by design, following Pipecat's `TranscriptOverlay`: it carries the
- * live partial while the user speaks and the repair prompt when speech was
- * rejected, and it is empty the rest of the time. The record lives in the
- * transcript; duplicating it here would give two places to read the same thing.
+ * This is where a spoken turn happens, and it stays here for the whole of it —
+ * the partial transcript growing word by word as you speak, then the answer
+ * arriving sentence by sentence as it is spoken. Only when the turn closes does
+ * it leave and become a pair of bubbles in the transcript below.
+ *
+ * The layer split is Pipecat's `TranscriptOverlay`: what is happening now is
+ * large, centred and ephemeral; the record is small, aligned and permanent.
+ * Rendering the live turn in both places at once was the mistake — it put the
+ * same words on screen twice and made the centre look empty by comparison.
  */
-function Caption({ voice }: { voice: VoiceState }) {
+function LiveTurn({ voice, turn }: { voice: VoiceState; turn: Turn | null }) {
   const partial = partialText(voice.partial);
 
   if (voice.repairPrompt !== null) {
@@ -78,12 +83,27 @@ function Caption({ voice }: { voice: VoiceState }) {
     );
   }
 
+  // The answer, while it is being spoken. `voice/sentence` lands one guardrail
+  // -passed sentence at a time, so this fills in at the pace of the speech.
+  const answer = turn === null ? "" : turn.streamedText;
+  if (answer !== "") {
+    return (
+      <p className="max-w-2xl text-center text-[17px] leading-8">
+        {answer}
+        <span className="bg-primary ml-1 inline-block h-4 w-[2px] animate-pulse align-text-bottom" />
+      </p>
+    );
+  }
+
   if (partial === "") {
     return null;
   }
 
+  // Recognised-so-far in full contrast, the tentative tail dimmed: the engine
+  // may still revise the tail, and showing both at one weight would present a
+  // guess as a decision.
   return (
-    <p className="max-w-xl text-center text-[17px] leading-8">
+    <p className="max-w-2xl text-center text-[17px] leading-8">
       <span>{voice.partial?.committed}</span>{" "}
       <span className="text-muted-foreground">{voice.partial?.tentative}</span>
     </p>
@@ -104,6 +124,24 @@ export function VoiceMode({
   const running = voice.phase !== "off";
   const level = running ? recentLevel(voice.levels) : 0;
 
+  // The turn in progress stays centre stage; the transcript below shows only
+  // what has finished. One turn, one place on screen at a time.
+  const newest = conversation.turns[conversation.turns.length - 1];
+  const liveTurn =
+    newest !== undefined && newest.surface === "voice" && newest.finalText === null ? newest : null;
+  const settled = liveTurn === null ? conversation.turns : conversation.turns.slice(0, -1);
+  // The orb gives up the screen for history, not for an empty panel. On the
+  // first turn there is nothing settled yet, so it stays full size.
+  const compact = transcriptOpen && settled.length > 0;
+
+  const status = !running
+    ? "Đang tắt mic"
+    : voice.phase === "starting"
+      ? // Measured at 9.2 s on this machine. Saying so beats a resting orb
+        // that reads as "ready" while the microphone is not open yet.
+        "Đang nạp mô hình giọng nói…"
+      : orbLabel(orbState);
+
   return (
     <div
       className="bg-background fixed inset-0 z-50 flex flex-col"
@@ -121,13 +159,13 @@ export function VoiceMode({
           "relative flex min-h-0 flex-col items-center justify-center gap-6",
           // The orb yields the screen to the transcript rather than overlapping
           // it — the same trade LiveKit's tile layout makes.
-          transcriptOpen ? "shrink-0 pt-10 pb-4" : "flex-1",
+          compact ? "shrink-0 pt-10 pb-4" : "flex-1",
         )}
       >
         <div
           className={cn(
             "relative flex items-center justify-center transition-[width,height] duration-300",
-            transcriptOpen ? "size-32" : "size-[22rem]",
+            compact ? "size-32" : "size-[22rem]",
           )}
         >
           {/* Amplitude halo. Only scale and opacity are driven by rms, so a
@@ -148,21 +186,23 @@ export function VoiceMode({
           <ThinkingOrb state={orbState} size={64} />
         </div>
 
-        <div className="flex min-h-14 flex-col items-center gap-3 px-8">
+        {/* Always rendered, transcript open or not. This is the live turn, and
+            hiding it behind the transcript toggle removed the one thing a voice
+            screen exists to show. */}
+        <div className="flex min-h-24 flex-col items-center justify-start gap-3 px-8">
           <p className="text-muted-foreground text-sm" role="status">
-            {running ? orbLabel(orbState) : "Đang tắt mic"}
+            {status}
           </p>
-          {!transcriptOpen && <Caption voice={voice} />}
+          <LiveTurn voice={voice} turn={liveTurn} />
           {voice.error !== null && <p className="text-destructive text-sm">{voice.error}</p>}
         </div>
       </div>
 
       {transcriptOpen && (
         <VoiceTranscript
-          conversation={conversation}
+          conversation={{ ...conversation, turns: settled }}
           documents={documents}
           orbState={orbState}
-          voice={voice}
         />
       )}
 

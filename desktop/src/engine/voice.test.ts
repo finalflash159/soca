@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { EngineFrame } from "./protocol";
-import {
-  initialVoice,
-  LEVEL_HISTORY,
-  partialText,
-  peakLevel,
-  reduceVoice,
-} from "./voice";
+import { initialVoice, LEVEL_HISTORY, partialText, peakLevel, reduceVoice } from "./voice";
 
 const voice = (type: string, extra: Record<string, unknown> = {}): EngineFrame =>
   ({ event: "voice", type, ...extra }) as EngineFrame;
@@ -219,5 +213,25 @@ describe("phase transitions", () => {
 describe("non-voice frames", () => {
   it("are ignored", () => {
     expect(fold([{ event: "status" } as EngineFrame])).toEqual(initialVoice);
+  });
+});
+
+describe("startup phases", () => {
+  const voice = (type: string): EngineFrame =>
+    ({ event: "voice", type, metadata: {} }) as EngineFrame;
+
+  it("does not report idle before the loop exists", () => {
+    // `ready` is a component signal and lands 2.2 s before `loop_started`.
+    // Calling that "waiting" invites the user to talk into a closed mic.
+    const state = [voice("loading"), voice("ready")].reduce(reduceVoice, initialVoice);
+    expect(state.phase).toBe("starting");
+  });
+
+  it("reports idle once the loop started", () => {
+    const state = [voice("loading"), voice("ready"), voice("loop_started")].reduce(
+      reduceVoice,
+      initialVoice,
+    );
+    expect(state.phase).toBe("idle");
   });
 });

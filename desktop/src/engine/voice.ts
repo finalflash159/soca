@@ -23,13 +23,7 @@ import { isVoiceFrame } from "./protocol";
 export const LEVEL_HISTORY = 96;
 
 export type VoicePhase =
-  | "off"
-  | "starting"
-  | "idle"
-  | "listening"
-  | "transcribing"
-  | "thinking"
-  | "speaking";
+  "off" | "starting" | "idle" | "listening" | "transcribing" | "thinking" | "speaking";
 
 export type BargeInState = "idle" | "armed" | "fired";
 
@@ -105,7 +99,11 @@ function reduceVoiceFrame(state: VoiceState, frame: VoiceFrame): VoiceState {
       return { ...state, phase: "starting", error: null };
 
     case "ready":
-      return { ...state, phase: "idle" };
+      // Not idle. `ready` says a component finished loading, and measurement
+      // puts it 2.2 s before `loop_started` — reporting "waiting for you" while
+      // the runtime is still warming up invites the user to talk into a mic
+      // that is not open yet.
+      return { ...state, phase: "starting" };
 
     case "loop_started":
       return {
@@ -117,7 +115,13 @@ function reduceVoiceFrame(state: VoiceState, frame: VoiceFrame): VoiceState {
 
     case "loop_stopped":
       // Keep the transcript and counters; only the live signals reset.
-      return { ...state, phase: "off", levels: [], partial: null, bargeIn: "idle" };
+      return {
+        ...state,
+        phase: "off",
+        levels: [],
+        partial: null,
+        bargeIn: "idle",
+      };
 
     case "recording":
       return {
@@ -198,7 +202,11 @@ function reduceVoiceFrame(state: VoiceState, frame: VoiceFrame): VoiceState {
       };
 
     case "error":
-      return { ...state, phase: "off", error: frame.text ?? "voice loop failed" };
+      return {
+        ...state,
+        phase: "off",
+        error: frame.text ?? "voice loop failed",
+      };
 
     default:
       return state;
@@ -212,19 +220,19 @@ export function reduceVoice(state: VoiceState, frame: EngineFrame): VoiceState {
 export function voicePhaseLabel(phase: VoicePhase): string {
   switch (phase) {
     case "off":
-      return "Voice off";
+      return "Đã tắt";
     case "starting":
-      return "Warming up";
+      return "Đang nạp mô hình";
     case "idle":
-      return "Waiting";
+      return "Đang chờ";
     case "listening":
-      return "Listening";
+      return "Đang nghe";
     case "transcribing":
-      return "Transcribing";
+      return "Đang nhận dạng";
     case "thinking":
-      return "Thinking";
+      return "Đang nghĩ";
     case "speaking":
-      return "Speaking";
+      return "Đang nói";
   }
 }
 

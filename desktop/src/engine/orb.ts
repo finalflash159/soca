@@ -42,6 +42,16 @@ export interface OrbActivity {
   compacting: boolean;
   /** True while a knowledge index build is in flight. */
   indexing: boolean;
+  /**
+   * True while the voice runtime is loading, before the loop can hear anything.
+   *
+   * Measured on 2026-08-16: `voice_start` → first `recording` is **9.2 s** on
+   * this machine, spent loading Qwen ASR, valtec TTS and warming them up. None
+   * of `loading`, `warmup`, `ready` or `loop_started` reached this reducer, so
+   * the orb sat on `breathing` for all nine seconds — the app looked idle and
+   * ready while it was in fact busy and deaf.
+   */
+  voiceLoading: boolean;
   /** `remote` selects the `connecting` pre-token state. */
   backend: "local" | "remote" | null;
 }
@@ -54,6 +64,7 @@ export const initialActivity: OrbActivity = {
   speaking: false,
   compacting: false,
   indexing: false,
+  voiceLoading: false,
   backend: null,
 };
 
@@ -75,6 +86,13 @@ function reduceWorkflow(activity: OrbActivity, frame: WorkflowFrame): OrbActivit
 
 function reduceVoice(activity: OrbActivity, type: string): OrbActivity {
   switch (type) {
+    case "loading":
+    case "warmup":
+      return { ...activity, voiceLoading: true };
+    case "loop_started":
+      // `ready` is a component signal and fires 2.2 s before the loop exists;
+      // only `loop_started` means the microphone is actually open.
+      return { ...activity, voiceLoading: false };
     case "recording":
     case "voice_level":
     case "barge_in":
@@ -91,9 +109,25 @@ function reduceVoice(activity: OrbActivity, type: string): OrbActivity {
       return { ...activity, turnOpen: true, answering: false };
     case "turn_end":
     case "done":
-      return { ...activity, turnOpen: false, speaking: false, answering: false, phase: null };
+      return {
+        ...activity,
+        turnOpen: false,
+        speaking: false,
+        answering: false,
+        phase: null,
+      };
+    case "error":
     case "loop_stopped":
-      return { ...activity, listening: false, speaking: false, turnOpen: false, phase: null };
+      // A loop that failed while loading must clear the loading state, or the
+      // orb spins for the rest of the session.
+      return {
+        ...activity,
+        listening: false,
+        speaking: false,
+        turnOpen: false,
+        voiceLoading: false,
+        phase: null,
+      };
     default:
       return activity;
   }
@@ -128,7 +162,10 @@ export function reduceActivity(activity: OrbActivity, frame: EngineFrame): OrbAc
     }
     case "memory_compaction": {
       const status = typeof frame.status === "string" ? frame.status : "";
-      return { ...activity, compacting: status === "accepted" || status === "running" };
+      return {
+        ...activity,
+        compacting: status === "accepted" || status === "running",
+      };
     }
     case "knowledge_setup": {
       if (frame.action !== "index") {
@@ -170,6 +207,11 @@ export function orbStateFor(activity: OrbActivity): OrbState {
   if (activity.listening) {
     return "listening";
   }
+  // Above the background jobs: nine seconds of model loading with a resting orb
+  // is the one state a user reads as "it is ignoring me".
+  if (activity.voiceLoading) {
+    return "working";
+  }
   if (activity.indexing) {
     return "shaping";
   }
@@ -204,22 +246,22 @@ export function orbStateFor(activity: OrbActivity): OrbState {
 export function orbLabel(state: OrbState): string {
   switch (state) {
     case "listening":
-      return "Listening";
+      return "Đang nghe";
     case "solving":
-      return "Planning";
+      return "Đang tính";
     case "searching":
-      return "Retrieving";
+      return "Đang tra cứu";
     case "working":
-      return "Running tool";
+      return "Đang chạy công cụ";
     case "connecting":
-      return "Calling provider";
+      return "Đang gọi nhà cung cấp";
     case "composing":
-      return "Answering";
+      return "Đang trả lời";
     case "weaving":
-      return "Compacting memory";
+      return "Đang nén bộ nhớ";
     case "shaping":
-      return "Building index";
+      return "Đang dựng chỉ mục";
     case "breathing":
-      return "Idle";
+      return "Đang rảnh";
   }
 }
