@@ -39,6 +39,8 @@ cd src-tauri && cargo clippy --all-targets
 ## Layout
 
 ```text
+src/components/StartupView.tsx  the window before the engine runs
+src/components/SessionView.tsx  the window after: orb stage, transcript, one control block
 src/engine/protocol.ts   read-shapes for docs/18; no validation (§7 tolerates unknown fields)
 src/engine/orb.ts        engine frames → one of nine thinking-orbs states
 src/engine/conversation.ts  chat turn assembly from the answer_delta stream
@@ -49,6 +51,26 @@ src/engine/useEngine.ts  Tauri event bridge; transport state only
 src/components/ui/       shadcn registry components — do not hand-edit structurally
 src-tauri/src/engine.rs  sidecar process manager and the docs/18 §7 shutdown sequence
 ```
+
+## Layout
+
+Two views, switched on engine state, plus an overlay. Derived from reading
+LiveKit's reference app rather than guessing — the findings and what was
+rejected are in [`zplan/desktop_ui_research_round2.vi.md`](../zplan/desktop_ui_research_round2.vi.md).
+
+* **Not connected → `StartupView`.** One orb, one line, one button. The engine
+  executable field hides behind "Engine không chạy được?" instead of sitting in
+  the header, where it made the product read as a debug console.
+* **Connected → `SessionView`.** The orb is the centre of the screen while there
+  is nothing to read, and steps back to the header once the transcript fills.
+  Input and its controls are one bordered block at the bottom, `max-w-2xl`.
+* **The inspector is a right-hand sheet, not a tab.** Retrieval, memory,
+  settings and the frame log overlay the conversation. Checking a citation must
+  not mean leaving the answer it belongs to.
+* **No conversation sidebar.** Every comparable app has one; SoCa cannot. The
+  protocol has no command that lists or reloads past conversations
+  (`docs/18-engine-protocol.md` §2), so the sidebar would be empty chrome. Fixing
+  that is engine work, not UI work.
 
 ## Decisions worth knowing
 

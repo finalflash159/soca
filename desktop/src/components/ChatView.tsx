@@ -95,7 +95,7 @@ export function ChatView({ conversation, documents }: ChatViewProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {conversation.reassemblyMismatch && (
-        <div className="border-destructive/40 text-destructive mx-auto mb-3 w-full max-w-[46rem] rounded-md border px-3 py-2 text-xs">
+        <div className="border-destructive/40 text-destructive mx-auto mb-3 w-full max-w-2xl rounded-md border px-3 py-2 text-xs">
           A streamed answer did not reassemble into the final text. The engine
           guarantees they match, so this is an engine regression or a dropped
           frame — worth reporting rather than ignoring.
@@ -103,7 +103,7 @@ export function ChatView({ conversation, documents }: ChatViewProps) {
       )}
 
       <Conversation className="min-h-0 flex-1">
-        <ConversationContent className="mx-auto w-full max-w-[46rem] px-1">
+        <ConversationContent className="mx-auto w-full max-w-2xl px-1">
           {conversation.turns.length === 0 ? (
             // An empty state that teaches the two keystrokes is worth more than
             // a centred sentence in an otherwise blank column (§5.6.7).

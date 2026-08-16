@@ -135,13 +135,13 @@ export function Composer({
         </div>
       )}
 
-      <div className="border-input bg-card/60 focus-within:border-ring/60 flex items-end gap-2 rounded-lg border px-3 py-2 transition-colors">
+      <div className="flex items-end gap-2 px-3 py-2">
         <textarea
           ref={inputRef}
           className="max-h-40 min-h-[24px] flex-1 resize-none bg-transparent text-sm leading-relaxed outline-none disabled:opacity-50"
           value={draft}
           rows={1}
-          placeholder={connected ? "Hỏi gì đó…  /  lệnh  ·  @  tài liệu" : "Engine is not running"}
+          placeholder={connected ? "Hỏi gì đó…   /  lệnh   ·   @  tài liệu" : "Engine is not running"}
           disabled={!connected}
           aria-label="Message"
           onChange={(event) => {
