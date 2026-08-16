@@ -29,7 +29,7 @@
  * show.
  */
 
-import { BookOpen, Mic, PanelRight, Settings2, SlidersHorizontal } from "lucide-react";
+import { PanelRight, RotateCcw } from "lucide-react";
 import { ThinkingOrb } from "thinking-orbs";
 import type { OrbState } from "thinking-orbs";
 
@@ -43,7 +43,7 @@ import type { VoiceState } from "@/engine/voice";
 import { LEVEL_HISTORY, partialText } from "@/engine/voice";
 import { cn } from "@/lib/utils";
 
-export type InspectorTab = "knowledge" | "voice" | "settings" | "frames";
+export type InspectorTab = "session" | "knowledge" | "voice" | "settings" | "frames";
 
 interface SessionViewProps {
   orbState: OrbState;
@@ -57,6 +57,7 @@ interface SessionViewProps {
   onCommand: (command: SlashCommand) => void;
   onToggleVoice: () => void;
   onOpenInspector: (tab: InspectorTab) => void;
+  onRestartEngine: () => void;
 }
 
 /** Time-of-day greeting. No name — the app does not reliably know one. */
@@ -93,47 +94,58 @@ function LevelStrip({ levels }: { levels: number[] }) {
 
 function Rail({
   orbState,
-  voiceRunning,
+  connected,
   onOpenInspector,
-}: Pick<SessionViewProps, "orbState" | "onOpenInspector"> & { voiceRunning: boolean }) {
-  const items: Array<{ tab: InspectorTab; icon: typeof BookOpen; label: string }> = [
-    { tab: "knowledge", icon: BookOpen, label: "Knowledge" },
-    { tab: "voice", icon: Mic, label: "Voice" },
-    { tab: "settings", icon: Settings2, label: "Settings" },
-    { tab: "frames", icon: SlidersHorizontal, label: "Protocol frames" },
-  ];
-
+  onRestartEngine,
+}: Pick<SessionViewProps, "orbState" | "onOpenInspector" | "onRestartEngine"> & {
+  connected: boolean;
+}) {
   return (
-    <nav className="border-border/40 flex w-14 shrink-0 flex-col items-center gap-1 border-r py-3">
-      <div className="pb-3" title={orbLabel(orbState)}>
+    <nav className="border-border/40 flex w-14 shrink-0 flex-col items-center gap-2 border-r py-3">
+      {/* Agent state. The only always-visible indicator of what the system is
+          doing, so it sits at the top with nothing competing. */}
+      <div className="flex h-9 items-center" title={orbLabel(orbState)}>
         <ThinkingOrb state={orbState} size={20} />
       </div>
-      {items.map(({ tab, icon: Icon, label }) => (
-        <Button
-          key={tab}
-          size="sm"
-          variant="ghost"
-          className={cn(
-            "text-muted-foreground hover:text-foreground size-9 rounded-lg p-0",
-            tab === "voice" && voiceRunning && "text-primary",
-          )}
-          title={label}
-          aria-label={label}
-          onClick={() => onOpenInspector(tab)}
-        >
-          <Icon className="size-4" />
-        </Button>
-      ))}
+
+      {/* One entry to the inspector. An earlier revision had four buttons here,
+          all opening the same sheet on a different tab — a tab bar turned
+          sideways — plus a fifth that duplicated the first. The sheet owns its
+          own tabs; the rail only says whether it is open. */}
       <Button
         size="sm"
         variant="ghost"
-        className="text-muted-foreground hover:text-foreground mt-auto size-9 rounded-lg p-0"
+        className="text-muted-foreground hover:text-foreground size-9 rounded-lg p-0"
         title="Inspector"
         aria-label="Inspector"
-        onClick={() => onOpenInspector("knowledge")}
+        onClick={() => onOpenInspector("session")}
       >
         <PanelRight className="size-4" />
       </Button>
+
+      {/* Engine control. Removing the Start/Stop buttons when the engine gained
+          auto-start left no way to recover a hung session except killing the
+          app — and a hung session is a known failure mode. */}
+      <div className="mt-auto flex flex-col items-center gap-2">
+        <span
+          className={cn(
+            "size-1.5 rounded-full",
+            connected ? "bg-primary" : "bg-muted-foreground/40",
+          )}
+          title={connected ? "Engine đang chạy" : "Engine không chạy"}
+          aria-label={connected ? "Engine đang chạy" : "Engine không chạy"}
+        />
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-muted-foreground hover:text-foreground size-9 rounded-lg p-0"
+          title="Khởi động lại engine"
+          aria-label="Khởi động lại engine"
+          onClick={onRestartEngine}
+        >
+          <RotateCcw className="size-4" />
+        </Button>
+      </div>
     </nav>
   );
 }
@@ -150,6 +162,7 @@ export function SessionView({
   onCommand,
   onToggleVoice,
   onOpenInspector,
+  onRestartEngine,
 }: SessionViewProps) {
   const voiceRunning = voice.phase !== "off";
   const partial = partialText(voice.partial);
@@ -178,7 +191,12 @@ export function SessionView({
 
   return (
     <div className="flex h-full w-full">
-      <Rail orbState={orbState} voiceRunning={voiceRunning} onOpenInspector={onOpenInspector} />
+      <Rail
+        orbState={orbState}
+        connected={connected}
+        onOpenInspector={onOpenInspector}
+        onRestartEngine={onRestartEngine}
+      />
 
       <section className="relative flex min-w-0 flex-1 flex-col">
         {hasTurns ? (

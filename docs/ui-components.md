@@ -96,6 +96,22 @@ wiring that lets the palette own Enter while it is open.
 `@` completes over documents seen this session, not the whole vault, because the
 protocol has no vault listing. The empty state says so.
 
+### Icon rail — `components/SessionView.tsx`
+
+Three items, and the count is the point. An earlier revision had six: four
+buttons that each opened the same sheet on a different tab — a tab bar turned
+sideways, which is exactly what removing the tab bar was meant to avoid — plus a
+fifth that opened the same sheet on the same tab as the first, and a microphone
+that opened the *voice panel* while an identical microphone in the composer
+*toggled the voice loop*.
+
+What is there now: agent state (the orb), one inspector toggle, and engine
+health with a restart. The sheet owns its own tabs.
+
+Engine control had been dropped entirely when the engine gained auto-start,
+which left no way to recover a hung session short of killing the app — and a
+hung session is a known failure mode, not a hypothetical.
+
 ## Rules that still apply
 
 1. Search the registry before writing JSX for any interface element.

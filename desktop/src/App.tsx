@@ -21,6 +21,7 @@ import { useEffect, useRef, useState } from "react";
 import { KnowledgePanel } from "@/components/KnowledgePanel";
 import type { InspectorTab } from "@/components/SessionView";
 import { SessionView } from "@/components/SessionView";
+import { SessionPanel } from "@/components/SessionPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { StartupView } from "@/components/StartupView";
 import { VoiceHud } from "@/components/VoiceHud";
@@ -34,7 +35,7 @@ import { useEngine } from "@/engine/useEngine";
 export default function App() {
   const engine = useEngine();
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("knowledge");
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("session");
   const autoStarted = useRef(false);
 
   const { start, ready } = engine;
@@ -78,9 +79,16 @@ export default function App() {
   const openInspector = (tab: InspectorTab) => {
     setInspectorTab(tab);
     setInspectorOpen(true);
-    void engine.send({ cmd: "status" });
-    void engine.send({ cmd: "memory" });
-    void engine.send({ cmd: "llm_config" });
+    // Fetch on open rather than on a timer: these are cheap, but polling them
+    // would compete with a running turn for the engine's attention.
+    for (const cmd of ["status", "context", "usage", "memory", "llm_config"] as const) {
+      void engine.send({ cmd } as never);
+    }
+  };
+
+  const restartEngine = async () => {
+    await engine.stop();
+    await engine.start({ program: "soca" });
   };
 
   return (
@@ -107,6 +115,7 @@ export default function App() {
           )
         }
         onOpenInspector={openInspector}
+        onRestartEngine={() => void restartEngine()}
       />
 
       <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
@@ -117,11 +126,23 @@ export default function App() {
 
           <Tabs value={inspectorTab} onValueChange={(value) => setInspectorTab(value as InspectorTab)} className="flex min-h-0 flex-1 flex-col px-4 pb-4">
             <TabsList>
+              <TabsTrigger value="session">Session</TabsTrigger>
               <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
               <TabsTrigger value="voice">Voice</TabsTrigger>
               <TabsTrigger value="settings">Settings</TabsTrigger>
               <TabsTrigger value="frames">Frames</TabsTrigger>
             </TabsList>
+
+            <TabsContent value="session" className="min-h-0 flex-1 overflow-auto">
+              <SessionPanel
+                session={engine.session}
+                connected={connected}
+                onRefresh={() => {
+                  void engine.send({ cmd: "context" });
+                  void engine.send({ cmd: "usage" });
+                }}
+              />
+            </TabsContent>
 
             <TabsContent value="knowledge" className="min-h-0 flex-1 overflow-auto">
               <KnowledgePanel

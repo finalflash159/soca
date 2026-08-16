@@ -23,6 +23,8 @@ import type {
   StatusFrame,
 } from "./protocol";
 import { helloIsCompatible, PROTOCOL_VERSION } from "./protocol";
+import type { SessionState } from "./session";
+import { initialSession, reduceSession } from "./session";
 import type { SettingsState } from "./settings";
 import { initialSettings, reduceSettings } from "./settings";
 import type { VoiceState } from "./voice";
@@ -54,6 +56,7 @@ export interface EngineSnapshot {
   voice: VoiceState;
   knowledge: KnowledgeState;
   settings: SettingsState;
+  session: SessionState;
   /** Most recent frames, newest last. */
   log: EngineFrame[];
   errors: string[];
@@ -71,6 +74,7 @@ export function useEngine() {
   const [voice, setVoice] = useState<VoiceState>(initialVoice);
   const [knowledge, setKnowledge] = useState<KnowledgeState>(initialKnowledge);
   const [settings, setSettings] = useState<SettingsState>(initialSettings);
+  const [session, setSession] = useState<SessionState>(initialSession);
   const [log, setLog] = useState<EngineFrame[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   // `listen()` resolves asynchronously. Starting the engine before both
@@ -116,6 +120,7 @@ export function useEngine() {
       setConversation((previous) => reduceConversation(previous, frame));
       setKnowledge((previous) => reduceKnowledge(previous, frame));
       setSettings((previous) => reduceSettings(previous, frame));
+      setSession((previous) => reduceSession(previous, frame));
 
       if (frame.event === "hello") {
         const helloFrame = frame as HelloFrame;
@@ -178,6 +183,7 @@ export function useEngine() {
     setVoice(initialVoice);
     setKnowledge(initialKnowledge);
     setSettings(initialSettings);
+    setSession(initialSession);
     try {
       await invoke("engine_start", { options: options ?? null });
       // The Running status also arrives as an event, but a resolved invoke is
@@ -218,6 +224,7 @@ export function useEngine() {
     voice,
     knowledge,
     settings,
+    session,
     log,
     errors,
   };
