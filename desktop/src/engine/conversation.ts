@@ -252,17 +252,16 @@ function reduceVoiceTurn(state: ConversationState, frame: VoiceFrame): Conversat
     }
 
     case "repair": {
+      // The turn stays open. Closing it here would be simpler, but a measured
+      // repair turn ends with `done.terminal_status = needs_clarification`, and
+      // a closed turn cannot record it.
       const index = openTurnIndex(state.turns, "voice");
       if (index >= 0) {
-        return patch(state, index, { repair: text, finalText: "" });
+        return patch(state, index, { repair: text });
       }
       // Rejected before any transcript existed — the common case. The turn is
       // the engine asking again, with nothing recognised on the user's side.
-      const turn = {
-        ...newTurn("", "", "", "voice"),
-        repair: text,
-        finalText: "",
-      };
+      const turn = { ...newTurn("", "", "", "voice"), repair: text };
       return { ...state, turns: [...state.turns, turn] };
     }
 
@@ -272,6 +271,12 @@ function reduceVoiceTurn(state: ConversationState, frame: VoiceFrame): Conversat
         return state;
       }
       const turn = state.turns[index];
+      // A repair is spoken through the same TTS path, so the prompt arrives a
+      // second time as a `sentence`. Measured, not guessed — see the replay
+      // fixture. Folding it in would print the question twice.
+      if (turn.repair !== null) {
+        return state;
+      }
       return patch(state, index, {
         streamedText: appendChunk(turn.streamedText, text),
         deltaCount: turn.deltaCount + 1,
@@ -289,12 +294,23 @@ function reduceVoiceTurn(state: ConversationState, frame: VoiceFrame): Conversat
         return state;
       }
       const status = metadata.terminal_status;
+      const route = metadata.runtime_route;
       return patch(state, index, {
         // A rejected turn already showed its repair prompt; keeping the empty
         // `done.text` would blank it out.
         finalText: state.turns[index].repair !== null ? "" : text,
         terminal: typeof status === "string" ? (status as TerminalStatus) : null,
-        blocked: metadata.rejected === true,
+        // `runtime_blocked`, not `rejected`. Measured against a real turn: a
+        // `rejected` utterance is one the recogniser refused, which the repair
+        // prompt already covers, whereas withholding an answer for lack of
+        // evidence is `runtime_blocked` — the voice twin of `chat/done.blocked`.
+        blocked: metadata.runtime_blocked === true,
+        // Route and citations reach the chat surface through `chat/done` and
+        // reached voice through nothing at all, so a spoken turn used to render
+        // with no provenance line even when it had cited something.
+        route: typeof route === "string" ? route : null,
+        citations: Array.isArray(metadata.citations) ? (metadata.citations as Citation[]) : [],
+        interrupted: state.turns[index].interrupted || metadata.interrupted === true,
         phase: null,
       });
     }
