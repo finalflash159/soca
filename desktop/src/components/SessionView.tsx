@@ -57,6 +57,9 @@ interface SessionViewProps {
   onOpenInspector: (tab: InspectorTab) => void;
   onRestartEngine: () => void;
   onEnterVoiceMode: () => void;
+  onLeaveVoiceMode: () => void;
+  /** Rendered over the conversation area, with the rail still reachable. */
+  voiceMode?: React.ReactNode;
 }
 
 /** Time-of-day greeting. No name — the app does not reliably know one. */
@@ -77,16 +80,17 @@ function greeting(): string {
 function Rail({
   orbState,
   connected,
-  voiceRunning,
+  voiceOpen,
   onOpenInspector,
   onRestartEngine,
   onEnterVoiceMode,
+  onLeaveVoiceMode,
 }: Pick<
   SessionViewProps,
-  "orbState" | "onOpenInspector" | "onRestartEngine" | "onEnterVoiceMode"
+  "orbState" | "onOpenInspector" | "onRestartEngine" | "onEnterVoiceMode" | "onLeaveVoiceMode"
 > & {
   connected: boolean;
-  voiceRunning: boolean;
+  voiceOpen: boolean;
 }) {
   return (
     <nav className="border-border/40 flex w-14 shrink-0 flex-col items-center gap-2 border-r py-3">
@@ -96,18 +100,19 @@ function Rail({
         <ThinkingOrb state={orbState} size={20} />
       </div>
 
-      {/* Voice mode. A spoken turn has nothing to read and nothing to click, so
-          it gets the whole window rather than a panel. */}
+      {/* Voice mode, in and out. A lit button that only ever opens what is
+          already open is a button that lies about what it will do. */}
       <Button
         size="sm"
         variant="ghost"
         className={cn(
           "size-9 rounded-lg p-0",
-          voiceRunning ? "text-primary" : "text-muted-foreground hover:text-foreground",
+          voiceOpen ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground",
         )}
-        title="Chế độ thoại"
-        aria-label="Chế độ thoại"
-        onClick={onEnterVoiceMode}
+        title={voiceOpen ? "Thoát chế độ thoại" : "Chế độ thoại"}
+        aria-label={voiceOpen ? "Thoát chế độ thoại" : "Chế độ thoại"}
+        aria-pressed={voiceOpen}
+        onClick={voiceOpen ? onLeaveVoiceMode : onEnterVoiceMode}
       >
         <AudioLines className="size-4" />
       </Button>
@@ -167,6 +172,8 @@ export function SessionView({
   onOpenInspector,
   onRestartEngine,
   onEnterVoiceMode,
+  onLeaveVoiceMode,
+  voiceMode,
 }: SessionViewProps) {
   const voiceRunning = voice.phase !== "off";
   const hasTurns = conversation.turns.length > 0;
@@ -197,13 +204,23 @@ export function SessionView({
       <Rail
         orbState={orbState}
         connected={connected}
-        voiceRunning={voiceRunning}
+        voiceOpen={voiceMode !== undefined}
         onOpenInspector={onOpenInspector}
         onRestartEngine={onRestartEngine}
         onEnterVoiceMode={onEnterVoiceMode}
+        onLeaveVoiceMode={onLeaveVoiceMode}
       />
 
       <section className="relative flex min-w-0 flex-1 flex-col">
+        {/* Voice mode covers the conversation, never the rail. It used to be
+            `fixed inset-0`, which hid the inspector, the settings and — worse —
+            the engine health dot and the restart button, exactly while running
+            the part of the app most likely to hang. A view of the conversation
+            should not take the navigation away with it. */}
+        {voiceMode !== undefined && (
+          <div className="bg-background absolute inset-0 z-40">{voiceMode}</div>
+        )}
+
         {hasTurns ? (
           <>
             <div className="relative flex min-h-0 flex-1 flex-col">

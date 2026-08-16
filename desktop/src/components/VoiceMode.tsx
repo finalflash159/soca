@@ -23,6 +23,7 @@
  */
 
 import { Mic, MicOff, MessageSquareText, X } from "lucide-react";
+import { useEffect, useRef } from "react";
 import type { OrbState } from "thinking-orbs";
 import { ThinkingOrb } from "thinking-orbs";
 
@@ -121,6 +122,28 @@ export function VoiceMode({
   onToggleMic,
   onLeave,
 }: VoiceModeProps) {
+  // Escape leaves. It was advertised on the close button but wired to a
+  // `keydown` on a div nothing ever focused, so it had never once fired.
+  const leaveRef = useRef(onLeave);
+  leaveRef.current = onLeave;
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      // The inspector sheet closes on Escape too. Whoever is on top gets the
+      // key — otherwise closing settings mid-call would also end the call.
+      if (
+        document.querySelector('[role="dialog"][data-state="open"]') !== null
+      ) {
+        return;
+      }
+      leaveRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const running = voice.phase !== "off";
   const level = running ? recentLevel(voice.levels) : 0;
 
@@ -128,8 +151,13 @@ export function VoiceMode({
   // what has finished. One turn, one place on screen at a time.
   const newest = conversation.turns[conversation.turns.length - 1];
   const liveTurn =
-    newest !== undefined && newest.surface === "voice" && newest.finalText === null ? newest : null;
-  const settled = liveTurn === null ? conversation.turns : conversation.turns.slice(0, -1);
+    newest !== undefined &&
+    newest.surface === "voice" &&
+    newest.finalText === null
+      ? newest
+      : null;
+  const settled =
+    liveTurn === null ? conversation.turns : conversation.turns.slice(0, -1);
   // The orb gives up the screen for history, not for an empty panel. On the
   // first turn there is nothing settled yet, so it stays full size.
   const compact = transcriptOpen && settled.length > 0;
@@ -144,15 +172,12 @@ export function VoiceMode({
 
   return (
     <div
-      className="bg-background fixed inset-0 z-50 flex flex-col"
-      role="dialog"
+      // Fills its container, which is the conversation area — not the window.
+      // The rail stays reachable, so the inspector, settings, the engine health
+      // dot and the restart button are all still one click away mid-call.
+      className="bg-background flex h-full w-full flex-col"
+      role="region"
       aria-label="Chế độ thoại"
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          onLeave();
-        }
-      }}
-      tabIndex={-1}
     >
       <div
         className={cn(
@@ -194,7 +219,9 @@ export function VoiceMode({
             {status}
           </p>
           <LiveTurn voice={voice} turn={liveTurn} />
-          {voice.error !== null && <p className="text-destructive text-sm">{voice.error}</p>}
+          {voice.error !== null && (
+            <p className="text-destructive text-sm">{voice.error}</p>
+          )}
         </div>
       </div>
 
@@ -221,7 +248,11 @@ export function VoiceMode({
             disabled={!connected}
             onClick={onToggleMic}
           >
-            {running ? <Mic className="size-5" /> : <MicOff className="size-5" />}
+            {running ? (
+              <Mic className="size-5" />
+            ) : (
+              <MicOff className="size-5" />
+            )}
           </Button>
 
           <Button

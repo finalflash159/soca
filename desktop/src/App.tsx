@@ -146,21 +146,23 @@ export default function App() {
         onOpenInspector={openInspector}
         onRestartEngine={() => void restartEngine()}
         onEnterVoiceMode={enterVoiceMode}
+        onLeaveVoiceMode={leaveVoiceMode}
+        voiceMode={
+          voiceModeOpen ? (
+            <VoiceMode
+              orbState={engine.orbState}
+              voice={engine.voice}
+              conversation={engine.conversation}
+              documents={documents}
+              connected={connected}
+              transcriptOpen={transcriptOpen}
+              onToggleTranscript={() => setTranscriptOpen((open) => !open)}
+              onToggleMic={toggleMic}
+              onLeave={leaveVoiceMode}
+            />
+          ) : undefined
+        }
       />
-
-      {voiceModeOpen && (
-        <VoiceMode
-          orbState={engine.orbState}
-          voice={engine.voice}
-          conversation={engine.conversation}
-          documents={documents}
-          connected={connected}
-          transcriptOpen={transcriptOpen}
-          onToggleTranscript={() => setTranscriptOpen((open) => !open)}
-          onToggleMic={toggleMic}
-          onLeave={leaveVoiceMode}
-        />
-      )}
 
       <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
         <SheetContent className="flex w-[38rem] flex-col gap-0 sm:max-w-none">
