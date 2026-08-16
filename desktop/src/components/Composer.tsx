@@ -1,22 +1,21 @@
 /**
- * The composer, and the two keyboard affordances the plan singles out.
+ * The composer — and on a new conversation, the whole screen.
  *
- * §5.6.7 — `/` runs a command, `@` references a vault document. For a wiki
- * assistant the second one matters most: it turns "choose a source" from a
- * settings decision into a keystroke mid-sentence.
+ * The reference is the claude.ai new-chat screen: the input is not a strip at
+ * the bottom of an empty page, it *is* the page. It is tall, wide, centred, and
+ * everything that changes how a turn runs — model, microphone, voice mode —
+ * lives on a row inside it. That is §5.6.3 taken further than a caption: the
+ * controls are controls, not labels.
  *
- * §5.6.3 — the model picker moved out of the header and down beside the input.
- * SoCa's equivalent is the active provider/model and the ASR profile, so those
- * sit under the box rather than three tabs away.
- *
- * The `@` list only covers documents seen this session, because the protocol
- * has no vault listing (see `engine/documents.ts`). The footer says so rather
- * than implying a browse that does not exist.
+ * The two keyboard affordances from §5.6.7 stay: `/` runs an engine command,
+ * `@` references a vault document. `@` completes over documents seen this
+ * session only, because the protocol has no vault listing
+ * (`engine/documents.ts`), and the empty state says so.
  */
 
+import { Mic, Plus } from "lucide-react";
 import { useRef, useState } from "react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -27,22 +26,35 @@ import {
 } from "@/components/ui/command";
 import type { SlashCommand, VaultDocument } from "@/engine/documents";
 import { applyMention, filterCommands, mentionQuery, slashQuery } from "@/engine/documents";
+import { cn } from "@/lib/utils";
 
 interface ComposerProps {
   connected: boolean;
+  /** Shown in the placeholder while the engine is still coming up. */
+  starting?: boolean;
   documents: VaultDocument[];
-  /** Rendered under the input — active model and profile (§5.6.3). */
-  contextChips: Array<{ label: string; value: string }>;
+  /** Active model, rendered as a control on the composer's own row. */
+  model: string | null;
+  voiceRunning: boolean;
+  /** `hero` is the tall new-conversation form; `docked` sits under a transcript. */
+  variant?: "hero" | "docked";
   onSend: (text: string) => void;
   onCommand: (command: SlashCommand) => void;
+  onToggleVoice: () => void;
+  onOpenSettings: () => void;
 }
 
 export function Composer({
   connected,
+  starting = false,
   documents,
-  contextChips,
+  model,
+  voiceRunning,
+  variant = "docked",
   onSend,
   onCommand,
+  onToggleVoice,
+  onOpenSettings,
 }: ComposerProps) {
   const [draft, setDraft] = useState("");
   const [caret, setCaret] = useState(0);
@@ -71,32 +83,29 @@ export function Composer({
     setCaret(0);
   };
 
-  const pickDocument = (path: string) => {
-    const next = applyMention(draft, caret, path);
-    setDraft(next.text);
-    setCaret(next.caret);
-    inputRef.current?.focus();
-  };
-
-  const runCommand = (command: SlashCommand) => {
-    onCommand(command);
-    setDraft("");
-    setCaret(0);
-  };
+  const placeholder = starting
+    ? "Đang khởi động engine…"
+    : connected
+      ? "Mình giúp được gì?"
+      : "Engine chưa chạy";
 
   return (
-    <div className="relative flex flex-col gap-2">
+    <div className="relative">
       {paletteOpen && (
-        <div className="bg-popover border-border absolute bottom-full mb-2 w-full overflow-hidden rounded-lg border shadow-lg">
+        <div className="bg-popover border-border absolute bottom-full mb-2 w-full overflow-hidden rounded-xl border shadow-xl">
           <Command shouldFilter={false}>
-            <CommandList className="max-h-56">
+            <CommandList className="max-h-64">
               {commands.length > 0 && (
-                <CommandGroup heading="Commands">
+                <CommandGroup heading="Lệnh">
                   {commands.map((command) => (
                     <CommandItem
                       key={command.id}
                       value={command.id}
-                      onSelect={() => runCommand(command)}
+                      onSelect={() => {
+                        onCommand(command);
+                        setDraft("");
+                        setCaret(0);
+                      }}
                     >
                       <span className="font-mono text-xs">{command.label}</span>
                       <span className="text-muted-foreground ml-2 text-xs">{command.hint}</span>
@@ -105,19 +114,23 @@ export function Composer({
                 </CommandGroup>
               )}
               {mention !== null && (
-                <CommandGroup heading="Documents seen this session">
+                <CommandGroup heading="Tài liệu phiên này đã thấy">
                   {matches.length === 0 ? (
                     <CommandEmpty>
-                      Nothing retrieved yet. `@` completes over documents this
-                      session has already seen — the engine exposes no vault
-                      listing.
+                      Chưa truy xuất tài liệu nào. `@` chỉ gợi ý những gì phiên
+                      này đã thấy — engine không có lệnh liệt kê vault.
                     </CommandEmpty>
                   ) : (
                     matches.map((document) => (
                       <CommandItem
                         key={document.path}
                         value={document.path}
-                        onSelect={() => pickDocument(document.path)}
+                        onSelect={() => {
+                          const next = applyMention(draft, caret, document.path);
+                          setDraft(next.text);
+                          setCaret(next.caret);
+                          inputRef.current?.focus();
+                        }}
                       >
                         <span className="truncate font-mono text-xs">{document.path}</span>
                         {document.title !== null && (
@@ -135,13 +148,21 @@ export function Composer({
         </div>
       )}
 
-      <div className="flex items-end gap-2 px-3 py-2">
+      <div
+        className={cn(
+          "border-border/70 bg-card/70 focus-within:border-primary/40 flex flex-col rounded-2xl border transition-colors",
+          variant === "hero" ? "px-4 pt-4 pb-2" : "px-3 pt-3 pb-1.5",
+        )}
+      >
         <textarea
           ref={inputRef}
-          className="max-h-40 min-h-[24px] flex-1 resize-none bg-transparent text-sm leading-relaxed outline-none disabled:opacity-50"
+          className={cn(
+            "resize-none bg-transparent leading-relaxed outline-none placeholder:opacity-60 disabled:opacity-50",
+            variant === "hero" ? "min-h-[64px] text-base" : "max-h-40 min-h-[28px] text-sm",
+          )}
           value={draft}
-          rows={1}
-          placeholder={connected ? "Hỏi gì đó…   /  lệnh   ·   @  tài liệu" : "Engine is not running"}
+          rows={variant === "hero" ? 2 : 1}
+          placeholder={placeholder}
           disabled={!connected}
           aria-label="Message"
           onChange={(event) => {
@@ -151,8 +172,8 @@ export function Composer({
           onKeyUp={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
           onClick={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
           onKeyDown={(event) => {
-            // The palette owns Enter while it is open, so picking an item does
-            // not also send the half-typed message.
+            // The palette owns Enter while open, so choosing an item does not
+            // also send the half-typed message.
             if (event.key === "Enter" && !event.shiftKey && !paletteOpen) {
               event.preventDefault();
               submit();
@@ -162,25 +183,58 @@ export function Composer({
             }
           }}
         />
-        <Button size="sm" onClick={submit} disabled={!connected || draft.trim() === ""}>
-          Send
-        </Button>
-      </div>
 
-      {contextChips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 px-1">
-          {contextChips.map((chip) => (
-            <Badge
-              key={chip.label}
-              variant="outline"
-              className="text-muted-foreground gap-1 border-dashed font-normal"
+        <div className="flex items-center gap-1 pt-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-muted-foreground size-8 rounded-full p-0"
+            title="Tài liệu — hoặc gõ @"
+            disabled={!connected}
+            onClick={() => {
+              setDraft((current) => `${current}@`);
+              inputRef.current?.focus();
+            }}
+          >
+            <Plus className="size-4" />
+          </Button>
+
+          <div className="ml-auto flex items-center gap-1">
+            {model !== null && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="text-muted-foreground hover:text-foreground max-w-48 truncate px-2 text-xs transition-colors"
+                title="Đổi model"
+              >
+                {model}
+              </button>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className={cn(
+                "size-8 rounded-full p-0",
+                voiceRunning ? "text-primary" : "text-muted-foreground",
+              )}
+              title={voiceRunning ? "Tắt voice" : "Bật voice"}
+              disabled={!connected}
+              onClick={onToggleVoice}
             >
-              <span className="text-[10px] uppercase tracking-wide">{chip.label}</span>
-              <span className="font-mono text-[10px]">{chip.value}</span>
-            </Badge>
-          ))}
+              <Mic className="size-4" />
+            </Button>
+            <Button
+              size="sm"
+              className="size-8 rounded-full p-0"
+              disabled={!connected || draft.trim() === ""}
+              onClick={submit}
+              title="Gửi"
+            >
+              ↑
+            </Button>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

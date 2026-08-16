@@ -1,21 +1,25 @@
 /**
  * Shell.
  *
- * Two decisions, both from reading LiveKit's reference app rather than guessing
+ * Three decisions, from reading reference implementations rather than guessing
  * (see `zplan/desktop_ui_research_round2.vi.md`):
  *
- * 1. **State-driven views, not tabs.** Before the engine runs the window is a
- *    startup view; after, it is the session. Disabled chrome for a thing you
- *    cannot yet do is worse than not showing it.
- * 2. **The inspector overlays, it does not replace.** Retrieval, memory and
+ * 1. **The engine starts itself.** A first-run screen whose only content is a
+ *    button to make the app work is a step, not a feature. The app launches the
+ *    engine on mount and the composer reports progress; `StartupView` is kept
+ *    for the case that actually needs a human — a launch that failed.
+ * 2. **No tab bar.** The conversation owns the window. Everything else is an
+ *    overlay reached from the icon rail.
+ * 3. **The inspector overlays, it does not replace.** Retrieval, memory and
  *    settings open as a right-hand sheet on top of the conversation. The whole
  *    argument for a visible evidence trail (plan §5.6.4) collapses if checking
  *    the evidence means leaving the answer.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { KnowledgePanel } from "@/components/KnowledgePanel";
+import type { InspectorTab } from "@/components/SessionView";
 import { SessionView } from "@/components/SessionView";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { StartupView } from "@/components/StartupView";
@@ -29,20 +33,23 @@ import { useEngine } from "@/engine/useEngine";
 
 export default function App() {
   const engine = useEngine();
-  const [transcriptOpen, setTranscriptOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("knowledge");
+  const autoStarted = useRef(false);
+
+  const { start } = engine;
+  // No button whose only job is to make the app usable.
+  useEffect(() => {
+    if (autoStarted.current) {
+      return;
+    }
+    autoStarted.current = true;
+    void start({ program: "soca" });
+  }, [start]);
 
   const connected = engine.status.state === "running";
   const starting = engine.status.state === "starting";
   const documents = documentIndex(engine.knowledge, engine.conversation.turns);
-
-  // §5.6.3: the settings that change how a turn runs belong beside the input.
-  const contextChips = [
-    engine.settings.config !== null
-      ? { label: "model", value: engine.settings.config.model }
-      : null,
-    engine.voice.profile !== null ? { label: "profile", value: engine.voice.profile } : null,
-  ].filter((chip): chip is { label: string; value: string } => chip !== null);
 
   // One string for the startup view: a launch failure, or an engine that exited
   // without saying `bye`.
@@ -53,17 +60,27 @@ export default function App() {
         ? "Engine đã thoát mà không gửi `bye`. Kiểm tra log ở terminal."
         : engine.versionMismatch;
 
-  if (!connected) {
+  // The startup view is only for a launch that actually failed. A normal cold
+  // start shows the session with a composer that says it is coming up.
+  if (engine.status.state === "failed" || engine.status.state === "stopped") {
     return (
       <main className="h-screen">
         <StartupView
-          starting={starting}
+          starting={false}
           problem={startupProblem}
           onStart={(program) => void engine.start({ program })}
         />
       </main>
     );
   }
+
+  const openInspector = (tab: InspectorTab) => {
+    setInspectorTab(tab);
+    setInspectorOpen(true);
+    void engine.send({ cmd: "status" });
+    void engine.send({ cmd: "memory" });
+    void engine.send({ cmd: "llm_config" });
+  };
 
   return (
     <main className="h-screen">
@@ -72,21 +89,9 @@ export default function App() {
         conversation={engine.conversation}
         voice={engine.voice}
         documents={documents}
-        contextChips={contextChips}
-        transcriptOpen={transcriptOpen}
-        inspectorOpen={inspectorOpen}
-        onToggleTranscript={() => setTranscriptOpen((open) => !open)}
-        onToggleInspector={() => {
-          const opening = !inspectorOpen;
-          setInspectorOpen(opening);
-          // Fetch on open rather than on a timer: these are cheap commands, but
-          // polling them would compete with a turn for the engine's attention.
-          if (opening) {
-            void engine.send({ cmd: "status" });
-            void engine.send({ cmd: "memory" });
-            void engine.send({ cmd: "llm_config" });
-          }
-        }}
+        model={engine.settings.config?.model ?? null}
+        connected={connected}
+        starting={starting}
         onSend={(text) => void engine.send({ cmd: "chat", text })}
         onCommand={(command) => {
           if (command.id === "memory_compact") {
@@ -95,8 +100,12 @@ export default function App() {
           }
           void engine.send({ cmd: command.id } as never);
         }}
-        onVoiceStart={() => void engine.send({ cmd: "voice_start" })}
-        onVoiceStop={() => void engine.send({ cmd: "voice_stop" })}
+        onToggleVoice={() =>
+          void engine.send(
+            engine.voice.phase === "off" ? { cmd: "voice_start" } : { cmd: "voice_stop" },
+          )
+        }
+        onOpenInspector={openInspector}
       />
 
       <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
@@ -105,7 +114,7 @@ export default function App() {
             <SheetTitle>Inspector</SheetTitle>
           </SheetHeader>
 
-          <Tabs defaultValue="knowledge" className="flex min-h-0 flex-1 flex-col px-4 pb-4">
+          <Tabs value={inspectorTab} onValueChange={(value) => setInspectorTab(value as InspectorTab)} className="flex min-h-0 flex-1 flex-col px-4 pb-4">
             <TabsList>
               <TabsTrigger value="knowledge">Knowledge</TabsTrigger>
               <TabsTrigger value="voice">Voice</TabsTrigger>

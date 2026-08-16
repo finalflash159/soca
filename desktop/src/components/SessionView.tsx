@@ -1,71 +1,127 @@
 /**
- * The window once the engine is running.
+ * The whole window.
  *
- * Structure taken from LiveKit's `agent-session-block.tsx`:
+ * Shape taken from the claude.ai new-conversation screen: a narrow icon rail on
+ * the left, then one canvas whose only content is a greeting and the composer,
+ * sitting a third of the way down rather than centred or pinned. Nothing else
+ * competes — no tab bar, no status strip, no cards.
  *
- * * one full-bleed section, everything inside positioned against it;
- * * the agent visualiser is the centre of the screen, not a corner badge;
- * * the transcript overlays it in a narrow column and can be closed, because a
- *   voice assistant's default view is the agent, not a wall of text;
- * * a gradient at the top edge so scrolled content dissolves under the header
- *   instead of being cut off;
- * * one bottom block holding the input and its controls together, rather than a
- *   bare textarea stranded at the window edge.
+ * There is no separate "connect" step in the interface. The engine starts when
+ * the app opens; while it comes up the composer says so. A button whose only job
+ * is to make the app usable should not exist.
  *
- * SoCa's deviations: no camera or screen-share (audio only), and the visualiser
- * is `thinking-orbs` rather than a shader, because plan §0.2 makes it the single
- * source for agent-state animation.
+ * Once a turn exists the greeting gives way to the transcript and the composer
+ * docks to the bottom. The agent orb moves to the rail so its nine states stay
+ * visible without stealing the reading column (plan §0.2 keeps `thinking-orbs`
+ * as the only agent-state animation).
  */
 
-import { Mic, MicOff, PanelRight, ScrollText } from "lucide-react";
+import { BookOpen, Mic, PanelRight, Settings2, SlidersHorizontal } from "lucide-react";
+import { ThinkingOrb } from "thinking-orbs";
+import type { OrbState } from "thinking-orbs";
 
 import { ChatView } from "@/components/ChatView";
 import { Composer } from "@/components/Composer";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import type { ConversationState } from "@/engine/conversation";
 import type { SlashCommand, VaultDocument } from "@/engine/documents";
 import { orbLabel } from "@/engine/orb";
 import type { VoiceState } from "@/engine/voice";
 import { LEVEL_HISTORY, partialText } from "@/engine/voice";
-import type { OrbState } from "thinking-orbs";
-import { ThinkingOrb } from "thinking-orbs";
+import { cn } from "@/lib/utils";
+
+export type InspectorTab = "knowledge" | "voice" | "settings" | "frames";
 
 interface SessionViewProps {
   orbState: OrbState;
   conversation: ConversationState;
   voice: VoiceState;
   documents: VaultDocument[];
-  contextChips: Array<{ label: string; value: string }>;
-  transcriptOpen: boolean;
-  inspectorOpen: boolean;
-  onToggleTranscript: () => void;
-  onToggleInspector: () => void;
+  model: string | null;
+  connected: boolean;
+  starting: boolean;
   onSend: (text: string) => void;
   onCommand: (command: SlashCommand) => void;
-  onVoiceStart: () => void;
-  onVoiceStop: () => void;
+  onToggleVoice: () => void;
+  onOpenInspector: (tab: InspectorTab) => void;
 }
 
-/**
- * Compact level strip shown under the orb while capturing.
- *
- * Same rule as the Voice panel: the readings are the engine's `voice_level.rms`,
- * never a second browser microphone.
- */
+/** Time-of-day greeting. No name — the app does not reliably know one. */
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 11) {
+    return "Chào buổi sáng";
+  }
+  if (hour < 14) {
+    return "Chào buổi trưa";
+  }
+  if (hour < 18) {
+    return "Chào buổi chiều";
+  }
+  return "Chào buổi tối";
+}
+
+/** Compact level strip. Readings are the engine's rms, never a browser mic. */
 function LevelStrip({ levels }: { levels: number[] }) {
   const window = levels.slice(-Math.floor(LEVEL_HISTORY / 2));
-  const padded = [...Array(Math.max(0, 48 - window.length)).fill(0), ...window];
+  const padded = [...Array(Math.max(0, 40 - window.length)).fill(0), ...window];
   return (
-    <div className="flex h-6 w-48 items-center justify-center gap-[2px]" aria-hidden>
+    <div className="flex h-5 items-center gap-[2px]" aria-hidden>
       {padded.map((level, index) => (
         <div
           key={index}
           className="bg-primary/70 w-[2px] rounded-full transition-[height] duration-75"
-          style={{ height: `${Math.max(8, level * 100)}%` }}
+          style={{ height: `${Math.max(10, level * 100)}%` }}
         />
       ))}
     </div>
+  );
+}
+
+function Rail({
+  orbState,
+  voiceRunning,
+  onOpenInspector,
+}: Pick<SessionViewProps, "orbState" | "onOpenInspector"> & { voiceRunning: boolean }) {
+  const items: Array<{ tab: InspectorTab; icon: typeof BookOpen; label: string }> = [
+    { tab: "knowledge", icon: BookOpen, label: "Knowledge" },
+    { tab: "voice", icon: Mic, label: "Voice" },
+    { tab: "settings", icon: Settings2, label: "Settings" },
+    { tab: "frames", icon: SlidersHorizontal, label: "Protocol frames" },
+  ];
+
+  return (
+    <nav className="border-border/40 flex w-14 shrink-0 flex-col items-center gap-1 border-r py-3">
+      <div className="pb-3" title={orbLabel(orbState)}>
+        <ThinkingOrb state={orbState} size={20} />
+      </div>
+      {items.map(({ tab, icon: Icon, label }) => (
+        <Button
+          key={tab}
+          size="sm"
+          variant="ghost"
+          className={cn(
+            "text-muted-foreground hover:text-foreground size-9 rounded-lg p-0",
+            tab === "voice" && voiceRunning && "text-primary",
+          )}
+          title={label}
+          aria-label={label}
+          onClick={() => onOpenInspector(tab)}
+        >
+          <Icon className="size-4" />
+        </Button>
+      ))}
+      <Button
+        size="sm"
+        variant="ghost"
+        className="text-muted-foreground hover:text-foreground mt-auto size-9 rounded-lg p-0"
+        title="Inspector"
+        aria-label="Inspector"
+        onClick={() => onOpenInspector("knowledge")}
+      >
+        <PanelRight className="size-4" />
+      </Button>
+    </nav>
   );
 }
 
@@ -74,109 +130,75 @@ export function SessionView({
   conversation,
   voice,
   documents,
-  contextChips,
-  transcriptOpen,
-  inspectorOpen,
-  onToggleTranscript,
-  onToggleInspector,
+  model,
+  connected,
+  starting,
   onSend,
   onCommand,
-  onVoiceStart,
-  onVoiceStop,
+  onToggleVoice,
+  onOpenInspector,
 }: SessionViewProps) {
   const voiceRunning = voice.phase !== "off";
   const partial = partialText(voice.partial);
   const hasTurns = conversation.turns.length > 0;
-  // The orb takes the centre until there is something to read; after that it
-  // steps back to the header so the transcript owns the space.
-  const orbCentred = !transcriptOpen || !hasTurns;
+
+  const composer = (
+    <Composer
+      connected={connected}
+      starting={starting}
+      documents={documents}
+      model={model}
+      voiceRunning={voiceRunning}
+      variant={hasTurns ? "docked" : "hero"}
+      onSend={onSend}
+      onCommand={onCommand}
+      onToggleVoice={onToggleVoice}
+      onOpenSettings={() => onOpenInspector("settings")}
+    />
+  );
 
   return (
-    <section className="relative flex h-full w-full flex-col overflow-hidden">
-      <header className="z-20 flex items-center gap-3 px-5 py-3">
-        {!orbCentred && <ThinkingOrb state={orbState} size={20} />}
-        <span className="text-sm font-medium tracking-tight">SoCa</span>
-        <span className="text-muted-foreground text-xs">{orbLabel(orbState)}</span>
-        <div className="ml-auto flex items-center gap-1">
-          <Button
-            size="sm"
-            variant={transcriptOpen ? "secondary" : "ghost"}
-            onClick={onToggleTranscript}
-            aria-pressed={transcriptOpen}
-            title="Transcript"
-          >
-            <ScrollText className="size-4" />
-          </Button>
-          <Button
-            size="sm"
-            variant={inspectorOpen ? "secondary" : "ghost"}
-            onClick={onToggleInspector}
-            aria-pressed={inspectorOpen}
-            title="Inspector"
-          >
-            <PanelRight className="size-4" />
-          </Button>
-        </div>
-      </header>
+    <div className="flex h-full w-full">
+      <Rail orbState={orbState} voiceRunning={voiceRunning} onOpenInspector={onOpenInspector} />
 
-      <div className="relative min-h-0 flex-1">
-        {/* Agent stage. Stays mounted so the orb animation never restarts. */}
-        <div
-          className={`pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-4 transition-opacity duration-300 ${
-            orbCentred ? "opacity-100" : "opacity-0"
-          }`}
-        >
-          <ThinkingOrb state={orbState} size={64} />
-          <p className="text-muted-foreground text-sm">{orbLabel(orbState)}</p>
-          {voice.phase === "listening" && <LevelStrip levels={voice.levels} />}
-          {partial !== "" && (
-            <p className="max-w-md px-6 text-center text-[15px] leading-7">
-              <span>{voice.partial?.committed}</span>{" "}
-              <span className="text-muted-foreground">{voice.partial?.tentative}</span>
-            </p>
-          )}
-        </div>
-
-        {/* Transcript overlays the stage. */}
-        {transcriptOpen && hasTurns && (
-          <div className="absolute inset-0">
-            {/* Scrolled content dissolves under the header rather than clipping. */}
-            <div className="from-background pointer-events-none absolute inset-x-0 top-0 z-10 h-16 bg-gradient-to-b to-transparent" />
-            <ChatView conversation={conversation} documents={documents} />
-          </div>
-        )}
-      </div>
-
-      <div className="z-20 px-5 pb-4">
-        <div className="border-input bg-card/60 mx-auto flex max-w-2xl flex-col rounded-xl border">
-          <Composer
-            connected
-            documents={documents}
-            contextChips={[]}
-            onSend={onSend}
-            onCommand={onCommand}
-          />
-          <Separator />
-          <div className="flex items-center gap-2 px-3 py-2">
-            <Button
-              size="sm"
-              variant={voiceRunning ? "default" : "ghost"}
-              onClick={voiceRunning ? onVoiceStop : onVoiceStart}
-              title={voiceRunning ? "Stop the voice loop" : "Start the voice loop"}
-            >
-              {voiceRunning ? <Mic className="size-4" /> : <MicOff className="size-4" />}
-              <span className="ml-1 text-xs">{voiceRunning ? "Voice on" : "Voice"}</span>
-            </Button>
-            <div className="text-muted-foreground ml-auto flex flex-wrap items-center gap-2 text-[10px]">
-              {contextChips.map((chip) => (
-                <span key={chip.label} className="font-mono">
-                  {chip.value}
-                </span>
-              ))}
+      <section className="relative flex min-w-0 flex-1 flex-col">
+        {hasTurns ? (
+          <>
+            <div className="relative min-h-0 flex-1">
+              {/* Scrolled text dissolves at the top edge instead of clipping. */}
+              <div className="from-background pointer-events-none absolute inset-x-0 top-0 z-10 h-12 bg-gradient-to-b to-transparent" />
+              <ChatView conversation={conversation} documents={documents} />
+            </div>
+            <div className="px-6 pb-5">
+              <div className="mx-auto w-full max-w-2xl">{composer}</div>
+            </div>
+          </>
+        ) : (
+          // New conversation: greeting and composer are the entire screen, set a
+          // third of the way down so the canvas below reads as room, not as a gap.
+          <div className="flex min-h-0 flex-1 flex-col items-center px-6 pt-[18vh]">
+            <div className="flex w-full max-w-2xl flex-col gap-7">
+              <h1 className="flex items-center justify-center gap-3 text-center text-3xl font-normal tracking-tight">
+                <ThinkingOrb state={orbState} size={20} />
+                {greeting()}
+              </h1>
+              {composer}
+              {voiceRunning && (
+                <div className="flex flex-col items-center gap-2">
+                  {voice.phase === "listening" && <LevelStrip levels={voice.levels} />}
+                  <p className="text-muted-foreground text-xs">{orbLabel(orbState)}</p>
+                  {partial !== "" && (
+                    <p className="max-w-md text-center text-[15px] leading-7">
+                      <span>{voice.partial?.committed}</span>{" "}
+                      <span className="text-muted-foreground">{voice.partial?.tentative}</span>
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      </div>
-    </section>
+        )}
+      </section>
+    </div>
   );
 }
