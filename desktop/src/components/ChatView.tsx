@@ -12,9 +12,11 @@
  * nothing. Only the two exceptional outcomes are marked now — a refusal and a
  * failure — because those must not be mistaken for an answer.
  *
- * Rendering rules from `docs/18-engine-protocol.md`: answers are plain speech
- * text, never markdown; provenance is the structured `citations` list; and a
- * `blocked` turn is a terminal outcome, not an error.
+ * Rendering rules from `docs/18-engine-protocol.md`: provenance is the
+ * structured `citations` list, and a `blocked` turn is a terminal outcome, not
+ * an error. Answer text is **markdown** — an earlier version of this comment
+ * asserted the opposite, which is why answers rendered with literal `#` and
+ * `|` characters; see `AnswerBody.tsx` for the measurement that settled it.
  */
 
 import { Mic } from "lucide-react";
@@ -22,6 +24,7 @@ import type { OrbState } from "thinking-orbs";
 import { ThinkingOrb } from "thinking-orbs";
 
 import { Conversation, ConversationContent } from "@/components/ai-elements/conversation";
+import { AnswerBody } from "@/components/AnswerBody";
 import { CitationChip } from "@/components/CitationChip";
 import { TurnSteps } from "@/components/TurnSteps";
 import type { ConversationState, Turn } from "@/engine/conversation";
@@ -99,12 +102,15 @@ function AssistantTurn({
       )}
 
       {(status === "achieved" || (status === "streaming" && text !== "")) && (
-        <p className="text-[15px] leading-7 whitespace-pre-wrap">
-          {text}
+        <div className="relative">
+          <AnswerBody text={text} />
           {status === "streaming" && (
-            <span className="bg-primary ml-0.5 inline-block h-4 w-[2px] animate-pulse align-text-bottom" />
+            <span
+              className="bg-primary ml-0.5 inline-block h-4 w-[2px] animate-pulse align-text-bottom"
+              aria-hidden
+            />
           )}
-        </p>
+        </div>
       )}
 
       {turn.interrupted && (

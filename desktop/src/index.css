@@ -142,6 +142,68 @@
   --sidebar-ring: #e6c07b;
 }
 
+/* Syntax highlighting.
+   `rehype-highlight` only attaches `hljs-*` classes; the colours are ours. A
+   stock highlight.js stylesheet would hard-code one background and one set of
+   hexes, which is exactly how a code block ends up as the single element on
+   screen that ignores the theme. These map onto the chart ramp, so both
+   palettes get it for free. */
+@layer components {
+  .hljs-comment,
+  .hljs-quote {
+    color: var(--muted-foreground);
+    font-style: italic;
+  }
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-literal,
+  .hljs-type {
+    color: var(--chart-2);
+  }
+  .hljs-string,
+  .hljs-regexp,
+  .hljs-addition {
+    color: var(--chart-3);
+  }
+  .hljs-number,
+  .hljs-symbol,
+  .hljs-attr,
+  .hljs-variable,
+  .hljs-template-variable {
+    color: var(--chart-4);
+  }
+  .hljs-title,
+  .hljs-name,
+  .hljs-section,
+  .hljs-built_in {
+    color: var(--chart-5);
+  }
+  .hljs-meta,
+  .hljs-deletion {
+    color: var(--destructive);
+  }
+  .hljs-emphasis {
+    font-style: italic;
+  }
+  .hljs-strong {
+    font-weight: 600;
+  }
+}
+
+/* KaTeX inherits the surrounding size rather than imposing its own, so a
+   formula sits on the same baseline grid as the sentence around it. */
+@layer components {
+  .katex {
+    font-size: 1.05em;
+  }
+  .katex-display {
+    margin: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.25rem 0;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
