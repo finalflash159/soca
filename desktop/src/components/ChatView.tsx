@@ -1,181 +1,146 @@
 /**
- * Phase 2 surface: text conversation over the engine's `chat` stream.
+ * The conversation, deliberately quiet.
  *
- * Rendering rules come from `docs/18-engine-protocol.md`:
+ * §5.6.5 — Open WebUI's v0.11.0 spent a whole release on "where things live"
+ * rather than new features, and narrowed the conversation column, lightened the
+ * type and tightened spacing. The same applies here: a full-width column of
+ * 14px text across a 1100px window is a wall, and SoCa's answers are spoken
+ * sentences, not documents.
  *
- * * Answers are plain speech-style text, not markdown — `SOCA_RUNTIME_SYSTEM_PROMPT`
- *   forbids markdown because this is spoken conversation. The registry's
- *   `MessageResponse` renders markdown, so it is deliberately unused here;
- *   `whitespace-pre-wrap` is the correct renderer for this content.
- * * Provenance comes from the structured `citations` list, never from parsing
- *   `[K1]` out of prose (§4).
- * * A `blocked` turn is a terminal outcome and gets its own presentation, not
- *   the error styling (§7 obligation 4).
+ * So: a 46rem reading column, metadata at 10px in muted, and no chrome around a
+ * message unless it carries meaning. The one place colour is spent is the
+ * assistant's left rule — gold for an answer, dashed for a refusal, red for a
+ * failure — because that distinction is the product's whole point.
+ *
+ * Rendering rules from `docs/18-engine-protocol.md`: answers are plain speech
+ * text, never markdown; provenance is the structured `citations` list; and a
+ * `blocked` turn is a terminal outcome, not an error.
  */
 
-import { useState } from "react";
-
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-  ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
-import { Message, MessageContent } from "@/components/ai-elements/message";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import type { Turn } from "@/engine/conversation";
+import { Conversation, ConversationContent } from "@/components/ai-elements/conversation";
+import { CitationChip } from "@/components/CitationChip";
+import type { ConversationState, Turn } from "@/engine/conversation";
 import { blockedReason, phaseLabel, turnStatus, turnText } from "@/engine/conversation";
-import type { ConversationState } from "@/engine/conversation";
+import type { VaultDocument } from "@/engine/documents";
 
 interface ChatViewProps {
   conversation: ConversationState;
-  connected: boolean;
-  onSend: (text: string) => void;
+  documents: VaultDocument[];
 }
 
-function Citations({ turn }: { turn: Turn }) {
-  if (turn.citations.length === 0) {
-    return null;
-  }
+function Meta({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-2 flex flex-wrap gap-1">
-      {turn.citations.map((citation, index) => (
-        <Badge key={index} variant="outline" className="font-mono text-[10px]">
-          {String(citation.label ?? citation.path ?? index + 1)}
-        </Badge>
-      ))}
+    <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-[10px]">
+      {children}
     </div>
   );
 }
 
-function AssistantTurn({ turn }: { turn: Turn }) {
+function AssistantTurn({ turn, documents }: { turn: Turn; documents: VaultDocument[] }) {
   const status = turnStatus(turn);
   const text = turnText(turn);
 
-  if (status === "failed") {
-    return (
-      <Message from="assistant">
-        <MessageContent className="border-destructive/40 text-destructive border">
-          {turn.error}
-        </MessageContent>
-      </Message>
-    );
-  }
-
-  if (status === "blocked") {
-    return (
-      <Message from="assistant">
-        <MessageContent className="border-muted-foreground/30 border border-dashed">
-          <span className="text-muted-foreground text-sm">{blockedReason(turn)}</span>
-          {text !== "" && <p className="mt-2 whitespace-pre-wrap">{text}</p>}
-          <Citations turn={turn} />
-        </MessageContent>
-      </Message>
-    );
-  }
-
-  if (status === "streaming" && text === "") {
-    // A tool or retrieval turn publishes nothing until synthesis and
-    // verification finish (§6), so the phase is the only honest signal here.
-    return (
-      <Message from="assistant">
-        <MessageContent className="text-muted-foreground text-sm italic">
-          {phaseLabel(turn.phase)}…
-        </MessageContent>
-      </Message>
-    );
-  }
+  const rule =
+    status === "failed"
+      ? "border-destructive/70"
+      : status === "blocked"
+        ? "border-muted-foreground/40 border-dashed"
+        : "border-primary/70";
 
   return (
-    <Message from="assistant">
-      <MessageContent>
-        <p className="whitespace-pre-wrap">{text}</p>
-        {status === "streaming" && (
-          <span className="bg-foreground ml-0.5 inline-block h-4 w-[2px] animate-pulse align-text-bottom" />
-        )}
-        <Citations turn={turn} />
-        {turn.route !== null && (
-          <div className="text-muted-foreground mt-2 font-mono text-[10px]">
-            route {turn.route}
-            {turn.terminal !== null && ` · ${turn.terminal}`}
-            {turn.deltaCount > 0 && ` · ${turn.deltaCount} chunk${turn.deltaCount === 1 ? "" : "s"}`}
-          </div>
-        )}
-      </MessageContent>
-    </Message>
+    <div className={`border-l-2 pl-4 ${rule}`}>
+      {status === "failed" && <p className="text-destructive text-sm">{turn.error}</p>}
+
+      {status === "blocked" && (
+        <div className="flex flex-col gap-1">
+          <p className="text-sm">{blockedReason(turn)}</p>
+          {text !== "" && <p className="text-muted-foreground text-sm">{text}</p>}
+        </div>
+      )}
+
+      {status === "streaming" && text === "" && (
+        // A tool or retrieval turn publishes nothing until synthesis and
+        // verification finish (docs/18 §6), so the phase is the honest signal.
+        <p className="text-muted-foreground text-sm">{phaseLabel(turn.phase)}…</p>
+      )}
+
+      {(status === "achieved" || (status === "streaming" && text !== "")) && (
+        <p className="text-[15px] leading-7 whitespace-pre-wrap">
+          {text}
+          {status === "streaming" && (
+            <span className="bg-primary ml-0.5 inline-block h-4 w-[2px] animate-pulse align-text-bottom" />
+          )}
+        </p>
+      )}
+
+      {(turn.citations.length > 0 || turn.route !== null) && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {turn.citations.map((citation, index) => (
+            <CitationChip key={index} citation={citation} documents={documents} />
+          ))}
+          {turn.route !== null && (
+            <Meta>
+              <span>{turn.route}</span>
+              {turn.terminal !== null && <span>· {turn.terminal}</span>}
+              {turn.deltaCount > 1 && <span>· {turn.deltaCount} chunks</span>}
+            </Meta>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
-export function ChatView({ conversation, connected, onSend }: ChatViewProps) {
-  const [draft, setDraft] = useState("");
-
-  const submit = () => {
-    const text = draft.trim();
-    if (text === "" || !connected) {
-      return;
-    }
-    onSend(text);
-    setDraft("");
-  };
-
+export function ChatView({ conversation, documents }: ChatViewProps) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex min-h-0 flex-1 flex-col">
       {conversation.reassemblyMismatch && (
-        <div className="border-destructive/40 text-destructive rounded-md border px-3 py-2 text-xs">
+        <div className="border-destructive/40 text-destructive mx-auto mb-3 w-full max-w-[46rem] rounded-md border px-3 py-2 text-xs">
           A streamed answer did not reassemble into the final text. The engine
-          guarantees they match, so this is either an engine regression or a
-          dropped frame — worth reporting rather than ignoring.
+          guarantees they match, so this is an engine regression or a dropped
+          frame — worth reporting rather than ignoring.
         </div>
       )}
 
       <Conversation className="min-h-0 flex-1">
-        <ConversationContent>
+        <ConversationContent className="mx-auto w-full max-w-[46rem] px-1">
           {conversation.turns.length === 0 ? (
-            <ConversationEmptyState
-              title="No turns yet"
-              description={
-                connected
-                  ? "Ask something in Vietnamese."
-                  : "Start the engine first."
-              }
-            />
+            // An empty state that teaches the two keystrokes is worth more than
+            // a centred sentence in an otherwise blank column (§5.6.7).
+            <div className="flex h-full flex-col justify-center gap-6 py-16">
+              <p className="text-muted-foreground text-sm">Hỏi gì đó bằng tiếng Việt.</p>
+              <dl className="text-muted-foreground flex flex-col gap-2 text-xs">
+                <div className="flex gap-3">
+                  <dt className="text-foreground w-6 font-mono">/</dt>
+                  <dd>Chạy lệnh engine — status, context, memory, index.</dd>
+                </div>
+                <div className="flex gap-3">
+                  <dt className="text-foreground w-6 font-mono">@</dt>
+                  <dd>
+                    Trỏ tới tài liệu trong vault. Chỉ gợi ý tài liệu phiên này đã
+                    thấy — engine không có lệnh liệt kê vault.
+                  </dd>
+                </div>
+                <div className="flex gap-3">
+                  <dt className="text-foreground w-6 font-mono">↵</dt>
+                  <dd>Gửi. Shift+↵ xuống dòng.</dd>
+                </div>
+              </dl>
+            </div>
           ) : (
-            conversation.turns.map((turn, index) => (
-              <div key={`${turn.runId}-${index}`} className="flex flex-col gap-2">
-                <Message from="user">
-                  <MessageContent>
-                    <p className="whitespace-pre-wrap">{turn.userText}</p>
-                  </MessageContent>
-                </Message>
-                <AssistantTurn turn={turn} />
-              </div>
-            ))
+            <div className="flex flex-col gap-8 py-6">
+              {conversation.turns.map((turn, index) => (
+                <div key={`${turn.runId}-${index}`} className="flex flex-col gap-3">
+                  <p className="text-muted-foreground text-[15px] leading-7 whitespace-pre-wrap">
+                    {turn.userText}
+                  </p>
+                  <AssistantTurn turn={turn} documents={documents} />
+                </div>
+              ))}
+            </div>
           )}
         </ConversationContent>
-        <ConversationScrollButton />
       </Conversation>
-
-      <div className="flex items-end gap-2">
-        <textarea
-          className="border-input bg-background focus-visible:ring-ring min-h-[44px] flex-1 resize-none rounded-md border px-3 py-2 text-sm shadow-xs focus-visible:ring-1 focus-visible:outline-none disabled:opacity-50"
-          value={draft}
-          rows={1}
-          placeholder={connected ? "Hỏi gì đó…" : "Engine is not running"}
-          disabled={!connected}
-          aria-label="Message"
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              submit();
-            }
-          }}
-        />
-        <Button onClick={submit} disabled={!connected || draft.trim() === ""}>
-          Send
-        </Button>
-      </div>
     </div>
   );
 }

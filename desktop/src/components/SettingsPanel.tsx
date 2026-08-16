@@ -15,7 +15,7 @@ import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PanelEmpty, PanelSection } from "@/components/PanelSection";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { SettingsState } from "@/engine/settings";
@@ -35,9 +35,7 @@ function ActiveConfig({ settings }: { settings: SettingsState }) {
   const config = settings.config;
   if (config === null) {
     return (
-      <p className="text-muted-foreground text-sm">
-        No configuration loaded yet.
-      </p>
+      <PanelEmpty>No configuration loaded yet.</PanelEmpty>
     );
   }
   return (
@@ -90,27 +88,24 @@ export function SettingsPanel({
   const keyStatus = provider !== null ? settings.keyStatus[provider] : undefined;
 
   return (
-    <div className="flex flex-col gap-4">
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle className="text-base">Active configuration</CardTitle>
+    <div className="mx-auto flex w-full max-w-[46rem] flex-col gap-3">
+      <PanelSection
+        title="Active configuration"
+        description={settings.config?.backend ?? "not loaded"}
+        action={
           <Button size="sm" variant="ghost" disabled={!connected} onClick={onLoadProviders}>
-            Load providers
+            Refresh
           </Button>
-        </CardHeader>
-        <CardContent>
-          <ActiveConfig settings={settings} />
-        </CardContent>
-      </Card>
+        }
+      >
+        <ActiveConfig settings={settings} />
+      </PanelSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Providers</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
+      <PanelSection title="Providers" description="Keys live in the engine keyring">
+        <div className="flex flex-col gap-3">
           <div className="flex flex-wrap gap-2">
             {settings.providers.length === 0 ? (
-              <p className="text-muted-foreground text-sm">None loaded.</p>
+              <PanelEmpty>None loaded yet.</PanelEmpty>
             ) : (
               settings.providers.map((item) => (
                 <Button
@@ -185,10 +180,10 @@ export function SettingsPanel({
 
               <ScrollArea className="h-56">
                 {loading ? (
-                  // docs/18 §4: the first frame is empty while the fetch runs.
-                  <p className="text-muted-foreground text-sm">Fetching catalog…</p>
+                  /* docs/18 §4: the first frame is empty while the fetch runs. */
+                  <PanelEmpty>Fetching catalog…</PanelEmpty>
                 ) : models.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">No models.</p>
+                  <PanelEmpty>No models.</PanelEmpty>
                 ) : (
                   <ul className="flex flex-col gap-1">
                     {models.map((model) => (
@@ -224,16 +219,13 @@ export function SettingsPanel({
               )}
             </>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </PanelSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Runtime profiles</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
+      <PanelSection title="Runtime profiles" description="ASR, TTS and voice per profile">
+        <div className="flex flex-col gap-2">
           {settings.profiles.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Ask for status to load profiles.</p>
+            <PanelEmpty>Refresh to load profiles.</PanelEmpty>
           ) : (
             settings.profiles.map((profile) => (
               <div key={profile.key} className="flex items-center gap-2 text-sm">
@@ -255,8 +247,8 @@ export function SettingsPanel({
               </div>
             ))
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </PanelSection>
     </div>
   );
 }

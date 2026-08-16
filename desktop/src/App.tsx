@@ -15,6 +15,7 @@ import { useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
 
 import { ChatView } from "@/components/ChatView";
+import { Composer } from "@/components/Composer";
 import { KnowledgePanel } from "@/components/KnowledgePanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { VoiceHud } from "@/components/VoiceHud";
@@ -24,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { documentIndex } from "@/engine/documents";
 import { orbLabel } from "@/engine/orb";
 import { useEngine } from "@/engine/useEngine";
 
@@ -51,6 +53,16 @@ export default function App() {
   const [program, setProgram] = useState("soca");
   const running = engine.status.state === "running" || engine.status.state === "starting";
   const connected = engine.status.state === "running";
+  const documents = documentIndex(engine.knowledge, engine.conversation.turns);
+  // §5.6.3: the pickers that used to live in a settings tab now sit under the
+  // composer, next to the action they affect.
+  const contextChips = [
+    engine.settings.config !== null
+      ? { label: "model", value: engine.settings.config.model }
+      : null,
+    engine.voice.profile !== null ? { label: "profile", value: engine.voice.profile } : null,
+    engine.voice.asrModel !== null ? { label: "asr", value: engine.voice.asrModel } : null,
+  ].filter((chip): chip is { label: string; value: string } => chip !== null);
 
   return (
     <main className="mx-auto flex h-screen max-w-4xl flex-col gap-4 p-6">
@@ -115,12 +127,23 @@ export default function App() {
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="chat" className="flex min-h-0 flex-1 flex-col">
-          <ChatView
-            conversation={engine.conversation}
-            connected={connected}
-            onSend={(text) => void engine.send({ cmd: "chat", text })}
-          />
+        <TabsContent value="chat" className="flex min-h-0 flex-1 flex-col gap-3">
+          <ChatView conversation={engine.conversation} documents={documents} />
+          <div className="mx-auto w-full max-w-[46rem]">
+            <Composer
+              connected={connected}
+              documents={documents}
+              contextChips={contextChips}
+              onSend={(text) => void engine.send({ cmd: "chat", text })}
+              onCommand={(command) => {
+                if (command.id === "memory_compact") {
+                  void engine.send({ cmd: "memory_compact", action: "request" });
+                  return;
+                }
+                void engine.send({ cmd: command.id } as never);
+              }}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="voice" className="min-h-0 flex-1 overflow-auto">

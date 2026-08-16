@@ -12,11 +12,23 @@ reason. This page is that record.
 
 | Source | Components |
 | --- | --- |
-| [shadcn/ui](https://ui.shadcn.com/) | `alert`, `badge`, `button`, `button-group`, `card`, `carousel`, `collapsible`, `command`, `dialog`, `dropdown-menu`, `hover-card`, `input`, `input-group`, `progress`, `scroll-area`, `select`, `separator`, `textarea`, `tooltip` |
-| [AI Elements](https://registry.ai-sdk.dev/) | `conversation`, `message`, `sources`, `loader` |
+| [shadcn/ui](https://ui.shadcn.com/) | `sheet`, `alert`, `badge`, `button`, `button-group`, `card`, `carousel`, `collapsible`, `command`, `dialog`, `dropdown-menu`, `hover-card`, `input`, `input-group`, `progress`, `scroll-area`, `select`, `separator`, `textarea`, `tooltip` |
+| [AI Elements](https://registry.ai-sdk.dev/) | `conversation`, `message`, `sources`, `loader`, `task` |
 
 All are copy-to-codebase: they live in `desktop/src/components/` as editable
 source, not as a version in `node_modules`.
+
+## Base UI, not Radix — an API difference that bites
+
+shadcn's current registry builds on **Base UI**, not Radix. Two consequences hit
+this codebase:
+
+* `hover-card` is `PreviewCard`. There is no `asChild`; a trigger takes a
+  `render={<Element/>}` prop instead, and `openDelay`/`closeDelay` are not root
+  props. `CitationChip` uses the `render` form.
+* Registry components written against a newer Base UI than the one installed
+  fail to compile rather than degrade. That is what removed `prompt-input` and
+  `inline-citation` below, and it is worth re-checking on any registry update.
 
 ## Written by hand, with reasons
 
@@ -61,6 +73,28 @@ clearly better than what is here now (attachments, command menu, speech button).
 conversation, so answers render with `whitespace-pre-wrap`. The import still
 costs bundle weight (see `desktop/README.md`), which is acceptable for an app
 loading from local disk.
+
+### Section shell — `components/PanelSection.tsx`
+
+Not available as a registry component in any useful form, because it encodes a
+layout decision rather than a widget. Open WebUI's v0.11.0 notes (plan §5.6.1)
+argue that one section component across every group is what makes six groups
+behave like one thing. `PanelSection` is that component: header, optional status
+chip, optional action, one divider, one body. Knowledge, Memory, Vault,
+Providers, Profiles, Endpointing and Turns all use it, so none of them can
+quietly drift into its own header style.
+
+Built from the shadcn token set only — no new primitives, no interactive
+behaviour of its own.
+
+### Composer palette — `components/Composer.tsx`
+
+`/` and `@` (plan §5.6.7). The palette itself is the registry `command` (cmdk);
+the hand-written part is the token detection in `engine/documents.ts` and the
+wiring that lets the palette own Enter while it is open.
+
+`@` completes over documents seen this session, not the whole vault, because the
+protocol has no vault listing. The empty state says so.
 
 ## Rules that still apply
 

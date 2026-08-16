@@ -13,7 +13,7 @@ import { ThinkingOrb } from "thinking-orbs";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PanelEmpty, PanelSection } from "@/components/PanelSection";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
@@ -45,29 +45,26 @@ function RetrievalInspector({ knowledge }: { knowledge: KnowledgeState }) {
   const trace = knowledge.retrieval;
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle className="text-base">Retrieval</CardTitle>
-        {trace !== null && (
-          <div className="flex items-center gap-2">
+    <PanelSection
+      title="Retrieval"
+      description={trace?.query ?? "nothing retrieved yet"}
+      status={
+        trace !== null ? (
+          <>
             <Badge variant="outline">tier {trace.tier}</Badge>
             <span className="text-muted-foreground text-xs">{trace.latencyMs.toFixed(0)} ms</span>
-          </div>
-        )}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+          </>
+        ) : null
+      }
+    >
+      <div className="flex flex-col gap-3">
         {trace === null ? (
-          <p className="text-muted-foreground text-sm">
-            No retrieval yet. A turn the router resolves to no capability never
-            reaches the vault, so an empty inspector is a normal outcome.
-          </p>
+          <PanelEmpty>
+            A turn the router resolves to no capability never reaches the vault,
+            so an empty inspector is a normal outcome rather than a fault.
+          </PanelEmpty>
         ) : (
           <>
-            <p className="text-sm">
-              <span className="text-muted-foreground">query · </span>
-              {trace.query}
-            </p>
-
             <div className="bg-muted/40 rounded-md px-3 py-2 text-sm">
               {evidenceSummary(trace.evidence)}
               {trace.evidence !== null && (
@@ -115,8 +112,8 @@ function RetrievalInspector({ knowledge }: { knowledge: KnowledgeState }) {
             ))}
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </PanelSection>
   );
 }
 
@@ -131,24 +128,26 @@ function MemorySection({
   const trace = knowledge.memoryTrace;
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle className="text-base">Memory</CardTitle>
-        <div className="flex items-center gap-2">
-          {trace !== null && trace.backgroundStatus !== "idle" && (
-            <Badge variant="secondary">{trace.backgroundStatus}</Badge>
-          )}
+    <PanelSection
+      title="Memory"
+      description={memoryModeSummary(trace)}
+      status={
+        trace !== null && trace.backgroundStatus !== "idle" ? (
+          <Badge variant="secondary">{trace.backgroundStatus}</Badge>
+        ) : null
+      }
+      action={
+        <>
           <Button size="sm" variant="ghost" disabled={!connected} onClick={onRefreshMemory}>
             Refresh
           </Button>
           <Button size="sm" variant="outline" disabled={!connected} onClick={onCompact}>
             Compact
           </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <p className="text-sm">{memoryModeSummary(trace)}</p>
-
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
         {trace !== null && (
           <div className="text-muted-foreground flex flex-wrap gap-3 font-mono text-[10px]">
             <span>worker {trace.summaryWorkerState}</span>
@@ -202,10 +201,10 @@ function MemorySection({
             Proposals ({knowledge.proposals.length})
           </span>
           {knowledge.proposals.length === 0 ? (
-            <p className="text-muted-foreground text-xs">
-              Empty. Nothing in the production runtime creates memory proposals
-              today, so this is the expected state rather than a failure.
-            </p>
+            <PanelEmpty>
+              Nothing in the production runtime creates memory proposals today,
+              so an empty inbox is the expected state rather than a failure.
+            </PanelEmpty>
           ) : (
             knowledge.proposals.map((proposal) => (
               <div
@@ -237,8 +236,8 @@ function MemorySection({
             </p>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </PanelSection>
   );
 }
 
@@ -251,24 +250,23 @@ function VaultSection({
   const running = indexJobRunning(knowledge.indexJob);
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between">
-        <CardTitle className="text-base">Vault &amp; index</CardTitle>
-        <div className="flex items-center gap-2">
-          {/* The plan reserves `shaping` for index builds; this is that state. */}
-          {running && <ThinkingOrb state="shaping" size={20} />}
+    <PanelSection
+      title="Vault & index"
+      description={knowledge.vault ?? "no vault path yet"}
+      /* The plan reserves `shaping` for index builds; this is that state. */
+      status={running ? <ThinkingOrb state="shaping" size={20} /> : null}
+      action={
+        <>
           <Button size="sm" variant="outline" disabled={!connected || running} onClick={onInit}>
             Init
           </Button>
           <Button size="sm" disabled={!connected || running} onClick={onIndex}>
             Build index
           </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2 text-sm">
-        {knowledge.vault !== null && (
-          <p className="text-muted-foreground font-mono text-xs">{knowledge.vault}</p>
-        )}
+        </>
+      }
+    >
+      <div className="flex flex-col gap-2 text-sm">
         <p>
           Index{" "}
           {knowledge.indexPresent === null
@@ -285,14 +283,14 @@ function VaultSection({
         {knowledge.indexJob?.errorCode != null && (
           <p className="text-destructive text-xs">{knowledge.indexJob.errorCode}</p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </PanelSection>
   );
 }
 
 export function KnowledgePanel(props: KnowledgePanelProps) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-[46rem] flex-col gap-3">
       <RetrievalInspector knowledge={props.knowledge} />
       <MemorySection {...props} />
       <VaultSection {...props} />
