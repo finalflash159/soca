@@ -11,9 +11,22 @@
  * is to make the app usable should not exist.
  *
  * Once a turn exists the greeting gives way to the transcript and the composer
- * docks to the bottom. The agent orb moves to the rail so its nine states stay
- * visible without stealing the reading column (plan §0.2 keeps `thinking-orbs`
- * as the only agent-state animation).
+ * docks to the bottom.
+ *
+ * The orb appears in three places, and the split is deliberate. Plan §0.2 makes
+ * it the only agent-state animation, so it has to be where the state matters:
+ *
+ * * **Inside the running turn**, where the answer will land. For a tool or
+ *   retrieval turn nothing is published until verification finishes, so the orb
+ *   is the only thing distinguishing planning from retrieving from a stalled
+ *   provider call.
+ * * **Above the composer** for work with no turn to sit in — an index build, a
+ *   memory compaction.
+ * * **In the rail**, small and always present, as ambient state.
+ *
+ * An earlier revision had only the rail copy. That reduced a nine-state
+ * indicator to a 20px decoration and hid exactly the information it exists to
+ * show.
  */
 
 import { BookOpen, Mic, PanelRight, Settings2, SlidersHorizontal } from "lucide-react";
@@ -141,6 +154,12 @@ export function SessionView({
   const voiceRunning = voice.phase !== "off";
   const partial = partialText(voice.partial);
   const hasTurns = conversation.turns.length > 0;
+  const lastTurn = conversation.turns[conversation.turns.length - 1];
+  // A turn that has not produced text yet renders its own orb inline; anything
+  // else that keeps the orb off `breathing` is background work.
+  const liveTurnShowsOrb =
+    lastTurn !== undefined && lastTurn.finalText === null && lastTurn.streamedText === "";
+  const busyOutsideTurn = orbState !== "breathing" && !liveTurnShowsOrb;
 
   const composer = (
     <Composer
@@ -167,9 +186,23 @@ export function SessionView({
             <div className="relative min-h-0 flex-1">
               {/* Scrolled text dissolves at the top edge instead of clipping. */}
               <div className="from-background pointer-events-none absolute inset-x-0 top-0 z-10 h-12 bg-gradient-to-b to-transparent" />
-              <ChatView conversation={conversation} documents={documents} />
+              <ChatView
+                conversation={conversation}
+                documents={documents}
+                orbState={orbState}
+                orbLabel={orbLabel(orbState)}
+              />
             </div>
-            <div className="px-6 pb-5">
+            <div className="flex flex-col gap-2 px-6 pb-5">
+              {/* Work that happens outside a turn — an index build, a memory
+                  compaction — has no message to sit inside, so the orb reports
+                  it here. A live turn shows its own orb in the transcript. */}
+              {busyOutsideTurn && (
+                <div className="text-muted-foreground mx-auto flex w-full max-w-2xl items-center gap-2 text-xs">
+                  <ThinkingOrb state={orbState} size={20} />
+                  {orbLabel(orbState)}
+                </div>
+              )}
               <div className="mx-auto w-full max-w-2xl">{composer}</div>
             </div>
           </>
@@ -183,6 +216,9 @@ export function SessionView({
                 {greeting()}
               </h1>
               {composer}
+              {busyOutsideTurn && (
+                <p className="text-muted-foreground text-center text-xs">{orbLabel(orbState)}</p>
+              )}
               {voiceRunning && (
                 <div className="flex flex-col items-center gap-2">
                   {voice.phase === "listening" && <LevelStrip levels={voice.levels} />}

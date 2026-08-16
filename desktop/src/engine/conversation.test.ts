@@ -76,6 +76,24 @@ describe("streaming assembly", () => {
     expect(state.reassemblyMismatch).toBe(true);
   });
 
+  it("does not flag trailing whitespace, which the cleaners differ on by design", () => {
+    // answer_chunk_* preserves chunk edges so words do not glue together;
+    // answer_text_* ends with .strip(). Comparing exactly would fire on almost
+    // every answer (docs/18 §6).
+    const state = fold([
+      start("q"),
+      delta("Xin chào. "),
+      delta("Bạn khỏe không?\n"),
+      done("Xin chào. Bạn khỏe không?"),
+    ]);
+    expect(state.reassemblyMismatch).toBe(false);
+  });
+
+  it("still flags an interior divergence", () => {
+    const state = fold([start("q"), delta("Cơ bắp."), delta("Nó tạo"), done("Cơ bắp. Nó tạo")]);
+    expect(state.reassemblyMismatch).toBe(true);
+  });
+
   it("does not flag a turn that produced no deltas at all", () => {
     // A tool turn can publish everything through chat/done.
     const state = fold([start("q"), done("câu trả lời")]);
@@ -128,6 +146,19 @@ describe("terminal outcomes", () => {
   it("records citations from chat:done", () => {
     const state = fold([start("q"), done("có nguồn", { citations: [{ label: "K1" }] })]);
     expect(state.turns[0].citations).toHaveLength(1);
+  });
+});
+
+describe("surface routing", () => {
+  it("ignores voice deltas, which are raw tokens with a separate caption", () => {
+    // docs/18 §6: only chat deltas reassemble into chat/done.
+    const voiceDelta = {
+      ...(delta("token") as Record<string, unknown>),
+      surface: "voice",
+    } as unknown as EngineFrame;
+    const state = fold([start("q"), voiceDelta]);
+    expect(state.turns[0].streamedText).toBe("");
+    expect(state.turns[0].deltaCount).toBe(0);
   });
 });
 

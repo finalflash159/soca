@@ -17,6 +17,9 @@
  * `blocked` turn is a terminal outcome, not an error.
  */
 
+import type { OrbState } from "thinking-orbs";
+import { ThinkingOrb } from "thinking-orbs";
+
 import { Conversation, ConversationContent } from "@/components/ai-elements/conversation";
 import { CitationChip } from "@/components/CitationChip";
 import type { ConversationState, Turn } from "@/engine/conversation";
@@ -26,6 +29,9 @@ import type { VaultDocument } from "@/engine/documents";
 interface ChatViewProps {
   conversation: ConversationState;
   documents: VaultDocument[];
+  /** Drives the orb on the turn that is still running. */
+  orbState: OrbState;
+  orbLabel: string;
 }
 
 function Meta({ children }: { children: React.ReactNode }) {
@@ -36,7 +42,20 @@ function Meta({ children }: { children: React.ReactNode }) {
   );
 }
 
-function AssistantTurn({ turn, documents }: { turn: Turn; documents: VaultDocument[] }) {
+function AssistantTurn({
+  turn,
+  documents,
+  orbState,
+  orbLabel,
+  live,
+}: {
+  turn: Turn;
+  documents: VaultDocument[];
+  orbState: OrbState;
+  orbLabel: string;
+  /** Only the newest open turn shows the orb; older ones are settled. */
+  live: boolean;
+}) {
   const status = turnStatus(turn);
   const text = turnText(turn);
 
@@ -60,8 +79,15 @@ function AssistantTurn({ turn, documents }: { turn: Turn; documents: VaultDocume
 
       {status === "streaming" && text === "" && (
         // A tool or retrieval turn publishes nothing until synthesis and
-        // verification finish (docs/18 §6), so the phase is the honest signal.
-        <p className="text-muted-foreground text-sm">{phaseLabel(turn.phase)}…</p>
+        // verification finish (docs/18 §6). This is where the nine orb states
+        // earn their place: the orb is the only thing telling the user whether
+        // the system is planning, retrieving, running a tool or calling out.
+        <div className="flex items-center gap-2.5 py-0.5">
+          {live && <ThinkingOrb state={orbState} size={20} />}
+          <span className="text-muted-foreground text-sm">
+            {live ? orbLabel : phaseLabel(turn.phase)}
+          </span>
+        </div>
       )}
 
       {(status === "achieved" || (status === "streaming" && text !== "")) && (
@@ -91,7 +117,8 @@ function AssistantTurn({ turn, documents }: { turn: Turn; documents: VaultDocume
   );
 }
 
-export function ChatView({ conversation, documents }: ChatViewProps) {
+export function ChatView({ conversation, documents, orbState, orbLabel }: ChatViewProps) {
+  const lastIndex = conversation.turns.length - 1;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {conversation.reassemblyMismatch && (
@@ -134,7 +161,13 @@ export function ChatView({ conversation, documents }: ChatViewProps) {
                   <p className="text-muted-foreground text-[15px] leading-7 whitespace-pre-wrap">
                     {turn.userText}
                   </p>
-                  <AssistantTurn turn={turn} documents={documents} />
+                  <AssistantTurn
+                    turn={turn}
+                    documents={documents}
+                    orbState={orbState}
+                    orbLabel={orbLabel}
+                    live={index === lastIndex}
+                  />
                 </div>
               ))}
             </div>

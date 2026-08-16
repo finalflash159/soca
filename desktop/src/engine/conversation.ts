@@ -44,12 +44,19 @@ export interface Turn {
 export interface ConversationState {
   turns: Turn[];
   /**
-   * True when a delta stream did not reassemble into the final answer.
+   * True when the streamed chunks do not reassemble into the final answer,
+   * ignoring the edges.
    *
-   * The engine guarantees they match. A mismatch means either the engine
-   * regressed (chunk-level text handling is a known past defect) or this client
-   * dropped a frame — both are worth surfacing rather than silently trusting
-   * `finalText`.
+   * The two cleaners differ on purpose:
+   * `answer_chunk_without_citation_labels` preserves each chunk's leading and
+   * trailing whitespace (stripping it would glue words together), while
+   * `answer_text_without_citation_labels` ends with `.strip()`. So the
+   * concatenation legitimately carries edge whitespace the final answer does
+   * not, and comparing exactly fires on almost every answer.
+   *
+   * What is compared is the trimmed pair. Interior divergence survives that —
+   * a dropped frame, or a "Nguồn:" footer the whole-answer cleaner removed and
+   * the stream showed — and those are worth surfacing.
    */
   reassemblyMismatch: boolean;
 }
@@ -121,6 +128,11 @@ function patch(state: ConversationState, index: number, change: Partial<Turn>): 
 
 function reduceWorkflow(state: ConversationState, frame: WorkflowFrame): ConversationState {
   if (frame.event === "answer_delta") {
+    // docs/18 §6: on the voice surface a delta is a raw model token, and the
+    // caption is authoritative. Only chat deltas build a chat turn.
+    if (frame.surface !== "chat") {
+      return state;
+    }
     const text = frame.payload?.text;
     if (typeof text !== "string" || text === "") {
       return state;
@@ -178,7 +190,7 @@ export function reduceConversation(
       const turn = state.turns[index];
       const finalText = frame.text ?? "";
       const mismatch =
-        turn.deltaCount > 0 && turn.streamedText !== finalText
+        turn.deltaCount > 0 && turn.streamedText.trim() !== finalText.trim()
           ? true
           : state.reassemblyMismatch;
       const next = patch(state, index, {
