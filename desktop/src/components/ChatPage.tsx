@@ -61,9 +61,7 @@ export function ChatPage({
   // A turn that has not produced text yet renders its own orb inline; anything
   // else that keeps the orb off `breathing` is background work.
   const liveTurnShowsOrb =
-    lastTurn !== undefined &&
-    lastTurn.finalText === null &&
-    lastTurn.streamedText === "";
+    lastTurn !== undefined && lastTurn.finalText === null && lastTurn.streamedText === "";
   const busyOutsideTurn = orbState !== "breathing" && !liveTurnShowsOrb;
 
   const composer = (
@@ -95,9 +93,7 @@ export function ChatPage({
           </h1>
           {composer}
           {busyOutsideTurn && (
-            <p className="text-muted-foreground text-center text-xs">
-              {orbLabel(orbState)}
-            </p>
+            <p className="text-muted-foreground text-center text-xs">{orbLabel(orbState)}</p>
           )}
         </div>
       </div>

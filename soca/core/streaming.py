@@ -65,6 +65,55 @@ def pop_ready_sentence(buffer: str, min_chars: int = 24) -> tuple[str | None, st
     return None, buffer
 
 
+_FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})", re.MULTILINE)
+
+
+def pop_ready_block(buffer: str, max_chars: int = 400) -> tuple[str | None, str]:
+    """Pop one complete markdown block, for a surface that renders markdown.
+
+    The sentence and first-clause splitters exist to get audio out early and to
+    give TTS audible pauses. On a screen they are wrong twice over: they strip
+    the newlines that make a list a list, and `pop_ready_first_clause` cuts
+    mid-sentence at a comma, which is a fine place to breathe and a poor place
+    to stop reading.
+
+    A block ends at a blank line, so nothing has to be invented — the model
+    already wrote the boundary. Fenced code is exempt: a blank line inside a
+    snippet belongs to the snippet, and the block ends at the closing fence.
+
+    `max_chars` is the escape hatch. A single long paragraph carries no blank
+    line at all, and without this nothing would appear until the turn closed;
+    past that length the block is released at the next sentence end instead.
+    The cost is that one long paragraph may show as two while streaming, which
+    `chat/done.text` then corrects.
+    """
+    if not buffer.strip():
+        return None, buffer
+
+    fences = 0
+    offset = 0
+    for line in buffer.splitlines(keepends=True):
+        offset += len(line)
+        if _FENCE_RE.match(line):
+            fences += 1
+            # A closing fence completes the block on its own line.
+            if fences % 2 == 0:
+                block = buffer[:offset].strip()
+                if block:
+                    return block, buffer[offset:].lstrip("\n")
+            continue
+        if fences % 2 == 1:
+            continue
+        if not line.strip():
+            block = buffer[:offset].strip()
+            if block:
+                return block, buffer[offset:].lstrip("\n")
+
+    if fences % 2 == 0 and len(buffer.strip()) >= max_chars:
+        return pop_ready_sentence(buffer, min_chars=max_chars)
+    return None, buffer
+
+
 def pop_ready_first_clause(
     buffer: str,
     *,

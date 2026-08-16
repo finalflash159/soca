@@ -22,12 +22,7 @@ interface TopBarProps {
   onToggleTheme: () => void;
 }
 
-export function TopBar({
-  orbState,
-  sidebarOpen,
-  onOpenSidebar,
-  onToggleTheme,
-}: TopBarProps) {
+export function TopBar({ orbState, sidebarOpen, onOpenSidebar, onToggleTheme }: TopBarProps) {
   return (
     <header className="border-border flex h-14 shrink-0 items-center gap-3 border-b px-4">
       {!sidebarOpen && (

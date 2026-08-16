@@ -1,7 +1,6 @@
 # SoCa desktop app
 
 Tauri v2 shell over the same `soca engine` NDJSON boundary the Ink TUI uses.
-Plan: [`zplan/soca_desktop_app_plan.vi.md`](../zplan/soca_desktop_app_plan.vi.md).
 Protocol: [`docs/18-engine-protocol.md`](../docs/18-engine-protocol.md).
 
 **No Python is reimplemented here.** This is a third surface beside the CLI and
@@ -16,7 +15,46 @@ the TUI, not a fork of the runtime.
 | 2 — text conversation | done — streamed turns, blocked/terminal states, citations |
 | 3 — voice | done — HUD with engine-sourced level meter, partial transcript, barge-in |
 | 4 — knowledge & memory | done — retrieval inspector, memory traces, proposals, vault/index |
-| 5 — settings & packaging | settings done; `.app` bundles and launches, Python sidecar **not** bundled |
+| 5 — settings & packaging | settings done; `.app` + `.dmg` build and launch. Signing, auto-update and the Python sidecar are **not** done — [`docs/19-desktop-packaging.md`](../docs/19-desktop-packaging.md) says exactly what and why |
+
+## Update — 2026-08-17
+
+**Interface rebuilt, with light and dark modes.**
+
+- A labelled sidebar replaces the 56 px icon rail. Session, Knowledge, Voice and
+  Settings move from tabs inside one sliding sheet to **pages**. That also fixes
+  a bug structurally: voice mode used to cover the whole window, so mid-call
+  there was no way to reach settings or restart the engine.
+- **Light mode.** The shared palette has a single ramp built for a dark
+  terminal — its gold measures 1.6:1 on white, which is not readable text. Light
+  keeps the same hue and moves down the ramp to `#8f6914`, at 5.0:1.
+- Answers **render as markdown**: headings, lists, tables, highlighted code and
+  KaTeX formulas. They were previously drawn as plain text, so `#` and `|`
+  appeared literally.
+- A spoken turn is now a **real turn** in the same transcript as chat. Voice used
+  to reduce into live-signal state only, so everything said was lost when the
+  turn ended.
+- A per-turn step trail, built from `turn_progress` frames the engine already
+  emits.
+
+**Measured fixes.**
+
+- Chat and voice now use **separate system prompts**. The runtime prompt forbids
+  markdown because TTS would read `**` aloud; chat shared it, so answers could
+  never be formatted. `RuntimeOptions.answer_format` picks the prompt per
+  surface.
+- A chat chunk is a **markdown block**, not a sentence. The TTS chunker inserts
+  commas as audible pauses (`### Ví dụ` → `### Ví dụ,`, and a fence's language
+  tag likewise) and strips the newlines a list depends on. Measured on a live
+  turn after the fix: the stream-joined text matches `chat/done.text` byte for
+  byte.
+- A macOS GUI app does **not** inherit the shell's `PATH`, so a bundled app could
+  not start an engine installed in a virtualenv. Replaced with a real search
+  order that names every path it tried on failure — see
+  [`docs/19-desktop-packaging.md`](../docs/19-desktop-packaging.md).
+- The local LLM loads its weights on **first use**, never at startup.
+- `st_dev` is excluded from artifact identity. It names the mount, and APFS
+  reassigns it across reboots, which made every file look tampered with.
 
 ## Run
 
@@ -25,12 +63,14 @@ npm install
 npm run tauri dev
 ```
 
-The app spawns `soca engine`, so `soca` must be resolvable. If it is not on
-PATH, override the program in the UI field, or pass args (`uv` with
-`args: ["run", "soca"]`).
+The app spawns `soca engine`. In development the shell's PATH is used; a
+bundled app gets launchd's instead, so the binary is searched for in the chain
+described in [`docs/19-desktop-packaging.md`](../docs/19-desktop-packaging.md)
+§1. Override it with `SOCA_ENGINE=/path/to/soca`, or type the path into the
+startup screen.
 
 ```bash
-npm test          # 101 unit tests over the engine-facing modules
+npm test          # 184 unit tests over the engine-facing modules
 npm run build     # tsc + vite
 npm run tauri build -- --bundles app
 cd src-tauri && cargo clippy --all-targets
@@ -58,7 +98,7 @@ src-tauri/src/engine.rs  sidecar process manager and the docs/18 §7 shutdown se
 
 Two views, switched on engine state, plus an overlay. Derived from reading
 LiveKit's reference app rather than guessing — the findings and what was
-rejected are in [`zplan/desktop_ui_research_round2.vi.md`](../zplan/desktop_ui_research_round2.vi.md).
+rejected are recorded with the component they were evaluated for.
 
 * **Not connected → `StartupView`.** One orb, one line, one button. The engine
   executable field hides behind "Engine không chạy được?" instead of sitting in

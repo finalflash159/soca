@@ -11,7 +11,13 @@ function fold(frames: EngineFrame[]) {
 }
 
 const start = (text: string, runId = RUN): EngineFrame =>
-  ({ event: "chat", type: "start", text, run_id: runId, goal_id: "g" }) as EngineFrame;
+  ({
+    event: "chat",
+    type: "start",
+    text,
+    run_id: runId,
+    goal_id: "g",
+  }) as EngineFrame;
 
 const delta = (text: string, runId = RUN): EngineFrame =>
   ({
@@ -55,42 +61,42 @@ const terminal = (status: string, runId = RUN): EngineFrame =>
 
 describe("streaming assembly", () => {
   it("appends deltas rather than replacing them", () => {
+    // Chat chunks are markdown blocks (docs/18 §6), so each one starts a new
+    // block. This assertion changed with that contract: it used to expect a
+    // space, from when chat was fed the speech splitter's sentences.
     const state = fold([
       start("hỏi gì đó"),
-      delta("Cơ bắp"),
-      delta("tạo lực."),
-      done("Cơ bắp tạo lực."),
+      delta("Đoạn một."),
+      delta("Đoạn hai."),
+      done("Đoạn một.\n\nĐoạn hai."),
     ]);
-    expect(state.turns[0].streamedText).toBe("Cơ bắp tạo lực.");
+    expect(state.turns[0].streamedText).toBe("Đoạn một.\n\nĐoạn hai.");
     expect(state.turns[0].deltaCount).toBe(2);
-  });
-
-  it("does not double the separator when a chunk already carries one", () => {
-    // Voice chunks keep their edges; only stripped chat sentences need a
-    // separator inserted.
-    const state = fold([
-      start("q"),
-      delta("Nó làm khỏe cơ bắp. "),
-      delta("Nó tạo lực."),
-      done("Nó làm khỏe cơ bắp. Nó tạo lực."),
-    ]);
-    expect(state.turns[0].streamedText).toBe("Nó làm khỏe cơ bắp. Nó tạo lực.");
     expect(state.reassemblyMismatch).toBe(false);
   });
 
-  it("joins stripped sentences with a separator", () => {
-    // pop_ready_sentence returns buffer[:end].strip() and lstrips the rest, so
-    // the space between two sentences reaches no client. Concatenating gives
-    // "Sơn Ca.Hôm nay"; joining with a separator gives the answer.
+  it("does not double the separator when a chunk already carries one", () => {
+    const state = fold([
+      start("q"),
+      delta("Nó làm khỏe cơ bắp.\n"),
+      delta("  Nó tạo lực."),
+      done("Nó làm khỏe cơ bắp.\n\nNó tạo lực."),
+    ]);
+    expect(state.turns[0].streamedText).toBe("Nó làm khỏe cơ bắp.\n\nNó tạo lực.");
+    expect(state.reassemblyMismatch).toBe(false);
+  });
+
+  it("separates blocks so they never concatenate", () => {
+    // Whatever the separator, it must not be nothing: raw concatenation gives
+    // "Sơn Ca.Hôm nay". The reassembly check collapses whitespace, so a blank
+    // line and a space both compare equal to the final answer.
     const state = fold([
       start("q"),
       delta("Xin chào! Mình là Sơn Ca."),
       delta("Hôm nay mình giúp gì được?"),
       done("Xin chào! Mình là Sơn Ca. Hôm nay mình giúp gì được?"),
     ]);
-    expect(state.turns[0].streamedText).toBe(
-      "Xin chào! Mình là Sơn Ca. Hôm nay mình giúp gì được?",
-    );
+    expect(state.turns[0].streamedText).not.toContain("Ca.Hôm");
     expect(state.reassemblyMismatch).toBe(false);
   });
 
@@ -208,7 +214,11 @@ describe("multiple turns", () => {
     ]);
     expect(state.turns).toHaveLength(2);
     expect(state.turns[0].finalText).toBe("first answer");
-    expect(state.turns[1].streamedText).toBe("second answer");
+    // What this test is about is routing, not the separator: both deltas must
+    // land on run-b and none of them on the closed turn.
+    expect(state.turns[1].deltaCount).toBe(2);
+    expect(state.turns[1].streamedText).toContain("second");
+    expect(state.turns[1].streamedText).toContain("answer");
   });
 
   it("closes only the open turn on chat:done", () => {
@@ -225,7 +235,11 @@ describe("phase tracking", () => {
   it("follows turn_progress for the open turn", () => {
     const state = fold([
       start("q"),
-      { event: "turn_progress", run_id: RUN, phase: "retrieval" } as EngineFrame,
+      {
+        event: "turn_progress",
+        run_id: RUN,
+        phase: "retrieval",
+      } as EngineFrame,
     ]);
     expect(state.turns[0].phase).toBe("retrieval");
   });
@@ -233,7 +247,11 @@ describe("phase tracking", () => {
   it("clears the phase once the turn closes", () => {
     const state = fold([
       start("q"),
-      { event: "turn_progress", run_id: RUN, phase: "synthesis" } as EngineFrame,
+      {
+        event: "turn_progress",
+        run_id: RUN,
+        phase: "synthesis",
+      } as EngineFrame,
       done("xong"),
     ]);
     expect(state.turns[0].phase).toBeNull();
@@ -294,7 +312,10 @@ describe("voice turns", () => {
     const state = fold([
       voice("asr", ""),
       voice("repair", "Bạn nói lại giúp mình nhé?"),
-      voice("done", "", { rejected: true, terminal_status: "needs_clarification" }),
+      voice("done", "", {
+        rejected: true,
+        terminal_status: "needs_clarification",
+      }),
     ]);
     expect(state.turns).toHaveLength(1);
     expect(state.turns[0].repair).toBe("Bạn nói lại giúp mình nhé?");
@@ -362,7 +383,12 @@ describe("voice turns", () => {
 
 describe("step trail", () => {
   const progress = (phase: string, runId = RUN): EngineFrame =>
-    ({ event: "turn_progress", phase, run_id: runId, surface: "chat" }) as EngineFrame;
+    ({
+      event: "turn_progress",
+      phase,
+      run_id: runId,
+      surface: "chat",
+    }) as EngineFrame;
 
   it("records each phase once, in order", () => {
     const state = fold([
@@ -421,8 +447,13 @@ describe("markdown block boundaries in the stream", () => {
     expect(lines[2]).toBe("2. Chọn base model, tokenizer.");
   });
 
-  it("still keeps consecutive prose sentences in one paragraph", () => {
-    const state = fold([start("hỏi"), delta("Câu một."), delta("Câu hai.")]);
+  it("keeps a voice turn's sentences in one paragraph", () => {
+    // Voice still streams sentences, not blocks — a caption follows the speech.
+    const state = fold([
+      voice("asr", "hỏi"),
+      voice("sentence", "Câu một."),
+      voice("sentence", "Câu hai."),
+    ]);
     expect(state.turns[0].streamedText).toBe("Câu một. Câu hai.");
   });
 

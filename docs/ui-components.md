@@ -1,7 +1,7 @@
 # UI components — sources and exceptions
 
 The desktop app takes components from registries rather than hand-writing them,
-per `zplan/soca_desktop_app_plan.vi.md` §0.1 and §5.7. Registry components are
+per the desktop plan §0.1 and §5.7. Registry components are
 built on Radix or Base UI and already handle focus, keyboard and ARIA; a
 hand-rolled equivalent starts with none of that.
 

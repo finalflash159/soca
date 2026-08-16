@@ -1,9 +1,9 @@
 /**
  * Engine frames → `thinking-orbs` state.
  *
- * Implements the mapping table in `zplan/soca_desktop_app_plan.vi.md` §1, but
- * against the vocabulary the engine actually emits (`docs/18-engine-protocol.md`)
- * rather than the prose names in the plan.
+ * Implements the plan's orb-state mapping, but against the vocabulary the
+ * engine actually emits (`docs/18-engine-protocol.md`) rather than the prose
+ * names the plan used.
  *
  * Three deviations from the plan's table, each deliberate:
  *

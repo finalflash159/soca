@@ -2,7 +2,7 @@
 
 `soca engine` is the headless boundary every external UI speaks to. The Ink TUI
 in [`ui/`](../ui/) is one client; the desktop app planned in
-[`zplan/soca_desktop_app_plan.vi.md`](../zplan/soca_desktop_app_plan.vi.md) is a
+a desktop app is a
 second. This page is the contract both depend on.
 
 Until this page existed the contract lived implicitly in
@@ -423,29 +423,42 @@ citation labels (`[K1]`, `[M1]`) before publishing, so a delta never shows a
 marker the final text removes. Provenance arrives as the structured `citations`
 list, never as prose.
 
-On the chat surface the chunks are guardrail-passed sentences, **stripped of
-their surrounding whitespace**, so a client appends them **with a separator**
-rather than concatenating them.
+On the chat surface a chunk is **one whole markdown block**, and blocks are
+separated by a blank line. A client joins them with `\n\n`; the result is
+byte-identical to `chat/done.text`.
 
-`pop_ready_sentence` (`soca/core/streaming.py`) returns `buffer[:end].strip()`
-and hands back `buffer[end:].lstrip()`; the tail is `buffer.strip()` too. The
-space between two sentences is therefore discarded on both sides, while
-`chat/done.text` — built from the raw token join — keeps it:
+The unit follows the surface, and both are picked by
+`RuntimeOptions.answer_format`:
+
+| `answer_format` | Chunker | One chunk is |
+| --- | --- | --- |
+| `markdown` | `pop_ready_block` / `chunk_markdown_for_display` | a heading, a paragraph, a whole list, a table, a fenced snippet |
+| `speech` | `pop_ready_sentence` / `chunk_text_for_tts` | a sentence, sometimes a clause |
+
+This split exists because the speech chunkers actively damage markdown. Measured
+on a live turn before it was made:
 
 ```text
-chunks : ["Xin chào! Mình là Sơn Ca.", "Hôm nay mình giúp gì được?"]
-"".join → "Xin chào! Mình là Sơn Ca.Hôm nay mình giúp gì được?"   ✗ glued
-" ".join → "Xin chào! Mình là Sơn Ca. Hôm nay mình giúp gì được?"  ✓
+### Ví dụ   → ### Ví dụ,
+```json     → ```json,
 ```
 
-A client verifying its reassembly must therefore compare with whitespace
-collapsed. What survives that is real: a dropped frame, or a trailing `Nguồn:`
-footer that only the whole-answer cleaner removes.
+`_join_with_pause` inserts a comma wherever a fragment ends on an alphanumeric,
+which is an audible pause for TTS and a typo on screen — the second one breaks
+the code fence's language tag. `pop_ready_first_clause` cuts mid-sentence at a
+comma, and `pop_ready_sentence` returns `buffer[:end].strip()`, discarding the
+newlines that make a list a list.
 
-> This is a rough edge, not a designed contract. Making chunk boundaries
-> whitespace-preserving is an engine-side change in `pop_ready_sentence`, and it
-> would touch every consumer of that splitter — including TTS — so it is
-> recorded here rather than taken unilaterally. On the voice surface a delta is a raw model token,
+A block ends where the model already put a blank line, so nothing is invented.
+Fenced code is exempt: a blank line inside a snippet belongs to the snippet, and
+the block ends at the closing fence. One escape hatch — a paragraph longer than
+400 characters carries no blank line, so past that length the block is released
+at the next sentence end, and a single long paragraph may show as two while
+streaming until `chat/done.text` corrects it.
+
+A client verifying its reassembly should still compare with whitespace
+collapsed. What survives that is real: a dropped frame, or a trailing `Nguồn:`
+footer that only the whole-answer cleaner removes. On the voice surface a delta is a raw model token,
 so chunk boundaries fall mid-word and the concatenation is not byte-identical to
 the caption; `voice/done.text` is authoritative there.
 

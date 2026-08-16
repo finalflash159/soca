@@ -16,6 +16,8 @@ _CITATION_TAG_RE = re.compile(r"(?<!\w)\[[KMkm]\d+\](?!\w)")
 _MULTISPACE_RE = re.compile(r"[ \t]{2,}")
 _CLAUSE_BOUNDARY_RE = re.compile(r"(?P<punct>[,;:]|[—–])(?P<trailing>[ \t]+)")
 _WORD_RE = re.compile(r"[^\W_]+", flags=re.UNICODE)
+# Opening or closing of a fenced code block, ``` or ~~~.
+_CODE_FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
 
 
 def is_numbered_list_marker(text: str, punctuation_start: int, punctuation: str) -> bool:
@@ -109,6 +111,61 @@ def chunk_text_for_tts(text: str, min_chars: int = 24) -> list[str]:
             chunks.append(pending)
 
     return chunks
+
+
+def chunk_markdown_for_display(text: str) -> list[str]:
+    """Split an answer into markdown blocks, for a surface that renders it.
+
+    `chunk_text_for_tts` is the wrong tool for a screen and measurably damages
+    the text. It exists to make speech sound right, so `_join_with_pause`
+    inserts a comma wherever a fragment ends on an alphanumeric — an audible
+    pause where a line break was. On a chat turn that reaches the client as
+    markdown, that comma is a typo:
+
+    ```text
+    ### Ví dụ      → ### Ví dụ,
+    ```json        → ```json,
+    ```
+
+    The first puts a stray comma in a heading; the second breaks the code
+    fence's language tag. Both were caught by the desktop client's
+    stream-versus-final reassembly check, because `chat/done.text` is built from
+    the raw token join and carries neither.
+
+    Blocks are the unit here, not sentences: a block is what the reader sees as
+    one thing, it already ends at a blank line, and splitting on it needs no
+    punctuation to be invented. Fenced code is passed through whole — a blank
+    line inside a snippet is part of the snippet.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return []
+
+    blocks: list[str] = []
+    current: list[str] = []
+    in_fence = False
+
+    def flush() -> None:
+        block = "\n".join(current).strip()
+        if block:
+            blocks.append(block)
+        current.clear()
+
+    for line in stripped.split("\n"):
+        if _CODE_FENCE_RE.match(line):
+            in_fence = not in_fence
+            current.append(line)
+            # A closing fence ends the block; an opening one starts it.
+            if not in_fence:
+                flush()
+            continue
+        if not in_fence and not line.strip():
+            flush()
+            continue
+        current.append(line)
+
+    flush()
+    return blocks
 
 
 def normalize_text_for_tts(text: str) -> str:

@@ -2,7 +2,7 @@
  * The voice page.
  *
  * Shape taken from LiveKit's reference session view and Pipecat's voice kit
- * (see `zplan/desktop_ui_research_round3.vi.md`), which agree on three things
+ * (read from their source), which agree on three things
  * this screen previously got wrong:
  *
  * 1. **Voice is a view of the same conversation, not a separate place.** The

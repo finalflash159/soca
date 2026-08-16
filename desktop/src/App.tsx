@@ -3,7 +3,7 @@
  *
  * Sidebar, top bar, one page. The arrangement is the reference app's and it
  * replaced an icon rail plus a tabbed sheet — see
- * `zplan/desktop_ui_pipali_redesign.vi.md` for the image-by-image reading.
+ * the design notes for the image-by-image reading behind it.
  *
  * Three decisions carried over from the previous shell, each still true:
  *

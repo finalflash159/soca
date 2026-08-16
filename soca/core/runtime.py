@@ -52,8 +52,8 @@ from soca.core.guardrails import (
     knowledge_paths_from_results,
     normalize_vi,
 )
-from soca.core.streaming import pop_ready_first_clause, pop_ready_sentence
-from soca.core.text_chunking import chunk_text_for_tts
+from soca.core.streaming import pop_ready_block, pop_ready_first_clause, pop_ready_sentence
+from soca.core.text_chunking import chunk_markdown_for_display, chunk_text_for_tts
 from soca.core.tool_routing import EvidenceCompletionDecision, ToolRouterDecision
 from soca.core.turn import (
     RuntimeResult,
@@ -1601,9 +1601,21 @@ class AssistantRuntime:
         min_sentence_chars: int,
     ) -> Iterator[RuntimeStreamEvent]:
         """Emit a non-streamed result: chunk its text, then the result event."""
-        for chunk in chunk_text_for_tts(result.response_text, min_chars=min_sentence_chars):
+        for chunk in self._chunk_answer(result.response_text, min_sentence_chars):
             yield RuntimeStreamEvent(type="sentence", text=chunk)
         yield RuntimeStreamEvent(type="result", result=result)
+
+    def _chunk_answer(self, text: str, min_sentence_chars: int) -> list[str]:
+        """Slice an answer into the units this surface publishes.
+
+        Speech wants sentences with audible pauses; a screen wants markdown
+        blocks. Using the speech chunker for both put a comma into every heading
+        and code fence that a chat turn streamed — see
+        `chunk_markdown_for_display`.
+        """
+        if self.options.answer_format == "markdown":
+            return chunk_markdown_for_display(text)
+        return chunk_text_for_tts(text, min_chars=min_sentence_chars)
 
     def _guard_sentence(
         self,
@@ -1812,7 +1824,15 @@ class AssistantRuntime:
 
                 while True:
                     sentence: str | None = None
-                    if first_clause_enabled and not spoken_sentences:
+                    # A rendered surface publishes whole markdown blocks. The
+                    # clause and sentence splitters below are speech timing
+                    # devices — they strip the newlines a list depends on, and
+                    # the clause one cuts mid-sentence at a comma.
+                    if self.options.answer_format == "markdown":
+                        sentence, buffer = pop_ready_block(buffer)
+                        if sentence is None:
+                            break
+                    elif first_clause_enabled and not spoken_sentences:
                         sentence, next_buffer = pop_ready_first_clause(
                             buffer,
                             min_chars=first_clause_min_chars,
