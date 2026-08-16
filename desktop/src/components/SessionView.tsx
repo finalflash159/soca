@@ -29,7 +29,7 @@
  * show.
  */
 
-import { PanelRight, RotateCcw } from "lucide-react";
+import { AudioLines, PanelRight, RotateCcw } from "lucide-react";
 import { ThinkingOrb } from "thinking-orbs";
 import type { OrbState } from "thinking-orbs";
 
@@ -58,6 +58,7 @@ interface SessionViewProps {
   onToggleVoice: () => void;
   onOpenInspector: (tab: InspectorTab) => void;
   onRestartEngine: () => void;
+  onOpenVoiceMode: () => void;
 }
 
 /** Time-of-day greeting. No name — the app does not reliably know one. */
@@ -95,10 +96,16 @@ function LevelStrip({ levels }: { levels: number[] }) {
 function Rail({
   orbState,
   connected,
+  voiceRunning,
   onOpenInspector,
   onRestartEngine,
-}: Pick<SessionViewProps, "orbState" | "onOpenInspector" | "onRestartEngine"> & {
+  onOpenVoiceMode,
+}: Pick<
+  SessionViewProps,
+  "orbState" | "onOpenInspector" | "onRestartEngine" | "onOpenVoiceMode"
+> & {
   connected: boolean;
+  voiceRunning: boolean;
 }) {
   return (
     <nav className="border-border/40 flex w-14 shrink-0 flex-col items-center gap-2 border-r py-3">
@@ -107,6 +114,22 @@ function Rail({
       <div className="flex h-9 items-center" title={orbLabel(orbState)}>
         <ThinkingOrb state={orbState} size={20} />
       </div>
+
+      {/* Voice mode. A spoken turn has nothing to read and nothing to click, so
+          it gets the whole window rather than a panel. */}
+      <Button
+        size="sm"
+        variant="ghost"
+        className={cn(
+          "size-9 rounded-lg p-0",
+          voiceRunning ? "text-primary" : "text-muted-foreground hover:text-foreground",
+        )}
+        title="Voice mode"
+        aria-label="Voice mode"
+        onClick={onOpenVoiceMode}
+      >
+        <AudioLines className="size-4" />
+      </Button>
 
       {/* One entry to the inspector. An earlier revision had four buttons here,
           all opening the same sheet on a different tab — a tab bar turned
@@ -163,6 +186,7 @@ export function SessionView({
   onToggleVoice,
   onOpenInspector,
   onRestartEngine,
+  onOpenVoiceMode,
 }: SessionViewProps) {
   const voiceRunning = voice.phase !== "off";
   const partial = partialText(voice.partial);
@@ -194,8 +218,10 @@ export function SessionView({
       <Rail
         orbState={orbState}
         connected={connected}
+        voiceRunning={voiceRunning}
         onOpenInspector={onOpenInspector}
         onRestartEngine={onRestartEngine}
+        onOpenVoiceMode={onOpenVoiceMode}
       />
 
       <section className="relative flex min-w-0 flex-1 flex-col">

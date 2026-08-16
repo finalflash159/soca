@@ -40,7 +40,9 @@ cd src-tauri && cargo clippy --all-targets
 
 ```text
 src/components/StartupView.tsx  the window before the engine runs
-src/components/SessionView.tsx  the window after: orb stage, transcript, one control block
+src/components/SessionView.tsx  the window after: rail, transcript, one control block
+src/components/VoiceMode.tsx    full-screen spoken turn; orb plus an rms-driven halo
+src/components/SessionPanel.tsx prompt budget and token usage
 src/engine/protocol.ts   read-shapes for docs/18; no validation (§7 tolerates unknown fields)
 src/engine/orb.ts        engine frames → one of nine thinking-orbs states
 src/engine/conversation.ts  chat turn assembly from the answer_delta stream
@@ -67,6 +69,11 @@ rejected are in [`zplan/desktop_ui_research_round2.vi.md`](../zplan/desktop_ui_r
 * **The inspector is a right-hand sheet, not a tab.** Retrieval, memory,
   settings and the frame log overlay the conversation. Checking a citation must
   not mean leaving the answer it belongs to.
+* **Voice mode takes the whole window.** A spoken turn has nothing to read and
+  nothing to click, so the rail's voice button clears everything except the orb,
+  a halo driven by `voice_level.rms`, and a control bar. The orb stays at its
+  tuned 64 px — the library ships two fixed designs, not a scalable one, so the
+  size that fills a screen is the halo around it, not the canvas.
 * **No conversation sidebar.** Every comparable app has one; SoCa cannot. The
   protocol has no command that lists or reloads past conversations
   (`docs/18-engine-protocol.md` §2), so the sidebar would be empty chrome. Fixing

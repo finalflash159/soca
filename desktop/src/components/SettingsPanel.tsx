@@ -11,7 +11,7 @@
  * masked form. Nothing here stores or renders a raw key.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,12 @@ interface SettingsPanelProps {
   onLoadModels: (provider: string, query: string) => void;
   onSelectModel: (provider: string, modelId: string) => void;
   onSelectProfile: (profileKey: string) => void;
+  /** Backend, output cap and reasoning all travel on the same `llm_select`. */
+  onApplyGeneration: (change: {
+    backend?: string;
+    maxTokens?: number;
+    reasoningEnabled?: boolean;
+  }) => void;
 }
 
 function ActiveConfig({ settings }: { settings: SettingsState }) {
@@ -77,12 +83,30 @@ export function SettingsPanel({
   onLoadModels,
   onSelectModel,
   onSelectProfile,
+  onApplyGeneration,
 }: SettingsPanelProps) {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [keyDraft, setKeyDraft] = useState("");
   const [query, setQuery] = useState("");
 
   const provider = selectedProvider ?? settings.config?.provider ?? null;
+  const activeModel = settings.config?.model ?? null;
+
+  // Three clicks to see one model — Refresh, pick a provider, Search — is not a
+  // settings screen, it is a scavenger hunt. Load on open instead.
+  useEffect(() => {
+    if (connected) {
+      onLoadProviders();
+    }
+  }, [connected, onLoadProviders]);
+
+  useEffect(() => {
+    if (!connected || provider === null) {
+      return;
+    }
+    const timer = window.setTimeout(() => onLoadModels(provider, query), 300);
+    return () => window.clearTimeout(timer);
+  }, [connected, provider, query, onLoadModels]);
   const models = provider !== null ? (settings.catalog[provider] ?? []) : [];
   const loading = provider !== null && settings.catalogLoading[provider] === true;
   const keyStatus = provider !== null ? settings.keyStatus[provider] : undefined;
@@ -99,6 +123,80 @@ export function SettingsPanel({
         }
       >
         <ActiveConfig settings={settings} />
+      </PanelSection>
+
+      <PanelSection
+        title="Generation"
+        description="Áp dụng qua llm_select, cùng đường với việc chọn model"
+      >
+        {settings.config === null ? (
+          <PanelEmpty>Chưa nạp cấu hình.</PanelEmpty>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground w-28 shrink-0 text-xs">backend</span>
+              {(["local", "remote"] as const).map((backend) => (
+                <Button
+                  key={backend}
+                  size="sm"
+                  variant={settings.config?.backend === backend ? "default" : "outline"}
+                  disabled={!connected}
+                  onClick={() => onApplyGeneration({ backend })}
+                >
+                  {backend}
+                </Button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Label htmlFor="max-tokens" className="text-muted-foreground w-28 shrink-0 text-xs">
+                max output
+              </Label>
+              <input
+                id="max-tokens"
+                type="number"
+                min={1}
+                className="border-input bg-background h-8 w-32 rounded-md border px-2 text-sm"
+                defaultValue={settings.config.maxTokens ?? undefined}
+                disabled={!connected}
+                onBlur={(event) => {
+                  const value = Number.parseInt(event.target.value, 10);
+                  if (Number.isFinite(value) && value > 0 && value !== settings.config?.maxTokens) {
+                    onApplyGeneration({ maxTokens: value });
+                  }
+                }}
+              />
+              <span className="text-muted-foreground text-[10px]">
+                hiệu lực {settings.config.effectiveMaxTokens ?? "—"}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground w-28 shrink-0 text-xs">reasoning</span>
+              <Button
+                size="sm"
+                variant={settings.config.effectiveReasoningEnabled ? "default" : "outline"}
+                // A model can force reasoning on or not support it at all; in
+                // both cases the toggle is not the user's to flip (§7 obl. 8).
+                disabled={
+                  !connected ||
+                  !settings.config.reasoningSupported ||
+                  settings.config.reasoningMandatory
+                }
+                onClick={() =>
+                  onApplyGeneration({
+                    reasoningEnabled: !(settings.config?.reasoningEnabled ?? false),
+                  })
+                }
+              >
+                {settings.config.effectiveReasoningEnabled ? "bật" : "tắt"}
+              </Button>
+              <span className="text-muted-foreground text-[10px]">
+                {reasoningSummary(settings.config)}
+              </span>
+            </div>
+          </div>
+        )}
       </PanelSection>
 
       <PanelSection title="Providers" description="Keys live in the engine keyring">
@@ -169,13 +267,7 @@ export function SettingsPanel({
                   aria-label="Model filter"
                   onChange={(event) => setQuery(event.target.value)}
                 />
-                <Button
-                  variant="outline"
-                  disabled={!connected}
-                  onClick={() => onLoadModels(provider, query)}
-                >
-                  Search
-                </Button>
+
               </div>
 
               <ScrollArea className="h-56">
@@ -189,7 +281,11 @@ export function SettingsPanel({
                     {models.map((model) => (
                       <li
                         key={model.id}
-                        className="hover:bg-muted/50 flex items-center gap-2 rounded-md px-2 py-1 text-sm"
+                        className={
+                          model.id === activeModel
+                            ? "bg-accent/60 flex items-center gap-2 rounded-md px-2 py-1 text-sm"
+                            : "hover:bg-muted/50 flex items-center gap-2 rounded-md px-2 py-1 text-sm"
+                        }
                       >
                         <div className="flex flex-1 flex-col">
                           <span className="font-mono text-xs">{model.id}</span>
@@ -199,14 +295,18 @@ export function SettingsPanel({
                             {model.reasoning_mandatory && " · reasoning required"}
                           </span>
                         </div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={!connected}
-                          onClick={() => onSelectModel(provider, model.id)}
-                        >
-                          Select
-                        </Button>
+                        {model.id === activeModel ? (
+                          <Badge variant="secondary">đang dùng</Badge>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={!connected}
+                            onClick={() => onSelectModel(provider, model.id)}
+                          >
+                            Chọn
+                          </Button>
+                        )}
                       </li>
                     ))}
                   </ul>

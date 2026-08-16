@@ -24,6 +24,7 @@ import { SessionView } from "@/components/SessionView";
 import { SessionPanel } from "@/components/SessionPanel";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { StartupView } from "@/components/StartupView";
+import { VoiceMode } from "@/components/VoiceMode";
 import { VoiceHud } from "@/components/VoiceHud";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -35,6 +36,7 @@ import { useEngine } from "@/engine/useEngine";
 export default function App() {
   const engine = useEngine();
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("session");
   const autoStarted = useRef(false);
 
@@ -86,6 +88,11 @@ export default function App() {
     }
   };
 
+  const toggleVoice = () =>
+    void engine.send(
+      engine.voice.phase === "off" ? { cmd: "voice_start" } : { cmd: "voice_stop" },
+    );
+
   const restartEngine = async () => {
     await engine.stop();
     await engine.start({ program: "soca" });
@@ -109,14 +116,28 @@ export default function App() {
           }
           void engine.send({ cmd: command.id } as never);
         }}
-        onToggleVoice={() =>
-          void engine.send(
-            engine.voice.phase === "off" ? { cmd: "voice_start" } : { cmd: "voice_stop" },
-          )
-        }
+        onToggleVoice={toggleVoice}
         onOpenInspector={openInspector}
         onRestartEngine={() => void restartEngine()}
+        onOpenVoiceMode={() => {
+          setVoiceModeOpen(true);
+          // Entering voice mode with the loop off would show a dead sphere.
+          if (engine.voice.phase === "off") {
+            void engine.send({ cmd: "voice_start" });
+          }
+        }}
       />
+
+      {voiceModeOpen && (
+        <VoiceMode
+          orbState={engine.orbState}
+          voice={engine.voice}
+          connected={connected}
+          onSend={(text) => void engine.send({ cmd: "chat", text })}
+          onToggleMic={toggleVoice}
+          onClose={() => setVoiceModeOpen(false)}
+        />
+      )}
 
       <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
         <SheetContent className="flex w-[38rem] flex-col gap-0 sm:max-w-none">
@@ -198,6 +219,20 @@ export default function App() {
                 onSelectProfile={(profileKey) =>
                   void engine.send({ cmd: "voice_profile_select", profile: profileKey })
                 }
+                onApplyGeneration={(change) => {
+                  const config = engine.settings.config;
+                  // llm_select is the whole-settings command: anything omitted
+                  // is reset, so every field is resent from current state.
+                  void engine.send({
+                    cmd: "llm_select",
+                    backend: change.backend ?? config?.backend ?? "remote",
+                    provider: config?.provider ?? "openrouter",
+                    model: config?.model ?? "",
+                    max_tokens: change.maxTokens ?? config?.maxTokens ?? 4096,
+                    reasoning_enabled:
+                      change.reasoningEnabled ?? config?.reasoningEnabled ?? false,
+                  });
+                }}
               />
             </TabsContent>
 
