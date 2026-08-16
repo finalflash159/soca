@@ -462,6 +462,10 @@ def build_text_runtime(
                 turn_workflow="controlled",
                 model_context_window=model_context_window,
                 model_max_output_tokens=selected_settings.model_max_output_tokens,
+                # This runtime's answers are read, not spoken. Voice builds its
+                # own runtime and keeps the speech prompt, so TTS never has to
+                # pronounce a bullet.
+                answer_format="markdown",
             ),
             active_goal_store=active_goal_store
             or (

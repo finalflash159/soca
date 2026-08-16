@@ -165,15 +165,42 @@ function indexForRun(turns: Turn[], runId: string): number {
 }
 
 /**
+ * A chunk that opens a new markdown block rather than continuing a sentence.
+ *
+ * Headings, list items of both kinds, block quotes, fences, tables and rules.
+ */
+const BLOCK_START = /^\s*(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|```|~~~|\||---\s*$)/;
+
+/**
  * Join a chat chunk onto the text so far.
  *
- * A separator is inserted when neither side carries one, because the sentence
- * splitter strips it away. Voice chunks keep their own edges, but those never
- * reach here — see the surface guard in `reduceWorkflow`.
+ * `pop_ready_sentence` returns `buffer[:end].strip()`, so **every newline the
+ * model wrote is gone by the time a chunk reaches a client** — the separator
+ * has to be reconstructed here. Joining with a space was right for prose and
+ * catastrophic for anything else. Measured on a live turn:
+ *
+ * ```text
+ * chunks : ["# 4 bước fine-tune", "1. Chuẩn bị dữ liệu…", " 2. Chọn base model…"]
+ * space  → "# 4 bước fine-tune 1. Chuẩn bị dữ liệu… 2. Chọn base model…"
+ * ```
+ *
+ * That is one line, and markdown reads it as a single `#` heading swallowing
+ * the whole answer. The blank line is what makes it three blocks again, and it
+ * reproduces `chat/done.text`, which keeps the newlines because it is built
+ * from the raw token join.
+ *
+ * Prose is unchanged: a chunk that does not open a block still joins with a
+ * space, so consecutive sentences stay in one paragraph.
+ *
+ * Voice chunks keep their own edges and never reach here — see the surface
+ * guard in `reduceWorkflow`.
  */
 function appendChunk(sofar: string, chunk: string): string {
   if (sofar === "") {
     return chunk;
+  }
+  if (BLOCK_START.test(chunk)) {
+    return `${sofar.replace(/\s+$/, "")}\n\n${chunk.replace(/^\s+/, "")}`;
   }
   const joined = /\s$/.test(sofar) || /^\s/.test(chunk);
   return joined ? sofar + chunk : `${sofar} ${chunk}`;

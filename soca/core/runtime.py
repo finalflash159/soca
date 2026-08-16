@@ -83,6 +83,7 @@ from soca.prompts import (
     ABSTENTION_GROUNDING_INSTRUCTIONS,
     EXACT_READ_GROUNDING_INSTRUCTIONS,
     JOINT_GROUNDING_INSTRUCTIONS,
+    SOCA_CHAT_SYSTEM_PROMPT,
     SOCA_RUNTIME_SYSTEM_PROMPT,
     UNAVAILABLE_GROUNDING_INSTRUCTIONS,
 )
@@ -145,10 +146,19 @@ class RuntimeOptions:
     # long private note while keeping the controller finite and observable.
     max_evidence_completion_actions: int = 6
     asr_goal_repair_min_confidence: float = 0.70
+    # Which system prompt the turn answers under.
+    #
+    # `speech` is the default because the same answer field is what TTS reads
+    # aloud, and a `**` spoken is worse than a heading missing. A surface that
+    # renders the text — the desktop chat, the TUI — sets `markdown` and gets
+    # headings, lists and tables instead of one wall of prose.
+    answer_format: Literal["speech", "markdown"] = "speech"
 
     def __post_init__(self) -> None:
         if self.turn_workflow not in {"shadow", "controlled"}:
             raise ValueError("turn_workflow must be shadow or controlled")
+        if self.answer_format not in {"speech", "markdown"}:
+            raise ValueError("answer_format must be speech or markdown")
         for name, value in (
             ("model_context_window", self.model_context_window),
             ("model_max_output_tokens", self.model_max_output_tokens),
@@ -3366,6 +3376,20 @@ class AssistantRuntime:
             )
         return context
 
+    def _system_prompt(self) -> str:
+        """The system prompt for this runtime's surface.
+
+        Chat and voice are separate runtime instances built by
+        `build_text_runtime` and `build_voice_runtime`, so the choice is made
+        once at construction rather than threaded through every turn.
+        """
+        prompt = (
+            SOCA_CHAT_SYSTEM_PROMPT
+            if self.options.answer_format == "markdown"
+            else SOCA_RUNTIME_SYSTEM_PROMPT
+        )
+        return prompt.strip()
+
     def _build_llm_prompt(
         self,
         draft: _TraceDraft,
@@ -3378,7 +3402,7 @@ class AssistantRuntime:
         components = [
             PromptComponent(
                 "system",
-                SOCA_RUNTIME_SYSTEM_PROMPT.strip(),
+                self._system_prompt(),
                 priority=0,
                 required=True,
             )

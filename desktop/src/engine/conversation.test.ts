@@ -394,3 +394,58 @@ describe("step trail", () => {
     expect(state.turns[0].steps).toEqual(["retrieval"]);
   });
 });
+
+describe("markdown block boundaries in the stream", () => {
+  // Measured on a live turn: `pop_ready_sentence` strips every newline, so the
+  // chunks arrive as bare sentences and the client has to rebuild the blocks.
+  const CHUNKS = [
+    "# 4 bước fine-tune một model ngôn ngữ",
+    "1. Chuẩn bị và làm sạch dữ liệu.",
+    " 2. Chọn base model, tokenizer.",
+    "3. Huấn luyện model trên tập train.",
+  ];
+
+  const streamed = () =>
+    fold([start("hỏi"), ...CHUNKS.map((chunk) => delta(chunk))]).turns[0].streamedText;
+
+  it("does not glue a heading onto the list that follows it", () => {
+    // The bug: joined with spaces this is one line, which markdown reads as a
+    // single `#` heading swallowing the entire answer.
+    expect(streamed()).not.toContain("ngôn ngữ 1. Chuẩn bị");
+    expect(streamed().split("\n\n")).toHaveLength(4);
+  });
+
+  it("starts each list item on its own block", () => {
+    const lines = streamed().split("\n\n");
+    expect(lines[1]).toBe("1. Chuẩn bị và làm sạch dữ liệu.");
+    expect(lines[2]).toBe("2. Chọn base model, tokenizer.");
+  });
+
+  it("still keeps consecutive prose sentences in one paragraph", () => {
+    const state = fold([start("hỏi"), delta("Câu một."), delta("Câu hai.")]);
+    expect(state.turns[0].streamedText).toBe("Câu một. Câu hai.");
+  });
+
+  it("separates a table row, a quote and a fence too", () => {
+    const state = fold([
+      start("hỏi"),
+      delta("Bảng:"),
+      delta("| a | b |"),
+      delta("> trích dẫn"),
+      delta("```python"),
+    ]);
+    expect(state.turns[0].streamedText.split("\n\n")).toHaveLength(4);
+  });
+
+  it("does not report a reassembly mismatch for the new separator", () => {
+    // The check collapses whitespace, so `\n\n` and ` ` compare equal — a
+    // block-aware join must not start flagging every structured answer.
+    const state = fold([
+      start("hỏi"),
+      delta("# Tiêu đề"),
+      delta("- một"),
+      done("# Tiêu đề\n\n- một"),
+    ]);
+    expect(state.reassemblyMismatch).toBe(false);
+  });
+});

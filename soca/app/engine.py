@@ -93,7 +93,7 @@ from soca.memory import (
     SessionMemory,
     default_session_checkpoint_home,
 )
-from soca.prompts import SOCA_RUNTIME_SYSTEM_PROMPT
+from soca.prompts import SOCA_CHAT_SYSTEM_PROMPT
 from soca.tts import VALTEC_TTS_CONFIG
 
 PROTOCOL_VERSION = CURRENT_PROTOCOL_VERSION
@@ -1624,7 +1624,11 @@ class SocaEngine:
         components = [
             PromptComponent(
                 "system",
-                SOCA_RUNTIME_SYSTEM_PROMPT.strip(),
+                # The chat variant, because this manifest estimates the budget
+                # for a *typed* turn — `build_text_runtime` answers under
+                # `answer_format="markdown"`. Estimating with the spoken prompt
+                # would under-count the resident tokens of every turn measured.
+                SOCA_CHAT_SYSTEM_PROMPT.strip(),
                 priority=0,
                 required=True,
             ),
