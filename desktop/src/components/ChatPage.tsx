@@ -61,7 +61,9 @@ export function ChatPage({
   // A turn that has not produced text yet renders its own orb inline; anything
   // else that keeps the orb off `breathing` is background work.
   const liveTurnShowsOrb =
-    lastTurn !== undefined && lastTurn.finalText === null && lastTurn.streamedText === "";
+    lastTurn !== undefined &&
+    lastTurn.finalText === null &&
+    lastTurn.streamedText === "";
   const busyOutsideTurn = orbState !== "breathing" && !liveTurnShowsOrb;
 
   const composer = (
@@ -82,13 +84,20 @@ export function ChatPage({
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center px-6 pt-[16vh]">
         <div className="flex w-full max-w-2xl flex-col gap-7">
+          {/* Pinned to `solving`, like the mark in the top bar. On an empty
+              session there is by definition nothing running, so a live orb here
+              could only ever show `breathing` — a faint dotted ring that reads
+              as a failed load. Real state still has two honest homes: the label
+              below, and the orb inside a running turn. */}
           <h1 className="flex items-center justify-center gap-3 text-center text-3xl font-normal tracking-tight">
-            <ThinkingOrb state={orbState} size={20} />
+            <ThinkingOrb state="solving" size={20} aria-hidden />
             {greeting()}
           </h1>
           {composer}
           {busyOutsideTurn && (
-            <p className="text-muted-foreground text-center text-xs">{orbLabel(orbState)}</p>
+            <p className="text-muted-foreground text-center text-xs">
+              {orbLabel(orbState)}
+            </p>
           )}
         </div>
       </div>

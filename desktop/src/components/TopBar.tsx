@@ -22,7 +22,12 @@ interface TopBarProps {
   onToggleTheme: () => void;
 }
 
-export function TopBar({ orbState, sidebarOpen, onOpenSidebar, onToggleTheme }: TopBarProps) {
+export function TopBar({
+  orbState,
+  sidebarOpen,
+  onOpenSidebar,
+  onToggleTheme,
+}: TopBarProps) {
   return (
     <header className="border-border flex h-14 shrink-0 items-center gap-3 border-b px-4">
       {!sidebarOpen && (
@@ -38,8 +43,13 @@ export function TopBar({ orbState, sidebarOpen, onOpenSidebar, onToggleTheme }: 
         </Button>
       )}
 
-      <div className="flex items-center gap-2.5" title={orbLabel(orbState)}>
-        <ThinkingOrb state={orbState} size={20} />
+      {/* Pinned to `solving` — this one is the mark beside the name, not a
+          readout. `breathing` is a faint dotted ring that reads as an empty
+          placeholder at 20 px, and the state it would report is already spelt
+          out in words immediately to the right, so nothing is lost by making
+          the picture constant and letting the label carry the truth. */}
+      <div className="flex items-center gap-2.5">
+        <ThinkingOrb state="solving" size={20} aria-hidden />
         <span className="text-[15px] font-medium">Sơn Ca</span>
       </div>
 
