@@ -436,6 +436,19 @@ turn and the model:
   synthesis and verification finish, then emits every chunk at once. No
   unverified answer text is ever published, so there is nothing to animate; drive
   the intervening UI from `turn_progress.phase`, not from delta arrival.
+
+Measured on 2026-08-16 against `openai/gpt-5.6-luna`, one turn each:
+
+| Route | Deltas | Arrival |
+| --- | ---: | --- |
+| `free_chat` | 2 | +7007 ms, +7068 ms — 61 ms apart |
+| `knowledge_llm` | 5 | all at +10190 ms — 0 ms apart |
+
+So "does chat stream?" has two answers, and the split is architectural rather
+than incidental: publishing a capability turn progressively would put unverified
+answer text on screen, which is what ADR 0003 forbids. A client that wants the
+wait to read as progress must render `turn_progress.phase`, because for those
+turns there is no partial answer to render.
 - Some hosted models return the whole completion in a single SSE chunk. The turn
   is then one delta even on the streaming path. Treat a single delta as normal,
   not as an error.

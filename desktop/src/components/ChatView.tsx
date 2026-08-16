@@ -1,17 +1,16 @@
 /**
- * The conversation, deliberately quiet.
+ * The conversation.
  *
- * §5.6.5 — Open WebUI's v0.11.0 spent a whole release on "where things live"
- * rather than new features, and narrowed the conversation column, lightened the
- * type and tightened spacing. The same applies here: a full-width column of
- * 14px text across a 1100px window is a wall, and SoCa's answers are spoken
- * sentences, not documents.
+ * Standard chat geometry: the user's turn sits right, the assistant's left. The
+ * user's is a bubble because it is a short, bounded utterance; the assistant's
+ * is bare text on the page because it is prose meant to be read, and boxing a
+ * paragraph only narrows it.
  *
- * So: a narrow reading column, metadata at 10px in muted, and no chrome around
- * an answer at all. An earlier revision drew a gold rule down the left of every
- * assistant turn; it decorated the ordinary case and drew the eye to nothing in
- * particular. Only the two exceptional outcomes are marked now — a refusal and a
- * failure — because those are the ones a reader must not mistake for an answer.
+ * §5.6.5 — a narrow reading column, metadata at 10px in muted, and no chrome
+ * around an answer at all. An earlier revision drew a gold rule down the left of
+ * every assistant turn; it decorated the ordinary case and drew the eye to
+ * nothing. Only the two exceptional outcomes are marked now — a refusal and a
+ * failure — because those must not be mistaken for an answer.
  *
  * Rendering rules from `docs/18-engine-protocol.md`: answers are plain speech
  * text, never markdown; provenance is the structured `citations` list; and a
@@ -35,14 +34,6 @@ interface ChatViewProps {
   orbLabel: string;
 }
 
-function Meta({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-[10px]">
-      {children}
-    </div>
-  );
-}
-
 function AssistantTurn({
   turn,
   documents,
@@ -60,8 +51,6 @@ function AssistantTurn({
   const status = turnStatus(turn);
   const text = turnText(turn);
 
-  // No rule on the ordinary path: an answer is the default, and marking the
-  // default marks nothing.
   const rule =
     status === "failed"
       ? "border-destructive/70 border-l-2 pl-4"
@@ -70,14 +59,14 @@ function AssistantTurn({
         : "";
 
   return (
-    <div className={rule}>
+    <div className={`mr-10 flex flex-col gap-2 ${rule}`}>
       {status === "failed" && <p className="text-destructive text-sm">{turn.error}</p>}
 
       {status === "blocked" && (
-        <div className="flex flex-col gap-1">
+        <>
           <p className="text-sm">{blockedReason(turn)}</p>
           {text !== "" && <p className="text-muted-foreground text-sm">{text}</p>}
-        </div>
+        </>
       )}
 
       {status === "streaming" && text === "" && (
@@ -103,16 +92,15 @@ function AssistantTurn({
       )}
 
       {(turn.citations.length > 0 || turn.route !== null) && (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {turn.citations.map((citation, index) => (
             <CitationChip key={index} citation={citation} documents={documents} />
           ))}
           {turn.route !== null && (
-            <Meta>
-              <span>{turn.route}</span>
-              {turn.terminal !== null && <span>· {turn.terminal}</span>}
-              {turn.deltaCount > 1 && <span>· {turn.deltaCount} chunks</span>}
-            </Meta>
+            <span className="text-muted-foreground text-[10px]">
+              {turn.route}
+              {turn.terminal !== null && ` · ${turn.terminal}`}
+            </span>
           )}
         </div>
       )}
@@ -122,61 +110,35 @@ function AssistantTurn({
 
 export function ChatView({ conversation, documents, orbState, orbLabel }: ChatViewProps) {
   const lastIndex = conversation.turns.length - 1;
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      {conversation.reassemblyMismatch && (
-        <div className="border-destructive/40 text-destructive mx-auto mb-3 w-full max-w-2xl rounded-md border px-3 py-2 text-xs">
-          A streamed answer did not reassemble into the final text. The engine
-          guarantees they match, so this is an engine regression or a dropped
-          frame — worth reporting rather than ignoring.
-        </div>
-      )}
 
-      <Conversation className="min-h-0 flex-1">
-        <ConversationContent className="mx-auto w-full max-w-2xl px-1">
-          {conversation.turns.length === 0 ? (
-            // An empty state that teaches the two keystrokes is worth more than
-            // a centred sentence in an otherwise blank column (§5.6.7).
-            <div className="flex h-full flex-col justify-center gap-6 py-16">
-              <p className="text-muted-foreground text-sm">Hỏi gì đó bằng tiếng Việt.</p>
-              <dl className="text-muted-foreground flex flex-col gap-2 text-xs">
-                <div className="flex gap-3">
-                  <dt className="text-foreground w-6 font-mono">/</dt>
-                  <dd>Chạy lệnh engine — status, context, memory, index.</dd>
-                </div>
-                <div className="flex gap-3">
-                  <dt className="text-foreground w-6 font-mono">@</dt>
-                  <dd>
-                    Trỏ tới tài liệu trong vault. Chỉ gợi ý tài liệu phiên này đã
-                    thấy — engine không có lệnh liệt kê vault.
-                  </dd>
-                </div>
-                <div className="flex gap-3">
-                  <dt className="text-foreground w-6 font-mono">↵</dt>
-                  <dd>Gửi. Shift+↵ xuống dòng.</dd>
-                </div>
-              </dl>
+  return (
+    <Conversation className="min-h-0 flex-1">
+      <ConversationContent className="mx-auto w-full max-w-2xl px-1 pb-4">
+        {conversation.reassemblyMismatch && (
+          <div className="border-destructive/40 text-destructive rounded-md border px-3 py-2 text-xs">
+            A streamed answer did not reassemble into the final text once
+            whitespace is collapsed — a dropped frame, or a source footer the
+            whole-answer cleaner removed. Worth reporting.
+          </div>
+        )}
+
+        {conversation.turns.map((turn, index) => (
+          <div key={`${turn.runId}-${index}`} className="flex flex-col gap-4">
+            <div className="flex justify-end">
+              <p className="bg-card border-border/60 ml-10 max-w-[80%] rounded-2xl border px-4 py-2.5 text-[15px] leading-7 whitespace-pre-wrap">
+                {turn.userText}
+              </p>
             </div>
-          ) : (
-            <div className="flex flex-col gap-8 py-6">
-              {conversation.turns.map((turn, index) => (
-                <div key={`${turn.runId}-${index}`} className="flex flex-col gap-3">
-                  <p className="text-muted-foreground text-[15px] leading-7 whitespace-pre-wrap">
-                    {turn.userText}
-                  </p>
-                  <AssistantTurn
-                    turn={turn}
-                    documents={documents}
-                    orbState={orbState}
-                    orbLabel={orbLabel}
-                    live={index === lastIndex}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </ConversationContent>
-      </Conversation>
-    </div>
+            <AssistantTurn
+              turn={turn}
+              documents={documents}
+              orbState={orbState}
+              orbLabel={orbLabel}
+              live={index === lastIndex}
+            />
+          </div>
+        ))}
+      </ConversationContent>
+    </Conversation>
   );
 }

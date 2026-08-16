@@ -183,7 +183,7 @@ export function SessionView({
       <section className="relative flex min-w-0 flex-1 flex-col">
         {hasTurns ? (
           <>
-            <div className="relative min-h-0 flex-1">
+            <div className="relative flex min-h-0 flex-1 flex-col">
               {/* Scrolled text dissolves at the top edge instead of clipping. */}
               <div className="from-background pointer-events-none absolute inset-x-0 top-0 z-10 h-12 bg-gradient-to-b to-transparent" />
               <ChatView
@@ -193,7 +193,7 @@ export function SessionView({
                 orbLabel={orbLabel(orbState)}
               />
             </div>
-            <div className="flex flex-col gap-2 px-6 pb-5">
+            <div className="bg-background z-20 flex shrink-0 flex-col gap-2 px-6 pb-5">
               {/* Work that happens outside a turn — an index build, a memory
                   compaction — has no message to sit inside, so the orb reports
                   it here. A live turn shows its own orb in the transcript. */}

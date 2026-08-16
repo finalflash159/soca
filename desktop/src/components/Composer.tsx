@@ -150,7 +150,7 @@ export function Composer({
 
       <div
         className={cn(
-          "border-border/70 bg-card/70 focus-within:border-primary/40 flex flex-col rounded-2xl border transition-colors",
+          "border-border/70 bg-card focus-within:border-primary/40 flex flex-col rounded-2xl border transition-colors",
           variant === "hero" ? "px-4 pt-4 pb-2" : "px-3 pt-3 pb-1.5",
         )}
       >
