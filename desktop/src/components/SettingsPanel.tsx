@@ -11,7 +11,7 @@
  * masked form. Nothing here stores or renders a raw key.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -92,21 +92,31 @@ export function SettingsPanel({
   const provider = selectedProvider ?? settings.config?.provider ?? null;
   const activeModel = settings.config?.model ?? null;
 
+  // The callbacks arrive as fresh closures on every render. Depending on their
+  // identity would re-run these effects each time, each run sending a command,
+  // each command changing state, each change re-rendering — a loop that floods
+  // the engine and leaves the panel looking dead. Hold them in refs and depend
+  // only on the values that should actually trigger a fetch.
+  const loadProvidersRef = useRef(onLoadProviders);
+  const loadModelsRef = useRef(onLoadModels);
+  loadProvidersRef.current = onLoadProviders;
+  loadModelsRef.current = onLoadModels;
+
   // Three clicks to see one model — Refresh, pick a provider, Search — is not a
   // settings screen, it is a scavenger hunt. Load on open instead.
   useEffect(() => {
     if (connected) {
-      onLoadProviders();
+      loadProvidersRef.current();
     }
-  }, [connected, onLoadProviders]);
+  }, [connected]);
 
   useEffect(() => {
     if (!connected || provider === null) {
       return;
     }
-    const timer = window.setTimeout(() => onLoadModels(provider, query), 300);
+    const timer = window.setTimeout(() => loadModelsRef.current(provider, query), 300);
     return () => window.clearTimeout(timer);
-  }, [connected, provider, query, onLoadModels]);
+  }, [connected, provider, query]);
   const models = provider !== null ? (settings.catalog[provider] ?? []) : [];
   const loading = provider !== null && settings.catalogLoading[provider] === true;
   const keyStatus = provider !== null ? settings.keyStatus[provider] : undefined;
@@ -205,17 +215,26 @@ export function SettingsPanel({
             {settings.providers.length === 0 ? (
               <PanelEmpty>None loaded yet.</PanelEmpty>
             ) : (
-              settings.providers.map((item) => (
-                <Button
-                  key={item.key}
-                  size="sm"
-                  variant={provider === item.key ? "default" : "outline"}
-                  onClick={() => setSelectedProvider(item.key)}
-                >
-                  {item.label}
-                  {item.hasKey && <Badge variant="secondary" className="ml-2">key</Badge>}
-                </Button>
-              ))
+              settings.providers.map((item) => {
+                const active = settings.config?.provider === item.key;
+                return (
+                  <Button
+                    key={item.key}
+                    size="sm"
+                    variant={provider === item.key ? "default" : "outline"}
+                    // Browsing a provider and running on it are different
+                    // states; the ring marks the one actually in use.
+                    className={active ? "ring-primary/60 ring-1" : undefined}
+                    onClick={() => setSelectedProvider(item.key)}
+                  >
+                    {item.label}
+                    {active && <span className="ml-1.5 text-[10px]">●</span>}
+                    {!item.hasKey && (
+                      <span className="text-muted-foreground ml-1.5 text-[10px]">chưa có key</span>
+                    )}
+                  </Button>
+                );
+              })
             )}
           </div>
 
