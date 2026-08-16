@@ -23,6 +23,7 @@ import { ThinkingOrb } from "thinking-orbs";
 
 import { Conversation, ConversationContent } from "@/components/ai-elements/conversation";
 import { CitationChip } from "@/components/CitationChip";
+import { TurnSteps } from "@/components/TurnSteps";
 import type { ConversationState, Turn } from "@/engine/conversation";
 import { blockedReason, phaseLabel, turnStatus, turnText } from "@/engine/conversation";
 import type { VaultDocument } from "@/engine/documents";
@@ -73,6 +74,8 @@ function AssistantTurn({
 
   return (
     <div className={`mr-10 flex flex-col gap-2 ${rule}`}>
+      <TurnSteps steps={turn.steps} running={status === "streaming"} />
+
       {status === "failed" && <p className="text-destructive text-sm">{turn.error}</p>}
 
       {status === "blocked" && (
@@ -135,9 +138,8 @@ export function ChatView({ conversation, documents, orbState, orbLabel }: ChatVi
       <ConversationContent className="mx-auto w-full max-w-2xl px-1 pb-4">
         {conversation.reassemblyMismatch && (
           <div className="border-destructive/40 text-destructive rounded-md border px-3 py-2 text-xs">
-            A streamed answer did not reassemble into the final text once
-            whitespace is collapsed — a dropped frame, or a source footer the
-            whole-answer cleaner removed. Worth reporting.
+            Các mảnh stream không ghép lại đúng câu trả lời cuối (đã bỏ qua khác biệt khoảng trắng)
+            — có thể mất frame, hoặc phần “Nguồn:” chỉ bị cắt ở bản toàn văn. Đáng báo lại.
           </div>
         )}
 

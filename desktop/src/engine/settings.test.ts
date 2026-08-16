@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { EngineFrame } from "./protocol";
-import {
-  initialSettings,
-  modelPrice,
-  reasoningSummary,
-  reduceSettings,
-} from "./settings";
+import { initialSettings, modelPrice, reasoningSummary, reduceSettings } from "./settings";
 
 function fold(frames: EngineFrame[]) {
   return frames.reduce(reduceSettings, initialSettings);
@@ -45,7 +40,12 @@ describe("providers", () => {
 describe("catalog", () => {
   it("treats the first empty frame as loading, not as no models", () => {
     const state = fold([
-      { event: "llm_catalog", provider: "openai", models: [], pricing_as_of: "2026-07" } as EngineFrame,
+      {
+        event: "llm_catalog",
+        provider: "openai",
+        models: [],
+        pricing_as_of: "2026-07",
+      } as EngineFrame,
     ]);
     expect(state.catalogLoading.openai).toBe(true);
     expect(state.catalog.openai).toEqual([]);
@@ -103,7 +103,12 @@ describe("key status", () => {
         event: "llm_providers",
         providers: [{ key: "groq", label: "Groq", has_key: false, has_pricing_api: false }],
       } as EngineFrame,
-      { event: "llm_key_status", provider: "groq", ok: false, message: "unauthorized" } as EngineFrame,
+      {
+        event: "llm_key_status",
+        provider: "groq",
+        ok: false,
+        message: "unauthorized",
+      } as EngineFrame,
     ]);
     expect(state.providers[0].hasKey).toBe(false);
     expect(state.keyStatus.groq.message).toBe("unauthorized");
@@ -187,7 +192,14 @@ describe("runtime profiles", () => {
       {
         event: "status",
         profiles: [
-          { key: "qwen-release", status: "ok", asr: "qwen3_asr_0_6b", llm: "x", tts: "valtec", voice: "v" },
+          {
+            key: "qwen-release",
+            status: "ok",
+            asr: "qwen3_asr_0_6b",
+            llm: "x",
+            tts: "valtec",
+            voice: "v",
+          },
           { key: "baseline", status: "blocked", asr: "phowhisper_small" },
         ],
       } as EngineFrame,

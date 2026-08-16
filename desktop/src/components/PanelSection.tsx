@@ -36,14 +36,14 @@ export function PanelSection({
   className,
 }: PanelSectionProps) {
   return (
-    <section
-      className={cn("border-border/60 bg-card/40 rounded-lg border", className)}
-    >
-      <header className="flex items-center gap-3 px-4 py-3">
-        <div className="flex min-w-0 flex-col">
-          <h2 className="text-sm font-medium tracking-tight">{title}</h2>
+    // Card geometry matches `Page.tsx` — same radius, same border, same padding
+    // — so a panel and a page card cannot look like two different systems.
+    <section className={cn("border-border bg-card rounded-xl border", className)}>
+      <header className="flex items-center gap-3 px-4 py-3.5">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <h2 className="font-medium tracking-tight">{title}</h2>
           {description !== undefined && (
-            <p className="text-muted-foreground truncate text-xs">{description}</p>
+            <p className="text-muted-foreground truncate text-[13px]">{description}</p>
           )}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -51,7 +51,7 @@ export function PanelSection({
           {action}
         </div>
       </header>
-      <div className="border-border/60 border-t px-4 py-3">{children}</div>
+      <div className="border-border/70 border-t px-4 py-3.5">{children}</div>
     </section>
   );
 }
@@ -64,8 +64,8 @@ export function PanelEmpty({ children }: { children: ReactNode }) {
 /** Label/value row, so every panel reads the same way. */
 export function PanelRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-baseline gap-3 py-1 text-xs">
-      <span className="text-muted-foreground w-28 shrink-0">{label}</span>
+    <div className="flex items-baseline gap-3 py-1 text-sm">
+      <span className="text-muted-foreground w-32 shrink-0">{label}</span>
       <span className="min-w-0 flex-1">{children}</span>
     </div>
   );

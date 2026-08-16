@@ -13,7 +13,7 @@
  * (`engine/documents.ts`), and the empty state says so.
  */
 
-import { Mic, Plus } from "lucide-react";
+import { ArrowUp, ChevronDown, Mic, Paperclip } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,6 @@ interface ComposerProps {
   documents: VaultDocument[];
   /** Active model, rendered as a control on the composer's own row. */
   model: string | null;
-  voiceRunning: boolean;
   /** `hero` is the tall new-conversation form; `docked` sits under a transcript. */
   variant?: "hero" | "docked";
   onSend: (text: string) => void;
@@ -49,7 +48,6 @@ export function Composer({
   starting = false,
   documents,
   model,
-  voiceRunning,
   variant = "docked",
   onSend,
   onCommand,
@@ -67,9 +65,7 @@ export function Composer({
     mention === null
       ? []
       : documents
-          .filter((document) =>
-            document.path.toLowerCase().includes(mention.query.toLowerCase()),
-          )
+          .filter((document) => document.path.toLowerCase().includes(mention.query.toLowerCase()))
           .slice(0, 8);
   const paletteOpen = commands.length > 0 || mention !== null;
 
@@ -117,8 +113,8 @@ export function Composer({
                 <CommandGroup heading="Tài liệu phiên này đã thấy">
                   {matches.length === 0 ? (
                     <CommandEmpty>
-                      Chưa truy xuất tài liệu nào. `@` chỉ gợi ý những gì phiên
-                      này đã thấy — engine không có lệnh liệt kê vault.
+                      Chưa truy xuất tài liệu nào. `@` chỉ gợi ý những gì phiên này đã thấy — engine
+                      không có lệnh liệt kê vault.
                     </CommandEmpty>
                   ) : (
                     matches.map((document) => (
@@ -184,42 +180,51 @@ export function Composer({
           }}
         />
 
-        <div className="flex items-center gap-1 pt-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-muted-foreground size-8 rounded-full p-0"
-            title="Tài liệu — hoặc gõ @"
+        <div className="flex items-center gap-1 pt-1.5">
+          {/* Model picker, bottom-left, exactly where the reference puts it: a
+              live dot, the model name, and a chevron saying it is changeable.
+              The old version was grey text in the corner that looked like a
+              caption, so nobody discovered it opened settings. */}
+          <button
+            type="button"
+            onClick={onOpenSettings}
             disabled={!connected}
-            onClick={() => {
-              setDraft((current) => `${current}@`);
-              inputRef.current?.focus();
-            }}
+            className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-8 max-w-[18rem] items-center gap-2 rounded-lg px-2 text-xs transition-colors disabled:opacity-50"
+            title="Đổi model"
           >
-            <Plus className="size-4" />
-          </Button>
+            <span
+              className={cn(
+                "size-1.5 shrink-0 rounded-full",
+                connected ? "bg-chart-3" : "bg-muted-foreground/50",
+              )}
+              aria-hidden
+            />
+            <span className="truncate">{model ?? "Chưa nạp model"}</span>
+            <ChevronDown className="size-3 shrink-0 opacity-60" />
+          </button>
 
           <div className="ml-auto flex items-center gap-1">
-            {model !== null && (
-              <button
-                type="button"
-                onClick={onOpenSettings}
-                className="text-muted-foreground hover:text-foreground max-w-48 truncate px-2 text-xs transition-colors"
-                title="Đổi model"
-              >
-                {model}
-              </button>
-            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground size-8 rounded-lg p-0"
+              title="Tài liệu — hoặc gõ @"
+              aria-label="Chèn tài liệu"
+              disabled={!connected}
+              onClick={() => {
+                setDraft((current) => `${current}@`);
+                inputRef.current?.focus();
+              }}
+            >
+              <Paperclip className="size-4" />
+            </Button>
             {/* Goes to voice mode rather than toggling capture in place. This
                 app has no dictation-into-the-box: a hot microphone with no
                 screen to show for it was the confusing state. */}
             <Button
               size="sm"
               variant="ghost"
-              className={cn(
-                "size-8 rounded-full p-0",
-                voiceRunning ? "text-primary" : "text-muted-foreground",
-              )}
+              className="text-muted-foreground hover:text-foreground size-8 rounded-lg p-0"
               title="Chế độ thoại"
               aria-label="Chế độ thoại"
               disabled={!connected}
@@ -233,8 +238,9 @@ export function Composer({
               disabled={!connected || draft.trim() === ""}
               onClick={submit}
               title="Gửi"
+              aria-label="Gửi"
             >
-              ↑
+              <ArrowUp className="size-4" />
             </Button>
           </div>
         </div>

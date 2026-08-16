@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  initialConversation,
-  reduceConversation,
-  turnStatus,
-  turnText,
-} from "./conversation";
+import { initialConversation, reduceConversation, turnStatus, turnText } from "./conversation";
 import type { EngineFrame } from "./protocol";
 import { PROTOCOL_VERSION } from "./protocol";
 
@@ -34,7 +29,14 @@ const delta = (text: string, runId = RUN): EngineFrame =>
   }) as EngineFrame;
 
 const done = (text: string, extra: Record<string, unknown> = {}): EngineFrame =>
-  ({ event: "chat", type: "done", text, route: "smalltalk", blocked: false, ...extra }) as EngineFrame;
+  ({
+    event: "chat",
+    type: "done",
+    text,
+    route: "smalltalk",
+    blocked: false,
+    ...extra,
+  }) as EngineFrame;
 
 const terminal = (status: string, runId = RUN): EngineFrame =>
   ({
@@ -53,7 +55,12 @@ const terminal = (status: string, runId = RUN): EngineFrame =>
 
 describe("streaming assembly", () => {
   it("appends deltas rather than replacing them", () => {
-    const state = fold([start("hỏi gì đó"), delta("Cơ bắp"), delta("tạo lực."), done("Cơ bắp tạo lực.")]);
+    const state = fold([
+      start("hỏi gì đó"),
+      delta("Cơ bắp"),
+      delta("tạo lực."),
+      done("Cơ bắp tạo lực."),
+    ]);
     expect(state.turns[0].streamedText).toBe("Cơ bắp tạo lực.");
     expect(state.turns[0].deltaCount).toBe(2);
   });
@@ -239,11 +246,8 @@ describe("unknown frames", () => {
   });
 });
 
-const voice = (
-  type: string,
-  text = "",
-  metadata: Record<string, unknown> = {},
-): EngineFrame => ({ event: "voice", type, text, metadata }) as EngineFrame;
+const voice = (type: string, text = "", metadata: Record<string, unknown> = {}): EngineFrame =>
+  ({ event: "voice", type, text, metadata }) as EngineFrame;
 
 describe("voice turns", () => {
   it("builds a spoken turn from asr, sentence and done", () => {
@@ -353,5 +357,40 @@ describe("voice turns", () => {
     } as EngineFrame;
     const state = fold([voice("asr", "hỏi"), raw, voice("sentence", "Câu.")]);
     expect(turnText(state.turns[0])).toBe("Câu.");
+  });
+});
+
+describe("step trail", () => {
+  const progress = (phase: string, runId = RUN): EngineFrame =>
+    ({ event: "turn_progress", phase, run_id: runId, surface: "chat" }) as EngineFrame;
+
+  it("records each phase once, in order", () => {
+    const state = fold([
+      start("hỏi"),
+      progress("preparing"),
+      progress("analyzing"),
+      progress("retrieval"),
+      progress("synthesis"),
+    ]);
+    expect(state.turns[0].steps).toEqual(["preparing", "analyzing", "retrieval", "synthesis"]);
+  });
+
+  it("does not repeat a phase that reports twice", () => {
+    // `turn_progress` fires per operation, not per phase change.
+    const state = fold([start("hỏi"), progress("retrieval"), progress("retrieval")]);
+    expect(state.turns[0].steps).toEqual(["retrieval"]);
+  });
+
+  it("leaves out `complete`, which is the closing marker not a step", () => {
+    const state = fold([start("hỏi"), progress("synthesis"), progress("complete")]);
+    expect(state.turns[0].steps).toEqual(["synthesis"]);
+  });
+
+  it("keeps the trail after the turn closes", () => {
+    // The point of the trail is that it survives: `phase` alone is cleared on
+    // `chat/done`, so a finished retrieval turn used to look like a plain one.
+    const state = fold([start("hỏi"), progress("retrieval"), done("xong")]);
+    expect(state.turns[0].phase).toBeNull();
+    expect(state.turns[0].steps).toEqual(["retrieval"]);
   });
 });

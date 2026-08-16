@@ -62,7 +62,7 @@ export function VoiceHud({ voice }: VoiceHudProps) {
   const partial = partialText(voice.partial);
 
   return (
-    <div className="mx-auto flex w-full max-w-[46rem] flex-col gap-3">
+    <div className="flex w-full flex-col gap-3">
       <PanelSection
         title="Voice loop"
         description={voice.profile ?? "no profile yet"}
@@ -106,18 +106,15 @@ export function VoiceHud({ voice }: VoiceHudProps) {
             </div>
           )}
 
-          {voice.error !== null && (
-            <p className="text-destructive text-xs">{voice.error}</p>
-          )}
+          {voice.error !== null && <p className="text-destructive text-xs">{voice.error}</p>}
         </div>
       </PanelSection>
 
       <PanelSection title="Endpointing" description="Published once when capture starts">
         {voice.endpoint === null ? (
           <PanelEmpty>
-            No capture yet. The engine sends the silence floor and ceiling at the
-            start of a turn, and never a remaining-time figure — so this panel
-            shows configuration, not a countdown.
+            No capture yet. The engine sends the silence floor and ceiling at the start of a turn,
+            and never a remaining-time figure — so this panel shows configuration, not a countdown.
           </PanelEmpty>
         ) : (
           <>

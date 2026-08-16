@@ -54,10 +54,7 @@ function upsert(
 }
 
 /** Build the completion index from everything seen so far. */
-export function documentIndex(
-  knowledge: KnowledgeState,
-  turns: Turn[],
-): VaultDocument[] {
+export function documentIndex(knowledge: KnowledgeState, turns: Turn[]): VaultDocument[] {
   const index = new Map<string, VaultDocument>();
 
   for (const column of knowledge.retrieval?.columns ?? []) {
@@ -79,14 +76,13 @@ export function documentIndex(
     }
   }
 
-  return Array.from(index.values()).sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
+  return Array.from(index.values()).sort(
+    (a, b) => b.score - a.score || a.path.localeCompare(b.path),
+  );
 }
 
 /** Everything known about one cited path, for the hover preview. */
-export function documentFor(
-  documents: VaultDocument[],
-  citation: Citation,
-): VaultDocument | null {
+export function documentFor(documents: VaultDocument[], citation: Citation): VaultDocument | null {
   const path = typeof citation.path === "string" ? citation.path : "";
   return documents.find((document) => document.path === path) ?? null;
 }
@@ -97,7 +93,10 @@ export function documentFor(
  * Returns null when the caret is not inside one. Only a token at a word
  * boundary counts, so an email address does not open the picker.
  */
-export function mentionQuery(draft: string, caret: number): { start: number; query: string } | null {
+export function mentionQuery(
+  draft: string,
+  caret: number,
+): { start: number; query: string } | null {
   const upto = draft.slice(0, caret);
   const at = upto.lastIndexOf("@");
   if (at === -1) {
@@ -160,7 +159,6 @@ export function filterCommands(query: string): SlashCommand[] {
   const needle = query.toLowerCase();
   return SLASH_COMMANDS.filter(
     (command) =>
-      command.label.toLowerCase().includes(needle) ||
-      command.hint.toLowerCase().includes(needle),
+      command.label.toLowerCase().includes(needle) || command.hint.toLowerCase().includes(needle),
   );
 }

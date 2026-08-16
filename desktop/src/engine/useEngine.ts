@@ -16,12 +16,7 @@ import type { KnowledgeState } from "./knowledge";
 import { initialKnowledge, reduceKnowledge } from "./knowledge";
 import type { OrbActivity } from "./orb";
 import { initialActivity, orbStateFor, reduceActivity } from "./orb";
-import type {
-  EngineCommand,
-  EngineFrame,
-  HelloFrame,
-  StatusFrame,
-} from "./protocol";
+import type { EngineCommand, EngineFrame, HelloFrame, StatusFrame } from "./protocol";
 import { helloIsCompatible, PROTOCOL_VERSION } from "./protocol";
 import type { SessionState } from "./session";
 import { initialSession, reduceSession } from "./session";

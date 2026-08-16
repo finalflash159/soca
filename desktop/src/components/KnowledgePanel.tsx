@@ -60,8 +60,8 @@ function RetrievalInspector({ knowledge }: { knowledge: KnowledgeState }) {
       <div className="flex flex-col gap-3">
         {trace === null ? (
           <PanelEmpty>
-            A turn the router resolves to no capability never reaches the vault,
-            so an empty inspector is a normal outcome rather than a fault.
+            A turn the router resolves to no capability never reaches the vault, so an empty
+            inspector is a normal outcome rather than a fault.
           </PanelEmpty>
         ) : (
           <>
@@ -74,7 +74,9 @@ function RetrievalInspector({ knowledge }: { knowledge: KnowledgeState }) {
                   <span>margin {score(trace.evidence.margin)}</span>
                   <span>hits {trace.evidence.hit_count ?? 0}</span>
                   <span>rejected {trace.rejectedCount}</span>
-                  {trace.evidence.reason != null && <span>reason {String(trace.evidence.reason)}</span>}
+                  {trace.evidence.reason != null && (
+                    <span>reason {String(trace.evidence.reason)}</span>
+                  )}
                 </div>
               )}
             </div>
@@ -202,8 +204,8 @@ function MemorySection({
           </span>
           {knowledge.proposals.length === 0 ? (
             <PanelEmpty>
-              Nothing in the production runtime creates memory proposals today,
-              so an empty inbox is the expected state rather than a failure.
+              Nothing in the production runtime creates memory proposals today, so an empty inbox is
+              the expected state rather than a failure.
             </PanelEmpty>
           ) : (
             knowledge.proposals.map((proposal) => (
@@ -290,7 +292,7 @@ function VaultSection({
 
 export function KnowledgePanel(props: KnowledgePanelProps) {
   return (
-    <div className="mx-auto flex w-full max-w-[46rem] flex-col gap-3">
+    <div className="flex w-full flex-col gap-3">
       <RetrievalInspector knowledge={props.knowledge} />
       <MemorySection {...props} />
       <VaultSection {...props} />

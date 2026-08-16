@@ -45,9 +45,7 @@ export function StartupView({ starting, problem, onStart }: StartupViewProps) {
       </Button>
 
       {problem !== null && (
-        <p className="text-destructive max-w-sm text-center text-xs leading-relaxed">
-          {problem}
-        </p>
+        <p className="text-destructive max-w-sm text-center text-xs leading-relaxed">{problem}</p>
       )}
 
       <div className="flex flex-col items-center gap-2">
@@ -72,8 +70,8 @@ export function StartupView({ starting, problem, onStart }: StartupViewProps) {
               disabled={starting}
             />
             <p className="text-muted-foreground max-w-xs text-center text-[10px] leading-relaxed">
-              App gọi <code>{program} engine</code>. Bản đóng gói chưa kèm Python
-              nên <code>soca</code> phải có sẵn trên PATH.
+              App gọi <code>{program} engine</code>. Bản đóng gói chưa kèm Python nên{" "}
+              <code>soca</code> phải có sẵn trên PATH.
             </p>
           </div>
         )}

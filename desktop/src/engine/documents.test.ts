@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Turn } from "./conversation";
-import {
-  applyMention,
-  documentIndex,
-  filterCommands,
-  mentionQuery,
-  slashQuery,
-} from "./documents";
+import { applyMention, documentIndex, filterCommands, mentionQuery, slashQuery } from "./documents";
 import { initialKnowledge, reduceKnowledge } from "./knowledge";
 import type { EngineFrame } from "./protocol";
 
@@ -18,7 +12,13 @@ const knowledge = reduceKnowledge(initialKnowledge, {
   latency_ms: 10,
   columns: [
     { source: "sparse", hits: [{ path: "wiki/a.md", score: 0.4 }] },
-    { source: "dense", hits: [{ path: "wiki/a.md", score: 0.9 }, { path: "wiki/b.md", score: 0.5 }] },
+    {
+      source: "dense",
+      hits: [
+        { path: "wiki/a.md", score: 0.9 },
+        { path: "wiki/b.md", score: 0.5 },
+      ],
+    },
   ],
   fused: [],
   rejected_count: 0,
@@ -26,9 +26,7 @@ const knowledge = reduceKnowledge(initialKnowledge, {
 } as EngineFrame);
 
 const turn = {
-  citations: [
-    { label: "K1", path: "wiki/a.md", title: "Đà Lạt", line_start: 10, line_end: 20 },
-  ],
+  citations: [{ label: "K1", path: "wiki/a.md", title: "Đà Lạt", line_start: 10, line_end: 20 }],
 } as unknown as Turn;
 
 describe("document index", () => {
@@ -40,10 +38,7 @@ describe("document index", () => {
   });
 
   it("orders by score", () => {
-    expect(documentIndex(knowledge, []).map((doc) => doc.path)).toEqual([
-      "wiki/a.md",
-      "wiki/b.md",
-    ]);
+    expect(documentIndex(knowledge, []).map((doc) => doc.path)).toEqual(["wiki/a.md", "wiki/b.md"]);
   });
 
   it("takes title and line range from citations", () => {

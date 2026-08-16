@@ -71,9 +71,7 @@ describe("budget fraction", () => {
   });
 
   it("never exceeds one", () => {
-    const state = fold([
-      { ...readyContext, resident_prompt_tokens: 99999 } as EngineFrame,
-    ]);
+    const state = fold([{ ...readyContext, resident_prompt_tokens: 99999 } as EngineFrame]);
     expect(budgetUsedFraction(state.context)).toBe(1);
   });
 });

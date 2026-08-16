@@ -64,6 +64,15 @@ export interface Turn {
   terminal: TerminalStatus | null;
   /** Latest `turn_progress.phase`; drives the UI between deltas. */
   phase: string | null;
+  /**
+   * Every distinct phase this turn passed through, in order.
+   *
+   * `phase` alone is a single latest value, so once a turn finished there was
+   * no record of what it had actually done — a retrieval turn and a plain chat
+   * turn were indistinguishable after the fact. This is the trail plan §5.6.4
+   * asks for, built from frames the engine already sends.
+   */
+  steps: string[];
   error: string | null;
   deltaCount: number;
 }
@@ -123,6 +132,7 @@ function newTurn(runId: string, goalId: string, userText: string, surface: Surfa
     citations: [],
     terminal: null,
     phase: null,
+    steps: [],
     error: null,
     deltaCount: 0,
   };
@@ -405,7 +415,17 @@ export function reduceConversation(
     const index =
       runId !== "" ? indexForRun(state.turns, runId) : openTurnIndex(state.turns, surface);
     const phase = typeof frame.phase === "string" ? frame.phase : null;
-    return patch(state, index, { phase });
+    if (index < 0) {
+      return state;
+    }
+    // `complete` is the closing marker, not work (see CLOSING_PHASES in orb.ts);
+    // recording it would put a step in the trail that never happened.
+    const steps = state.turns[index].steps;
+    const record = phase !== null && phase !== "complete" && steps[steps.length - 1] !== phase;
+    return patch(state, index, {
+      phase,
+      steps: record ? [...steps, phase] : steps,
+    });
   }
 
   return state;

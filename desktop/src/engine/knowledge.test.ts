@@ -65,7 +65,16 @@ describe("memory", () => {
         event: "memory_trace",
         mode: "archive",
         degraded_reason: "",
-        hits: [{ id: "m1", corpus: "episode", relevance: 0.4, recency: 0.2, importance: 0.1, total: 0.7 }],
+        hits: [
+          {
+            id: "m1",
+            corpus: "episode",
+            relevance: 0.4,
+            recency: 0.2,
+            importance: 0.1,
+            total: 0.7,
+          },
+        ],
         hit_count: 1,
         background_status: "running",
         summary_worker_state: "ready",
@@ -117,7 +126,13 @@ describe("proposals", () => {
   it("removes a row only when the store accepted the action", () => {
     const state = fold([
       { event: "memory_proposals", proposals: [proposal] } as EngineFrame,
-      { event: "memory_action", proposal_id: "p1", action: "approved", ok: true, error_code: null } as EngineFrame,
+      {
+        event: "memory_action",
+        proposal_id: "p1",
+        action: "approved",
+        ok: true,
+        error_code: null,
+      } as EngineFrame,
     ]);
     expect(state.proposals).toEqual([]);
     expect(state.lastAction?.ok).toBe(true);
@@ -142,19 +157,37 @@ describe("proposals", () => {
 describe("index job", () => {
   it("is running until it reaches a terminal status", () => {
     const running = fold([
-      { event: "knowledge_setup", action: "index", status: "embedding", detail: "…", vault: "/v" } as EngineFrame,
+      {
+        event: "knowledge_setup",
+        action: "index",
+        status: "embedding",
+        detail: "…",
+        vault: "/v",
+      } as EngineFrame,
     ]);
     expect(indexJobRunning(running.indexJob)).toBe(true);
 
     const done = fold([
-      { event: "knowledge_setup", action: "index", status: "ok", detail: "done", vault: "/v" } as EngineFrame,
+      {
+        event: "knowledge_setup",
+        action: "index",
+        status: "ok",
+        detail: "done",
+        vault: "/v",
+      } as EngineFrame,
     ]);
     expect(indexJobRunning(done.indexJob)).toBe(false);
   });
 
   it("does not treat vault init as an index build", () => {
     const state = fold([
-      { event: "knowledge_setup", action: "init", status: "running", detail: "…", vault: "/v" } as EngineFrame,
+      {
+        event: "knowledge_setup",
+        action: "init",
+        status: "running",
+        detail: "…",
+        vault: "/v",
+      } as EngineFrame,
     ]);
     expect(indexJobRunning(state.indexJob)).toBe(false);
   });
@@ -176,7 +209,9 @@ describe("index job", () => {
 
 describe("status frame", () => {
   it("reports index presence from null-ness, not from a flag", () => {
-    expect(fold([{ event: "status", knowledge_index: null } as EngineFrame]).indexPresent).toBe(false);
+    expect(fold([{ event: "status", knowledge_index: null } as EngineFrame]).indexPresent).toBe(
+      false,
+    );
     expect(
       fold([{ event: "status", knowledge_index: { generation: 3 } } as EngineFrame]).indexPresent,
     ).toBe(true);

@@ -244,8 +244,7 @@ export function reduceKnowledge(state: KnowledgeState, frame: EngineFrame): Know
       return {
         ...state,
         indexPresent: frame.knowledge_index !== null && frame.knowledge_index !== undefined,
-        vault:
-          typeof frame.knowledge_vault === "string" ? frame.knowledge_vault : state.vault,
+        vault: typeof frame.knowledge_vault === "string" ? frame.knowledge_vault : state.vault,
       };
 
     default:

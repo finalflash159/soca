@@ -228,7 +228,6 @@ export function isVoiceFrame(frame: EngineFrame): frame is VoiceFrame {
 export function helloIsCompatible(hello: HelloFrame): boolean {
   return (
     hello.protocol_version === PROTOCOL_VERSION ||
-    (Array.isArray(hello.supported_versions) &&
-      hello.supported_versions.includes(PROTOCOL_VERSION))
+    (Array.isArray(hello.supported_versions) && hello.supported_versions.includes(PROTOCOL_VERSION))
   );
 }

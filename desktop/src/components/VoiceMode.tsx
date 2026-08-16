@@ -1,5 +1,5 @@
 /**
- * Voice mode.
+ * The voice page.
  *
  * Shape taken from LiveKit's reference session view and Pipecat's voice kit
  * (see `zplan/desktop_ui_research_round3.vi.md`), which agree on three things
@@ -13,8 +13,9 @@
  *    and disappears when the turn ends; the transcript is the record and is
  *    toggled; the phase label is status. Conflating them is why the old screen
  *    felt empty during a turn and blank after it.
- * 3. **Leaving ends the loop.** There is no state where this screen is closed
- *    and the microphone is still hot.
+ * 3. **Leaving ends the loop.** Navigating away from this page stops capture,
+ *    so there is no state where the microphone is open with nothing on screen
+ *    saying so.
  *
  * The orb stays `thinking-orbs` at its tuned 64px per plan §0.2 — the library
  * ships two fixed designs rather than one scalable one, so CSS-scaling the
@@ -22,12 +23,13 @@
  * around it, which is amplitude, not agent state.
  */
 
-import { Mic, MicOff, MessageSquareText, X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { Activity, Mic, MicOff, MessageSquareText, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { OrbState } from "thinking-orbs";
 import { ThinkingOrb } from "thinking-orbs";
 
 import { Button } from "@/components/ui/button";
+import { VoiceHud } from "@/components/VoiceHud";
 import { VoiceTranscript } from "@/components/VoiceTranscript";
 import type { ConversationState, Turn } from "@/engine/conversation";
 import type { VaultDocument } from "@/engine/documents";
@@ -122,6 +124,8 @@ export function VoiceMode({
   onToggleMic,
   onLeave,
 }: VoiceModeProps) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
   // Escape leaves. It was advertised on the close button but wired to a
   // `keydown` on a div nothing ever focused, so it had never once fired.
   const leaveRef = useRef(onLeave);
@@ -131,11 +135,11 @@ export function VoiceMode({
       if (event.key !== "Escape") {
         return;
       }
-      // The inspector sheet closes on Escape too. Whoever is on top gets the
-      // key — otherwise closing settings mid-call would also end the call.
-      if (
-        document.querySelector('[role="dialog"][data-state="open"]') !== null
-      ) {
+      // Whoever is on top gets the key. Nothing in the app opens a dialog over
+      // this page today, but a command palette would, and ending the call
+      // because someone dismissed a palette is the kind of surprise that is
+      // cheaper to prevent than to notice later.
+      if (document.querySelector('[role="dialog"][data-state="open"]') !== null) {
         return;
       }
       leaveRef.current();
@@ -151,16 +155,11 @@ export function VoiceMode({
   // what has finished. One turn, one place on screen at a time.
   const newest = conversation.turns[conversation.turns.length - 1];
   const liveTurn =
-    newest !== undefined &&
-    newest.surface === "voice" &&
-    newest.finalText === null
-      ? newest
-      : null;
-  const settled =
-    liveTurn === null ? conversation.turns : conversation.turns.slice(0, -1);
+    newest !== undefined && newest.surface === "voice" && newest.finalText === null ? newest : null;
+  const settled = liveTurn === null ? conversation.turns : conversation.turns.slice(0, -1);
   // The orb gives up the screen for history, not for an empty panel. On the
   // first turn there is nothing settled yet, so it stays full size.
-  const compact = transcriptOpen && settled.length > 0;
+  const compact = (transcriptOpen && settled.length > 0) || detailsOpen;
 
   const status = !running
     ? "Đang tắt mic"
@@ -172,9 +171,9 @@ export function VoiceMode({
 
   return (
     <div
-      // Fills its container, which is the conversation area — not the window.
-      // The rail stays reachable, so the inspector, settings, the engine health
-      // dot and the restart button are all still one click away mid-call.
+      // Fills the page area. The sidebar and top bar are outside it, so
+      // settings, the engine health dot and the restart button stay one click
+      // away mid-call — this screen used to cover the window and hide them.
       className="bg-background flex h-full w-full flex-col"
       role="region"
       aria-label="Chế độ thoại"
@@ -219,18 +218,25 @@ export function VoiceMode({
             {status}
           </p>
           <LiveTurn voice={voice} turn={liveTurn} />
-          {voice.error !== null && (
-            <p className="text-destructive text-sm">{voice.error}</p>
-          )}
+          {voice.error !== null && <p className="text-destructive text-sm">{voice.error}</p>}
         </div>
       </div>
 
-      {transcriptOpen && (
+      {transcriptOpen && !detailsOpen && (
         <VoiceTranscript
           conversation={{ ...conversation, turns: settled }}
           documents={documents}
           orbState={orbState}
         />
+      )}
+
+      {/* Diagnostics live here rather than in settings, because every reading
+          on them is live: navigating away from this page stops the loop, so a
+          level meter on another page would only ever show a dead mic. */}
+      {detailsOpen && (
+        <div className="min-h-0 flex-1 overflow-auto px-6 pb-2">
+          <VoiceHud voice={voice} />
+        </div>
       )}
 
       <div className="shrink-0 px-6 pb-8">
@@ -248,11 +254,7 @@ export function VoiceMode({
             disabled={!connected}
             onClick={onToggleMic}
           >
-            {running ? (
-              <Mic className="size-5" />
-            ) : (
-              <MicOff className="size-5" />
-            )}
+            {running ? <Mic className="size-5" /> : <MicOff className="size-5" />}
           </Button>
 
           <Button
@@ -268,6 +270,23 @@ export function VoiceMode({
             onClick={onToggleTranscript}
           >
             <MessageSquareText className="size-5" />
+          </Button>
+
+          <div className="bg-border mx-1 h-6 w-px" aria-hidden />
+
+          <Button
+            size="sm"
+            variant="ghost"
+            className={cn(
+              "size-11 rounded-full p-0",
+              detailsOpen ? "text-primary" : "text-muted-foreground",
+            )}
+            title={detailsOpen ? "Ẩn chi tiết" : "Chi tiết kỹ thuật"}
+            aria-label={detailsOpen ? "Ẩn chi tiết" : "Chi tiết kỹ thuật"}
+            aria-pressed={detailsOpen}
+            onClick={() => setDetailsOpen((open) => !open)}
+          >
+            <Activity className="size-5" />
           </Button>
 
           <div className="bg-border mx-1 h-6 w-px" aria-hidden />

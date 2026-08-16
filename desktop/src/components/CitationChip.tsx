@@ -76,8 +76,8 @@ export function CitationChip({ citation, documents }: CitationChipProps) {
           )}
 
           <p className="text-muted-foreground border-border/60 border-t pt-2 text-[10px] leading-relaxed">
-            The engine sends the location of the evidence, not its text. Open the
-            file to read the passage.
+            The engine sends the location of the evidence, not its text. Open the file to read the
+            passage.
           </p>
         </div>
       </HoverCardContent>

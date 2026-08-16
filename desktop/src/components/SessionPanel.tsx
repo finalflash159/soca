@@ -33,7 +33,7 @@ export function SessionPanel({ session, connected, onRefresh }: SessionPanelProp
   const used = budgetUsedFraction(context);
 
   return (
-    <div className="mx-auto flex w-full max-w-[46rem] flex-col gap-3">
+    <div className="flex w-full flex-col gap-3">
       <PanelSection
         title="Prompt budget"
         description={contextBasis(context)}
@@ -85,7 +85,9 @@ export function SessionPanel({ session, connected, onRefresh }: SessionPanelProp
           <div className="flex flex-col gap-1">
             {context.components.map((component, index) => (
               <div key={index} className="flex items-baseline gap-3 text-xs">
-                <span className="flex-1 truncate">{String(component.name ?? `khối ${index + 1}`)}</span>
+                <span className="flex-1 truncate">
+                  {String(component.name ?? `khối ${index + 1}`)}
+                </span>
                 <span className="text-muted-foreground font-mono">
                   {tokens(typeof component.tokens === "number" ? component.tokens : null)}
                 </span>
