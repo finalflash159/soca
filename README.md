@@ -36,6 +36,43 @@ transcript plus assembled prompt context.
 > negative measurements are recorded in [BENCHMARKS.md](BENCHMARKS.md); they are
 > not hidden behind a green summary.
 
+## What's new — 2026-08-17
+
+**A third surface: a Tauri desktop app.** It speaks the same NDJSON engine
+boundary as the CLI and the Ink TUI — no Python is reimplemented — and adds what
+a terminal cannot draw: a live microphone level, a spoken transcript, rendered
+markdown answers and a retrieval inspector.
+
+- **Desktop app**, light and dark. Sidebar navigation over Chat, Voice,
+  Knowledge, Session and Settings. Builds to `.app` and `.dmg`; the engine
+  remains an external dependency — see
+  [`docs/19-desktop-packaging.md`](docs/19-desktop-packaging.md) for exactly
+  what is and is not bundled, and why.
+- **Answers render as markdown** on the chat surface: headings, lists, tables,
+  highlighted code and KaTeX. Chat and voice now use separate system prompts,
+  because the voice prompt forbids markdown — TTS would read `**` aloud — and
+  chat had been sharing it.
+- **A spoken turn is a real turn.** Voice and chat produce one transcript
+  instead of voice reducing into live-signal state that vanished at turn end.
+- **Local LLM weights load on first use**, never at startup, on every surface.
+
+Fixes worth naming, each found by measurement rather than by reading:
+
+- Chat chunks are markdown blocks, not speech sentences. The TTS chunker inserts
+  commas as audible pauses and strips the newlines a list depends on, so
+  structured answers arrived corrupted.
+- The Knowledge screen dropped everything `status` reported — vault path,
+  `initialized`, index size, and per-step build progress — so it offered to
+  create a vault that existed and an index build looked frozen.
+- A macOS GUI app does not inherit the shell's `PATH`, so a bundled app could
+  not start an engine installed in a virtualenv.
+- `st_dev` is no longer part of artifact identity: it names the mount, and APFS
+  reassigns it across reboots, which made every model file look tampered with.
+
+Barge-in accuracy holds (94.7 % detection, 2.7 % false interrupt on real device
+echo) but fires at a 3.0 s median. That, and the gap between headset and
+loudspeaker use, are open and analysed rather than closed.
+
 ## Project page and demo
 
 The [SoCa project page](https://soca-page.vercel.app/) is the public visual
@@ -65,8 +102,9 @@ keeps the implementation, release gates and detailed evidence authoritative.
 - **Layered memory:** working session memory, approved core memory and
   query-selected archive memory. Working memory compacts at the configured
   high-water mark through an isolated local summary worker.
-- **Two surfaces:** `soca ask`/`soca chat` for text and `soca ui` for the Ink
-  terminal UI over a headless NDJSON engine.
+- **Three surfaces:** `soca ask`/`soca chat` for text, `soca ui` for the Ink
+  terminal UI, and a Tauri desktop app — all over the same headless NDJSON
+  engine ([`docs/18-engine-protocol.md`](docs/18-engine-protocol.md)).
 
 The production stack has no silent provider, model, router, retrieval-backend or
 ASR fallback. Retries are bounded and observable; an exhausted production
@@ -88,11 +126,11 @@ flowchart LR
     TTS --> SPK[/Speaker/]
     ASR -. typed reject .-> REPAIR[Repair layer]
     REPAIR -.-> TTS
-    RT -. progress · usage .-> UI[[CLI · Ink TUI]]
+    RT -. progress · usage .-> UI[[CLI · Ink TUI · desktop app]]
     LLM -. explicit remote only .-> REMOTE[OpenAI · Gemini · OpenRouter · Groq]
 ```
 
-The UI is a presentation layer. `SocaEngine` owns the NDJSON process boundary;
+Every UI is a presentation layer. `SocaEngine` owns the NDJSON process boundary;
 `soca/core` owns orchestration and contracts; backend packages own models,
 indexes, memory and tools. The UI never loads model weights or reconstructs
 routing logic.
@@ -248,6 +286,8 @@ Start with [`docs/README.md`](docs/README.md), then:
 - [assistant runtime](docs/05-assistant-runtime.md) — routing, tools, evidence and verification;
 - [conversation repair](docs/06-conversation-repair.md) — typed repair events and handover;
 - [TUI and engine](docs/07-tui.md) — Ink, NDJSON, slash commands and progress;
+- [engine protocol](docs/18-engine-protocol.md) — the NDJSON contract every surface speaks;
+- [desktop packaging](docs/19-desktop-packaging.md) — what the bundle contains, and what signing still needs;
 - [retrieval and memory](docs/09-hybrid-rag-memory.md) — catalog, hybrid RAG and memory layers;
 - [context budget](docs/14-model-aware-context-budget.md) — prompt admission and `/context`;
 - [provider reliability](docs/provider-runtime-reliability.md) — retries, cancellation and typed failures.
@@ -255,6 +295,7 @@ Start with [`docs/README.md`](docs/README.md), then:
 ```text
 soca/      production Python packages: app, core, asr, llm, tts, knowledge, memory and tools
 ui/        Ink/React terminal UI
+desktop/   Tauri desktop app over the same NDJSON engine
 eval/      datasets, harnesses and local results
 docs/      current system docs, ADRs, diagrams and sanitized evidence
 scripts/   provisioning, smoke tests, release gates and figure generation
