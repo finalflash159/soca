@@ -104,6 +104,10 @@ describe("display math normalisation", () => {
     expect(render("Trước:\n\n$$x=1$$\n\nSau.")).toContain("katex-display");
   });
 
+  it("promotes a one-line $$…$$ to a block with CRLF line endings", () => {
+    expect(render("Trước:\r\n\r\n$$x=1$$\r\n\r\nSau.")).toContain("katex-display");
+  });
+
   it("leaves an already-fenced formula alone", () => {
     expect(render("Trước:\n\n$$\nx=1\n$$\n\nSau.")).toContain("katex-display");
   });

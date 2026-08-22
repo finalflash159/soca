@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import builtins
 import hashlib
+import importlib.util
 import json
 import stat
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -32,6 +35,34 @@ from soca.asr.qwen_store import (
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_store_module_imports_without_posix_fcntl(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    path = Path(__file__).resolve().parents[1] / "soca" / "asr" / "qwen_store.py"
+    spec = importlib.util.spec_from_file_location("soca.asr._qwen_store_without_fcntl", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    original_import = builtins.__import__
+
+    def reject_fcntl(name: str, *args: object, **kwargs: object) -> object:
+        if name == "fcntl":
+            raise ImportError("fcntl is unavailable")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", reject_fcntl)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(spec.name, None)
+
+    assert module.fcntl is None
+    store = module.QwenArtifactStore(tmp_path / "store")
+    with pytest.raises(module.UnsupportedArtifactPlatform, match="POSIX advisory locks"):
+        with store.provision_lock():
+            pass
 
 
 def _fixture(tmp_path: Path) -> tuple[QwenASRArtifactSpec, Path, Path]:

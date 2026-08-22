@@ -37,6 +37,8 @@ from soca.memory.session_repository import (
     SessionSchemaError,
     SessionSnapshot,
     default_session_repository_home,
+    legacy_checkpoints_pending,
+    legacy_session_checkpoint_home,
 )
 from soca.memory.session_store import (
     CHECKPOINT_SCHEMA_VERSION,
@@ -101,6 +103,8 @@ __all__ = [
     "MigrationReport",
     "SESSION_SCHEMA_VERSION",
     "default_session_repository_home",
+    "legacy_checkpoints_pending",
+    "legacy_session_checkpoint_home",
     "CompactionJob",
     "ConversationTurn",
     "SUMMARY_CONTENT_BUDGET_TOKENS",

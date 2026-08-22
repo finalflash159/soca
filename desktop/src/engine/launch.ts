@@ -10,7 +10,7 @@ export const SESSION_PERSISTENCE_STORAGE_KEY = "soca.session-persistence.v1";
  */
 declare const __SOCA_CHECKOUT_ROOT__: string;
 
-/** Pin the development engine to this checkout; packaged builds use PATH only. */
+/** Pin development to this checkout; packaged builds resolve the bundled sidecar. */
 function storage(): Storage | null {
   return typeof window === "undefined" ? null : window.localStorage;
 }
@@ -46,7 +46,9 @@ export function launchOptions(
   const root = typeof __SOCA_CHECKOUT_ROOT__ === "string" ? __SOCA_CHECKOUT_ROOT__ : "";
   const args = ["--session-persistence", persistence];
   if (root === "") {
-    return { program: "soca", args };
+    // Leaving `program` unset is intentional: Rust resolves only the Tauri
+    // externalBin sidecar for a release build and never guesses from PATH.
+    return { args };
   }
   return { program: "soca", args, env: { PYTHONPATH: root } };
 }

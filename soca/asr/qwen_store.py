@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ctypes
 import errno
-import fcntl
 import hashlib
 import json
 import math
@@ -22,6 +21,11 @@ from uuid import uuid4
 from safetensors import safe_open
 
 from .qwen_artifacts import ArtifactSource, QwenASRArtifactSpec
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Qwen provisioning is Darwin-only.
+    fcntl = None
 
 RECEIPT_SCHEMA_VERSION = 1
 
@@ -405,6 +409,10 @@ class QwenArtifactStore:
 
     @contextmanager
     def provision_lock(self) -> Iterator[None]:
+        if fcntl is None:
+            raise UnsupportedArtifactPlatform(
+                "Qwen artifact provisioning requires POSIX advisory locks"
+            )
         _private_directory(self.root)
         lock_path = self.root / ".provision.lock"
         descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)

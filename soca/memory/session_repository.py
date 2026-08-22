@@ -14,15 +14,20 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import UUID, uuid4
 
 from soca.memory.working import WorkingMemory
 
 try:
     import fcntl
-except ImportError:  # pragma: no cover - Windows must report the unavailable lease explicitly.
+except ImportError:  # pragma: no cover - selected below on Windows.
     fcntl = None
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - unavailable on POSIX.
+    msvcrt = None
 
 SESSION_SCHEMA_VERSION = 1
 PRIVATE_DIRECTORY_MODE = stat.S_IRWXU
@@ -31,6 +36,7 @@ PRIVATE_READ_ONLY_DIRECTORY_MODE = stat.S_IRUSR | stat.S_IXUSR
 PRIVATE_READ_ONLY_FILE_MODE = stat.S_IRUSR
 _MIGRATION_SETTING = "legacy_json_migration_v1"
 _PREFERENCES_SETTING = "session_preferences_v1"
+LEGACY_SESSION_ROOT_ENV = "SOCA_LEGACY_SESSION_ROOT"
 
 SessionSurface = Literal["chat", "voice"]
 SessionTurnStatus = Literal["pending", "complete", "interrupted", "failed"]
@@ -130,6 +136,29 @@ def default_session_repository_home() -> Path:
     configured = os.environ.get("XDG_STATE_HOME", "").strip()
     base = Path(configured).expanduser() if configured else Path.home() / ".local" / "state"
     return base / "soca" / "sessions"
+
+
+def legacy_session_checkpoint_home() -> Path:
+    """Return the explicit pre-bundle checkpoint root, if a launcher supplied one."""
+
+    configured = os.environ.get(LEGACY_SESSION_ROOT_ENV, "").strip()
+    if not configured:
+        return default_session_repository_home()
+    root = Path(configured).expanduser()
+    if not root.is_absolute():
+        raise SessionMigrationError(f"{LEGACY_SESSION_ROOT_ENV} must be absolute")
+    return root
+
+
+def legacy_checkpoints_pending(root: str | Path) -> bool:
+    """Avoid creating a migration marker until there is legacy data to import."""
+
+    source = Path(root).expanduser()
+    if not source.exists():
+        return False
+    if source.is_symlink() or not source.is_dir():
+        raise SessionMigrationError("legacy checkpoint root must be a real directory")
+    return any(source.glob("*.json")) or any((source / "goals").glob("*.json"))
 
 
 class SessionRepository:
@@ -692,14 +721,14 @@ class SessionRepository:
             problems = self._integrity_problems(connection, full=True)
         finally:
             connection.close()
-        if stat.S_IMODE(self.database_path.stat().st_mode) != PRIVATE_FILE_MODE:
+        if os.name != "nt" and stat.S_IMODE(self.database_path.stat().st_mode) != PRIVATE_FILE_MODE:
             problems.append("database_permissions")
         return tuple(problems)
 
     @contextmanager
     def exclusive_lease(self) -> Iterator[None]:
         """Prevent a second engine process from mutating the same session store."""
-        if fcntl is None:
+        if fcntl is None and msvcrt is None:
             raise SessionRepositoryError(
                 "exclusive session leases are unavailable on this platform"
             )
@@ -709,17 +738,21 @@ class SessionRepository:
         try:
             descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, PRIVATE_FILE_MODE)
             os.chmod(lock_path, PRIVATE_FILE_MODE)
+            _ensure_lock_byte(descriptor)
         except OSError as exc:
             raise SessionRepositoryError("cannot open session repository lease") from exc
+        locked = False
         try:
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as exc:
+                _lock_descriptor(descriptor, blocking=False)
+                locked = True
+            except OSError as exc:
                 raise SessionConflictError("session repository lease is already owned") from exc
             yield
         finally:
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_UN)
+                if locked:
+                    _unlock_descriptor(descriptor)
             finally:
                 os.close(descriptor)
 
@@ -1022,7 +1055,7 @@ class SessionRepository:
             metadata = self.database_path.lstat()
             if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
                 raise SessionPermissionError("session database must be a real file")
-            if metadata.st_mode & 0o077:
+            if os.name != "nt" and metadata.st_mode & 0o077:
                 raise SessionPermissionError("session database permissions must be private")
 
     @staticmethod
@@ -1090,7 +1123,7 @@ def _legacy_files(root: Path, *, include_goals: bool = True) -> tuple[Path, ...]
     for path in files:
         if path.is_symlink() or not path.is_file():
             raise SessionMigrationError("legacy checkpoint must be a real file")
-        if path.stat().st_mode & 0o077:
+        if os.name != "nt" and path.stat().st_mode & 0o077:
             raise SessionMigrationError("legacy checkpoint permissions must be private")
     return files
 
@@ -1286,8 +1319,37 @@ def _file_digest(path: Path) -> str:
 def _validate_private_directory(path: Path, label: str) -> None:
     if path.is_symlink() or not path.is_dir():
         raise SessionMigrationError(f"{label} must be a real directory")
-    if path.stat().st_mode & 0o077:
+    if os.name != "nt" and path.stat().st_mode & 0o077:
         raise SessionMigrationError(f"{label} permissions must be private")
+
+
+def _ensure_lock_byte(descriptor: int) -> None:
+    if os.fstat(descriptor).st_size == 0:
+        os.write(descriptor, b"\0")
+    os.lseek(descriptor, 0, os.SEEK_SET)
+
+
+def _lock_descriptor(descriptor: int, *, blocking: bool) -> None:
+    if fcntl is not None:
+        flags = fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB
+        fcntl.flock(descriptor, flags)
+        return
+    if msvcrt is not None:  # pragma: no cover - exercised by the Windows package matrix.
+        windows_lock = cast(Any, msvcrt)
+        mode = windows_lock.LK_LOCK if blocking else windows_lock.LK_NBLCK
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        windows_lock.locking(descriptor, mode, 1)
+        return
+    raise OSError("no supported file-lock implementation")
+
+
+def _unlock_descriptor(descriptor: int) -> None:
+    if fcntl is not None:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+    elif msvcrt is not None:  # pragma: no cover - exercised by the Windows package matrix.
+        windows_lock = cast(Any, msvcrt)
+        os.lseek(descriptor, 0, os.SEEK_SET)
+        windows_lock.locking(descriptor, windows_lock.LK_UNLCK, 1)
 
 
 def _reject_symlink_ancestors(path: Path) -> None:
@@ -1319,4 +1381,6 @@ __all__ = [
     "SessionSchemaError",
     "SessionSnapshot",
     "default_session_repository_home",
+    "legacy_checkpoints_pending",
+    "legacy_session_checkpoint_home",
 ]

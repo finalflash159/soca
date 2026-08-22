@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "package:sidecar": "uv run --extra desktop-build python ../scripts/build_desktop_sidecar.py --output src-tauri/binaries",
+    "build:release": "npm run package:sidecar && npm run build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "tauri:build": "tauri build --config src-tauri/tauri.package.conf.json",
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
@@ -16,6 +19,8 @@
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "ai": "^7.0.66",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

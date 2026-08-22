@@ -10,13 +10,19 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, cast
 
 from soca.memory.working import WorkingMemory, WorkingMemoryPolicy
 
 try:
     import fcntl
-except ImportError:  # pragma: no cover - Windows fallback is covered by API behavior.
+except ImportError:  # pragma: no cover - selected below on Windows.
     fcntl = None
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - unavailable on POSIX.
+    msvcrt = None
 
 CHECKPOINT_SCHEMA_VERSION = 1
 
@@ -87,17 +93,13 @@ class SessionCheckpointStore:
                 prefix=".working-", suffix=".json", dir=self.root
             )
             try:
-                os.fchmod(descriptor, 0o600)
+                _set_private_file_mode(descriptor, Path(temporary), 0o600)
                 with os.fdopen(descriptor, "wb") as handle:
                     handle.write(payload)
                     handle.flush()
                     os.fsync(handle.fileno())
                 os.replace(temporary, target)
-                directory_fd = os.open(self.root, os.O_RDONLY)
-                try:
-                    os.fsync(directory_fd)
-                finally:
-                    os.close(directory_fd)
+                _sync_checkpoint_directory(self.root)
                 os.chmod(target, 0o600)
             finally:
                 if os.path.exists(temporary):
@@ -167,13 +169,50 @@ class SessionCheckpointStore:
         descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
         try:
             os.chmod(lock_path, 0o600)
+            if os.fstat(descriptor).st_size == 0:
+                os.write(descriptor, b"\0")
+            os.lseek(descriptor, 0, os.SEEK_SET)
             if fcntl is not None:
                 fcntl.flock(descriptor, fcntl.LOCK_EX)
+            elif msvcrt is not None:  # pragma: no cover - exercised by Windows packaging CI.
+                windows_lock = cast(Any, msvcrt)
+                windows_lock.locking(descriptor, windows_lock.LK_LOCK, 1)
             yield
         finally:
             if fcntl is not None:
                 fcntl.flock(descriptor, fcntl.LOCK_UN)
+            elif msvcrt is not None:  # pragma: no cover - exercised by Windows packaging CI.
+                windows_lock = cast(Any, msvcrt)
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                windows_lock.locking(descriptor, windows_lock.LK_UNLCK, 1)
             os.close(descriptor)
+
+
+def _set_private_file_mode(descriptor: int, path: Path, mode: int) -> None:
+    """Set the restrictive mode without requiring Python 3.13 on Windows."""
+
+    descriptor_chmod = getattr(os, "fchmod", None)
+    if descriptor_chmod is not None:
+        descriptor_chmod(descriptor, mode)
+        return
+    # Python 3.11/3.12 on Windows lack os.fchmod. mkstemp created this path,
+    # so changing it by path preserves the safe temporary-file write flow.
+    os.chmod(path, mode)
+
+
+def _sync_checkpoint_directory(root: Path) -> None:
+    """Durably record a replacement where directory fsync is supported."""
+
+    # Windows does not allow a directory descriptor opened with os.O_RDONLY,
+    # while replacing the file is already atomic there. Do not disguise this
+    # platform constraint as a checkpoint-write failure.
+    if os.name == "nt":
+        return
+    directory_fd = os.open(root, os.O_RDONLY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
 
 
 def _working_payload(payload: object) -> object:

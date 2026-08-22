@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import soca.memory.session_store as session_store
 from soca.memory.session_store import SessionCheckpointStore
 from soca.memory.working import WorkingMemory
 
@@ -25,6 +26,28 @@ def test_checkpoint_round_trip_is_atomic_and_private(tmp_path: Path) -> None:
     assert loaded.snapshot.turns == memory.snapshot.turns
     assert store.delete("chat-1") is True
     assert store.load("chat-1") is None
+
+
+def test_checkpoint_saves_when_descriptor_chmod_is_unavailable(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delattr(session_store.os, "fchmod")
+    memory = WorkingMemory(thread_id="windows-python-311")
+    turn = memory.begin_turn("lưu được với Python Windows")
+    memory.finish_turn(turn.sequence, "checkpoint đã tạo")
+
+    path = SessionCheckpointStore(tmp_path / "sessions").save(memory)
+
+    assert path.is_file()
+    assert json.loads(path.read_text(encoding="utf-8"))["thread_id"] == "windows-python-311"
+
+
+def test_checkpoint_skips_directory_sync_on_windows(tmp_path: Path, monkeypatch) -> None:
+    def directory_open(*_args: object, **_kwargs: object) -> int:
+        raise AssertionError("Windows must not open a directory for fsync")
+
+    monkeypatch.setattr(session_store.os, "name", "nt")
+    monkeypatch.setattr(session_store.os, "open", directory_open)
+
+    session_store._sync_checkpoint_directory(tmp_path)
 
 
 def test_checkpoint_rejects_non_private_file(tmp_path: Path) -> None:

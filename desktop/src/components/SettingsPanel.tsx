@@ -7,6 +7,7 @@ import { Field, Section } from "@/components/Page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { UpdaterPanel } from "@/components/UpdaterPanel";
 import type { LlmConfig, SettingsState } from "@/engine/settings";
 import type { SessionHistoryState } from "@/engine/session-history";
 import { modelPrice } from "@/engine/settings";
@@ -258,6 +259,8 @@ export function SettingsPanel({
           </label>
         </Field>
       </Section>
+
+      <UpdaterPanel />
 
       <Section
         icon={Cpu}

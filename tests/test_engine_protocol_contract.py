@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from soca.app.engine import _model_protocol_payload, run_engine
+from soca.app.engine import _model_protocol_payload, _ProtocolWriter, run_engine
 from soca.core.workflow.contracts import TerminalStatus, TurnNode
 from soca.core.workflow.events import PROTOCOL_VERSION, EventStatus, EventType
 from soca.core.workflow.protocol import CURRENT_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS
@@ -99,6 +99,30 @@ def test_protocol_version_is_pinned() -> None:
     assert CURRENT_PROTOCOL_VERSION == PROTOCOL_VERSION
     assert SUPPORTED_PROTOCOL_VERSIONS == (3,)
     assert "| Protocol version | `3`" in _doc_cells()
+
+
+def test_protocol_writer_preserves_unicode_on_a_legacy_windows_console() -> None:
+    """The sidecar protocol must not inherit a Windows console code page."""
+
+    class Cp1252Stream:
+        def __init__(self) -> None:
+            self.lines: list[str] = []
+
+        def write(self, value: str) -> int:
+            value.encode("cp1252")
+            self.lines.append(value)
+            return len(value)
+
+        def flush(self) -> None:
+            return None
+
+    stream = Cp1252Stream()
+    _ProtocolWriter(stream).emit({"event": "session_snapshot", "title": "Mở lại phiên"})
+
+    assert json.loads("".join(stream.lines)) == {
+        "event": "session_snapshot",
+        "title": "Mở lại phiên",
+    }
 
 
 def test_every_emitted_event_is_documented() -> None:

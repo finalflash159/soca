@@ -86,7 +86,9 @@ const CODE_FENCE = /^[ \t]*(`{3,}|~{3,})/;
 function expandDisplayMath(text: string): string {
   let inFence = false;
   return text
-    .split("\n")
+    // Vite's raw fixture loader preserves CRLF on Windows. Normalising at the
+    // markdown boundary keeps the one-line display-math rule platform-neutral.
+    .split(/\r?\n/)
     .map((line) => {
       if (CODE_FENCE.test(line)) {
         inFence = !inFence;

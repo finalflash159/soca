@@ -102,3 +102,5 @@ ui/dist/
 
 # Rust build artifacts
 edge/soca-edge/target/
+desktop/src-tauri/binaries/*
+!desktop/src-tauri/binaries/.gitkeep
