@@ -172,11 +172,26 @@ export interface SessionPreferencesFrame {
   last_active_session_id: string | null;
 }
 
+export interface SessionsPageFrame {
+  event: "sessions_page";
+  sessions: Array<Record<string, unknown>>;
+  next_cursor: string | null;
+  persistence: "ram_only" | "local_resumable";
+}
+
 export interface SessionSnapshotFrame {
   event: "session_snapshot" | "session_turns_page";
   session: Record<string, unknown>;
   turns: Array<Record<string, unknown>>;
   next_turn_cursor: number | null;
+}
+
+export interface SessionStatusFrame {
+  event: "session_status";
+  active_session_id: string;
+  persistence: "ram_only" | "local_resumable";
+  revision: number | null;
+  busy: boolean;
 }
 
 export interface VoiceFrame {
@@ -259,8 +274,10 @@ export type EngineFrame =
   | KnowledgeSetupFrame
   | LlmConfigFrame
   | SessionOperationFrame
+  | SessionsPageFrame
   | SessionSnapshotFrame
   | SessionPreferencesFrame
+  | SessionStatusFrame
   | WorkflowFrame
   | GenericFrame;
 

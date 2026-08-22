@@ -1,17 +1,4 @@
-/**
- * The composer — and on a new conversation, the whole screen.
- *
- * The reference is the claude.ai new-chat screen: the input is not a strip at
- * the bottom of an empty page, it *is* the page. It is tall, wide, centred, and
- * everything that changes how a turn runs — model, microphone, voice mode —
- * lives on a row inside it. That is §5.6.3 taken further than a caption: the
- * controls are controls, not labels.
- *
- * The two keyboard affordances from §5.6.7 stay: `/` runs an engine command,
- * `@` references a vault document. `@` completes over documents seen this
- * session only, because the protocol has no vault listing
- * (`engine/documents.ts`), and the empty state says so.
- */
+/** Chat composer with command and in-session document affordances. */
 
 import { ArrowUp, ChevronDown, Mic, Paperclip } from "lucide-react";
 import { useRef, useState } from "react";
@@ -151,6 +138,7 @@ export function Composer({
         )}
       >
         <textarea
+          id="chat-composer"
           ref={inputRef}
           className={cn(
             "resize-none bg-transparent leading-relaxed outline-none placeholder:opacity-60 disabled:opacity-50",

@@ -1,25 +1,4 @@
-/**
- * Navigation.
- *
- * Replaces a 56 px icon rail. The rail could hold three unlabelled buttons, so
- * everything else in the app — retrieval, memory, session budget, voice
- * diagnostics, settings — was pushed into one sliding sheet subdivided by tabs.
- * That is what made it feel, in the user's words, jumbled: four unrelated
- * things behind one door.
- *
- * The reference app's answer, and now this one: those are **pages**, and the
- * sidebar is how you move between them. It also fixes a bug by construction —
- * voice used to cover the whole window, so during a call there was no way to
- * reach settings or the engine restart. A page cannot do that.
- *
- * Two things in the reference are deliberately not copied:
- *
- * * **A conversation list.** The protocol has no history command (`docs/18`
- *   §2), so a list of past chats would be invented data. What is real is the
- *   session running right now, and that is what the one entry shows.
- * * **An account footer.** There is no account. The footer carries the thing a
- *   local engine actually has: whether it is alive, and a way to restart it.
- */
+/** Primary navigation and the engine-owned saved-session workspace. */
 
 import {
   AudioLines,
@@ -34,6 +13,8 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { SessionList } from "@/components/SessionList";
+import type { SessionHistoryState, SessionSummary } from "@/engine/session-history";
 import { cn } from "@/lib/utils";
 
 export type PageId = "chat" | "voice" | "knowledge" | "session" | "settings";
@@ -56,28 +37,41 @@ interface SidebarProps {
   page: PageId;
   onNavigate: (page: PageId) => void;
   onNewConversation: () => void;
-  /** Present when the session has turns; this is the only "history" that exists. */
-  sessionTitle: string | null;
+  sessions: SessionHistoryState;
   connected: boolean;
   starting: boolean;
   voiceRunning: boolean;
+  sessionBusy: boolean;
+  newConversationDisabled: boolean;
   onRestartEngine: () => void;
   onCollapse: () => void;
+  onOpenSession: (session: SessionSummary) => void;
+  onRenameSession: (session: SessionSummary, title: string) => void;
+  onDeleteSession: (session: SessionSummary) => void;
+  onLoadMoreSessions: () => void;
+  onOpenSessionSettings: () => void;
 }
 
 export function Sidebar({
   page,
   onNavigate,
   onNewConversation,
-  sessionTitle,
+  sessions,
   connected,
   starting,
   voiceRunning,
+  sessionBusy,
+  newConversationDisabled,
   onRestartEngine,
   onCollapse,
+  onOpenSession,
+  onRenameSession,
+  onDeleteSession,
+  onLoadMoreSessions,
+  onOpenSessionSettings,
 }: SidebarProps) {
   return (
-    <nav className="bg-sidebar border-sidebar-border flex w-64 shrink-0 flex-col border-r">
+    <nav className="bg-sidebar border-sidebar-border flex w-64 shrink-0 flex-col border-r max-[760px]:fixed max-[760px]:inset-y-0 max-[760px]:left-0 max-[760px]:z-50 max-[760px]:shadow-xl">
       <div className="flex items-center gap-1 px-3 pt-3">
         <Button
           size="sm"
@@ -94,8 +88,10 @@ export function Sidebar({
 
       <div className="px-3 pt-3">
         <Button
+          id="new-conversation"
           variant="outline"
           className="h-10 w-full justify-start gap-2 rounded-lg font-normal"
+          disabled={newConversationDisabled}
           onClick={onNewConversation}
         >
           <Plus className="size-4" />
@@ -134,28 +130,15 @@ export function Sidebar({
         })}
       </ul>
 
-      <div className="border-sidebar-border mx-3 mt-4 border-t pt-4">
-        {sessionTitle === null ? (
-          <p className="text-muted-foreground px-3 text-xs leading-5">
-            Chưa có lượt nào. Engine không lưu lịch sử giữa các phiên.
-          </p>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onNavigate("chat")}
-            className={cn(
-              "flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm transition-colors",
-              page === "chat"
-                ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
-            )}
-            title={sessionTitle}
-          >
-            <MessageSquare className="size-4 shrink-0" />
-            <span className="truncate">{sessionTitle}</span>
-          </button>
-        )}
-      </div>
+      <SessionList
+        history={sessions}
+        disabled={!connected || sessionBusy}
+        onOpen={onOpenSession}
+        onRename={onRenameSession}
+        onDelete={onDeleteSession}
+        onLoadMore={onLoadMoreSessions}
+        onOpenSettings={onOpenSessionSettings}
+      />
 
       {/* Engine health, where the reference app puts the signed-in user. There
           is no account here; what a local engine has is a pulse. */}

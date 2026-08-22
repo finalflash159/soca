@@ -1,21 +1,6 @@
-/**
- * Settings.
- *
- * Form shape from the reference app's settings screen: grouped sections, each
- * with an icon and a sentence saying what the group is for, then fields with
- * the label above and a helper line under it. The previous version was
- * label-left / control-right rows, which physically had nowhere to put the
- * helper — so every non-obvious setting went unexplained.
- *
- * Ordered by how often it is touched, not by how the engine is built:
- * appearance, then the model, then keys, then voice.
- *
- * The key field is write-only. It is sent with `llm_set_key` and cleared
- * immediately; the engine holds it in its keyring and answers with at most a
- * masked form. Nothing here stores or renders a raw key.
- */
+/** User-controlled appearance, session privacy, model, key, and voice settings. */
 
-import { AudioLines, Cpu, KeyRound, Palette } from "lucide-react";
+import { AudioLines, Cpu, HardDrive, KeyRound, Palette } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Field, Section } from "@/components/Page";
@@ -23,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { SettingsState } from "@/engine/settings";
+import type { SessionHistoryState } from "@/engine/session-history";
 import { modelPrice, reasoningSummary } from "@/engine/settings";
 import type { ThemeChoice } from "@/theme";
 import { cn } from "@/lib/utils";
@@ -43,6 +29,10 @@ interface SettingsPanelProps {
     maxTokens?: number;
     reasoningEnabled?: boolean;
   }) => void;
+  sessionHistory: SessionHistoryState;
+  persistenceChangePending: boolean;
+  onRequestSessionPersistence: (enabled: boolean) => void;
+  onSetAutoOpenLast: (enabled: boolean) => void;
 }
 
 const INPUT =
@@ -94,6 +84,10 @@ export function SettingsPanel({
   onSelectModel,
   onSelectProfile,
   onApplyGeneration,
+  sessionHistory,
+  persistenceChangePending,
+  onRequestSessionPersistence,
+  onSetAutoOpenLast,
 }: SettingsPanelProps) {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [keyDraft, setKeyDraft] = useState("");
@@ -153,6 +147,66 @@ export function SettingsPanel({
               { value: "dark", label: "Tối" },
             ]}
           />
+        </Field>
+      </Section>
+
+      <Section
+        icon={HardDrive}
+        title="Phiên trên máy"
+        description="Sơn Ca chỉ ghi nội dung phiên sau khi bạn đồng ý rõ ràng. Audio và ASR partial không được lưu."
+      >
+        <Field
+          label="Lưu phiên trên máy"
+          hint={
+            sessionHistory.persistence === "local_resumable"
+              ? "Đang lưu chat/voice dạng văn bản, context làm việc và trạng thái mục tiêu trong thư mục dữ liệu riêng của Sơn Ca."
+              : "Phiên hiện tại chỉ ở trong bộ nhớ và sẽ không được ghi lại khi đóng ứng dụng."
+          }
+        >
+          <div className="border-border flex items-center justify-between gap-4 rounded-lg border p-3">
+            <span className="text-sm font-medium">
+              {sessionHistory.persistence === "local_resumable" ? "Đang bật" : "Đang tắt"}
+            </span>
+            <Button
+              size="sm"
+              variant={sessionHistory.persistence === "local_resumable" ? "outline" : "default"}
+              disabled={!connected || sessionHistory.persistence === null || persistenceChangePending}
+              onClick={() => onRequestSessionPersistence(sessionHistory.persistence !== "local_resumable")}
+            >
+              {persistenceChangePending
+                ? "Đang khởi động lại…"
+                : sessionHistory.persistence === "local_resumable"
+                  ? "Tắt lưu phiên"
+                  : "Bật lưu phiên"}
+            </Button>
+          </div>
+        </Field>
+
+        <Field
+          label="Mở lại phiên gần nhất khi khởi động"
+          hint={
+            sessionHistory.persistence === "local_resumable"
+              ? "Chỉ mở lại nội dung đã hoàn tất; Sơn Ca không tự chạy lại lượt, tool hay mic còn dang dở."
+              : "Bật lưu phiên trên máy trước khi dùng tùy chọn này."
+          }
+          htmlFor="auto-open-last-session"
+        >
+          <label className="border-border flex cursor-pointer items-center justify-between gap-4 rounded-lg border p-3" htmlFor="auto-open-last-session">
+            <span className="text-sm">Tự mở phiên gần nhất</span>
+            <input
+              id="auto-open-last-session"
+              type="checkbox"
+              checked={sessionHistory.autoOpenLast}
+              disabled={
+                !connected ||
+                sessionHistory.persistence !== "local_resumable" ||
+                sessionHistory.operation?.action === "preferences_set" &&
+                  sessionHistory.operation.status === "started"
+              }
+              onChange={(event) => onSetAutoOpenLast(event.target.checked)}
+              className="accent-primary size-4"
+            />
+          </label>
         </Field>
       </Section>
 

@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { describe, expect, it, vi } from "vitest";
 
 async function loadWithRoot(root: string) {
@@ -21,8 +23,37 @@ describe("launchOptions", () => {
     expect((await loadWithRoot("")).program).toBe("soca");
   });
 
+  it("passes the explicit privacy mode to the sidecar", async () => {
+    const module = await import("./launch");
+    expect(module.launchOptions("local_resumable").args).toEqual([
+      "--session-persistence",
+      "local_resumable",
+    ]);
+    expect(module.launchOptions("ram_only").args).toEqual(["--session-persistence", "ram_only"]);
+  });
+
   it("sets no environment in a packaged build", async () => {
     // A shipped app has no checkout, and must never carry a developer's path.
-    expect(await loadWithRoot("")).toEqual({ program: "soca" });
+    expect(await loadWithRoot("")).toEqual({
+      program: "soca",
+      args: ["--session-persistence", "ram_only"],
+    });
+  });
+
+  it("reports an unavailable WebView store instead of claiming the launch choice was saved", async () => {
+    const module = await import("./launch");
+    const original = Object.getOwnPropertyDescriptor(window, "localStorage");
+    try {
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        get: () => {
+          throw new DOMException("blocked", "SecurityError");
+        },
+      });
+
+      expect(module.saveSessionPersistence("local_resumable")).toBe(false);
+    } finally {
+      if (original !== undefined) Object.defineProperty(window, "localStorage", original);
+    }
   });
 });

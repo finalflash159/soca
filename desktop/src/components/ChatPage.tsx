@@ -27,6 +27,8 @@ interface ChatPageProps {
   onCommand: (command: SlashCommand) => void;
   onEnterVoiceMode: () => void;
   onOpenSettings: () => void;
+  onLoadOlder: () => void;
+  canLoadOlder: boolean;
 }
 
 /** Time-of-day greeting. No name — the app does not reliably know one. */
@@ -55,6 +57,8 @@ export function ChatPage({
   onCommand,
   onEnterVoiceMode,
   onOpenSettings,
+  onLoadOlder,
+  canLoadOlder,
 }: ChatPageProps) {
   const hasTurns = conversation.turns.length > 0;
   const lastTurn = conversation.turns[conversation.turns.length - 1];
@@ -110,6 +114,8 @@ export function ChatPage({
           documents={documents}
           orbState={orbState}
           orbLabel={orbLabel(orbState)}
+          onLoadOlder={onLoadOlder}
+          canLoadOlder={canLoadOlder}
         />
       </div>
       <div className="bg-background z-20 flex shrink-0 flex-col gap-2 px-6 pb-5">

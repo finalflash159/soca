@@ -1,23 +1,4 @@
-/**
- * The conversation.
- *
- * Standard chat geometry: the user's turn sits right, the assistant's left. The
- * user's is a bubble because it is a short, bounded utterance; the assistant's
- * is bare text on the page because it is prose meant to be read, and boxing a
- * paragraph only narrows it.
- *
- * §5.6.5 — a narrow reading column, metadata at 10px in muted, and no chrome
- * around an answer at all. An earlier revision drew a gold rule down the left of
- * every assistant turn; it decorated the ordinary case and drew the eye to
- * nothing. Only the two exceptional outcomes are marked now — a refusal and a
- * failure — because those must not be mistaken for an answer.
- *
- * Rendering rules from `docs/18-engine-protocol.md`: provenance is the
- * structured `citations` list, and a `blocked` turn is a terminal outcome, not
- * an error. Answer text is **markdown** — an earlier version of this comment
- * asserted the opposite, which is why answers rendered with literal `#` and
- * `|` characters; see `AnswerBody.tsx` for the measurement that settled it.
- */
+/** Shared, paged rendering of the engine-owned chat and voice transcript. */
 
 import { Mic } from "lucide-react";
 import type { OrbState } from "thinking-orbs";
@@ -27,6 +8,7 @@ import { Conversation, ConversationContent } from "@/components/ai-elements/conv
 import { AnswerBody } from "@/components/AnswerBody";
 import { CitationChip } from "@/components/CitationChip";
 import { TurnSteps } from "@/components/TurnSteps";
+import { Button } from "@/components/ui/button";
 import type { ConversationState, Turn } from "@/engine/conversation";
 import { blockedReason, phaseLabel, turnStatus, turnText } from "@/engine/conversation";
 import type { VaultDocument } from "@/engine/documents";
@@ -37,6 +19,8 @@ interface ChatViewProps {
   /** Drives the orb on the turn that is still running. */
   orbState: OrbState;
   orbLabel: string;
+  onLoadOlder: () => void;
+  canLoadOlder: boolean;
 }
 
 function AssistantTurn({
@@ -136,12 +120,37 @@ function AssistantTurn({
   );
 }
 
-export function ChatView({ conversation, documents, orbState, orbLabel }: ChatViewProps) {
+export function ChatView({
+  conversation,
+  documents,
+  orbState,
+  orbLabel,
+  onLoadOlder,
+  canLoadOlder,
+}: ChatViewProps) {
   const lastIndex = conversation.turns.length - 1;
 
   return (
     <Conversation className="min-h-0 flex-1">
       <ConversationContent className="mx-auto w-full max-w-2xl px-1 pb-4">
+        {conversation.nextTurnCursor !== null && (
+          <div className="flex flex-col items-center gap-2" aria-live="polite">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!canLoadOlder || conversation.turnPageLoadState === "loading"}
+              onClick={onLoadOlder}
+            >
+              {conversation.turnPageLoadState === "loading" ? "Đang tải lượt cũ hơn…" : "Tải lượt cũ hơn"}
+            </Button>
+            {conversation.turnPageError !== null && (
+              <p className="text-destructive text-xs" role="alert">
+                {conversation.turnPageError}
+              </p>
+            )}
+          </div>
+        )}
         {conversation.reassemblyMismatch && (
           <div className="border-destructive/40 text-destructive rounded-md border px-3 py-2 text-xs">
             Các mảnh stream không ghép lại đúng câu trả lời cuối (đã bỏ qua khác biệt khoảng trắng)

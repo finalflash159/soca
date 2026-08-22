@@ -1,16 +1,4 @@
-/**
- * The record, inside voice mode.
- *
- * A thin wrapper over `ChatView` rather than a second renderer. A spoken turn
- * and a typed turn are the same `Turn` (see `engine/conversation.ts`), so they
- * must look the same wherever they are read — two renderers would drift, and
- * the whole point of unifying the transcript was that the history is one thing.
- *
- * It shows **settled turns only**. The turn in progress belongs centre stage
- * with the orb, where the partial transcript and the arriving answer are large
- * enough to follow without reading. `VoiceMode` makes that split, so this
- * component receives the list already trimmed and never handles live state.
- */
+/** Settled voice-mode turns rendered through the shared transcript. */
 
 import type { OrbState } from "thinking-orbs";
 
@@ -24,9 +12,17 @@ interface VoiceTranscriptProps {
   conversation: ConversationState;
   documents: VaultDocument[];
   orbState: OrbState;
+  onLoadOlder: () => void;
+  canLoadOlder: boolean;
 }
 
-export function VoiceTranscript({ conversation, documents, orbState }: VoiceTranscriptProps) {
+export function VoiceTranscript({
+  conversation,
+  documents,
+  orbState,
+  onLoadOlder,
+  canLoadOlder,
+}: VoiceTranscriptProps) {
   if (conversation.turns.length === 0) {
     return (
       <div className="flex shrink-0 items-start justify-center px-8 pb-4">
@@ -44,6 +40,8 @@ export function VoiceTranscript({ conversation, documents, orbState }: VoiceTran
         documents={documents}
         orbState={orbState}
         orbLabel={orbLabel(orbState)}
+        onLoadOlder={onLoadOlder}
+        canLoadOlder={canLoadOlder}
       />
     </div>
   );
