@@ -31,9 +31,7 @@ def goal() -> GoalContract:
     return GoalContract(
         goal_id="goal-1",
         objective="  kiểm tra ghi chú  ",
-        success_criteria=(
-            SuccessCriterion("source_queried", source=SourceKind.KNOWLEDGE),
-        ),
+        success_criteria=(SuccessCriterion("source_queried", source=SourceKind.KNOWLEDGE),),
         constraints=(GoalConstraint("language", "vi"),),
         required_sources=(SourceKind.KNOWLEDGE,),
     )
@@ -44,9 +42,7 @@ def outcome(status: TerminalStatus = TerminalStatus.ACHIEVED) -> TerminalOutcome
         status=status,
         final_text="ok" if status is TerminalStatus.ACHIEVED else "",
         goal_status=(
-            GoalStatus.ACHIEVED
-            if status is TerminalStatus.ACHIEVED
-            else GoalStatus.FAILED
+            GoalStatus.ACHIEVED if status is TerminalStatus.ACHIEVED else GoalStatus.FAILED
         ),
     )
 
@@ -207,7 +203,7 @@ def test_protocol_event_contains_complete_v2_envelope() -> None:
 
     payload = workflow_event_to_protocol(event)
 
-    assert payload["protocol_version"] == 2
+    assert payload["protocol_version"] == 3
     assert payload["event"] == "goal_resolved"
     assert payload["session_id"] == "session-1"
     assert payload["run_id"] == "run-1"
@@ -221,9 +217,7 @@ def test_protocol_event_contains_complete_v2_envelope() -> None:
 
 
 def test_protocol_rejects_an_incomplete_workflow_envelope() -> None:
-    payload = workflow_event_to_protocol(
-        stream().emit(EventType.TURN_STARTED, TurnNode.ADMIT)
-    )
+    payload = workflow_event_to_protocol(stream().emit(EventType.TURN_STARTED, TurnNode.ADMIT))
     del payload["goal_id"]
 
     with pytest.raises(ValueError, match="invalid string field"):

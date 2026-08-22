@@ -117,6 +117,23 @@ def test_repository_rejects_stale_session_revision(tmp_path: Path) -> None:
         )
 
 
+def test_repository_preferences_have_private_defaults_and_validate_active_session(
+    tmp_path: Path,
+) -> None:
+    repository = SessionRepository(tmp_path / "sessions")
+    session = repository.create_session(title="Tùy chọn")
+
+    assert repository.get_preferences().auto_open_last is False
+    stored = repository.set_preferences(
+        auto_open_last=True,
+        last_active_session_id=session.session_id,
+    )
+
+    assert stored.auto_open_last is True
+    assert stored.last_active_session_id == session.session_id
+    assert repository.get_preferences() == stored
+
+
 def test_repository_database_is_private_and_uses_safe_pragmas(tmp_path: Path) -> None:
     repository = SessionRepository(tmp_path / "sessions")
     repository.create_session(title="Private")

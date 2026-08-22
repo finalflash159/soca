@@ -11,7 +11,7 @@
  * validators.
  */
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** Commands the engine accepts (docs/18 §2). */
 export type EngineCommand =
@@ -34,6 +34,15 @@ export type EngineCommand =
   | { cmd: "voice_profile_select"; [key: string]: unknown }
   | { cmd: "knowledge_init" }
   | { cmd: "knowledge_index" }
+  | { cmd: "sessions_list"; cursor?: string; limit?: number }
+  | { cmd: "session_create"; request_id: string }
+  | { cmd: "session_open"; request_id: string; session_id: string }
+  | { cmd: "session_turns"; before_sequence?: number; limit?: number }
+  | { cmd: "session_rename"; request_id: string; session_id: string; title: string; expected_revision: number }
+  | { cmd: "session_delete"; request_id: string; session_id: string; expected_revision: number }
+  | { cmd: "session_status" }
+  | { cmd: "session_preferences_get" }
+  | { cmd: "session_preferences_set"; request_id: string; auto_open_last: boolean }
   | { cmd: "quit" };
 
 /** §6 — workflow envelope vocabulary. */
@@ -133,6 +142,9 @@ export interface ChatFrame {
   text?: string;
   run_id?: string;
   goal_id?: string;
+  session_id?: string;
+  turn_id?: string;
+  sequence?: number;
   route?: string;
   /** §4: a terminal outcome, never an error state. */
   blocked?: boolean;
@@ -141,6 +153,30 @@ export interface ChatFrame {
   llm_status?: string;
   knowledge_status?: string;
   memory_status?: string;
+}
+
+export interface SessionOperationFrame {
+  event: "session_operation";
+  request_id: string;
+  action: "create" | "open" | "rename" | "delete" | "preferences_set";
+  status: "started" | "completed" | "rejected" | "failed";
+  session_id: string | null;
+  revision: number | null;
+  error_code: string | null;
+}
+
+export interface SessionPreferencesFrame {
+  event: "session_preferences";
+  persistence: "ram_only" | "local_resumable";
+  auto_open_last: boolean;
+  last_active_session_id: string | null;
+}
+
+export interface SessionSnapshotFrame {
+  event: "session_snapshot" | "session_turns_page";
+  session: Record<string, unknown>;
+  turns: Array<Record<string, unknown>>;
+  next_turn_cursor: number | null;
 }
 
 export interface VoiceFrame {
@@ -222,6 +258,9 @@ export type EngineFrame =
   | EngineErrorFrame
   | KnowledgeSetupFrame
   | LlmConfigFrame
+  | SessionOperationFrame
+  | SessionSnapshotFrame
+  | SessionPreferencesFrame
   | WorkflowFrame
   | GenericFrame;
 

@@ -20,6 +20,7 @@ from soca.asr.selection import ASRSelection
 from soca.core import ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
 from soca.core.turn import RuntimeResult, RuntimeRoute, RuntimeStreamEvent, RuntimeTrace
 from soca.knowledge import KnowledgeCitation
+from soca.memory import SessionRepository
 
 
 class ProtocolCapture:
@@ -208,9 +209,103 @@ def test_engine_hello_then_quit_emits_bye() -> None:
     assert code == 0
     events = capture.events()
     assert events[0]["event"] == "hello"
-    assert events[0]["version"] == 2
-    assert events[0]["supported_versions"] == [2]
+    assert events[0]["version"] == 3
+    assert events[0]["supported_versions"] == [3]
     assert events[-1]["event"] == "bye"
+
+
+def test_ram_only_session_commands_are_receipted_without_writing_a_history() -> None:
+    capture = ProtocolCapture()
+
+    def stdin():
+        yield '{"cmd":"session_status"}\n'
+        yield '{"cmd":"sessions_list","limit":50}\n'
+        yield '{"cmd":"session_create","request_id":"new-session"}\n'
+        yield '{"cmd":"quit"}\n'
+
+    code = run_engine(
+        voice_config=None,
+        text_config=make_text_config(),
+        profile="baseline",
+        no_model=True,
+        stdin=stdin(),
+        stdout=capture,
+    )
+
+    assert code == 0
+    events = capture.events()
+    status = next(event for event in events if event["event"] == "session_status")
+    assert status["persistence"] == "ram_only"
+    page = next(event for event in events if event["event"] == "sessions_page")
+    assert page["sessions"] == []
+    receipts = [event for event in events if event["event"] == "session_operation"]
+    assert [event["status"] for event in receipts] == ["started", "completed"]
+    assert receipts[-1]["session_id"] != status["active_session_id"]
+
+
+def test_engine_restart_marks_pending_saved_turn_interrupted_without_replay(tmp_path: Path) -> None:
+    repository = SessionRepository(tmp_path / "sessions")
+    session = repository.create_session(title="Khôi phục an toàn")
+    pending = repository.begin_turn(
+        session.session_id,
+        user_text="Không được chạy lại",
+        surface="chat",
+        working_checkpoint={"thread_id": session.session_id, "turns": []},
+    )
+    capture = ProtocolCapture()
+
+    def stdin():
+        yield '{"cmd":"session_turns","limit":50}\n'
+        yield '{"cmd":"quit"}\n'
+
+    code = run_engine(
+        voice_config=None,
+        text_config=dataclasses.replace(
+            make_text_config(),
+            session_persistence="local_resumable",
+            session_id=session.session_id,
+        ),
+        profile="baseline",
+        no_model=True,
+        stdin=stdin(),
+        stdout=capture,
+        session_repository=repository,
+    )
+
+    assert code == 0
+    events = capture.events()
+    page = next(event for event in events if event["event"] == "session_turns_page")
+    assert page["turns"][0]["turn_id"] == pending.turn_id
+    assert page["turns"][0]["status"] == "interrupted"
+    assert page["turns"][0]["error_code"] == "process_terminated"
+    assert not [event for event in events if event["event"] == "chat"]
+
+
+def test_engine_auto_opens_only_the_saved_preferred_session(tmp_path: Path) -> None:
+    repository = SessionRepository(tmp_path / "sessions")
+    saved = repository.create_session(title="Mở lại")
+    repository.set_preferences(
+        auto_open_last=True,
+        last_active_session_id=saved.session_id,
+    )
+    capture = ProtocolCapture()
+
+    def stdin():
+        yield '{"cmd":"session_status"}\n'
+        yield '{"cmd":"quit"}\n'
+
+    run_engine(
+        voice_config=None,
+        text_config=dataclasses.replace(make_text_config(), session_persistence="local_resumable"),
+        profile="baseline",
+        no_model=True,
+        stdin=stdin(),
+        stdout=capture,
+        session_repository=repository,
+    )
+
+    status = next(event for event in capture.events() if event["event"] == "session_status")
+    assert status["active_session_id"] == saved.session_id
 
 
 def test_engine_reports_invalid_json_without_crashing() -> None:
@@ -254,14 +349,8 @@ def test_engine_status_does_not_load_embedding_runtime(monkeypatch, tmp_path: Pa
 
     assert code == 0
     event = next(item for item in capture.events() if item["event"] == "status")
-    embedding = next(
-        item for item in event["runtime_components"] if item["id"] == "embedding"
-    )
-    qwen = next(
-        item
-        for item in event["runtime_components"]
-        if item["id"] == "qwen_asr_release"
-    )
+    embedding = next(item for item in event["runtime_components"] if item["id"] == "embedding")
+    qwen = next(item for item in event["runtime_components"] if item["id"] == "qwen_asr_release")
     assert embedding["status"] == "missing"
     assert qwen["status"] in {"missing", "invalid", "provisioned", "unsupported"}
     assert "fallback" in qwen["detail"] or qwen["status"] != "unsupported"
@@ -293,8 +382,7 @@ def test_engine_blocks_runtime_when_saved_llm_settings_are_invalid() -> None:
     events = capture.events()
     assert events[0]["event"] == "hello"
     assert any(
-        event["event"] == "engine_error"
-        and event.get("code") == "llm_settings_invalid"
+        event["event"] == "engine_error" and event.get("code") == "llm_settings_invalid"
         for event in events
     )
     config = next(event for event in events if event["event"] == "llm_config")
@@ -302,9 +390,7 @@ def test_engine_blocks_runtime_when_saved_llm_settings_are_invalid() -> None:
     assert config["runtime_ready"] is False
     assert config["settings_error"]
     status = next(event for event in events if event["event"] == "status")
-    chat = next(
-        item for item in status["runtime_components"] if item["id"] == "chat_llm"
-    )
+    chat = next(item for item in status["runtime_components"] if item["id"] == "chat_llm")
     assert chat["status"] == "invalid"
 
 
@@ -421,10 +507,7 @@ def test_voice_profile_selection_surfaces_oserror_without_applying(monkeypatch) 
     assert instance.profile == "baseline"
     assert instance.voice_config is not None
     assert instance.voice_config.profile_key == "baseline"
-    assert any(
-        event.get("code") == "voice_profile_persist_failed"
-        for event in capture.events()
-    )
+    assert any(event.get("code") == "voice_profile_persist_failed" for event in capture.events())
 
 
 def _stream_of(result: RuntimeResult):
@@ -615,9 +698,7 @@ def test_engine_emits_clean_answer_and_structured_sources() -> None:
 
     assert code == 0
     done = next(
-        event
-        for event in capture.events()
-        if event["event"] == "chat" and event["type"] == "done"
+        event for event in capture.events() if event["event"] == "chat" and event["type"] == "done"
     )
     assert done["text"] == "Attention dùng query, key và value."
     assert done["citations"] == [
@@ -688,9 +769,7 @@ def test_engine_chat_exception_does_not_emit_completed_progress() -> None:
     assert progress[-1]["status"] == "failed"
     assert progress[-1]["terminal_status"] == "system_failure"
     workflow = [
-        event
-        for event in capture.events()
-        if event["event"] in {"turn_started", "turn_terminal"}
+        event for event in capture.events() if event["event"] in {"turn_started", "turn_terminal"}
     ]
     assert workflow[-1]["event"] == "turn_terminal"
     assert workflow[-1]["payload"]["terminal_status"] == "system_failure"
@@ -888,9 +967,7 @@ def test_knowledge_index_failure_cleans_up_before_engine_shutdown(
     capture = ProtocolCapture()
     monkeypatch.setattr(
         "soca.app.engine.load_model",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            FileNotFoundError("embedding model missing")
-        ),
+        lambda *args, **kwargs: (_ for _ in ()).throw(FileNotFoundError("embedding model missing")),
     )
 
     def commands():
@@ -1015,8 +1092,9 @@ def test_knowledge_index_start_failure_releases_lock_and_reports_error(
     assert engine._knowledge_job_thread is None
     assert engine._knowledge_job_lock.acquire(blocking=False)
     failure = next(
-        event for event in engine.writer.events if event.get("event") == "knowledge_setup"
-        and event.get("status") == "failed"
+        event
+        for event in engine.writer.events
+        if event.get("event") == "knowledge_setup" and event.get("status") == "failed"
     )
     assert failure["status"] == "failed"
     assert failure["error_code"] == "knowledge_index_start_failed"
@@ -1055,8 +1133,7 @@ def test_shutdown_emits_bye_after_worker_cleanup_timeout() -> None:
     assert engine._shutdown is True
     assert engine.writer.events[-1] == {"event": "bye"}
     assert any(
-        event.get("code") == "knowledge_index_stop_timeout"
-        for event in engine.writer.events
+        event.get("code") == "knowledge_index_stop_timeout" for event in engine.writer.events
     )
 
 

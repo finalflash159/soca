@@ -18,6 +18,7 @@ PROTOCOL_DOC = ROOT / "docs" / "18-engine-protocol.md"
 # Emitted from the workflow envelope, not as flat `"event": "..."` literals, so
 # a source scan of engine.py cannot see them.
 WORKFLOW_EVENT_NAMES = frozenset(member.value for member in EventType)
+SESSION_EVENT_NAMES = frozenset({"session_snapshot", "session_turns_page"})
 
 
 def _doc() -> str:
@@ -44,6 +45,9 @@ def _flat_event_names() -> frozenset[str]:
     names = set(re.findall(r'"event":\s*"([a-z_]+)"', _engine_source()))
     # `hello` is built by soca.core.workflow.protocol.protocol_hello.
     names.add("hello")
+    # These two frames use the shared `_session_snapshot_payload` constructor,
+    # so their event name is a function argument rather than a dict literal.
+    names.update(SESSION_EVENT_NAMES)
     return frozenset(names)
 
 
@@ -91,10 +95,10 @@ def _documented_commands() -> frozenset[str]:
 
 def test_protocol_version_is_pinned() -> None:
     """A version bump must be a deliberate, reviewed change."""
-    assert PROTOCOL_VERSION == 2
+    assert PROTOCOL_VERSION == 3
     assert CURRENT_PROTOCOL_VERSION == PROTOCOL_VERSION
-    assert SUPPORTED_PROTOCOL_VERSIONS == (2,)
-    assert "| Protocol version | `2`" in _doc_cells()
+    assert SUPPORTED_PROTOCOL_VERSIONS == (3,)
+    assert "| Protocol version | `3`" in _doc_cells()
 
 
 def test_every_emitted_event_is_documented() -> None:
@@ -148,15 +152,24 @@ def test_command_set_is_pinned() -> None:
         "voice_profile_select",
         "knowledge_init",
         "knowledge_index",
+        "sessions_list",
+        "session_create",
+        "session_open",
+        "session_turns",
+        "session_rename",
+        "session_delete",
+        "session_status",
+        "session_preferences_get",
+        "session_preferences_set",
         # `quit` returns before the cmd chain, so it is asserted separately.
     } | {"quit"}
 
 
 def test_chat_event_types_are_pinned() -> None:
     source = _engine_source()
-    chat_types = set(
-        re.findall(r'"event": "chat",\s*\n\s*"type": "([a-z_]+)"', source)
-    ) | set(re.findall(r'\{"event": "chat", "type": "([a-z_]+)"', source))
+    chat_types = set(re.findall(r'"event": "chat",\s*\n\s*"type": "([a-z_]+)"', source)) | set(
+        re.findall(r'\{"event": "chat", "type": "([a-z_]+)"', source)
+    )
     assert chat_types == {"loading", "ready", "start", "done", "error"}
     for chat_type in sorted(chat_types):
         assert f"| `{chat_type}` |" in _doc_cells(), (
