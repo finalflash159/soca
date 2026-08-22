@@ -1,11 +1,18 @@
 /** React transport binding for the Rust sidecar manager. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { nanoid } from "nanoid";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 import type { ConversationState } from "./conversation";
 import { initialConversation, reduceConversation } from "./conversation";
+import type { Citation } from "./conversation";
+import type { CitationPreviewIndex } from "./citation-preview";
+import {
+  initialCitationPreviews,
+  reduceCitationPreviews,
+} from "./citation-preview";
 import type { KnowledgeState } from "./knowledge";
 import { initialKnowledge, reduceKnowledge } from "./knowledge";
 import type { OrbActivity } from "./orb";
@@ -60,6 +67,7 @@ export interface EngineSnapshot {
   settings: SettingsState;
   session: SessionState;
   sessionHistory: SessionHistoryState;
+  citationPreviews: CitationPreviewIndex;
   /** Most recent frames, newest last. */
   log: EngineFrame[];
   errors: string[];
@@ -79,6 +87,7 @@ export function useEngine() {
   const [settings, setSettings] = useState<SettingsState>(initialSettings);
   const [session, setSession] = useState<SessionState>(initialSession);
   const [sessionHistory, setSessionHistory] = useState<SessionHistoryState>(initialSessionHistory);
+  const [citationPreviews, setCitationPreviews] = useState<CitationPreviewIndex>(initialCitationPreviews);
   const [log, setLog] = useState<EngineFrame[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   // `listen()` resolves asynchronously. Starting the engine before both
@@ -126,6 +135,7 @@ export function useEngine() {
       setSettings((previous) => reduceSettings(previous, frame));
       setSession((previous) => reduceSession(previous, frame));
       setSessionHistory((previous) => reduceSessionHistory(previous, frame));
+      setCitationPreviews((previous) => reduceCitationPreviews(previous, frame));
 
       if (frame.event === "hello") {
         const helloFrame = frame as HelloFrame;
@@ -190,6 +200,7 @@ export function useEngine() {
     setSettings(initialSettings);
     setSession(initialSession);
     setSessionHistory(initialSessionHistory);
+    setCitationPreviews(initialCitationPreviews);
     try {
       await invoke("engine_start", { options: options ?? null });
       // The Running status also arrives as an event, but a resolved invoke is
@@ -264,6 +275,40 @@ export function useEngine() {
     return sent;
   }, [conversation.nextTurnCursor, conversation.turnPageLoadState, send]);
 
+  const requestCitationPreview = useCallback(
+    async (citation: Citation): Promise<boolean> => {
+      const requestId = nanoid();
+      setCitationPreviews((previous) =>
+        reduceCitationPreviews(previous, {
+          type: "citation_preview_requested",
+          citation,
+          requestId,
+        }),
+      );
+      const sent = await send({
+        cmd: "citation_preview",
+        request_id: requestId,
+        path: typeof citation.path === "string" ? citation.path : "",
+        ...(typeof citation.line_start === "number" ? { line_start: citation.line_start } : {}),
+        ...(typeof citation.line_end === "number" ? { line_end: citation.line_end } : {}),
+        ...(typeof citation.fingerprint === "string" ? { fingerprint: citation.fingerprint } : {}),
+        ...(typeof citation.source === "string" ? { source: citation.source } : {}),
+      });
+      if (!sent) {
+        setCitationPreviews((previous) =>
+          reduceCitationPreviews(previous, {
+            type: "citation_preview_failed",
+            citation,
+            requestId,
+            message: "Không thể yêu cầu kiểm tra nguồn.",
+          }),
+        );
+      }
+      return sent;
+    },
+    [send],
+  );
+
   const orbState = useMemo(() => orbStateFor(activity), [activity]);
 
   const snapshot: EngineSnapshot = {
@@ -279,9 +324,19 @@ export function useEngine() {
     settings,
     session,
     sessionHistory,
+    citationPreviews,
     log,
     errors,
   };
 
-  return { ...snapshot, orbState, start, stop, send, requestSessions, requestOlderTurns };
+  return {
+    ...snapshot,
+    orbState,
+    start,
+    stop,
+    send,
+    requestSessions,
+    requestOlderTurns,
+    requestCitationPreview,
+  };
 }

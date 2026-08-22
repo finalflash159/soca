@@ -21,6 +21,7 @@ import App from "./App";
 const EVENT_CHANNEL = "soca://engine-event";
 const STATUS_CHANNEL = "soca://engine-status";
 const PERSISTENCE_STORAGE_KEY = "soca.session-persistence.v1";
+const SIDEBAR_PREFERENCE_STORAGE_KEY = "soca.sidebar-open.v1";
 const oldSessionId = "11111111-1111-4111-8111-111111111111";
 const newSessionId = "22222222-2222-4222-8222-222222222222";
 const otherSessionId = "33333333-3333-4333-8333-333333333333";
@@ -129,12 +130,37 @@ beforeEach(() => {
       disconnect() {}
     },
   );
-  window.localStorage.clear();
+  // Node's experimental Web Storage can replace JSDOM's object with a partial
+  // implementation when its backing-file flag is unset. The app needs the
+  // complete browser contract, so make the test boundary explicit.
+  const items = new Map<string, string>();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      get length() {
+        return items.size;
+      },
+      clear: () => items.clear(),
+      getItem: (key: string) => items.get(key) ?? null,
+      key: (index: number) => Array.from(items.keys())[index] ?? null,
+      removeItem: (key: string) => items.delete(key),
+      setItem: (key: string, value: string) => items.set(key, value),
+    } satisfies Storage,
+  });
 });
 
 afterEach(cleanup);
 
 describe("desktop session lifecycle", () => {
+  it("remembers an explicit desktop sidebar collapse without touching session data", async () => {
+    await renderReadyApp();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Thu gọn thanh bên" }));
+
+    expect(window.localStorage.getItem(SIDEBAR_PREFERENCE_STORAGE_KEY)).toBe("collapsed");
+    expect(window.localStorage.getItem(PERSISTENCE_STORAGE_KEY)).toBeNull();
+  });
+
   it("blocks the shell before it can send normal commands to an incompatible engine", async () => {
     render(<App />);
     await waitFor(() => {

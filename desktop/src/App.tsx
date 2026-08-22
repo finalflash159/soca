@@ -1,8 +1,7 @@
 import { BookOpen } from "lucide-react";
 import { nanoid } from "nanoid";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 
-import { ChatPage } from "@/components/ChatPage";
 import { KnowledgePanel } from "@/components/KnowledgePanel";
 import { EmptyState, PageBody, PageHeader } from "@/components/Page";
 import { SessionPanel } from "@/components/SessionPanel";
@@ -11,7 +10,6 @@ import type { PageId } from "@/components/Sidebar";
 import { Sidebar } from "@/components/Sidebar";
 import { StartupView } from "@/components/StartupView";
 import { TopBar } from "@/components/TopBar";
-import { VoiceMode } from "@/components/VoiceMode";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
@@ -34,6 +32,14 @@ import { useEngine } from "@/engine/useEngine";
 import { useTheme } from "@/theme";
 
 type PersistenceChange = "enable" | "disable";
+const SIDEBAR_PREFERENCE_STORAGE_KEY = "soca.sidebar-open.v1";
+
+const ChatPage = lazy(async () => ({ default: (await import("@/components/ChatPage")).ChatPage }));
+const VoiceMode = lazy(async () => ({ default: (await import("@/components/VoiceMode")).VoiceMode }));
+
+function PageLoading() {
+  return <p className="text-muted-foreground p-6 text-sm" role="status">Đang mở trang…</p>;
+}
 
 function actionLabel(action: string): string {
   return {
@@ -49,11 +55,19 @@ function focusComposer(): void {
   requestAnimationFrame(() => document.getElementById("chat-composer")?.focus());
 }
 
+function savedSidebarOpen(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_PREFERENCE_STORAGE_KEY) !== "collapsed";
+  } catch {
+    return true;
+  }
+}
+
 export default function App() {
   const engine = useEngine();
   const theme = useTheme();
   const [page, setPage] = useState<PageId>("chat");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(savedSidebarOpen);
   const [transcriptOpen, setTranscriptOpen] = useState(true);
   const [launchPersistence, setLaunchPersistence] = useState<LaunchSessionPersistence>(
     savedSessionPersistence,
@@ -127,6 +141,17 @@ export default function App() {
     compact.addEventListener("change", closeWhenCompact);
     return () => compact.removeEventListener("change", closeWhenCompact);
   }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        SIDEBAR_PREFERENCE_STORAGE_KEY,
+        sidebarOpen ? "open" : "collapsed",
+      );
+    } catch {
+      // A blocked WebView store cannot make navigation unusable.
+    }
+  }, [sidebarOpen]);
 
   useEffect(() => {
     if (!pendingNewAfterVoiceStop || engine.voice.phase !== "off" || !connected) return;
@@ -415,42 +440,49 @@ export default function App() {
           )}
 
           {page === "chat" && (
-            <ChatPage
-              orbState={engine.orbState}
-              conversation={engine.conversation}
-              documents={documents}
-              model={engine.settings.config?.model ?? null}
-              connected={connected && !sessionChanging}
-              starting={starting}
-              onSend={(text) => void engine.send({ cmd: "chat", text })}
-              onCommand={(command) => {
-                if (command.id === "memory_compact") {
-                  void engine.send({ cmd: "memory_compact", action: "request" });
-                  return;
-                }
-                void engine.send({ cmd: command.id } as never);
-              }}
-              onEnterVoiceMode={() => openPage("voice")}
-              onOpenSettings={() => openPage("settings")}
-              onLoadOlder={() => void engine.requestOlderTurns()}
-              canLoadOlder={canLoadOlderTurns}
-            />
+            <Suspense fallback={<PageLoading />}>
+              <ChatPage
+                orbState={engine.orbState}
+                conversation={engine.conversation}
+                documents={documents}
+                citationPreviews={engine.citationPreviews}
+                model={engine.settings.config?.model ?? null}
+                connected={connected && !sessionChanging}
+                starting={starting}
+                onSend={(text) => void engine.send({ cmd: "chat", text })}
+                onCommand={(command) => {
+                  if (command.id === "memory_compact") {
+                    void engine.send({ cmd: "memory_compact", action: "request" });
+                    return;
+                  }
+                  void engine.send({ cmd: command.id } as never);
+                }}
+                onEnterVoiceMode={() => openPage("voice")}
+                onOpenSettings={() => openPage("settings")}
+                onLoadOlder={() => void engine.requestOlderTurns()}
+                canLoadOlder={canLoadOlderTurns}
+                onRequestCitationPreview={engine.requestCitationPreview}
+              />
+            </Suspense>
           )}
 
           {page === "voice" && (
-            <VoiceMode
-              orbState={engine.orbState}
-              voice={engine.voice}
-              conversation={engine.conversation}
-              documents={documents}
-              connected={connected && !sessionChanging}
-              transcriptOpen={transcriptOpen}
-              onToggleTranscript={() => setTranscriptOpen((open) => !open)}
-              onToggleMic={toggleMic}
-              onLeave={() => leaveVoice("chat")}
-              onLoadOlder={() => void engine.requestOlderTurns()}
-              canLoadOlder={canLoadOlderTurns}
-            />
+            <Suspense fallback={<PageLoading />}>
+              <VoiceMode
+                orbState={engine.orbState}
+                voice={engine.voice}
+                conversation={engine.conversation}
+                citationPreviews={engine.citationPreviews}
+                connected={connected && !sessionChanging}
+                transcriptOpen={transcriptOpen}
+                onToggleTranscript={() => setTranscriptOpen((open) => !open)}
+                onToggleMic={toggleMic}
+                onLeave={() => leaveVoice("chat")}
+                onLoadOlder={() => void engine.requestOlderTurns()}
+                canLoadOlder={canLoadOlderTurns}
+                onRequestCitationPreview={engine.requestCitationPreview}
+              />
+            </Suspense>
           )}
 
           {page === "knowledge" && (
@@ -505,6 +537,7 @@ export default function App() {
                 <SettingsPanel
                   settings={engine.settings}
                   connected={connected && !sessionChanging}
+                  engineError={engine.errors[engine.errors.length - 1] ?? null}
                   themeChoice={theme.choice}
                   onSetTheme={theme.setChoice}
                   sessionHistory={engine.sessionHistory}
@@ -521,7 +554,7 @@ export default function App() {
                   onSetKey={(provider, key) => void engine.send({ cmd: "llm_set_key", provider, key })}
                   onLoadModels={(provider, query) => void engine.send({ cmd: "llm_models", provider, query })}
                   onSelectModel={(provider, modelId) =>
-                    void engine.send({
+                    engine.send({
                       cmd: "llm_select",
                       backend: "remote",
                       provider,
@@ -530,10 +563,10 @@ export default function App() {
                       reasoning_enabled: engine.settings.config?.reasoningEnabled ?? false,
                     })
                   }
-                  onSelectProfile={(profileKey) => void engine.send({ cmd: "voice_profile_select", profile: profileKey })}
+                  onSelectProfile={(profileKey) => engine.send({ cmd: "voice_profile_select", profile: profileKey })}
                   onApplyGeneration={(change) => {
                     const config = engine.settings.config;
-                    void engine.send({
+                    return engine.send({
                       cmd: "llm_select",
                       backend: change.backend ?? config?.backend ?? "remote",
                       provider: config?.provider ?? "openrouter",

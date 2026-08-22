@@ -94,7 +94,7 @@ describe("/ commands", () => {
 
   it("filters on label and hint", () => {
     expect(filterCommands("mem").map((command) => command.id)).toContain("memory");
-    expect(filterCommands("budget").map((command) => command.id)).toContain("context");
+    expect(filterCommands("ngân sách").map((command) => command.id)).toContain("context");
   });
 
   it("returns everything for an empty query", () => {

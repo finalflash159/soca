@@ -7,9 +7,9 @@ import { Field, Section } from "@/components/Page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { SettingsState } from "@/engine/settings";
+import type { LlmConfig, SettingsState } from "@/engine/settings";
 import type { SessionHistoryState } from "@/engine/session-history";
-import { modelPrice, reasoningSummary } from "@/engine/settings";
+import { modelPrice } from "@/engine/settings";
 import type { ThemeChoice } from "@/theme";
 import { cn } from "@/lib/utils";
 
@@ -21,14 +21,15 @@ interface SettingsPanelProps {
   onLoadProviders: () => void;
   onSetKey: (provider: string, key: string) => void;
   onLoadModels: (provider: string, query: string) => void;
-  onSelectModel: (provider: string, modelId: string) => void;
-  onSelectProfile: (profileKey: string) => void;
+  onSelectModel: (provider: string, modelId: string) => Promise<boolean>;
+  onSelectProfile: (profileKey: string) => Promise<boolean>;
   /** Backend, output cap and reasoning all travel on the same `llm_select`. */
   onApplyGeneration: (change: {
     backend?: string;
     maxTokens?: number;
     reasoningEnabled?: boolean;
-  }) => void;
+  }) => Promise<boolean>;
+  engineError: string | null;
   sessionHistory: SessionHistoryState;
   persistenceChangePending: boolean;
   onRequestSessionPersistence: (enabled: boolean) => void;
@@ -37,6 +38,14 @@ interface SettingsPanelProps {
 
 const INPUT =
   "border-input bg-background focus-visible:border-ring focus-visible:ring-ring/30 h-10 w-full rounded-lg border px-3 text-sm outline-none transition-colors focus-visible:ring-[3px] disabled:opacity-50";
+
+function reasoningHint(config: LlmConfig): string {
+  if (!config.reasoningSupported) return "Model này không hỗ trợ suy luận.";
+  if (config.reasoningMandatory) return "Model này luôn dùng suy luận; bạn không thể tắt.";
+  return config.effectiveReasoningEnabled
+    ? "Suy luận đang có hiệu lực cho các lượt mới."
+    : "Suy luận đang tắt cho các lượt mới.";
+}
 
 /** A row of mutually exclusive choices, styled as one control. */
 function Segmented<T extends string>({
@@ -88,10 +97,16 @@ export function SettingsPanel({
   persistenceChangePending,
   onRequestSessionPersistence,
   onSetAutoOpenLast,
+  engineError,
 }: SettingsPanelProps) {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [keyDraft, setKeyDraft] = useState("");
   const [query, setQuery] = useState("");
+  const [maxTokensDraft, setMaxTokensDraft] = useState("");
+  const [generationPending, setGenerationPending] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [profilePending, setProfilePending] = useState<string | null>(null);
+  const lastEngineError = useRef<string | null>(engineError);
 
   const config = settings.config;
   const provider = selectedProvider ?? config?.provider ?? null;
@@ -129,6 +144,40 @@ export function SettingsPanel({
   const models = provider !== null ? (settings.catalog[provider] ?? []) : [];
   const loading = provider !== null && settings.catalogLoading[provider] === true;
   const keyStatus = provider !== null ? settings.keyStatus[provider] : undefined;
+
+  useEffect(() => {
+    setMaxTokensDraft(config?.maxTokens?.toString() ?? "");
+    setGenerationPending(false);
+    setGenerationError(config?.settingsError ?? null);
+  }, [config?.backend, config?.provider, config?.model, config?.maxTokens, config?.settingsError]);
+
+  useEffect(() => {
+    if (engineError === lastEngineError.current) return;
+    lastEngineError.current = engineError;
+    if (engineError !== null && generationPending) {
+      setGenerationPending(false);
+      setGenerationError(engineError);
+    }
+    if (engineError !== null && profilePending !== null) {
+      setProfilePending(null);
+    }
+  }, [engineError, generationPending, profilePending]);
+
+  useEffect(() => {
+    if (profilePending !== null && settings.activeProfile === profilePending) {
+      setProfilePending(null);
+    }
+  }, [profilePending, settings.activeProfile]);
+
+  const runGeneration = async (operation: () => Promise<boolean>) => {
+    setGenerationPending(true);
+    setGenerationError(null);
+    const accepted = await operation();
+    if (!accepted) {
+      setGenerationPending(false);
+      setGenerationError("Không thể gửi thay đổi tới engine. Giá trị có hiệu lực không đổi.");
+    }
+  };
 
   return (
     <div className="divide-border flex flex-col divide-y">
@@ -224,6 +273,11 @@ export function SettingsPanel({
           <p className="text-muted-foreground text-sm">Chưa nạp cấu hình.</p>
         ) : (
           <>
+            {generationError !== null && (
+              <p id="generation-error" className="text-destructive text-sm" role="alert">
+                {generationError}
+              </p>
+            )}
             {!config.runtimeReady && (
               <p className="text-destructive text-sm">
                 Runtime chưa sẵn sàng
@@ -241,8 +295,8 @@ export function SettingsPanel({
             >
               <Segmented
                 value={isRemote ? "remote" : "local"}
-                disabled={!connected}
-                onChange={(backend) => onApplyGeneration({ backend })}
+                disabled={!connected || generationPending}
+                onChange={(backend) => void runGeneration(() => onApplyGeneration({ backend }))}
                 options={[
                   { value: "remote", label: "Từ xa" },
                   { value: "local", label: "Máy này" },
@@ -278,24 +332,36 @@ export function SettingsPanel({
                 type="number"
                 min={1}
                 className={INPUT}
-                defaultValue={config.maxTokens ?? undefined}
-                disabled={!connected}
+                value={maxTokensDraft}
+                disabled={!connected || generationPending}
+                aria-invalid={generationError !== null}
+                aria-describedby={generationError !== null ? "generation-error" : undefined}
+                onChange={(event) => setMaxTokensDraft(event.target.value)}
                 onBlur={(event) => {
                   const value = Number.parseInt(event.target.value, 10);
-                  if (Number.isFinite(value) && value > 0 && value !== config.maxTokens) {
-                    onApplyGeneration({ maxTokens: value });
+                  if (event.target.value.trim() === "" || !Number.isInteger(value) || value < 1) {
+                    setGenerationError("Nhập số nguyên dương cho giới hạn token.");
+                    return;
                   }
+                  if (value !== config.maxTokens) {
+                    void runGeneration(() => onApplyGeneration({ maxTokens: value }));
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
                 }}
               />
             </Field>
 
-            <Field label="Suy luận" hint={reasoningSummary(config)}>
+            <Field label="Suy luận" hint={reasoningHint(config)}>
               <Segmented
                 value={config.effectiveReasoningEnabled ? "on" : "off"}
                 // A model can force reasoning on or not support it at all; in
                 // both cases the toggle is not the user's to flip (§7 obl. 8).
-                disabled={!connected || !config.reasoningSupported || config.reasoningMandatory}
-                onChange={(next) => onApplyGeneration({ reasoningEnabled: next === "on" })}
+                disabled={!connected || generationPending || !config.reasoningSupported || config.reasoningMandatory}
+                onChange={(next) =>
+                  void runGeneration(() => onApplyGeneration({ reasoningEnabled: next === "on" }))
+                }
                 options={[
                   { value: "off", label: "Tắt" },
                   { value: "on", label: "Bật" },
@@ -422,8 +488,8 @@ export function SettingsPanel({
                             <Button
                               size="sm"
                               variant="ghost"
-                              disabled={!connected}
-                              onClick={() => onSelectModel(provider, model.id)}
+                              disabled={!connected || generationPending}
+                              onClick={() => void runGeneration(() => onSelectModel(provider, model.id))}
                             >
                               Chọn
                             </Button>
@@ -454,8 +520,8 @@ export function SettingsPanel({
             <ul className="border-border divide-border flex flex-col divide-y rounded-lg border">
               {settings.profiles.map((profile) => (
                 <li key={profile.key} className="flex items-center gap-3 px-3 py-2.5 text-sm">
-                  <Badge variant={profile.status === "ok" ? "secondary" : "outline"}>
-                    {profile.status}
+                  <Badge variant={settings.activeProfile === profile.key ? "secondary" : "outline"}>
+                    {settings.activeProfile === profile.key ? "đang dùng" : profile.status}
                   </Badge>
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate font-mono text-xs">{profile.key}</span>
@@ -463,14 +529,19 @@ export function SettingsPanel({
                       {[profile.asr, profile.tts, profile.voice].filter(Boolean).join(" · ")}
                     </span>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={!connected || profile.status !== "ok"}
-                    onClick={() => onSelectProfile(profile.key)}
-                  >
-                    Dùng
-                  </Button>
+                  {settings.activeProfile !== profile.key && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={!connected || profile.status !== "ok" || profilePending !== null}
+                      onClick={async () => {
+                        setProfilePending(profile.key);
+                        if (!(await onSelectProfile(profile.key))) setProfilePending(null);
+                      }}
+                    >
+                      {profilePending === profile.key ? "Đang áp dụng…" : "Dùng"}
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>

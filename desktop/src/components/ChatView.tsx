@@ -9,13 +9,14 @@ import { AnswerBody } from "@/components/AnswerBody";
 import { CitationChip } from "@/components/CitationChip";
 import { TurnSteps } from "@/components/TurnSteps";
 import { Button } from "@/components/ui/button";
-import type { ConversationState, Turn } from "@/engine/conversation";
+import type { Citation, ConversationState, Turn } from "@/engine/conversation";
 import { blockedReason, phaseLabel, turnStatus, turnText } from "@/engine/conversation";
-import type { VaultDocument } from "@/engine/documents";
+import type { CitationPreviewIndex } from "@/engine/citation-preview";
 
 interface ChatViewProps {
   conversation: ConversationState;
-  documents: VaultDocument[];
+  citationPreviews: CitationPreviewIndex;
+  onRequestCitationPreview: (citation: Citation) => Promise<boolean>;
   /** Drives the orb on the turn that is still running. */
   orbState: OrbState;
   orbLabel: string;
@@ -25,13 +26,15 @@ interface ChatViewProps {
 
 function AssistantTurn({
   turn,
-  documents,
+  citationPreviews,
+  onRequestCitationPreview,
   orbState,
   orbLabel,
   live,
 }: {
   turn: Turn;
-  documents: VaultDocument[];
+  citationPreviews: CitationPreviewIndex;
+  onRequestCitationPreview: (citation: Citation) => Promise<boolean>;
   orbState: OrbState;
   orbLabel: string;
   /** Only the newest open turn shows the orb; older ones are settled. */
@@ -106,7 +109,12 @@ function AssistantTurn({
       {(turn.citations.length > 0 || turn.route !== null) && (
         <div className="flex flex-wrap items-center gap-2">
           {turn.citations.map((citation, index) => (
-            <CitationChip key={index} citation={citation} documents={documents} />
+            <CitationChip
+              key={index}
+              citation={citation}
+              previews={citationPreviews}
+              onRequestPreview={onRequestCitationPreview}
+            />
           ))}
           {turn.route !== null && (
             <span className="text-muted-foreground text-[10px]">
@@ -122,7 +130,8 @@ function AssistantTurn({
 
 export function ChatView({
   conversation,
-  documents,
+  citationPreviews,
+  onRequestCitationPreview,
   orbState,
   orbLabel,
   onLoadOlder,
@@ -178,7 +187,8 @@ export function ChatView({
             )}
             <AssistantTurn
               turn={turn}
-              documents={documents}
+              citationPreviews={citationPreviews}
+              onRequestCitationPreview={onRequestCitationPreview}
               orbState={orbState}
               orbLabel={orbLabel}
               live={index === lastIndex}

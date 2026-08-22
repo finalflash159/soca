@@ -34,6 +34,15 @@ export type EngineCommand =
   | { cmd: "voice_profile_select"; [key: string]: unknown }
   | { cmd: "knowledge_init" }
   | { cmd: "knowledge_index" }
+  | {
+      cmd: "citation_preview";
+      request_id: string;
+      path: string;
+      line_start?: number;
+      line_end?: number;
+      fingerprint?: string;
+      source?: string;
+    }
   | { cmd: "sessions_list"; cursor?: string; limit?: number }
   | { cmd: "session_create"; request_id: string }
   | { cmd: "session_open"; request_id: string; session_id: string }
@@ -194,6 +203,20 @@ export interface SessionStatusFrame {
   busy: boolean;
 }
 
+export interface CitationPreviewFrame {
+  event: "citation_preview";
+  request_id: string;
+  path: string;
+  source: string;
+  status: "current" | "changed" | "unverified" | "missing" | "unavailable";
+  title: string | null;
+  line_start: number | null;
+  line_end: number | null;
+  passage: string | null;
+  fingerprint: string | null;
+  error_code: string | null;
+}
+
 export interface VoiceFrame {
   event: "voice";
   type: VoiceEventType;
@@ -205,6 +228,7 @@ export interface VoiceFrame {
 
 export interface StatusFrame {
   event: "status";
+  active_profile?: string;
   profiles?: unknown[];
   knowledge_vault?: unknown;
   knowledge_index?: unknown | null;
@@ -278,6 +302,7 @@ export type EngineFrame =
   | SessionSnapshotFrame
   | SessionPreferencesFrame
   | SessionStatusFrame
+  | CitationPreviewFrame
   | WorkflowFrame
   | GenericFrame;
 

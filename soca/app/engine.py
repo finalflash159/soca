@@ -68,6 +68,7 @@ from soca.core.workflow.protocol import (
     workflow_event_to_protocol,
 )
 from soca.core.workflow.runtime_events import terminal_from_runtime_result
+from soca.knowledge.citation_preview import preview_vault_citation
 from soca.knowledge.index.persistence import default_index_home
 from soca.knowledge.indexing.coordinator import IndexBuildProgress, IndexCoordinator
 from soca.knowledge.indexing.identity import CorpusSpec
@@ -488,6 +489,8 @@ class SocaEngine:
             self._cmd_knowledge_init()
         elif cmd == "knowledge_index":
             self._cmd_knowledge_index()
+        elif cmd == "citation_preview":
+            self._cmd_citation_preview(command)
         elif cmd == "sessions_list":
             self._cmd_sessions_list(command)
         elif cmd == "session_create":
@@ -601,6 +604,48 @@ class SocaEngine:
         self.writer.emit({"event": "engine_error", "message": message, **extra})
 
     # --- sessions ---------------------------------------------------------------
+
+    def _cmd_citation_preview(self, command: dict[str, Any]) -> None:
+        """Return a bounded, current evidence passage for a persisted citation.
+
+        The WebView cannot read arbitrary local paths.  The engine already owns
+        the configured vault and its path policy, so it is the only component
+        allowed to verify a source on demand.
+        """
+        request_id = command.get("request_id")
+        path = command.get("path")
+        line_start = command.get("line_start")
+        line_end = command.get("line_end")
+        fingerprint = command.get("fingerprint")
+        source = command.get("source", "knowledge")
+        if not isinstance(request_id, str) or not request_id.strip() or not isinstance(path, str):
+            self._error("citation preview request is invalid", code="citation_preview_invalid")
+            return
+        if source != "knowledge":
+            self.writer.emit(
+                {
+                    "event": "citation_preview",
+                    "request_id": request_id,
+                    "path": path,
+                    "source": source if isinstance(source, str) else "unknown",
+                    "status": "unavailable",
+                    "title": None,
+                    "line_start": line_start if isinstance(line_start, int) else None,
+                    "line_end": line_end if isinstance(line_end, int) else None,
+                    "passage": None,
+                    "fingerprint": None,
+                    "error_code": "citation_source_unavailable",
+                }
+            )
+            return
+        preview = preview_vault_citation(
+            self.text_config.vault,
+            path=path,
+            line_start=line_start if isinstance(line_start, int) else None,
+            line_end=line_end if isinstance(line_end, int) else None,
+            expected_fingerprint=fingerprint if isinstance(fingerprint, str) else None,
+        )
+        self.writer.emit(preview.as_protocol(request_id=request_id, path=path))
 
     def _session_is_busy(self) -> bool:
         return (
@@ -1130,6 +1175,7 @@ class SocaEngine:
         self.writer.emit(
             {
                 "event": "status",
+                "active_profile": self.profile,
                 "profiles": profiles,
                 "knowledge_vault": knowledge_vault,
                 "knowledge_index": knowledge_index,

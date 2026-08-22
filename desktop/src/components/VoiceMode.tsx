@@ -8,8 +8,8 @@ import { ThinkingOrb } from "thinking-orbs";
 import { Button } from "@/components/ui/button";
 import { VoiceHud } from "@/components/VoiceHud";
 import { VoiceTranscript } from "@/components/VoiceTranscript";
-import type { ConversationState, Turn } from "@/engine/conversation";
-import type { VaultDocument } from "@/engine/documents";
+import type { Citation, ConversationState, Turn } from "@/engine/conversation";
+import type { CitationPreviewIndex } from "@/engine/citation-preview";
 import { orbLabel } from "@/engine/orb";
 import type { VoiceState } from "@/engine/voice";
 import { partialText, peakLevel } from "@/engine/voice";
@@ -19,7 +19,8 @@ interface VoiceModeProps {
   orbState: OrbState;
   voice: VoiceState;
   conversation: ConversationState;
-  documents: VaultDocument[];
+  citationPreviews: CitationPreviewIndex;
+  onRequestCitationPreview: (citation: Citation) => Promise<boolean>;
   connected: boolean;
   transcriptOpen: boolean;
   onToggleTranscript: () => void;
@@ -96,7 +97,8 @@ export function VoiceMode({
   orbState,
   voice,
   conversation,
-  documents,
+  citationPreviews,
+  onRequestCitationPreview,
   connected,
   transcriptOpen,
   onToggleTranscript,
@@ -206,7 +208,8 @@ export function VoiceMode({
       {transcriptOpen && !detailsOpen && (
         <VoiceTranscript
           conversation={{ ...conversation, turns: settled }}
-          documents={documents}
+          citationPreviews={citationPreviews}
+          onRequestCitationPreview={onRequestCitationPreview}
           orbState={orbState}
           onLoadOlder={onLoadOlder}
           canLoadOlder={canLoadOlder}

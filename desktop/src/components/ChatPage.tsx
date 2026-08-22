@@ -13,6 +13,8 @@ import type { OrbState } from "thinking-orbs";
 import { ChatView } from "@/components/ChatView";
 import { Composer } from "@/components/Composer";
 import type { ConversationState } from "@/engine/conversation";
+import type { Citation } from "@/engine/conversation";
+import type { CitationPreviewIndex } from "@/engine/citation-preview";
 import type { SlashCommand, VaultDocument } from "@/engine/documents";
 import { orbLabel } from "@/engine/orb";
 
@@ -29,6 +31,8 @@ interface ChatPageProps {
   onOpenSettings: () => void;
   onLoadOlder: () => void;
   canLoadOlder: boolean;
+  citationPreviews: CitationPreviewIndex;
+  onRequestCitationPreview: (citation: Citation) => Promise<boolean>;
 }
 
 /** Time-of-day greeting. No name — the app does not reliably know one. */
@@ -59,6 +63,8 @@ export function ChatPage({
   onOpenSettings,
   onLoadOlder,
   canLoadOlder,
+  citationPreviews,
+  onRequestCitationPreview,
 }: ChatPageProps) {
   const hasTurns = conversation.turns.length > 0;
   const lastTurn = conversation.turns[conversation.turns.length - 1];
@@ -86,13 +92,8 @@ export function ChatPage({
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center px-6 pt-[16vh]">
         <div className="flex w-full max-w-2xl flex-col gap-7">
-          {/* Pinned to `solving`, like the mark in the top bar. On an empty
-              session there is by definition nothing running, so a live orb here
-              could only ever show `breathing` — a faint dotted ring that reads
-              as a failed load. Real state still has two honest homes: the label
-              below, and the orb inside a running turn. */}
           <h1 className="flex items-center justify-center gap-3 text-center text-3xl font-normal tracking-tight">
-            <ThinkingOrb state="solving" size={20} aria-hidden />
+            <ThinkingOrb state={orbState} size={20} aria-hidden />
             {greeting()}
           </h1>
           {composer}
@@ -111,7 +112,8 @@ export function ChatPage({
         <div className="from-background pointer-events-none absolute inset-x-0 top-0 z-10 h-12 bg-gradient-to-b to-transparent" />
         <ChatView
           conversation={conversation}
-          documents={documents}
+          citationPreviews={citationPreviews}
+          onRequestCitationPreview={onRequestCitationPreview}
           orbState={orbState}
           orbLabel={orbLabel(orbState)}
           onLoadOlder={onLoadOlder}

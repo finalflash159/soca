@@ -5,6 +5,7 @@ import unicodedata
 from soca.core.answer_validation import (
     answer_chunk_without_citation_labels,
     answer_text_without_citation_labels,
+    citation_records,
     expected_citation_labels,
     validate_grounded_answer,
 )
@@ -18,6 +19,18 @@ def test_answer_validation_accepts_knowledge_and_memory_provenance() -> None:
     )
     decision = validate_grounded_answer("Theo [K1] và [M1] thì đúng.", citations)
     assert decision.status == "valid"
+
+
+def test_citation_records_preserve_new_fingerprints_without_changing_legacy_shape() -> None:
+    records = citation_records(
+        (
+            KnowledgeCitation("wiki/new.md", "New", fingerprint="sha256-new"),
+            KnowledgeCitation("wiki/old.md", "Old"),
+        )
+    )
+
+    assert records[0]["fingerprint"] == "sha256-new"
+    assert "fingerprint" not in records[1]
 
 
 def test_presentation_removes_citation_tags_from_answer_text() -> None:
