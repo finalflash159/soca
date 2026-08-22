@@ -1,0 +1,79 @@
+name: desktop-package
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/desktop-package.yml"
+      - "desktop/**"
+      - "scripts/build_desktop_sidecar.py"
+      - "scripts/verify_desktop_sidecar.py"
+      - "soca/**"
+      - "pyproject.toml"
+      - "uv.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-package:
+    name: ${{ matrix.name }} package proof
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            runner: macos-14
+            bundles: app,dmg
+          - name: Windows x64
+            runner: windows-2022
+            bundles: msi,nsis
+          - name: Linux x64
+            runner: ubuntu-22.04
+            bundles: appimage,deb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux bundle prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - name: Install frozen-runtime and desktop dependencies
+        run: |
+          uv sync --locked --extra desktop-build --extra llm-remote
+          npm ci --prefix desktop
+      - name: Run desktop unit suite
+        run: npm test --prefix desktop
+      - name: Build native installer with its external Python runtime
+        run: npm run tauri:build --prefix desktop -- --bundles ${{ matrix.bundles }}
+      - name: Prove frozen sidecar migration and persistence outside the checkout
+        shell: bash
+        run: |
+          sidecar_path=$(find desktop/src-tauri/binaries -type f -name 'soca-engine-*' ! -name '*.tmp' -print -quit)
+          test -n "$sidecar_path"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            bundled_sidecar=desktop/src-tauri/target/release/bundle/macos/SoCa.app/Contents/MacOS/soca-engine
+            test -f "$bundled_sidecar"
+            test "$(shasum -a 256 "$sidecar_path" | awk '{print $1}')" = "$(shasum -a 256 "$bundled_sidecar" | awk '{print $1}')"
+            sidecar_path="$bundled_sidecar"
+          fi
+          uv run python scripts/verify_desktop_sidecar.py --sidecar "$sidecar_path"
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: soca-${{ runner.os }}-${{ runner.arch }}
+          path: desktop/src-tauri/target/release/bundle/
+          if-no-files-found: error

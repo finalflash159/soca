@@ -43,6 +43,9 @@ llm-remote = [
     "keyring>=25",   # secure API-key storage (P3)
     "tiktoken>=0.7", # optional pre-send token estimate
 ]
+desktop-build = [
+    "pyinstaller>=6.22,<7", # native, one-file Python engine sidecar for Tauri
+]
 eval = [
     "jiwer>=3.0",        # Word Error Rate
     "datasets>=3.0",     # HuggingFace datasets (Common Voice VI)

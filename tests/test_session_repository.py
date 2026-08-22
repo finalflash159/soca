@@ -19,6 +19,7 @@ from soca.memory.session_repository import (
     SessionRepository,
     SessionRepositoryError,
     SessionSchemaError,
+    legacy_checkpoints_pending,
 )
 from soca.memory.working import WorkingMemory
 
@@ -221,6 +222,14 @@ def test_repository_migration_rejects_corrupt_legacy_checkpoint(tmp_path: Path) 
         repository.migrate_legacy_checkpoints(legacy_root)
 
     assert repository.list_sessions(limit=10).sessions == ()
+
+
+def test_legacy_checkpoint_probe_rejects_a_non_directory_root(tmp_path: Path) -> None:
+    root = tmp_path / "legacy-file"
+    root.write_text("not a checkpoint directory", encoding="utf-8")
+
+    with pytest.raises(SessionMigrationError, match="real directory"):
+        legacy_checkpoints_pending(root)
 
 
 def test_repository_migration_is_idempotent_and_keeps_private_backup_manifest(

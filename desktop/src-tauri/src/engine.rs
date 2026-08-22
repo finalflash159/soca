@@ -10,6 +10,7 @@
 //!   resort, not the normal path.
 
 use std::collections::HashMap;
+use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -33,6 +34,8 @@ const GRACEFUL_BYE_TIMEOUT: Duration = Duration::from_secs(35);
 const EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 /// Poll interval while waiting for process exit.
 const EXIT_POLL: Duration = Duration::from_millis(50);
+/// Basename registered in `bundle.externalBin`.
+const SIDECAR_BASENAME: &str = "soca-engine";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase", tag = "state")]
@@ -54,7 +57,8 @@ pub enum EngineStatus {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LaunchOptions {
-    /// Executable to run. Defaults to `soca` resolved on PATH.
+    /// Explicit recovery executable. When absent, a packaged app resolves only
+    /// the bundled sidecar; a checkout-backed development build supplies `soca`.
     #[serde(default)]
     pub program: Option<String>,
     /// Arguments before `engine`. Lets a dev run `uv run soca engine`.
@@ -73,54 +77,32 @@ pub struct LaunchOptions {
     pub env: HashMap<String, String>,
 }
 
-/// Where an engine executable is looked for, in order.
-///
-/// **A double-clicked macOS app does not get your shell's `PATH`.** It gets
-/// launchd's, which on this machine is unset and therefore defaults to
-/// `/usr/bin:/bin:/usr/sbin:/sbin`. `soca` installed in a virtualenv, in
-/// `~/.local/bin` or by Homebrew is on none of those, so a bundled app that
-/// only ever ran `Command::new("soca")` could not start its own engine — it
-/// worked in development purely because a terminal had exported `PATH` first.
-///
-/// The chain below is what replaces that assumption. `which`-style `PATH`
-/// lookup stays last so a developer's shell still wins when there is one.
+#[derive(Debug, Clone)]
+struct ResolvedLaunch {
+    program: String,
+    args: Vec<String>,
+}
+
+fn sidecar_filename() -> String {
+    format!("{SIDECAR_BASENAME}{}", std::env::consts::EXE_SUFFIX)
+}
+
+/// Return only binaries owned by this bundle. A shipped app must not silently
+/// start a random venv or PATH installation after its selected runtime fails.
 fn engine_candidates(app: &AppHandle) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
+    let filename = sidecar_filename();
 
-    // 1. An explicit override wins over everything, including a bundled binary:
-    //    it is how someone points the app at a checkout they are working on.
-    if let Ok(value) = std::env::var("SOCA_ENGINE") {
-        if !value.is_empty() {
-            candidates.push(PathBuf::from(value));
-        }
-    }
-
-    // 2. A sidecar shipped inside the bundle, once one is built. Tauri puts
-    //    `externalBin` next to the app executable.
+    // Tauri places externalBin files next to the executable. resource_dir is
+    // retained for bundle layouts used by older Tauri versions and test hosts.
     if let Ok(dir) = app.path().resource_dir() {
-        candidates.push(dir.join("soca"));
+        candidates.push(dir.join(&filename));
     }
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            candidates.push(dir.join("soca"));
+            candidates.push(dir.join(filename));
         }
     }
-
-    // 3. The usual user-level install locations, none of which are on the
-    //    launchd PATH.
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
-        candidates.push(home.join(".local/bin/soca"));
-    }
-    candidates.push(PathBuf::from("/opt/homebrew/bin/soca"));
-    candidates.push(PathBuf::from("/usr/local/bin/soca"));
-
-    // 4. PATH, which is populated when launched from a terminal.
-    if let Some(path) = std::env::var_os("PATH") {
-        for dir in std::env::split_paths(&path) {
-            candidates.push(dir.join("soca"));
-        }
-    }
-
     candidates
 }
 
@@ -138,38 +120,94 @@ fn is_executable(path: &Path) -> bool {
 }
 
 impl LaunchOptions {
-    fn resolve(&self, app: &AppHandle) -> Result<(String, Vec<String>), String> {
+    fn resolve(&self, app: &AppHandle) -> Result<ResolvedLaunch, String> {
         let mut args = self.args.clone();
         args.push("engine".to_string());
 
-        // An explicit program from the UI is taken at face value — including a
-        // bare name, which the caller may intend to resolve through PATH.
+        // An explicit UI choice is allowed to use PATH. It is the user's
+        // recovery override, not an automatic fallback selected by the app.
         if let Some(program) = self.program.clone().filter(|value| !value.is_empty()) {
-            return Ok((program, args));
+            return Ok(ResolvedLaunch { program, args });
+        }
+        if let Ok(value) = std::env::var("SOCA_ENGINE") {
+            let program = value.trim();
+            if !program.is_empty() {
+                if !is_executable(Path::new(program)) {
+                    return Err(format!(
+                        "SOCA_ENGINE không trỏ tới file chạy được: {program}"
+                    ));
+                }
+                return Ok(ResolvedLaunch {
+                    program: program.to_string(),
+                    args,
+                });
+            }
         }
 
         let candidates = engine_candidates(app);
         for candidate in &candidates {
             if is_executable(candidate) {
-                return Ok((candidate.display().to_string(), args));
+                return Ok(ResolvedLaunch {
+                    program: candidate.display().to_string(),
+                    args,
+                });
             }
         }
 
-        // Name what was tried. "command not found" on its own sends people to
-        // check a PATH that was never going to be consulted.
+        // A release failure must identify the missing artifact, not fall back
+        // to a potentially incompatible interpreter found on PATH.
         let tried = candidates
             .iter()
-            .take(6)
             .map(|path| format!("  {}", path.display()))
             .collect::<Vec<_>>()
             .join("\n");
         Err(format!(
-            "Không tìm thấy engine `soca`. Đã thử:\n{tried}\n\n\
-             Ứng dụng khi mở từ Finder không dùng PATH của terminal. Đặt biến \
-             môi trường SOCA_ENGINE trỏ tới đường dẫn đầy đủ, hoặc nhập đường \
-             dẫn đó ở màn hình khởi động."
+            "Không tìm thấy bundled engine `{SIDECAR_BASENAME}`. Đã thử:\n{tried}\n\n\
+             Bản cài đặt bị thiếu hoặc hỏng runtime đi kèm. Cài lại đúng bản phát \
+             hành, hoặc chủ động chọn một executable bằng tuỳ chọn khôi phục."
         ))
     }
+}
+
+/// Map Python's portable XDG configuration onto Tauri's platform-native
+/// application-data root. The app owns this directory across upgrades; Python
+/// continues to own private file modes and SQLite schema validation beneath it.
+fn bundled_runtime_env(app_data_dir: &Path) -> Result<HashMap<String, String>, String> {
+    let config = app_data_dir.join("config");
+    let data = app_data_dir.join("data");
+    let state = app_data_dir.join("state");
+    let vault = app_data_dir.join("vault");
+    for directory in [&config, &data, &state, &vault] {
+        fs::create_dir_all(directory).map_err(|error| {
+            format!(
+                "Không thể tạo thư mục dữ liệu desktop {}: {error}",
+                directory.display()
+            )
+        })?;
+    }
+
+    let mut env = HashMap::from([
+        ("XDG_CONFIG_HOME".to_string(), config.display().to_string()),
+        ("XDG_DATA_HOME".to_string(), data.display().to_string()),
+        ("XDG_STATE_HOME".to_string(), state.display().to_string()),
+        ("SOCA_VAULT".to_string(), vault.display().to_string()),
+    ]);
+
+    // Previous desktop builds delegated to a normal Python process, whose
+    // historical default was this root on every OS. The engine validates and
+    // migrates it only when legacy checkpoint files exist.
+    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
+        let legacy = PathBuf::from(home)
+            .join(".local")
+            .join("state")
+            .join("soca")
+            .join("sessions");
+        env.insert(
+            "SOCA_LEGACY_SESSION_ROOT".to_string(),
+            legacy.display().to_string(),
+        );
+    }
+    Ok(env)
 }
 
 struct Running {
@@ -274,7 +312,9 @@ pub fn engine_start(
     }
 
     let options = options.unwrap_or_default();
-    let (program, args) = options.resolve(&app)?;
+    let resolved = options.resolve(&app)?;
+    let program = resolved.program;
+    let args = resolved.args;
     emit_status(
         &app,
         EngineStatus::Starting {
@@ -292,6 +332,13 @@ pub fn engine_start(
         command.current_dir(cwd);
     }
     command.envs(&options.env);
+    if !cfg!(debug_assertions) {
+        let app_data_dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|error| format!("Không xác định được app-data directory: {error}"))?;
+        command.envs(bundled_runtime_env(&app_data_dir)?);
+    }
 
     // Which interpreter and which source tree actually ran is the first thing
     // anyone needs when the engine misbehaves, and it is invisible otherwise.
@@ -306,7 +353,7 @@ pub fn engine_start(
     );
 
     let mut child = command.spawn().map_err(|error| {
-        format!("could not start `{program}`: {error}. Is soca on PATH, or set a program override?")
+        format!("Không thể khởi động `{program}`: {error}. Chọn executable khôi phục hoặc cài lại runtime đi kèm.")
     })?;
 
     let stdin = child.stdin.take().ok_or("child stdin unavailable")?;
@@ -449,6 +496,35 @@ pub fn shutdown_on_exit(app: &AppHandle) {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundled_runtime_env_keeps_python_data_under_the_app_data_root() {
+        let root =
+            std::env::temp_dir().join(format!("soca-desktop-runtime-env-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+
+        let env = bundled_runtime_env(&root).expect("runtime data env");
+
+        assert_eq!(
+            env["XDG_CONFIG_HOME"],
+            root.join("config").display().to_string()
+        );
+        assert_eq!(
+            env["XDG_DATA_HOME"],
+            root.join("data").display().to_string()
+        );
+        assert_eq!(
+            env["XDG_STATE_HOME"],
+            root.join("state").display().to_string()
+        );
+        assert_eq!(env["SOCA_VAULT"], root.join("vault").display().to_string());
+        assert!(root.join("config").is_dir());
+        assert!(root.join("data").is_dir());
+        assert!(root.join("state").is_dir());
+        assert!(root.join("vault").is_dir());
+
+        fs::remove_dir_all(root).expect("remove test runtime data");
+    }
 
     #[test]
     fn shutdown_sends_quit_waits_for_bye_and_reaps_the_child() {

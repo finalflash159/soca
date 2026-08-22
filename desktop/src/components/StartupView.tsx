@@ -6,9 +6,9 @@
  * session). Their welcome view is an icon, one line and one button — nothing
  * else competes with the single decision to be made.
  *
- * SoCa needs one extra field, because the app shells out to `soca` rather than
- * bundling it. That field belongs here, at the moment it matters, not in the
- * permanent header where it made the product look like a debug console.
+ * The packaged app launches its own sidecar. The recovery field stays here, at
+ * the moment it matters, rather than making the main interface read like a
+ * debug console.
  */
 
 import { useState } from "react";
@@ -22,11 +22,11 @@ interface StartupViewProps {
   starting: boolean;
   /** Populated after a failed launch or an unclean exit. */
   problem: string | null;
-  onStart: (program: string) => void;
+  onStart: (program?: string) => void;
 }
 
 export function StartupView({ starting, problem, onStart }: StartupViewProps) {
-  const [program, setProgram] = useState("soca");
+  const [program, setProgram] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   return (
@@ -40,7 +40,7 @@ export function StartupView({ starting, problem, onStart }: StartupViewProps) {
         </p>
       </div>
 
-      <Button size="lg" disabled={starting} onClick={() => onStart(program)}>
+      <Button size="lg" disabled={starting} onClick={() => onStart()}>
         {starting ? "Đang khởi động…" : "Khởi động"}
       </Button>
 
@@ -67,12 +67,21 @@ export function StartupView({ starting, problem, onStart }: StartupViewProps) {
               className="border-input bg-card/60 h-8 w-64 rounded-md border px-3 text-center font-mono text-xs"
               value={program}
               onChange={(event) => setProgram(event.target.value)}
+              placeholder="/đường/dẫn/tới/soca"
               disabled={starting}
             />
             <p className="text-muted-foreground max-w-xs text-center text-[10px] leading-relaxed">
-              App gọi <code>{program} engine</code>. Bản đóng gói chưa kèm Python nên{" "}
-              <code>soca</code> phải có sẵn trên PATH.
+              Bản cài đặt dùng engine đi kèm. Chỉ nhập lệnh hoặc đường dẫn đầy đủ khi cần
+              khôi phục runtime; app sẽ gọi <code>{program.trim() || "…"} engine</code>.
             </p>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={starting || program.trim() === ""}
+              onClick={() => onStart(program.trim())}
+            >
+              Dùng engine này
+            </Button>
           </div>
         )}
       </div>

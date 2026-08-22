@@ -18,9 +18,9 @@ describe("launchOptions", () => {
     expect(options.env).toEqual({ PYTHONPATH: "/repo/worktrees/desktop-app" });
   });
 
-  it("always launches `soca`", async () => {
+  it("uses `soca` only for a checkout-backed development build", async () => {
     expect((await loadWithRoot("/repo")).program).toBe("soca");
-    expect((await loadWithRoot("")).program).toBe("soca");
+    expect((await loadWithRoot("")).program).toBeUndefined();
   });
 
   it("passes the explicit privacy mode to the sidecar", async () => {
@@ -35,7 +35,6 @@ describe("launchOptions", () => {
   it("sets no environment in a packaged build", async () => {
     // A shipped app has no checkout, and must never carry a developer's path.
     expect(await loadWithRoot("")).toEqual({
-      program: "soca",
       args: ["--session-persistence", "ram_only"],
     });
   });

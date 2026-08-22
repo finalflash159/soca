@@ -93,6 +93,8 @@ from soca.memory import (
     SessionMemory,
     SessionRepository,
     default_session_repository_home,
+    legacy_checkpoints_pending,
+    legacy_session_checkpoint_home,
 )
 from soca.prompts import SOCA_CHAT_SYSTEM_PROMPT
 from soca.tts import VALTEC_TTS_CONFIG
@@ -379,7 +381,14 @@ class SocaEngine:
             text_config.session_id if text_config.session_id != "default" else None
         )
         if text_config.session_persistence == "local_resumable":
-            repository = repository or SessionRepository(default_session_repository_home())
+            if repository is None:
+                repository = SessionRepository(default_session_repository_home())
+                legacy_root = legacy_session_checkpoint_home()
+                if legacy_checkpoints_pending(legacy_root):
+                    # Import before the coordinator chooses an active aggregate.
+                    # A malformed/symlinked source is intentionally fatal: an
+                    # empty RAM history would hide a failed migration.
+                    repository.migrate_legacy_checkpoints(legacy_root)
             self._session_lease = repository.exclusive_lease()
             self._session_lease.__enter__()
             if configured_session_id is None:

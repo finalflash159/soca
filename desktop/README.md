@@ -15,7 +15,7 @@ the TUI, not a fork of the runtime.
 | 2 — text conversation | done — streamed turns, blocked/terminal states, citations |
 | 3 — voice | done — HUD with engine-sourced level meter, partial transcript, barge-in |
 | 4 — knowledge & memory | done — retrieval inspector, memory traces, proposals, vault/index |
-| 5 — settings & packaging | settings done; `.app` + `.dmg` build and launch. Signing, auto-update and the Python sidecar are **not** done — [`docs/19-desktop-packaging.md`](../docs/19-desktop-packaging.md) says exactly what and why |
+| 5 — settings & packaging | done in code — packaged native Python sidecar, stable app-data location, migration proof, updater UI, and native package/release workflows; signed release evidence is still credential- and CI-gated in [`docs/19-desktop-packaging.md`](../docs/19-desktop-packaging.md) |
 
 ## Update — 2026-08-17
 
@@ -48,10 +48,9 @@ the TUI, not a fork of the runtime.
   tag likewise) and strips the newlines a list depends on. Measured on a live
   turn after the fix: the stream-joined text matches `chat/done.text` byte for
   byte.
-- A macOS GUI app does **not** inherit the shell's `PATH`, so a bundled app could
-  not start an engine installed in a virtualenv. Replaced with a real search
-  order that names every path it tried on failure — see
-  [`docs/19-desktop-packaging.md`](../docs/19-desktop-packaging.md).
+- A package carries a native frozen `soca-engine` sidecar, rather than searching
+  a developer's `PATH`, Homebrew, virtualenv, or checkout. The startup recovery
+  field remains an explicit opt-in override when diagnostics require it.
 - The local LLM loads its weights on **first use**, never at startup.
 - `st_dev` is excluded from artifact identity. It names the mount, and APFS
   reassigns it across reboots, which made every file look tampered with.
@@ -63,16 +62,16 @@ npm install
 npm run tauri dev
 ```
 
-The app spawns `soca engine`. In development the shell's PATH is used; a
-bundled app gets launchd's instead, so the binary is searched for in the chain
-described in [`docs/19-desktop-packaging.md`](../docs/19-desktop-packaging.md)
-§1. Override it with `SOCA_ENGINE=/path/to/soca`, or type the path into the
-startup screen.
+Development can still launch the active checkout's `soca` command. A packaged
+app launches only the frozen sidecar shipped with that package and stores its
+data under the OS-managed app-data root. Type a recovery path in the startup
+screen only when intentionally selecting a different engine.
 
 ```bash
-npm test          # 184 unit tests over the engine-facing modules
+npm test
 npm run build     # tsc + vite
-npm run tauri build -- --bundles app
+npm run package:sidecar
+npm run tauri:build -- --bundles app,dmg
 cd src-tauri && cargo clippy --all-targets
 ```
 
@@ -140,17 +139,20 @@ escalate — needs direct control of the child's stdio and exit. The plugin's
 abstraction does not expose enough of it, and `bye` is the only evidence the
 engine released the microphone and its provider clients.
 
-**The shell packages; the Python sidecar does not.** `npm run tauri build`
-produces a working `SoCa.app` (8.6 MB, launches, quits without orphans), but it
-contains only the Rust shell and the web assets. It still shells out to whatever
-`soca` is on PATH. The plan's highest-listed risk — bundling a Python runtime,
-its ports and its update path — is **not** solved here, and no claim is made
-that it is. What is settled is that everything downstream of that risk works.
+**The package includes the Python sidecar.** Tauri's `externalBin` entry embeds
+a PyInstaller-built `soca-engine-$TARGET_TRIPLE` in every native package. It is
+the only automatic production engine route, so a Finder/Start Menu launch has
+no hidden dependency on PATH or a checkout. The build also explicitly collects
+`llama_cpp` native libraries and `torchcodec` distribution metadata; without
+them a freeze can build yet fail before the protocol `hello` frame. The exact
+package size is a release artifact, not a stable claim in this repository.
 
-For reference, the plan quotes "under ~600 KB" for a Tauri app. That figure is a
-dependency-free hello world. A real app with this component tree measures
-**8.6 MB** — still roughly an order of magnitude under an Electron equivalent,
-which is the comparison that actually motivated the choice.
+The Settings page contains a signed-updater surface. It can show that a build
+is not configured for updates rather than implying a successful check. The
+keys, platform certificates, notarization credentials, and CI release evidence
+remain external release gates; read
+[`docs/19-desktop-packaging.md`](../docs/19-desktop-packaging.md) and
+[`RELEASE_NOTES.md`](../RELEASE_NOTES.md) before publishing.
 
 **Answers are assembled by appending, never replacing.** `docs/18` §6:
 concatenating every `answer_delta` `payload.text` in order reproduces the final

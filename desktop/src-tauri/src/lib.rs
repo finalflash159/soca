@@ -6,6 +6,8 @@ use tauri::{Manager, RunEvent};
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(engine::EngineState::default())
         .invoke_handler(tauri::generate_handler![
             engine::engine_start,

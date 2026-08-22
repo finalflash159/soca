@@ -10,13 +10,19 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, cast
 
 from soca.memory.working import WorkingMemory, WorkingMemoryPolicy
 
 try:
     import fcntl
-except ImportError:  # pragma: no cover - Windows fallback is covered by API behavior.
+except ImportError:  # pragma: no cover - selected below on Windows.
     fcntl = None
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - unavailable on POSIX.
+    msvcrt = None
 
 CHECKPOINT_SCHEMA_VERSION = 1
 
@@ -167,12 +173,22 @@ class SessionCheckpointStore:
         descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
         try:
             os.chmod(lock_path, 0o600)
+            if os.fstat(descriptor).st_size == 0:
+                os.write(descriptor, b"\0")
+            os.lseek(descriptor, 0, os.SEEK_SET)
             if fcntl is not None:
                 fcntl.flock(descriptor, fcntl.LOCK_EX)
+            elif msvcrt is not None:  # pragma: no cover - exercised by Windows packaging CI.
+                windows_lock = cast(Any, msvcrt)
+                windows_lock.locking(descriptor, windows_lock.LK_LOCK, 1)
             yield
         finally:
             if fcntl is not None:
                 fcntl.flock(descriptor, fcntl.LOCK_UN)
+            elif msvcrt is not None:  # pragma: no cover - exercised by Windows packaging CI.
+                windows_lock = cast(Any, msvcrt)
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                windows_lock.locking(descriptor, windows_lock.LK_UNLCK, 1)
             os.close(descriptor)
 
 
