@@ -15,6 +15,7 @@ from uuid import uuid4
 
 import numpy as np
 
+from soca.app.session_coordinator import SessionCoordinator
 from soca.app.text_runtime import (
     TextRuntimeBundle,
     TextRuntimeConfig,
@@ -55,7 +56,6 @@ from soca.core.workflow import (
     ActiveGoalStore,
     EventStatus,
     EventType,
-    GoalCheckpointStore,
     GoalStatus,
     TerminalOutcome,
     TerminalStatus,
@@ -89,16 +89,15 @@ from soca.memory import (
     CoreMemoryStore,
     MemoryCommands,
     ProposalStore,
-    SessionCheckpointStore,
     SessionMemory,
-    default_session_checkpoint_home,
+    SessionRepository,
+    default_session_repository_home,
 )
 from soca.prompts import SOCA_CHAT_SYSTEM_PROMPT
 from soca.tts import VALTEC_TTS_CONFIG
 
 PROTOCOL_VERSION = CURRENT_PROTOCOL_VERSION
 LOGGER = logging.getLogger(__name__)
-
 
 
 class TextRuntimeBuilder(Protocol):
@@ -242,8 +241,7 @@ def _retrieval_trace_payload(
         ),
         "latency_ms": trace.stage_latencies_ms.get("knowledge", 0.0),
         "columns": [
-            {"source": source, "hits": source_hits}
-            for source, source_hits in columns.items()
+            {"source": source, "hits": source_hits} for source, source_hits in columns.items()
         ],
         "fused": fused,
         "rejected_count": int(getattr(decision, "rejected_count", 0) or 0),
@@ -337,6 +335,7 @@ class SocaEngine:
         secret_store: LlmSecretStore | None = None,
         catalog_fetcher: CatalogFetcher = fetch_catalog,
         llm_engine_factory: EngineBuilder = DEFAULT_LLM_ENGINE_FACTORY,
+        session_repository: SessionRepository | None = None,
     ) -> None:
         self.voice_config = voice_config
         self.text_config = text_config
@@ -354,11 +353,11 @@ class SocaEngine:
         try:
             self.llm_settings = llm_settings_loader()
         except ValueError:
-            LOGGER.warning("Persisted LLM settings are invalid; runtime is not ready", exc_info=True)
-            self.llm_settings = DEFAULT_SETTINGS
-            self._settings_error = (
-                "Cấu hình LLM đã lưu không hợp lệ; runtime bị khóa cho đến khi bạn lưu cấu hình mới."
+            LOGGER.warning(
+                "Persisted LLM settings are invalid; runtime is not ready", exc_info=True
             )
+            self.llm_settings = DEFAULT_SETTINGS
+            self._settings_error = "Cấu hình LLM đã lưu không hợp lệ; runtime bị khóa cho đến khi bạn lưu cấu hình mới."
         self.secret_store = secret_store or SecretStore()
         self.catalog_fetcher = catalog_fetcher
         self.llm_engine_factory = llm_engine_factory
@@ -373,21 +372,48 @@ class SocaEngine:
         self._knowledge_job_lock = threading.Lock()
         self._knowledge_job_thread: threading.Thread | None = None
 
-        self.session_memory = self._create_session_memory()
-        self.active_goal_store = ActiveGoalStore(
-            checkpoint_store=(
-                GoalCheckpointStore(default_session_checkpoint_home() / "goals")
-                if self.text_config.session_persistence == "local_resumable"
-                else None
-            ),
-            session_id=self.text_config.session_id,
+        self._session_lease: Any | None = None
+        repository = session_repository
+        configured_session_id = (
+            text_config.session_id if text_config.session_id != "default" else None
         )
+        if text_config.session_persistence == "local_resumable":
+            repository = repository or SessionRepository(default_session_repository_home())
+            self._session_lease = repository.exclusive_lease()
+            self._session_lease.__enter__()
+            if configured_session_id is None:
+                preferences = repository.get_preferences()
+                if preferences.auto_open_last:
+                    configured_session_id = preferences.last_active_session_id
+        elif repository is not None:
+            raise ValueError("session repository requires local_resumable persistence")
+        self.session_coordinator = SessionCoordinator(
+            persistence=text_config.session_persistence,
+            repository=repository,
+            session_id=configured_session_id,
+        )
+        initial_snapshot = self.session_coordinator.initialize()
+        self.text_config = dataclasses.replace(
+            text_config,
+            session_id=self.session_coordinator.active.session_id,
+            session_resume=False,
+        )
+        self.session_memory = self._create_session_memory()
+        if initial_snapshot is not None and initial_snapshot.working_checkpoint is not None:
+            if self.session_memory is not None:
+                self.session_memory.restore_working_checkpoint(initial_snapshot.working_checkpoint)
+        self.active_goal_store = ActiveGoalStore(
+            session_id=self.session_coordinator.active.session_id,
+        )
+        if initial_snapshot is not None and initial_snapshot.goal_checkpoint is not None:
+            self.active_goal_store.restore_checkpoint(initial_snapshot.goal_checkpoint)
         self.text_bundle: TextRuntimeBundle | None = None
         self.voice_controller: VoiceMonitorController | None = None
         self.voice_stop_event: threading.Event | None = None
         self._voice_threads: list[threading.Thread] = []
         self._chat_thread: threading.Thread | None = None
         self._chat_lock = threading.Lock()
+        self._voice_persisted_turn: Any | None = None
         # Session usage accumulates across chat AND voice turns (shared session).
         self.session_usage = SessionUsage()
         self._usage_lock = threading.Lock()
@@ -462,6 +488,24 @@ class SocaEngine:
             self._cmd_knowledge_init()
         elif cmd == "knowledge_index":
             self._cmd_knowledge_index()
+        elif cmd == "sessions_list":
+            self._cmd_sessions_list(command)
+        elif cmd == "session_create":
+            self._cmd_session_create(command)
+        elif cmd == "session_open":
+            self._cmd_session_open(command)
+        elif cmd == "session_turns":
+            self._cmd_session_turns(command)
+        elif cmd == "session_rename":
+            self._cmd_session_rename(command)
+        elif cmd == "session_delete":
+            self._cmd_session_delete(command)
+        elif cmd == "session_status":
+            self._cmd_session_status()
+        elif cmd == "session_preferences_get":
+            self._cmd_session_preferences_get()
+        elif cmd == "session_preferences_set":
+            self._cmd_session_preferences_set(command)
         else:
             self._error(f"unknown command: {cmd!r}")
         return True
@@ -519,6 +563,10 @@ class SocaEngine:
                         code="session_cleanup_failed",
                         detail=type(exc).__name__,
                     )
+            lease = getattr(self, "_session_lease", None)
+            if lease is not None:
+                lease.__exit__(None, None, None)
+                self._session_lease = None
             if cleanup_failed:
                 self._error("engine cleanup completed with errors", code="engine_cleanup_failed")
         finally:
@@ -552,6 +600,259 @@ class SocaEngine:
     def _error(self, message: str, **extra: Any) -> None:
         self.writer.emit({"event": "engine_error", "message": message, **extra})
 
+    # --- sessions ---------------------------------------------------------------
+
+    def _session_is_busy(self) -> bool:
+        return (
+            self._chat_thread is not None and self._chat_thread.is_alive()
+        ) or self._voice_is_active()
+
+    @staticmethod
+    def _session_request_id(command: dict[str, Any]) -> str:
+        request_id = command.get("request_id")
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("session request_id must be a non-empty string")
+        return request_id
+
+    def _emit_session_operation(
+        self,
+        *,
+        request_id: str,
+        action: str,
+        status: str,
+        session_id: str | None = None,
+        revision: int | None = None,
+        error_code: str | None = None,
+    ) -> None:
+        self.writer.emit(
+            {
+                "event": "session_operation",
+                "request_id": request_id,
+                "action": action,
+                "status": status,
+                "session_id": session_id,
+                "revision": revision,
+                "error_code": error_code,
+            }
+        )
+
+    def _cmd_sessions_list(self, command: dict[str, Any]) -> None:
+        try:
+            limit = command.get("limit", 50)
+            page = self.session_coordinator.list(
+                limit=limit if isinstance(limit, int) and not isinstance(limit, bool) else 50,
+                cursor=command.get("cursor") if isinstance(command.get("cursor"), str) else None,
+            )
+        except Exception as exc:  # noqa: BLE001 - protocol failure is typed below
+            self._error(
+                "cannot list saved sessions", code="session_list_failed", detail=type(exc).__name__
+            )
+            return
+        self.writer.emit(
+            {
+                "event": "sessions_page",
+                "sessions": [dataclasses.asdict(item) for item in page.sessions],
+                "next_cursor": page.next_cursor,
+                "persistence": self.session_coordinator.active.persistence,
+            }
+        )
+
+    def _cmd_session_create(self, command: dict[str, Any]) -> None:
+        self._run_session_mutation(command, "create", lambda: self.session_coordinator.create())
+
+    def _cmd_session_open(self, command: dict[str, Any]) -> None:
+        session_id = command.get("session_id")
+        if not isinstance(session_id, str) or not session_id:
+            self._error("session_id must be a non-empty string", code="session_open_invalid")
+            return
+        self._run_session_mutation(
+            command,
+            "open",
+            lambda: self.session_coordinator.open(session_id, busy=self._session_is_busy()),
+        )
+
+    def _cmd_session_turns(self, command: dict[str, Any]) -> None:
+        try:
+            limit = command.get("limit", 50)
+            snapshot = self.session_coordinator.snapshot(
+                limit=limit if isinstance(limit, int) and not isinstance(limit, bool) else 50,
+                before_sequence=(
+                    command.get("before_sequence")
+                    if isinstance(command.get("before_sequence"), int)
+                    else None
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - protocol failure is typed below
+            self._error(
+                "cannot load session turns", code="session_turns_failed", detail=type(exc).__name__
+            )
+            return
+        self.writer.emit(_session_snapshot_payload(snapshot, event="session_turns_page"))
+
+    def _cmd_session_rename(self, command: dict[str, Any]) -> None:
+        session_id, title, revision = (
+            command.get("session_id"),
+            command.get("title"),
+            command.get("expected_revision"),
+        )
+        if (
+            not isinstance(session_id, str)
+            or not isinstance(title, str)
+            or not isinstance(revision, int)
+        ):
+            self._error("invalid session rename request", code="session_rename_invalid")
+            return
+        self._run_session_mutation(
+            command,
+            "rename",
+            lambda: self.session_coordinator.rename(
+                session_id, title=title, expected_revision=revision
+            ),
+        )
+
+    def _cmd_session_delete(self, command: dict[str, Any]) -> None:
+        session_id, revision = command.get("session_id"), command.get("expected_revision")
+        if not isinstance(session_id, str) or not isinstance(revision, int):
+            self._error("invalid session delete request", code="session_delete_invalid")
+            return
+        self._run_session_mutation(
+            command,
+            "delete",
+            lambda: self.session_coordinator.delete(
+                session_id, expected_revision=revision, busy=self._session_is_busy()
+            ),
+        )
+
+    def _run_session_mutation(
+        self, command: dict[str, Any], action: str, operation: Callable[[], Any]
+    ) -> None:
+        try:
+            request_id = self._session_request_id(command)
+        except ValueError as exc:
+            self._error(str(exc), code="session_request_invalid")
+            return
+        self._emit_session_operation(request_id=request_id, action=action, status="started")
+        try:
+            result = operation()
+        except Exception as exc:  # noqa: BLE001 - repository failures must be observable
+            self._emit_session_operation(
+                request_id=request_id,
+                action=action,
+                status="rejected" if type(exc).__name__ == "SessionBusyError" else "failed",
+                error_code=type(exc).__name__,
+            )
+            return
+        try:
+            if action in {"create", "open", "delete"}:
+                self._activate_session_snapshot(result if hasattr(result, "turns") else None)
+        except Exception as exc:  # noqa: BLE001 - receipt must not claim a failed activation
+            self._emit_session_operation(
+                request_id=request_id,
+                action=action,
+                status="failed",
+                error_code=type(exc).__name__,
+            )
+            return
+        record = getattr(result, "session", result)
+        self._emit_session_operation(
+            request_id=request_id,
+            action=action,
+            status="completed",
+            session_id=getattr(record, "session_id", self.session_coordinator.active.session_id),
+            revision=getattr(record, "revision", self.session_coordinator.active.revision),
+        )
+        if hasattr(result, "turns"):
+            self.writer.emit(_session_snapshot_payload(result, event="session_snapshot"))
+
+    def _cmd_session_status(self) -> None:
+        self.writer.emit(
+            {
+                "event": "session_status",
+                "active_session_id": self.session_coordinator.active.session_id,
+                "persistence": self.session_coordinator.active.persistence,
+                "revision": self.session_coordinator.active.revision,
+                "busy": self._session_is_busy(),
+            }
+        )
+
+    def _cmd_session_preferences_get(self) -> None:
+        try:
+            preferences = self.session_coordinator.preferences()
+        except Exception as exc:  # noqa: BLE001 - preferences must fail truthfully
+            self._error(
+                "cannot read session preferences",
+                code="session_preferences_failed",
+                detail=type(exc).__name__,
+            )
+            return
+        self.writer.emit(
+            {
+                "event": "session_preferences",
+                "persistence": self.session_coordinator.active.persistence,
+                "auto_open_last": preferences.auto_open_last,
+                "last_active_session_id": preferences.last_active_session_id,
+            }
+        )
+
+    def _cmd_session_preferences_set(self, command: dict[str, Any]) -> None:
+        auto_open_last = command.get("auto_open_last")
+        if not isinstance(auto_open_last, bool):
+            self._error("auto_open_last must be a boolean", code="session_preferences_invalid")
+            return
+        try:
+            request_id = self._session_request_id(command)
+        except ValueError as exc:
+            self._error(str(exc), code="session_request_invalid")
+            return
+        self._emit_session_operation(
+            request_id=request_id, action="preferences_set", status="started"
+        )
+        try:
+            preferences = self.session_coordinator.set_preferences(auto_open_last=auto_open_last)
+        except Exception as exc:  # noqa: BLE001 - preferences must fail truthfully
+            self._emit_session_operation(
+                request_id=request_id,
+                action="preferences_set",
+                status="failed",
+                error_code=type(exc).__name__,
+            )
+            return
+        self._emit_session_operation(
+            request_id=request_id,
+            action="preferences_set",
+            status="completed",
+            session_id=self.session_coordinator.active.session_id,
+            revision=self.session_coordinator.active.revision,
+        )
+        self.writer.emit(
+            {
+                "event": "session_preferences",
+                "persistence": self.session_coordinator.active.persistence,
+                "auto_open_last": preferences.auto_open_last,
+                "last_active_session_id": preferences.last_active_session_id,
+            }
+        )
+
+    def _activate_session_snapshot(self, snapshot: Any | None) -> None:
+        if not self._dispose_text_bundle():
+            raise RuntimeError("cannot switch session while runtime cleanup failed")
+        if self.session_memory is not None:
+            self.session_memory.close()
+        self.text_config = dataclasses.replace(
+            self.text_config,
+            session_id=self.session_coordinator.active.session_id,
+            session_resume=False,
+        )
+        self.session_memory = self._create_session_memory()
+        if snapshot is not None and snapshot.working_checkpoint is not None:
+            if self.session_memory is not None:
+                self.session_memory.restore_working_checkpoint(snapshot.working_checkpoint)
+        self.active_goal_store = ActiveGoalStore(session_id=self.text_config.session_id)
+        if snapshot is not None and snapshot.goal_checkpoint is not None:
+            self.active_goal_store.restore_checkpoint(snapshot.goal_checkpoint)
+        self.session_usage = SessionUsage()
+        self._last_prompt_manifest = None
+
     def _emit_knowledge_setup(self, action: str, status: str, detail: str, **extra: Any) -> None:
         self.writer.emit(
             {
@@ -575,10 +876,7 @@ class SocaEngine:
                 error_code="knowledge_init_failed",
             )
             return
-        detail = (
-            f"{len(result.created_dirs)} thư mục mới · "
-            f"{len(result.created_files)} file mới"
-        )
+        detail = f"{len(result.created_dirs)} thư mục mới · {len(result.created_files)} file mới"
         extra: dict[str, Any] = {}
         if result.permission_warnings:
             detail += f" · cảnh báo quyền: {len(result.permission_warnings)}"
@@ -812,16 +1110,13 @@ class SocaEngine:
         vault = self.text_config.vault
         knowledge_vault = {
             "path": str(vault),
-            "initialized": (vault / "wiki").is_dir()
-            and (vault / "memory" / "core.json").is_file(),
+            "initialized": (vault / "wiki").is_dir() and (vault / "memory" / "core.json").is_file(),
             "index_home": str(default_index_home(vault)),
         }
         embedding_ready = False
         try:
             embedding_ready = model_is_provisioned("aiteamvn-v2")
-            embedding_fingerprint = (
-                model_fingerprint("aiteamvn-v2") if embedding_ready else None
-            )
+            embedding_fingerprint = model_fingerprint("aiteamvn-v2") if embedding_ready else None
             knowledge_index = (
                 IndexCatalog(default_index_home(self.text_config.vault))
                 .status(
@@ -919,8 +1214,10 @@ class SocaEngine:
             voice_settings = self._selected_voice_settings()
             if voice_settings.backend == "remote":
                 voice_llm_ready = self.secret_store.has_key(voice_settings.provider_key)
-                voice_llm_state = "loaded" if voice_bundle is not None else (
-                    "ready" if voice_llm_ready else "missing"
+                voice_llm_state = (
+                    "loaded"
+                    if voice_bundle is not None
+                    else ("ready" if voice_llm_ready else "missing")
                 )
                 voice_llm_detail = (
                     f"remote · {voice_settings.provider_key}:{voice_settings.model_id}"
@@ -928,8 +1225,10 @@ class SocaEngine:
             else:
                 local_config = get_model_config(voice_settings.model_id)
                 voice_llm_ready = local_config.local_path.is_file()
-                voice_llm_state = "loaded" if voice_bundle is not None else (
-                    "ready" if voice_llm_ready else "missing"
+                voice_llm_state = (
+                    "loaded"
+                    if voice_bundle is not None
+                    else ("ready" if voice_llm_ready else "missing")
                 )
                 voice_llm_detail = f"local · {voice_settings.model_id}"
             add(
@@ -1026,9 +1325,7 @@ class SocaEngine:
             )
 
         embedding_detail = (
-            "aiteamvn-v2 · provisioned"
-            if embedding_ready
-            else "aiteamvn-v2 · not provisioned"
+            "aiteamvn-v2 · provisioned" if embedding_ready else "aiteamvn-v2 · not provisioned"
         )
         embedding_state = "ready" if embedding_ready else "missing"
         if knowledge_index is not None:
@@ -1637,7 +1934,11 @@ class SocaEngine:
             PromptComponent("recent_conversation", recent_section, priority=30),
             PromptComponent("answer_prefix", "Trả lời cuối cùng:", priority=0, required=True),
         ]
-        model_id = self.text_config.llm_model if self.text_config.llm_model_is_override else self.llm_settings.model_id
+        model_id = (
+            self.text_config.llm_model
+            if self.text_config.llm_model_is_override
+            else self.llm_settings.model_id
+        )
         source = "remote_catalog" if self.llm_settings.backend == "remote" else "local_registry"
         capability = capability_from_values(
             model_id=model_id,
@@ -1824,8 +2125,10 @@ class SocaEngine:
             payload["detail"] = detail
         self.writer.emit(payload)
 
-    def _start_turn_progress(self, surface: str) -> _TurnProgressContext:
-        run_id = uuid4().hex
+    def _start_turn_progress(
+        self, surface: str, *, run_id: str | None = None
+    ) -> _TurnProgressContext:
+        run_id = run_id or uuid4().hex
         active_goal = self.active_goal_store.current
         goal_id = active_goal.goal_id if active_goal is not None else f"pending-{run_id}"
         workflow_surface = "voice" if surface == "voice" else "chat"
@@ -1842,7 +2145,9 @@ class SocaEngine:
         )
         with self._progress_lock:
             self._progress_contexts[surface] = context
-        self._emit_workflow_event(context, EventType.TURN_STARTED, TurnNode.ADMIT, EventStatus.STARTED)
+        self._emit_workflow_event(
+            context, EventType.TURN_STARTED, TurnNode.ADMIT, EventStatus.STARTED
+        )
         return context
 
     def _clear_turn_progress(self, context: _TurnProgressContext) -> None:
@@ -1950,13 +2255,21 @@ class SocaEngine:
 
     def _chat_worker(self, text: str) -> None:
         terminal_emitted = False
-        progress = self._start_turn_progress("chat")
+        persisted_turn = self.session_coordinator.begin_turn(
+            user_text=text,
+            surface="chat",
+            working_checkpoint=self._working_checkpoint(),
+        )
+        progress = self._start_turn_progress("chat", run_id=persisted_turn.turn_id)
         try:
             self.writer.emit(
                 {
                     "event": "chat",
                     "type": "start",
                     "text": text,
+                    "session_id": persisted_turn.session_id,
+                    "turn_id": persisted_turn.turn_id,
+                    "sequence": persisted_turn.sequence,
                     "run_id": progress.run_id,
                     "goal_id": progress.goal_id,
                 }
@@ -1985,15 +2298,30 @@ class SocaEngine:
                     progress_setter(None)
             usage = TurnUsage.from_runtime_result(result)
             self._track_usage(usage)
+            settled_text = answer_text_without_citation_labels(
+                result.response_text,
+                result.citations,
+            )
+            self.session_coordinator.complete_turn(
+                persisted_turn,
+                assistant_text=settled_text,
+                terminal_status=_terminal_status_for_result(result),
+                route=result.route.value,
+                citations=tuple(dict(item) for item in citation_records(result.citations)),
+                usage=dataclasses.asdict(usage),
+                working_checkpoint=self._working_checkpoint(),
+                goal_checkpoint=self._goal_checkpoint(),
+                blocked=result.blocked,
+            )
             self._emit_workflow_for_result(result, progress)
             self.writer.emit(
                 {
                     "event": "chat",
                     "type": "done",
-                    "text": answer_text_without_citation_labels(
-                        result.response_text,
-                        result.citations,
-                    ),
+                    "text": settled_text,
+                    "session_id": persisted_turn.session_id,
+                    "turn_id": persisted_turn.turn_id,
+                    "sequence": persisted_turn.sequence,
                     "route": result.route.value,
                     "blocked": result.blocked,
                     "usage": usage,
@@ -2001,9 +2329,7 @@ class SocaEngine:
                     "provider_trace": (
                         dict(result.trace.provider_trace) if result.trace is not None else {}
                     ),
-                    "llm_error": (
-                        dict(result.trace.llm_error) if result.trace is not None else {}
-                    ),
+                    "llm_error": (dict(result.trace.llm_error) if result.trace is not None else {}),
                 }
             )
             terminal_emitted = True
@@ -2057,6 +2383,11 @@ class SocaEngine:
                 self.writer.emit(self._memory_trace_payload(trace, self._pending_proposal_count()))
             self._cmd_context()
         except Exception as exc:  # noqa: BLE001 - protocol boundary must not crash
+            self._error(
+                "session turn did not reach a durable terminal state",
+                code="session_persistence_failed",
+                detail=type(exc).__name__,
+            )
             if not terminal_emitted:
                 outcome = TerminalOutcome(
                     status=TerminalStatus.SYSTEM_FAILURE,
@@ -2165,19 +2496,13 @@ class SocaEngine:
                         or getattr(hit.document, "retrieval_backend", "") == "memory_episode"
                         else "profile"
                     ),
-                    "relevance": float(
-                        getattr(getattr(hit, "score", None), "relevance", 0.0)
-                    ),
+                    "relevance": float(getattr(getattr(hit, "score", None), "relevance", 0.0)),
                     "recency": float(getattr(getattr(hit, "score", None), "recency", 0.0)),
-                    "importance": float(
-                        getattr(getattr(hit, "score", None), "importance", 0.0)
-                    ),
+                    "importance": float(getattr(getattr(hit, "score", None), "importance", 0.0)),
                     "total": float(getattr(getattr(hit, "score", None), "total", 0.0)),
                 }
                 for hit in (
-                    getattr(trace, "memory_hits", ())[:16]
-                    if not isinstance(trace, dict)
-                    else ()
+                    getattr(trace, "memory_hits", ())[:16] if not isinstance(trace, dict) else ()
                 )
             ],
             "hit_count": (
@@ -2206,14 +2531,25 @@ class SocaEngine:
             summary_enabled=not self.no_model,
             summary_threads=config.llm_threads,
             summary_gpu_layers=config.llm_gpu_layers,
-            persistence=config.session_persistence,
-            checkpoint_store=(
-                SessionCheckpointStore(default_session_checkpoint_home())
-                if config.session_persistence == "local_resumable"
-                else None
-            ),
-            resume=config.session_resume,
+            persistence="ram_only",
+            checkpoint_store=None,
+            resume=False,
         )
+
+    def _working_checkpoint(self) -> dict[str, Any]:
+        if self.session_memory is None:
+            return {"thread_id": self.session_coordinator.active.session_id, "turns": []}
+        return self.session_memory.working.to_dict()
+
+    def _goal_checkpoint(self) -> dict[str, Any] | None:
+        current = self.active_goal_store.current
+        last_run = self.active_goal_store.last_run
+        if current is None and last_run is None:
+            return None
+        return {
+            "goal": current.to_checkpoint_dict() if current is not None else None,
+            "last_run": dataclasses.asdict(last_run) if last_run is not None else None,
+        }
 
     # --- voice ------------------------------------------------------------------
 
@@ -2315,6 +2651,28 @@ class SocaEngine:
             event = queue.get()
             if event is None:
                 break
+            if event.type == "asr" and event.text.strip():
+                try:
+                    self._voice_persisted_turn = self.session_coordinator.begin_turn(
+                        user_text=event.text,
+                        surface="voice",
+                        working_checkpoint=self._working_checkpoint(),
+                    )
+                except Exception as exc:  # noqa: BLE001 - persistence failure blocks truthful success
+                    self._voice_persisted_turn = None
+                    self._error(
+                        "cannot persist voice turn start",
+                        code="session_persistence_failed",
+                        detail=type(exc).__name__,
+                    )
+            elif event.type == "done" and not self._complete_voice_session_turn(event):
+                event = VoiceMonitorEvent(
+                    "error",
+                    "voice turn was not saved; the engine did not report completion",
+                    metadata={"error_code": "session_persistence_failed"},
+                )
+            elif event.type == "error":
+                self._fail_voice_session_turn(event)
             self.writer.emit(
                 {
                     "event": "voice",
@@ -2374,7 +2732,9 @@ class SocaEngine:
                         "latency_ms": float(metadata.get("router_latency_ms", 0.0)),
                     }
                 )
-                self.writer.emit(self._memory_trace_payload(metadata, self._pending_proposal_count()))
+                self.writer.emit(
+                    self._memory_trace_payload(metadata, self._pending_proposal_count())
+                )
             elif event.type == "progress":
                 stage = str(event.metadata.get("stage") or "")
                 self._emit_runtime_progress("voice", stage)
@@ -2450,6 +2810,63 @@ class SocaEngine:
                     self._clear_turn_progress(progress)
         if self.voice_stop_event is not None:
             self.voice_stop_event.set()
+
+    def _complete_voice_session_turn(self, event: VoiceMonitorEvent) -> bool:
+        turn = self._voice_persisted_turn
+        if turn is None:
+            return True
+        terminal_status = str(event.metadata.get("terminal_status") or "system_failure")
+        try:
+            self.session_coordinator.complete_turn(
+                turn,
+                assistant_text=event.text or None,
+                terminal_status=terminal_status,
+                route=str(event.metadata.get("runtime_route") or "voice"),
+                citations=(),
+                usage=dataclasses.asdict(event.usage) if event.usage is not None else None,
+                working_checkpoint=self._working_checkpoint(),
+                goal_checkpoint=self._goal_checkpoint(),
+                blocked=bool(event.metadata.get("runtime_blocked", False)),
+                status="complete" if terminal_status != "system_failure" else "failed",
+                error_code=None if terminal_status != "system_failure" else "voice_system_failure",
+            )
+        except Exception as exc:  # noqa: BLE001 - never claim a durable voice terminal on failure
+            self._error(
+                "cannot persist voice terminal",
+                code="session_persistence_failed",
+                detail=type(exc).__name__,
+            )
+            return False
+        finally:
+            self._voice_persisted_turn = None
+        return True
+
+    def _fail_voice_session_turn(self, event: VoiceMonitorEvent) -> None:
+        turn = self._voice_persisted_turn
+        if turn is None:
+            return
+        try:
+            self.session_coordinator.complete_turn(
+                turn,
+                assistant_text=None,
+                terminal_status="system_failure",
+                route="voice",
+                citations=(),
+                usage=None,
+                working_checkpoint=self._working_checkpoint(),
+                goal_checkpoint=self._goal_checkpoint(),
+                status="failed",
+                error_code="voice_runtime_error",
+                error_detail=type(event.text).__name__,
+            )
+        except Exception as exc:  # noqa: BLE001 - report failed durable cleanup
+            self._error(
+                "cannot persist voice failure",
+                code="session_persistence_failed",
+                detail=type(exc).__name__,
+            )
+        finally:
+            self._voice_persisted_turn = None
 
     def _emit_voice_workflow_terminal(
         self,
@@ -2594,6 +3011,16 @@ class SocaEngine:
         return self.voice_controller
 
 
+def _session_snapshot_payload(snapshot: Any, *, event: str) -> dict[str, Any]:
+    """Expose durable transcript data without leaking internal checkpoints."""
+    return {
+        "event": event,
+        "session": dataclasses.asdict(snapshot.session),
+        "turns": [dataclasses.asdict(turn) for turn in snapshot.turns],
+        "next_turn_cursor": snapshot.next_turn_cursor,
+    }
+
+
 def run_engine(
     *,
     voice_config: ResolvedVoiceRuntimeConfig | None,
@@ -2613,6 +3040,7 @@ def run_engine(
     secret_store: LlmSecretStore | None = None,
     catalog_fetcher: CatalogFetcher = fetch_catalog,
     llm_engine_factory: EngineBuilder = DEFAULT_LLM_ENGINE_FACTORY,
+    session_repository: SessionRepository | None = None,
 ) -> int:
     """Run the engine loop until ``quit`` or EOF. Returns a process exit code."""
     reader = stdin or sys.stdin
@@ -2635,6 +3063,7 @@ def run_engine(
         secret_store=secret_store,
         catalog_fetcher=catalog_fetcher,
         llm_engine_factory=llm_engine_factory,
+        session_repository=session_repository,
     )
 
     # Keep protocol stdout pristine: reroute stray prints (model loaders,

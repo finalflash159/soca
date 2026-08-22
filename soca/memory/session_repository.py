@@ -30,6 +30,7 @@ PRIVATE_FILE_MODE = stat.S_IRUSR | stat.S_IWUSR
 PRIVATE_READ_ONLY_DIRECTORY_MODE = stat.S_IRUSR | stat.S_IXUSR
 PRIVATE_READ_ONLY_FILE_MODE = stat.S_IRUSR
 _MIGRATION_SETTING = "legacy_json_migration_v1"
+_PREFERENCES_SETTING = "session_preferences_v1"
 
 SessionSurface = Literal["chat", "voice"]
 SessionTurnStatus = Literal["pending", "complete", "interrupted", "failed"]
@@ -117,6 +118,12 @@ class MigrationReport:
     imported: int
     already_migrated: bool
     backup_manifest: Path
+
+
+@dataclass(frozen=True)
+class SessionPreferences:
+    auto_open_last: bool
+    last_active_session_id: str | None
 
 
 def default_session_repository_home() -> Path:
@@ -217,6 +224,66 @@ class SessionRepository:
             last = records[-1]
             next_cursor = _encode_cursor(last.updated_at, last.session_id)
         return SessionPage(sessions=records, next_cursor=next_cursor)
+
+    def get_preferences(self) -> SessionPreferences:
+        connection = self._connect()
+        try:
+            payload = self._read_setting(connection, _PREFERENCES_SETTING)
+        finally:
+            connection.close()
+        if payload is None:
+            return SessionPreferences(auto_open_last=False, last_active_session_id=None)
+        auto_open_last = payload.get("auto_open_last", False)
+        last_active_session_id = payload.get("last_active_session_id")
+        if not isinstance(auto_open_last, bool):
+            raise SessionSchemaError("session preference auto_open_last is invalid")
+        if last_active_session_id is not None:
+            if not isinstance(last_active_session_id, str):
+                raise SessionSchemaError("session preference last_active_session_id is invalid")
+            _validate_uuid(last_active_session_id)
+        return SessionPreferences(
+            auto_open_last=auto_open_last,
+            last_active_session_id=last_active_session_id,
+        )
+
+    def set_preferences(
+        self,
+        *,
+        auto_open_last: bool,
+        last_active_session_id: str | None,
+    ) -> SessionPreferences:
+        if not isinstance(auto_open_last, bool):
+            raise ValueError("auto_open_last must be a boolean")
+        if last_active_session_id is not None:
+            last_active_session_id = _validate_uuid(last_active_session_id)
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                if last_active_session_id is not None:
+                    self._select_session(connection, last_active_session_id)
+                self._write_setting(
+                    connection,
+                    _PREFERENCES_SETTING,
+                    {
+                        "auto_open_last": auto_open_last,
+                        "last_active_session_id": last_active_session_id,
+                    },
+                    now=_now(),
+                )
+                connection.commit()
+            except sqlite3.Error as exc:
+                connection.rollback()
+                raise SessionRepositoryError("cannot update session preferences") from exc
+            except Exception:
+                connection.rollback()
+                raise
+        finally:
+            connection.close()
+        return SessionPreferences(
+            auto_open_last=auto_open_last,
+            last_active_session_id=last_active_session_id,
+        )
 
     def rename_session(
         self,
@@ -1245,6 +1312,7 @@ __all__ = [
     "SessionNotFoundError",
     "SessionPage",
     "SessionPermissionError",
+    "SessionPreferences",
     "SessionRecord",
     "SessionRepository",
     "SessionRepositoryError",

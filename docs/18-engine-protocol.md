@@ -21,7 +21,7 @@ now fails when the engine emits an event this page does not describe.
 | Events           | Engine → client on **stdout**                                                 |
 | Diagnostics      | Everything else on **stderr**                                                 |
 | Writer           | `_ProtocolWriter`, mutex-guarded, flushed per line — safe from worker threads |
-| Protocol version | `2` (`soca.core.workflow.events.PROTOCOL_VERSION`)                            |
+| Protocol version | `3` (`soca.core.workflow.events.PROTOCOL_VERSION`)                            |
 
 Stdout is kept pristine: `run_engine` wraps the command loop in
 `contextlib.redirect_stdout(sys.stderr)`, so a model loader that prints a banner
@@ -86,6 +86,15 @@ Every command is an object with a `cmd` key. Unlisted keys are ignored.
 | `voice_profile_select` | profile selection                                               | `status`                                                  |
 | `knowledge_init`       | —                                                               | `knowledge_setup`, `status`                               |
 | `knowledge_index`      | —                                                               | `knowledge_setup` progress, `status`                      |
+| `sessions_list`        | `cursor` (string, optional), `limit` (1–100, optional)          | `sessions_page`                                            |
+| `session_create`       | `request_id` (string)                                           | `session_operation`, `session_snapshot`                    |
+| `session_open`         | `request_id`, `session_id`                                      | `session_operation`, `session_snapshot`                    |
+| `session_turns`        | `before_sequence` / `limit` (optional)                          | `session_turns_page`                                       |
+| `session_rename`       | `request_id`, `session_id`, `title`, `expected_revision`        | `session_operation`                                        |
+| `session_delete`       | `request_id`, `session_id`, `expected_revision`                 | `session_operation`, `session_snapshot` when active        |
+| `session_status`       | —                                                               | `session_status`                                           |
+| `session_preferences_get` | —                                                            | `session_preferences`                                     |
+| `session_preferences_set` | `request_id`, `auto_open_last` (boolean)                    | `session_operation`, `session_preferences`                |
 | `quit`                 | —                                                               | `bye`, then exit                                          |
 
 `chat` with empty/whitespace text is rejected with `engine_error`
@@ -108,7 +117,7 @@ Two envelope shapes exist and a client must handle both.
 ```json
 {
   "event": "step_progress",
-  "protocol_version": 2,
+  "protocol_version": 3,
   "session_id": "…",
   "run_id": "…",
   "goal_id": "…",
@@ -133,9 +142,9 @@ text-only engine, or `{"asr", "llm", "tts", "voice"}` when voice is configured.
 ```json
 {
   "event": "hello",
-  "version": 2,
-  "protocol_version": 2,
-  "supported_versions": [2],
+  "version": 3,
+  "protocol_version": 3,
+  "supported_versions": [3],
   "profile": "qwen-release",
   "no_model": false,
   "stack": { "llm": "openai:gpt-5.6-luna" }
@@ -148,6 +157,52 @@ supported set, rather than proceeding on best effort.
 ### `bye`
 
 `{"event":"bye"}` — no fields. Last frame before exit 0.
+
+### `sessions_page`
+
+Newest-first, bounded saved-session metadata. RAM-only mode returns an empty
+page and never creates a repository row.
+
+```json
+{"event":"sessions_page","sessions":[…],"next_cursor":"…","persistence":"local_resumable"}
+```
+
+### `session_operation`
+
+Every lifecycle mutation emits `started` then exactly one terminal receipt:
+`completed`, `rejected`, or `failed`. A client must wait for `completed` before
+changing its active transcript.
+
+```json
+{"event":"session_operation","request_id":"…","action":"open","status":"completed","session_id":"…","revision":4,"error_code":null}
+```
+
+### `session_snapshot`
+
+The active session metadata plus a bounded page of settled turns. It deliberately
+excludes working/goal checkpoints and raw runtime data.
+
+```json
+{"event":"session_snapshot","session":{…},"turns":[…],"next_turn_cursor":null}
+```
+
+### `session_turns_page`
+
+An older settled-turn page for the active session. `next_turn_cursor` is the
+exclusive sequence boundary for the next request.
+
+### `session_status`
+
+`{ "event":"session_status", "active_session_id":"…", "persistence":"ram_only|local_resumable", "revision":null|number, "busy":boolean }`.
+
+### `session_preferences`
+
+The effective repository preference. Persistence remains opt-in: RAM-only mode
+always reports `auto_open_last: false` and does not write a setting.
+
+```json
+{"event":"session_preferences","persistence":"local_resumable","auto_open_last":true,"last_active_session_id":"…"}
+```
 
 ### `engine_error`
 

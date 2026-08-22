@@ -122,6 +122,31 @@ class ActiveGoalStore:
             )
             self._persist()
 
+    def restore_checkpoint(self, payload: object) -> None:
+        """Restore engine-owned persisted goal state without invoking its writer."""
+        if not isinstance(payload, dict):
+            raise ValueError("goal checkpoint must be an object")
+        raw_goal = payload.get("goal")
+        raw_last_run = payload.get("last_run")
+        goal = GoalContract.from_checkpoint_dict(raw_goal) if raw_goal is not None else None
+        if raw_last_run is None:
+            last_run = None
+        elif isinstance(raw_last_run, dict):
+            try:
+                last_run = WorkflowRunCheckpoint(
+                    run_id=str(raw_last_run["run_id"]),
+                    goal_id=str(raw_last_run["goal_id"]),
+                    terminal_status=str(raw_last_run["terminal_status"]),
+                    updated_at=str(raw_last_run["updated_at"]),
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError("invalid goal last-run checkpoint") from exc
+        else:
+            raise ValueError("goal last-run checkpoint must be an object")
+        with self._lock:
+            self._goal = goal
+            self._last_run = last_run
+
     def _persist(self) -> None:
         with self._lock:
             if self._checkpoint_store is not None:

@@ -179,6 +179,21 @@ class SessionMemory:
         self._trimmed_failure_generation = None
         self._delete_checkpoint()
 
+    def restore_working_checkpoint(self, payload: object) -> None:
+        """Replace RAM working state from an engine-owned durable snapshot."""
+        restored = WorkingMemory.from_dict(payload, policy=self.working.policy)
+        if restored.snapshot.thread_id != self.working.thread_id:
+            raise ValueError("working checkpoint belongs to another session")
+        self.compaction.cancel()
+        self.working = restored
+        self.compaction = WorkingMemoryCompactionCoordinator(
+            self.working,
+            self._summary_worker,
+        )
+        self._pending_sequences = [
+            turn.sequence for turn in self.working.snapshot.turns if turn.status == "pending"
+        ]
+
     def render(self) -> str:
         self._poll_compaction()
         raw = self.working.render()

@@ -9,7 +9,7 @@ from typing import Any
 from .contracts import TerminalOutcome, TurnNode, TurnSource
 from .errors import DuplicateTerminalError
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 
 
 class EventType(StrEnum):

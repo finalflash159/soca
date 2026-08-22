@@ -14,9 +14,7 @@ from tests.fake_tools import ReadOnlyInspectTool
 
 def test_public_runtime_emits_serializable_protocol_v2_trajectory() -> None:
     runtime = AssistantRuntime(
-        tool_runtime=ToolRuntime(
-            [ReadOnlyInspectTool()]
-        ),
+        tool_runtime=ToolRuntime([ReadOnlyInspectTool()]),
         options=RuntimeOptions(turn_workflow="shadow"),
     )
 
@@ -26,14 +24,13 @@ def test_public_runtime_emits_serializable_protocol_v2_trajectory() -> None:
         source="voice",
     )
     wire_events = [
-        json.loads(json.dumps(workflow_event_to_protocol(event)))
-        for event in result.events
+        json.loads(json.dumps(workflow_event_to_protocol(event))) for event in result.events
     ]
     decoded = [workflow_event_from_protocol(event) for event in wire_events]
 
     assert result.terminal.status is TerminalStatus.ACHIEVED
     assert decoded == list(result.events)
-    assert all(event.protocol_version == 2 for event in decoded)
+    assert all(event.protocol_version == 3 for event in decoded)
     assert all(event.surface == "voice" for event in decoded)
     assert [event.sequence for event in decoded] == list(range(len(decoded)))
     assert sum(event.event is EventType.TURN_TERMINAL for event in decoded) == 1
