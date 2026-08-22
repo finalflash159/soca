@@ -86,6 +86,7 @@ Every command is an object with a `cmd` key. Unlisted keys are ignored.
 | `voice_profile_select` | profile selection                                               | `status`                                                  |
 | `knowledge_init`       | —                                                               | `knowledge_setup`, `status`                               |
 | `knowledge_index`      | —                                                               | `knowledge_setup` progress, `status`                      |
+| `citation_preview`     | `request_id`, `path`, `line_start`, `line_end`, `fingerprint`, `source` | `citation_preview`                                        |
 | `sessions_list`        | `cursor` (string, optional), `limit` (1–100, optional)          | `sessions_page`                                            |
 | `session_create`       | `request_id` (string)                                           | `session_operation`, `session_snapshot`                    |
 | `session_open`         | `request_id`, `session_id`                                      | `session_operation`, `session_snapshot`                    |
@@ -217,16 +218,39 @@ Known codes: `llm_settings_invalid`, `runtime_cleanup_failed`,
 reports through `chat` / `turn_terminal`; `engine_error` is an engine-level
 complaint.
 
+### `citation_preview`
+
+An engine-owned, bounded view of one structured knowledge citation. The client
+sends a vault-relative Markdown `path`, an inclusive line range of at most 120
+lines, and the persisted retrieval `fingerprint` when present. The WebView must
+not read arbitrary local paths itself.
+
+```json
+{"event":"citation_preview","request_id":"…","path":"wiki/plan.md","source":"knowledge",
+ "status":"current","title":"Kế hoạch","line_start":12,"line_end":18,
+ "passage":"…","fingerprint":"sha256…","error_code":null}
+```
+
+`status` is `current`, `changed`, `unverified`, `missing`, or `unavailable`.
+`current` means the source fingerprint matches the text used during retrieval;
+`changed` presents current text but must warn that it is not the original
+evidence. Older persisted citations without a fingerprint are `unverified`.
+`missing` and `unavailable` carry no passage and have a truthful `error_code`.
+Non-knowledge citations are `unavailable` with
+`citation_source_unavailable`; malformed commands return `engine_error`
+`citation_preview_invalid`.
+
 ### `status`
 
 ```json
-{"event":"status","profiles":[…],"knowledge_vault":…,"knowledge_index":…,
+{"event":"status","active_profile":"baseline","profiles":[…],"knowledge_vault":…,"knowledge_index":…,
  "runtime_components":[{"name":…,"status":…}]}
 ```
 
 `runtime_components` describes configured dependencies **without loading them** —
 readiness is inspected, not proven by instantiation. `knowledge_index` is `null`
 when no index exists (see [11 — index lifecycle](11-index-lifecycle.md)).
+`active_profile` is the profile that will handle the next voice turn.
 
 ### `context`
 
@@ -384,8 +408,10 @@ Discriminated by `type`:
 ```
 
 `text` has citation labels stripped (`answer_text_without_citation_labels`);
-the structured citations live in `citations[]`. A UI renders provenance from
-`citations`, never by parsing `[K1]` out of the answer.
+the structured citations live in `citations[]`. A knowledge citation includes
+its retrieval `fingerprint` when present; legacy data omits it. That lets a
+later preview distinguish current, changed and unverified evidence. A UI
+renders provenance from `citations`, never by parsing `[K1]` out of the answer.
 
 **`blocked: true` is not an error and must not be rendered as one.** Per
 [ADR 0003](adr/), a blocked result is a legitimate terminal outcome — the system

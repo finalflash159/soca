@@ -18,6 +18,10 @@ DEFAULT_EXCLUDE_FILES = ("index.md", "log.md")
 DEFAULT_INCLUDE_GLOBS = ("**/*.md",)
 
 
+class MarkdownVaultFileTooLargeError(ValueError):
+    """A direct document read exceeded the vault reader's safety limit."""
+
+
 def _validate_include_globs(patterns: tuple[str, ...]) -> None:
     for pattern in patterns:
         if not isinstance(pattern, str) or not pattern or "\\" in pattern:
@@ -129,6 +133,10 @@ class MarkdownVaultKnowledgeSource:
         file_path = self._resolve_relative_path(path)
         if not file_path.exists():
             raise FileNotFoundError(f"Document not found: {path}")
+        if file_path.stat().st_size > self.max_file_bytes:
+            raise MarkdownVaultFileTooLargeError(
+                f"Document exceeds the {self.max_file_bytes}-byte safety limit: {path}"
+            )
 
         text = file_path.read_text(encoding="utf-8")
         rel_path = file_path.relative_to(self.root).as_posix()

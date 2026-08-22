@@ -11,6 +11,7 @@ import {
   Settings,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { SessionList } from "@/components/SessionList";
@@ -70,8 +71,61 @@ export function Sidebar({
   onLoadMoreSessions,
   onOpenSessionSettings,
 }: SidebarProps) {
+  const rootRef = useRef<HTMLElement>(null);
+  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 760px)").matches);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 760px)");
+    const update = () => setCompact(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    if (!compact) return;
+    const root = rootRef.current;
+    if (root === null) return;
+    const focusable = () => Array.from(
+      root.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    const frame = window.requestAnimationFrame(() => focusable()[0]?.focus());
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCollapse();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const controls = focusable();
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (first === undefined || last === undefined) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    root.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      root.removeEventListener("keydown", onKeyDown);
+    };
+  }, [compact, onCollapse]);
+
   return (
-    <nav className="bg-sidebar border-sidebar-border flex w-64 shrink-0 flex-col border-r max-[760px]:fixed max-[760px]:inset-y-0 max-[760px]:left-0 max-[760px]:z-50 max-[760px]:shadow-xl">
+    <aside
+      ref={rootRef}
+      role={compact ? "dialog" : undefined}
+      aria-modal={compact || undefined}
+      aria-label={compact ? "Thanh điều hướng" : undefined}
+      className="bg-sidebar border-sidebar-border flex w-64 shrink-0 flex-col border-r max-[760px]:fixed max-[760px]:inset-y-0 max-[760px]:left-0 max-[760px]:z-50 max-[760px]:shadow-xl"
+    >
       <div className="flex items-center gap-1 px-3 pt-3">
         <Button
           size="sm"
@@ -99,36 +153,38 @@ export function Sidebar({
         </Button>
       </div>
 
-      <ul className="flex flex-col gap-0.5 px-3 pt-4">
-        {NAV.map((entry) => {
-          const active = page === entry.id;
-          return (
-            <li key={entry.id}>
-              <button
-                type="button"
-                aria-current={active ? "page" : undefined}
-                onClick={() => onNavigate(entry.id)}
-                className={cn(
-                  "flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm transition-colors",
-                  active
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                    : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
-                )}
-              >
-                <entry.icon className="size-[18px] shrink-0" />
-                <span className="truncate">{entry.label}</span>
-                {entry.id === "voice" && voiceRunning && (
-                  <span
-                    className="bg-primary ml-auto size-1.5 shrink-0 rounded-full"
-                    title="Mic đang mở"
-                    aria-label="Mic đang mở"
-                  />
-                )}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      <nav aria-label="Điều hướng chính">
+        <ul className="flex flex-col gap-0.5 px-3 pt-4">
+          {NAV.map((entry) => {
+            const active = page === entry.id;
+            return (
+              <li key={entry.id}>
+                <button
+                  type="button"
+                  aria-current={active ? "page" : undefined}
+                  onClick={() => onNavigate(entry.id)}
+                  className={cn(
+                    "flex h-9 w-full items-center gap-3 rounded-lg px-3 text-sm transition-colors",
+                    active
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                      : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
+                  )}
+                >
+                  <entry.icon className="size-[18px] shrink-0" />
+                  <span className="truncate">{entry.label}</span>
+                  {entry.id === "voice" && voiceRunning && (
+                    <span
+                      className="bg-primary ml-auto size-1.5 shrink-0 rounded-full"
+                      title="Mic đang mở"
+                      aria-label="Mic đang mở"
+                    />
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
 
       <SessionList
         history={sessions}
@@ -164,6 +220,6 @@ export function Sidebar({
           <RotateCcw className="size-3.5" />
         </Button>
       </div>
-    </nav>
+    </aside>
   );
 }

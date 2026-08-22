@@ -152,6 +152,7 @@ def test_command_set_is_pinned() -> None:
         "voice_profile_select",
         "knowledge_init",
         "knowledge_index",
+        "citation_preview",
         "sessions_list",
         "session_create",
         "session_open",

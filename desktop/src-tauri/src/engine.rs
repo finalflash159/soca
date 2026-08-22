@@ -331,7 +331,10 @@ pub fn engine_start(
 }
 
 #[tauri::command]
-pub fn engine_send(state: State<'_, EngineState>, command: serde_json::Value) -> Result<(), String> {
+pub fn engine_send(
+    state: State<'_, EngineState>,
+    command: serde_json::Value,
+) -> Result<(), String> {
     if !command.is_object() {
         return Err("command must be a JSON object".to_string());
     }
@@ -440,5 +443,50 @@ pub fn shutdown_on_exit(app: &AppHandle) {
     };
     if let Some(running) = running {
         let _ = shutdown(running);
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shutdown_sends_quit_waits_for_bye_and_reaps_the_child() {
+        let mut child = Command::new("sh")
+            .args(["-c", "IFS= read -r _; printf '{\"event\":\"bye\"}\\n'"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn fixture child");
+        let stdin = child.stdin.take().expect("fixture stdin");
+        let stdout = child.stdout.take().expect("fixture stdout");
+        let (bye_tx, bye_rx) = mpsc::channel();
+        let stopping = Arc::new(AtomicBool::new(false));
+        let reader = std::thread::spawn(move || {
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                if line.contains("\"event\":\"bye\"") {
+                    let _ = bye_tx.send(());
+                    break;
+                }
+            }
+        });
+
+        let result = shutdown(Running {
+            child,
+            stdin: Some(stdin),
+            bye_rx,
+            reader: Some(reader),
+            stderr: None,
+            stopping,
+        });
+
+        assert!(matches!(
+            result,
+            EngineStatus::Stopped {
+                code: Some(0),
+                graceful: true
+            }
+        ));
     }
 }

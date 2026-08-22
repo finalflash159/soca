@@ -3,14 +3,15 @@
 import type { OrbState } from "thinking-orbs";
 
 import { ChatView } from "@/components/ChatView";
-import type { ConversationState } from "@/engine/conversation";
-import type { VaultDocument } from "@/engine/documents";
+import type { Citation, ConversationState } from "@/engine/conversation";
+import type { CitationPreviewIndex } from "@/engine/citation-preview";
 import { orbLabel } from "@/engine/orb";
 
 interface VoiceTranscriptProps {
   /** Settled turns only — `VoiceMode` removes the one still running. */
   conversation: ConversationState;
-  documents: VaultDocument[];
+  citationPreviews: CitationPreviewIndex;
+  onRequestCitationPreview: (citation: Citation) => Promise<boolean>;
   orbState: OrbState;
   onLoadOlder: () => void;
   canLoadOlder: boolean;
@@ -18,7 +19,8 @@ interface VoiceTranscriptProps {
 
 export function VoiceTranscript({
   conversation,
-  documents,
+  citationPreviews,
+  onRequestCitationPreview,
   orbState,
   onLoadOlder,
   canLoadOlder,
@@ -37,7 +39,8 @@ export function VoiceTranscript({
       <div className="from-background pointer-events-none absolute inset-x-0 top-0 z-10 h-10 bg-gradient-to-b to-transparent" />
       <ChatView
         conversation={conversation}
-        documents={documents}
+        citationPreviews={citationPreviews}
+        onRequestCitationPreview={onRequestCitationPreview}
         orbState={orbState}
         orbLabel={orbLabel(orbState)}
         onLoadOlder={onLoadOlder}

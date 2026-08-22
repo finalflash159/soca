@@ -1,86 +1,135 @@
-/**
- * A citation you can check without leaving the answer.
- *
- * §5.6.4 — Open WebUI's hover preview, applied where it matters most here:
- * groundedness is the top open blocker, and people only verify a citation when
- * verifying costs one hover instead of one navigation.
- *
- * The preview shows what the engine actually sent: path, title, line range, and
- * the retrieval backends and score that produced it. **It does not show the
- * passage text** — `citation_records` carries no snippet, and inventing one
- * would defeat the point of the affordance.
- *
- * Note the API: shadcn's `hover-card` is Base UI's `PreviewCard`, not Radix. It
- * has no `asChild`; the trigger takes a `render` element instead, and the open
- * delays are the primitive's defaults.
- */
+/** A keyboard-accessible, engine-verified view of one grounded source. */
 
+import { FileWarning, LoaderCircle, ShieldCheck, TriangleAlert } from "lucide-react";
+
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { Button } from "@/components/ui/button";
 import type { Citation } from "@/engine/conversation";
-import type { VaultDocument } from "@/engine/documents";
-import { documentFor } from "@/engine/documents";
+import { citationKey, type CitationPreviewState } from "@/engine/citation-preview";
 
 interface CitationChipProps {
   citation: Citation;
-  documents: VaultDocument[];
+  previews: Record<string, CitationPreviewState>;
+  onRequestPreview: (citation: Citation) => Promise<boolean>;
 }
 
-export function CitationChip({ citation, documents }: CitationChipProps) {
-  const label = String(citation.label ?? "?");
-  const path = typeof citation.path === "string" ? citation.path : "";
-  const title = typeof citation.title === "string" ? citation.title : null;
-  const start = typeof citation.line_start === "number" ? citation.line_start : null;
-  const end = typeof citation.line_end === "number" ? citation.line_end : null;
-  const document = documentFor(documents, citation);
+function string(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function lines(start: number | null, end: number | null): string | null {
+  return start !== null && end !== null ? `dòng ${start}–${end}` : null;
+}
+
+function PreviewStatus({ preview }: { preview: CitationPreviewState }) {
+  if (preview.status === "loading") {
+    return (
+      <p className="text-muted-foreground flex items-center gap-2 text-sm" role="status">
+        <LoaderCircle className="size-4 animate-spin" aria-hidden /> Đang kiểm tra nguồn…
+      </p>
+    );
+  }
+  if (preview.status === "current") {
+    return (
+      <p className="text-muted-foreground flex items-center gap-2 text-sm" role="status">
+        <ShieldCheck className="text-chart-3 size-4" aria-hidden /> Nguồn hiện tại khớp với phiên bản đã dùng.
+      </p>
+    );
+  }
+  if (preview.status === "changed") {
+    return (
+      <p className="border-chart-4/40 bg-chart-4/10 flex items-start gap-2 rounded-lg border p-2.5 text-sm" role="alert">
+        <TriangleAlert className="text-chart-4 mt-0.5 size-4 shrink-0" aria-hidden />
+        Nguồn đã thay đổi kể từ lượt trả lời. Đoạn bên dưới là bản hiện tại, không phải bằng chứng nguyên gốc.
+      </p>
+    );
+  }
+  if (preview.status === "unverified") {
+    return (
+      <p className="border-border bg-muted/50 rounded-lg border p-2.5 text-sm" role="status">
+        Phiên cũ không lưu fingerprint nguồn; chỉ có thể xem bản hiện tại.
+      </p>
+    );
+  }
+  return (
+    <p className="border-destructive/40 bg-destructive/5 flex items-start gap-2 rounded-lg border p-2.5 text-sm" role="alert">
+      <FileWarning className="text-destructive mt-0.5 size-4 shrink-0" aria-hidden />
+      {preview.status === "missing"
+        ? "Không còn tìm thấy tệp nguồn trong knowledge vault."
+        : "Không thể đọc nguồn này trong knowledge vault hiện tại."}
+      {preview.errorCode !== null && <span className="sr-only"> Mã lỗi: {preview.errorCode}.</span>}
+    </p>
+  );
+}
+
+export function CitationChip({ citation, previews, onRequestPreview }: CitationChipProps) {
+  const label = string(citation.label) ?? "?";
+  const path = string(citation.path) ?? "Không rõ đường dẫn";
+  const title = string(citation.title) ?? path;
+  const fallbackStart = typeof citation.line_start === "number" ? citation.line_start : null;
+  const fallbackEnd = typeof citation.line_end === "number" ? citation.line_end : null;
+  const preview = previews[citationKey(citation)] ?? {
+    requestId: null,
+    status: "idle" as const,
+    title: null,
+    lineStart: fallbackStart,
+    lineEnd: fallbackEnd,
+    passage: null,
+    errorCode: null,
+  };
+  const range = lines(preview.lineStart ?? fallbackStart, preview.lineEnd ?? fallbackEnd);
 
   return (
-    <HoverCard>
-      <HoverCardTrigger
+    <Dialog onOpenChange={(open) => open && void onRequestPreview(citation)}>
+      <DialogTrigger
         render={
-          <Badge
+          <Button
+            type="button"
+            size="xs"
             variant="outline"
-            className="hover:border-primary/60 hover:text-primary cursor-default font-mono text-[10px] transition-colors"
+            className="h-6 rounded-md px-1.5 font-mono text-[10px]"
+            aria-label={`Kiểm tra nguồn ${label}: ${title}`}
           >
             {label}
-          </Badge>
+          </Button>
         }
       />
-      <HoverCardContent align="start" className="w-80">
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-medium">{title ?? "Untitled"}</span>
-            <span className="text-muted-foreground font-mono text-[10px] break-all">{path}</span>
-          </div>
+      <DialogContent showCloseButton={false} className="max-h-[min(42rem,calc(100vh-2rem))] max-w-xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{preview.title ?? title}</DialogTitle>
+          <DialogDescription className="font-mono text-xs break-all">{path}</DialogDescription>
+        </DialogHeader>
 
-          <div className="text-muted-foreground flex flex-wrap gap-2 text-[10px]">
-            {start !== null && end !== null && (
-              <span>
-                lines {start}–{end}
-              </span>
-            )}
-            {typeof citation.source === "string" && <span>{citation.source}</span>}
-            {document !== null && document.score > 0 && (
-              <span>score {document.score.toFixed(3)}</span>
-            )}
-          </div>
-
-          {document !== null && document.backends.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {document.backends.map((backend) => (
-                <Badge key={backend} variant="secondary" className="text-[10px]">
-                  {backend}
-                </Badge>
-              ))}
-            </div>
+        <div className="flex flex-col gap-3">
+          {range !== null && <Badge variant="secondary" className="w-fit text-xs">{range}</Badge>}
+          {preview.status !== "idle" && <PreviewStatus preview={preview} />}
+          {preview.status === "idle" && (
+            <p className="text-muted-foreground text-sm" role="status">Đang chuẩn bị kiểm tra nguồn…</p>
           )}
-
-          <p className="text-muted-foreground border-border/60 border-t pt-2 text-[10px] leading-relaxed">
-            The engine sends the location of the evidence, not its text. Open the file to read the
-            passage.
-          </p>
+          {preview.passage !== null && (
+            <pre className="border-border bg-muted/40 max-h-72 overflow-auto rounded-lg border p-3 font-sans text-sm leading-6 whitespace-pre-wrap">
+              {preview.passage}
+            </pre>
+          )}
         </div>
-      </HoverCardContent>
-    </HoverCard>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => void onRequestPreview(citation)}>
+            Kiểm tra lại
+          </Button>
+          <DialogClose render={<Button type="button" />}>Đóng</DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

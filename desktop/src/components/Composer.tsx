@@ -1,6 +1,6 @@
 /** Chat composer with command and in-session document affordances. */
 
-import { ArrowUp, ChevronDown, Mic, Paperclip } from "lucide-react";
+import { ArrowUp, AtSign, ChevronDown, Mic } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,7 @@ export function Composer({
 }: ComposerProps) {
   const [draft, setDraft] = useState("");
   const [caret, setCaret] = useState(0);
+  const [paletteDismissed, setPaletteDismissed] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const slash = slashQuery(draft);
@@ -54,7 +55,7 @@ export function Composer({
       : documents
           .filter((document) => document.path.toLowerCase().includes(mention.query.toLowerCase()))
           .slice(0, 8);
-  const paletteOpen = commands.length > 0 || mention !== null;
+  const paletteOpen = !paletteDismissed && (commands.length > 0 || mention !== null);
 
   const submit = () => {
     const text = draft.trim();
@@ -88,6 +89,7 @@ export function Composer({
                         onCommand(command);
                         setDraft("");
                         setCaret(0);
+                        setPaletteDismissed(false);
                       }}
                     >
                       <span className="font-mono text-xs">{command.label}</span>
@@ -112,6 +114,7 @@ export function Composer({
                           const next = applyMention(draft, caret, document.path);
                           setDraft(next.text);
                           setCaret(next.caret);
+                          setPaletteDismissed(false);
                           inputRef.current?.focus();
                         }}
                       >
@@ -152,6 +155,7 @@ export function Composer({
           onChange={(event) => {
             setDraft(event.target.value);
             setCaret(event.target.selectionStart ?? event.target.value.length);
+            setPaletteDismissed(false);
           }}
           onKeyUp={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
           onClick={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
@@ -163,7 +167,10 @@ export function Composer({
               submit();
             }
             if (event.key === "Escape") {
-              setDraft("");
+              if (paletteOpen) {
+                event.preventDefault();
+                setPaletteDismissed(true);
+              }
             }
           }}
         />
@@ -196,15 +203,15 @@ export function Composer({
               size="sm"
               variant="ghost"
               className="text-muted-foreground hover:text-foreground size-8 rounded-lg p-0"
-              title="Tài liệu — hoặc gõ @"
-              aria-label="Chèn tài liệu"
+              title="Nhắc tài liệu phiên này đã thấy — hoặc gõ @"
+              aria-label="Nhắc tài liệu phiên này đã thấy"
               disabled={!connected}
               onClick={() => {
                 setDraft((current) => `${current}@`);
                 inputRef.current?.focus();
               }}
             >
-              <Paperclip className="size-4" />
+              <AtSign className="size-4" />
             </Button>
             {/* Goes to voice mode rather than toggling capture in place. This
                 app has no dictation-into-the-box: a hot microphone with no

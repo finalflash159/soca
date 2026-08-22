@@ -137,13 +137,13 @@ export interface SlashCommand {
 }
 
 export const SLASH_COMMANDS: SlashCommand[] = [
-  { id: "status", label: "/status", hint: "Runtime components and profiles" },
-  { id: "context", label: "/context", hint: "Prompt budget manifest" },
-  { id: "memory", label: "/memory", hint: "Working and archive memory" },
-  { id: "memory_compact", label: "/compact", hint: "Compact working memory" },
-  { id: "usage", label: "/usage", hint: "Session token usage" },
-  { id: "knowledge_index", label: "/index", hint: "Rebuild the knowledge index" },
-  { id: "llm_config", label: "/config", hint: "Active LLM configuration" },
+  { id: "status", label: "/status", hint: "Thành phần runtime và profile" },
+  { id: "context", label: "/context", hint: "Bản kê ngân sách prompt" },
+  { id: "memory", label: "/memory", hint: "Bộ nhớ làm việc và lưu trữ" },
+  { id: "memory_compact", label: "/compact", hint: "Nén bộ nhớ làm việc" },
+  { id: "usage", label: "/usage", hint: "Mức dùng token của phiên" },
+  { id: "knowledge_index", label: "/index", hint: "Lập lại chỉ mục kiến thức" },
+  { id: "llm_config", label: "/config", hint: "Cấu hình LLM đang dùng" },
 ];
 
 /** Active `/` token, only when it starts the draft. */

@@ -20,6 +20,7 @@ from soca.asr.selection import ASRSelection
 from soca.core import ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
 from soca.core.turn import RuntimeResult, RuntimeRoute, RuntimeStreamEvent, RuntimeTrace
 from soca.knowledge import KnowledgeCitation
+from soca.knowledge.citation_preview import citation_fingerprint
 from soca.memory import SessionRepository
 
 
@@ -212,6 +213,99 @@ def test_engine_hello_then_quit_emits_bye() -> None:
     assert events[0]["version"] == 3
     assert events[0]["supported_versions"] == [3]
     assert events[-1]["event"] == "bye"
+
+
+def test_engine_citation_preview_returns_current_passage_and_missing_receipt(tmp_path) -> None:
+    vault = tmp_path / "vault"
+    (vault / "wiki").mkdir(parents=True)
+    text = "# Kế hoạch\nMục tiêu\nBước một\n"
+    (vault / "wiki" / "plan.md").write_text(text, encoding="utf-8")
+    capture = ProtocolCapture()
+
+    def stdin():
+        yield json.dumps(
+            {
+                "cmd": "citation_preview",
+                "request_id": "current",
+                "path": "wiki/plan.md",
+                "line_start": 2,
+                "line_end": 3,
+                "fingerprint": citation_fingerprint(text),
+            }
+        ) + "\n"
+        yield json.dumps(
+            {
+                "cmd": "citation_preview",
+                "request_id": "missing",
+                "path": "wiki/missing.md",
+                "line_start": 1,
+                "line_end": 1,
+            }
+        ) + "\n"
+        yield json.dumps(
+            {
+                "cmd": "citation_preview",
+                "request_id": "memory",
+                "path": "memory/core.md",
+                "line_start": 1,
+                "line_end": 1,
+                "source": "memory",
+            }
+        ) + "\n"
+        yield '{"cmd": "quit"}\n'
+
+    code = run_engine(
+        voice_config=None,
+        text_config=dataclasses.replace(make_text_config(), vault=vault),
+        profile="baseline",
+        no_model=True,
+        stdin=stdin(),
+        stdout=capture,
+    )
+
+    assert code == 0
+    previews = [event for event in capture.events() if event["event"] == "citation_preview"]
+    assert previews == [
+        {
+            "event": "citation_preview",
+            "request_id": "current",
+            "path": "wiki/plan.md",
+            "source": "knowledge",
+            "status": "current",
+            "title": "Kế hoạch",
+            "line_start": 2,
+            "line_end": 3,
+            "passage": "Mục tiêu\nBước một",
+            "fingerprint": citation_fingerprint(text),
+            "error_code": None,
+        },
+        {
+            "event": "citation_preview",
+            "request_id": "missing",
+            "path": "wiki/missing.md",
+            "source": "knowledge",
+            "status": "missing",
+            "title": None,
+            "line_start": 1,
+            "line_end": 1,
+            "passage": None,
+            "fingerprint": None,
+            "error_code": "source_missing",
+        },
+        {
+            "event": "citation_preview",
+            "request_id": "memory",
+            "path": "memory/core.md",
+            "source": "memory",
+            "status": "unavailable",
+            "title": None,
+            "line_start": 1,
+            "line_end": 1,
+            "passage": None,
+            "fingerprint": None,
+            "error_code": "citation_source_unavailable",
+        },
+    ]
 
 
 def test_ram_only_session_commands_are_receipted_without_writing_a_history() -> None:
@@ -706,10 +800,10 @@ def test_engine_emits_clean_answer_and_structured_sources() -> None:
             "label": "K1",
             "path": "wiki/learning/attention.md",
             "title": "Attention",
-            "line_start": 12,
-            "line_end": 18,
-            "source": "knowledge",
-        }
+                "line_start": 12,
+                "line_end": 18,
+                "source": "knowledge",
+            }
     ]
 
 

@@ -186,6 +186,21 @@ describe("config", () => {
   });
 });
 
+describe("voice profiles", () => {
+  it("marks the profile confirmed by the engine as the effective profile", () => {
+    const state = fold([
+      {
+        event: "status",
+        active_profile: "quiet",
+        profiles: [{ key: "quiet", status: "ok", asr: "a", tts: "t", voice: "v" }],
+      } as EngineFrame,
+    ]);
+
+    expect(state.activeProfile).toBe("quiet");
+    expect(state.profiles[0].key).toBe("quiet");
+  });
+});
+
 describe("runtime profiles", () => {
   it("reads them from the status frame", () => {
     const state = fold([

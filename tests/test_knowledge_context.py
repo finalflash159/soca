@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from soca.knowledge.base import KnowledgeDocument, KnowledgeHit
 from soca.knowledge.catalog import CatalogIndexSnapshot, KnowledgeCatalog
+from soca.knowledge.citation_preview import citation_fingerprint
 from soca.knowledge.context import KnowledgeContextBuilder
 from soca.knowledge.hybrid_source import DenseUnavailableError, RetrievalDiagnostics
 from soca.knowledge.indexing.scanner import scan_vault
@@ -69,6 +70,9 @@ def test_builds_prompt_context_with_warning_and_citations():
     assert "Bữa sáng nên có đạm" in context.prompt_text
     assert context.citations[0].path == "wiki/dinh-duong/goi-y-bua-an.md"
     assert context.citations[0].title == "Gợi Ý Bữa Ăn Lành Mạnh"
+    assert context.citations[0].fingerprint == citation_fingerprint(
+        "Bữa sáng nên có đạm, chất xơ và tinh bột vừa phải."
+    )
 
 
 def test_enforces_hit_limit():

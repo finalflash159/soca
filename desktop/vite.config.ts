@@ -24,6 +24,47 @@ export default defineConfig(async ({ command }) => ({
     ),
   },
 
+  build: {
+    // The transcript renderer pulls Markdown, syntax and math support. Keep
+    // those independently cacheable so opening voice or chat does not make the
+    // app shell cross a single opaque bundle budget.
+    chunkSizeWarningLimit: 500,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("/katex/")) return "math-typesetting";
+          if (
+            id.includes("/rehype-highlight/") ||
+            id.includes("/lowlight/") ||
+            id.includes("/highlight.js/")
+          ) {
+            return "syntax-highlighting";
+          }
+          if (
+            [
+              "/react-markdown/",
+              "/remark-gfm/",
+              "/remark-math/",
+              "/rehype-katex/",
+              "/unified/",
+              "/remark-parse/",
+              "/remark-rehype/",
+              "/mdast-",
+              "/micromark",
+              "/hast-",
+              "/vfile/",
+              "/property-information/",
+            ].some((segment) => id.includes(segment))
+          ) {
+            return "markdown-rendering";
+          }
+          return undefined;
+        },
+      },
+    },
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

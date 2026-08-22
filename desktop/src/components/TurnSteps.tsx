@@ -34,6 +34,7 @@ export function TurnSteps({ steps, running }: { steps: string[]; running: boolea
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
+        aria-label={`${steps.length} bước xử lý; ${open ? "đóng" : "mở"} chi tiết`}
         className="border-border bg-card text-muted-foreground hover:text-foreground flex w-fit items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors"
       >
         <ListChecks className="size-3.5" />

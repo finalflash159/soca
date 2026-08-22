@@ -112,6 +112,11 @@ def citation_records(
             "line_start": citation.line_start,
             "line_end": citation.line_end,
             "source": citation.source,
+            **(
+                {"fingerprint": citation.fingerprint}
+                if citation.fingerprint is not None
+                else {}
+            ),
         }
         for label, citation in zip(
             expected_citation_labels(citations),

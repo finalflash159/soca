@@ -70,6 +70,7 @@ export interface SettingsState {
   keyStatus: Record<string, KeyStatus>;
   config: LlmConfig | null;
   profiles: RuntimeProfile[];
+  activeProfile: string | null;
 }
 
 export const initialSettings: SettingsState = {
@@ -80,6 +81,7 @@ export const initialSettings: SettingsState = {
   keyStatus: {},
   config: null,
   profiles: [],
+  activeProfile: null,
 };
 
 function str(value: unknown, fallback = ""): string {
@@ -165,6 +167,7 @@ export function reduceSettings(state: SettingsState, frame: EngineFrame): Settin
       const raw = Array.isArray(frame.profiles) ? frame.profiles : [];
       return {
         ...state,
+        activeProfile: typeof frame.active_profile === "string" ? frame.active_profile : state.activeProfile,
         profiles: raw.map((item) => {
           const profile = item as Record<string, unknown>;
           return {
