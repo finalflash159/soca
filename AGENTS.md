@@ -48,18 +48,16 @@ Every phase or large feature must follow this workflow:
    `fix:`, `test:`, `docs:`, `refactor:`, or `bench:`.
 5. Run the relevant lint, typecheck, unit, integration, and real-flow gates.
 6. Push the branch and open a pull request into `main`.
-7. Wait for exactly **one complete Qodo review**. A PR summary or “Qodo is busy”
-   is not a review; wait for the detailed review body and inline findings.
-8. Read every review and inline comment, verify each finding, fix valid
-   findings, add regression coverage, commit, and push.
-9. Do not wait for a second Qodo review after pushing review fixes. Wait only
-   for required CI to pass, then merge the PR.
+7. Do not request, wait for, or treat a Qodo review as a merge gate.
+8. Read and verify any human or CI findings that arrive; fix valid findings,
+   add regression coverage when appropriate, commit, and push.
+9. When every required CI/GitHub Actions check is green, merge the PR into
+   `main`. A pending, skipped, failed, or missing required check is not green.
 10. Run `git switch main` and `git pull --ff-only`, and confirm a clean working
     tree before starting the next phase from the updated `main`.
 
 Documentation-only pull requests that change project or agent execution rules
-are exempt from the Qodo wait. After a local diff check, merge and close them
-without waiting for an automated review.
+follow the same CI-green merge rule and require no Qodo review.
 
 Use capability or subsystem names in commit subjects, code identifiers,
 configuration values, comments, documentation headings, documentation prose,
