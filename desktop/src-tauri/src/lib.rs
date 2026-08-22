@@ -4,17 +4,25 @@ use tauri::{Manager, RunEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(engine::EngineState::default())
         .invoke_handler(tauri::generate_handler![
             engine::engine_start,
             engine::engine_send,
             engine::engine_stop,
             engine::engine_is_running,
-        ])
+        ]);
+
+    // Unsigned package proofs deliberately have no updater public key or
+    // endpoint. Registering the plugin there makes Tauri deserialize a null
+    // config and panic before the first window. The signed release workflow
+    // compiles this feature only after generating its key-bearing config.
+    #[cfg(feature = "release-updater")]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+
+    builder
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {

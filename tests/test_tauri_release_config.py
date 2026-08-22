@@ -44,3 +44,11 @@ def test_release_config_uses_signed_github_updates_and_platform_signing() -> Non
     assert macos["plugins"]["updater"]["endpoints"] == [module.UPDATE_ENDPOINT]
     assert windows["bundle"]["windows"]["certificateThumbprint"] == "ABCD"
     assert windows["plugins"]["updater"]["windows"] == {"installMode": "passive"}
+
+
+def test_signed_release_workflow_enables_the_keyed_updater_feature() -> None:
+    workflow = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "desktop-release.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "args: --config .tauri.release.json --features release-updater" in workflow

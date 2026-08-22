@@ -110,7 +110,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: desktop
-          args: --config .tauri.release.json
+          args: --config .tauri.release.json --features release-updater
           tagName: app-v__VERSION__
           releaseName: SoCa v__VERSION__
           releaseBody: See RELEASE_NOTES.md in the source release for privacy, retention, install, and rollback information.

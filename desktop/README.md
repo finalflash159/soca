@@ -147,10 +147,11 @@ no hidden dependency on PATH or a checkout. The build also explicitly collects
 them a freeze can build yet fail before the protocol `hello` frame. The exact
 package size is a release artifact, not a stable claim in this repository.
 
-The Settings page contains a signed-updater surface. It can show that a build
-is not configured for updates rather than implying a successful check. The
-keys, platform certificates, notarization credentials, and CI release evidence
-remain external release gates; read
+The Settings page contains a signed-updater surface. Only signed release builds
+register the updater plugin; package proofs report that update checking is
+unavailable rather than booting with a dummy key or crashing. The keys,
+platform certificates, notarization credentials, and CI release evidence remain
+external release gates; read
 [`docs/19-desktop-packaging.md`](../docs/19-desktop-packaging.md) and
 [`RELEASE_NOTES.md`](../RELEASE_NOTES.md) before publishing.
 

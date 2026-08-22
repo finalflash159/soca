@@ -17,10 +17,18 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+default = []
+# The updater needs a real signing public key and endpoint. Only the release
+# workflow supplies both, so package proofs must not register it with null config.
+release-updater = []
+
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2.3.1"
+# Kept linked in every build so Tauri can generate and validate the updater
+# capability. Runtime registration remains behind `release-updater` above.
 tauri-plugin-updater = "2.10.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
