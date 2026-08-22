@@ -1,10 +1,4 @@
-/**
- * React binding for the Rust sidecar manager in `src-tauri/src/engine.rs`.
- *
- * Deliberately thin. Per `docs/18-engine-protocol.md` §7 obligation 6, routing,
- * evidence and memory-mode decisions belong to the engine — this hook keeps
- * transport state and the derived orb activity, and nothing else.
- */
+/** React transport binding for the Rust sidecar manager. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -20,6 +14,11 @@ import type { EngineCommand, EngineFrame, HelloFrame, StatusFrame } from "./prot
 import { helloIsCompatible, PROTOCOL_VERSION } from "./protocol";
 import type { SessionState } from "./session";
 import { initialSession, reduceSession } from "./session";
+import type { SessionHistoryState } from "./session-history";
+import {
+  initialSessionHistory,
+  reduceSessionHistory,
+} from "./session-history";
 import type { SettingsState } from "./settings";
 import { initialSettings, reduceSettings } from "./settings";
 import type { VoiceState } from "./voice";
@@ -60,6 +59,7 @@ export interface EngineSnapshot {
   knowledge: KnowledgeState;
   settings: SettingsState;
   session: SessionState;
+  sessionHistory: SessionHistoryState;
   /** Most recent frames, newest last. */
   log: EngineFrame[];
   errors: string[];
@@ -78,6 +78,7 @@ export function useEngine() {
   const [knowledge, setKnowledge] = useState<KnowledgeState>(initialKnowledge);
   const [settings, setSettings] = useState<SettingsState>(initialSettings);
   const [session, setSession] = useState<SessionState>(initialSession);
+  const [sessionHistory, setSessionHistory] = useState<SessionHistoryState>(initialSessionHistory);
   const [log, setLog] = useState<EngineFrame[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   // `listen()` resolves asynchronously. Starting the engine before both
@@ -124,6 +125,7 @@ export function useEngine() {
       setKnowledge((previous) => reduceKnowledge(previous, frame));
       setSettings((previous) => reduceSettings(previous, frame));
       setSession((previous) => reduceSession(previous, frame));
+      setSessionHistory((previous) => reduceSessionHistory(previous, frame));
 
       if (frame.event === "hello") {
         const helloFrame = frame as HelloFrame;
@@ -175,7 +177,7 @@ export function useEngine() {
     };
   }, []);
 
-  const start = useCallback(async (options?: LaunchOptions) => {
+  const start = useCallback(async (options?: LaunchOptions): Promise<boolean> => {
     setErrors([]);
     setLog([]);
     setHello(null);
@@ -187,32 +189,80 @@ export function useEngine() {
     setKnowledge(initialKnowledge);
     setSettings(initialSettings);
     setSession(initialSession);
+    setSessionHistory(initialSessionHistory);
     try {
       await invoke("engine_start", { options: options ?? null });
       // The Running status also arrives as an event, but a resolved invoke is
       // proof enough that the child spawned. Do not depend on event ordering
       // for the one piece of state that gates the whole interface.
       setStatus((previous) => (previous.state === "running" ? previous : { state: "running" }));
+      return true;
     } catch (error) {
       setStatus({ state: "failed", message: String(error) });
+      return false;
     }
   }, []);
 
-  const stop = useCallback(async () => {
+  const stop = useCallback(async (): Promise<boolean> => {
     try {
       await invoke("engine_stop");
+      return true;
     } catch (error) {
       setErrors((previous) => [...previous, String(error)]);
+      return false;
     }
   }, []);
 
   const send = useCallback(async (command: EngineCommand) => {
+    if (command.cmd !== "quit" && (hello === null || versionMismatch !== null)) {
+      setErrors((previous) => [
+        ...previous,
+        versionMismatch ?? "Engine chưa xác nhận protocol tương thích.",
+      ]);
+      return false;
+    }
     try {
       await invoke("engine_send", { command });
+      return true;
     } catch (error) {
       setErrors((previous) => [...previous, String(error)]);
+      return false;
     }
-  }, []);
+  }, [hello, versionMismatch]);
+
+  const requestSessions = useCallback(
+    async (cursor?: string) => {
+      setSessionHistory((previous) =>
+        reduceSessionHistory(previous, { type: "sessions_list_requested", append: cursor !== undefined }),
+      );
+      const sent = await send({ cmd: "sessions_list", ...(cursor === undefined ? {} : { cursor }) });
+      if (!sent) {
+        setSessionHistory((previous) =>
+          reduceSessionHistory(previous, {
+            type: "sessions_list_failed",
+            message: "Không thể tải danh sách phiên đã lưu.",
+          }),
+        );
+      }
+    },
+    [send],
+  );
+
+  const requestOlderTurns = useCallback(async () => {
+    const cursor = conversation.nextTurnCursor;
+    if (cursor === null || conversation.turnPageLoadState === "loading") return false;
+    setConversation((previous) => reduceConversation(previous, { type: "turns_page_requested" }));
+    const sent = await send({ cmd: "session_turns", before_sequence: cursor });
+    if (!sent) {
+      setConversation((previous) =>
+        reduceConversation(previous, {
+          type: "turns_page_failed",
+          message: "Không thể tải lượt cũ hơn. Hãy thử lại.",
+        }),
+      );
+    }
+    return sent;
+  }, [conversation.nextTurnCursor, conversation.turnPageLoadState, send]);
 
   const orbState = useMemo(() => orbStateFor(activity), [activity]);
 
@@ -228,9 +278,10 @@ export function useEngine() {
     knowledge,
     settings,
     session,
+    sessionHistory,
     log,
     errors,
   };
 
-  return { ...snapshot, orbState, start, stop, send };
+  return { ...snapshot, orbState, start, stop, send, requestSessions, requestOlderTurns };
 }

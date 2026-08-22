@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { initialConversation, reduceConversation, turnStatus, turnText } from "./conversation";
+import { hydrateConversation, initialConversation, reduceConversation, turnStatus, turnText } from "./conversation";
 import type { EngineFrame } from "./protocol";
 import { PROTOCOL_VERSION } from "./protocol";
 
@@ -228,6 +228,143 @@ describe("multiple turns", () => {
 
   it("drops a delta that belongs to no known turn", () => {
     expect(fold([delta("orphan")]).turns).toHaveLength(0);
+  });
+});
+
+describe("durable session hydration", () => {
+  const sessionId = "11111111-1111-4111-8111-111111111111";
+  const snapshot = {
+    event: "session_snapshot",
+    session: {
+      session_id: sessionId,
+      title: "Phiên khôi phục",
+      revision: 3,
+    },
+    turns: [
+      {
+        session_id: sessionId,
+        turn_id: "turn-1",
+        sequence: 1,
+        surface: "voice",
+        user_text: "mở lại giúp tôi",
+        assistant_text: "Đây là câu trả lời đã lưu.",
+        repair_text: null,
+        status: "complete",
+        terminal_status: "achieved",
+        blocked: false,
+        route: "retrieval",
+        citations: [{ label: "K1" }],
+      },
+      {
+        session_id: sessionId,
+        turn_id: "turn-2",
+        sequence: 2,
+        surface: "chat",
+        user_text: "câu cuối",
+        assistant_text: "",
+        repair_text: null,
+        status: "interrupted",
+        terminal_status: "system_failure",
+        blocked: false,
+        route: null,
+        citations: [],
+      },
+    ],
+    next_turn_cursor: null,
+  };
+
+  it("replaces the display with stored final chat and voice turns without replaying stream effects", () => {
+    const state = reduceConversation(initialConversation, snapshot as EngineFrame);
+    expect(state.activeSessionId).toBe(sessionId);
+    expect(state.turns).toHaveLength(2);
+    expect(state.turns[0]).toMatchObject({
+      sessionId,
+      turnId: "turn-1",
+      surface: "voice",
+      finalText: "Đây là câu trả lời đã lưu.",
+    });
+    expect(state.turns[1].interrupted).toBe(true);
+    expect(state.reassemblyMismatch).toBe(false);
+  });
+
+  it("drops a delayed durable frame from the prior session", () => {
+    const hydrated = reduceConversation(initialConversation, snapshot as EngineFrame);
+    const delayed = {
+      ...start("không được hiện"),
+      session_id: "22222222-2222-4222-8222-222222222222",
+    } as EngineFrame;
+    const state = reduceConversation(hydrated, delayed);
+    expect(state.turns).toHaveLength(2);
+    expect(state.droppedSessionFrames).toBe(1);
+  });
+
+  it("merges an older page without duplicating its existing turn", () => {
+    const hydrated = reduceConversation(
+      initialConversation,
+      { ...snapshot, next_turn_cursor: 0 } as EngineFrame,
+    );
+    const loading = reduceConversation(hydrated, { type: "turns_page_requested" });
+    expect(loading.turnPageLoadState).toBe("loading");
+    const olderPage = {
+      ...snapshot,
+      event: "session_turns_page",
+      turns: [
+        snapshot.turns[0],
+        {
+          session_id: sessionId,
+          turn_id: "turn-0",
+          sequence: 0,
+          surface: "chat",
+          user_text: "câu cũ",
+          assistant_text: "đã lưu",
+          repair_text: null,
+          status: "complete",
+          terminal_status: "achieved",
+          blocked: false,
+          route: null,
+          citations: [],
+        },
+      ],
+      next_turn_cursor: null,
+    } as EngineFrame;
+    const state = reduceConversation(loading, olderPage);
+    expect(state.turns.map((turn) => turn.turnId)).toEqual(["turn-0", "turn-1", "turn-2"]);
+    expect(state.nextTurnCursor).toBeNull();
+    expect(state.turnPageLoadState).toBe("idle");
+  });
+
+  it("keeps the current transcript when the older-page request itself fails", () => {
+    const hydrated = reduceConversation(
+      initialConversation,
+      { ...snapshot, next_turn_cursor: 0 } as EngineFrame,
+    );
+    const state = reduceConversation(hydrated, {
+      type: "turns_page_failed",
+      message: "Không thể tải lượt cũ hơn. Hãy thử lại.",
+    });
+
+    expect(state.turns).toEqual(hydrated.turns);
+    expect(state.turnPageLoadState).toBe("error");
+    expect(state.turnPageError).toContain("thử lại");
+  });
+
+  it("rejects malformed snapshot data rather than inventing a transcript", () => {
+    expect(
+      hydrateConversation({ event: "session_snapshot", session: {}, turns: [], next_turn_cursor: null }),
+    ).toBeNull();
+  });
+
+  it("keeps the previous transcript when one restored turn is malformed", () => {
+    const hydrated = reduceConversation(initialConversation, snapshot as EngineFrame);
+    const rejected = reduceConversation(hydrated, {
+      event: "session_snapshot",
+      session: snapshot.session,
+      turns: [{ turn_id: "missing-sequence" }],
+      next_turn_cursor: null,
+    } as EngineFrame);
+
+    expect(rejected.turns).toEqual(hydrated.turns);
+    expect(rejected.droppedSessionFrames).toBe(hydrated.droppedSessionFrames + 1);
   });
 });
 

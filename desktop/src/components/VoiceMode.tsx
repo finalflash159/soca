@@ -1,27 +1,4 @@
-/**
- * The voice page.
- *
- * Shape taken from LiveKit's reference session view and Pipecat's voice kit
- * (read from their source), which agree on three things
- * this screen previously got wrong:
- *
- * 1. **Voice is a view of the same conversation, not a separate place.** The
- *    transcript here is `conversation.turns` — the very list the chat surface
- *    renders. An earlier revision showed no history at all: a spoken turn
- *    scrolled past and was gone, because voice reduced only into live signals.
- * 2. **Three layers of text, not one.** The caption is what is being said *now*
- *    and disappears when the turn ends; the transcript is the record and is
- *    toggled; the phase label is status. Conflating them is why the old screen
- *    felt empty during a turn and blank after it.
- * 3. **Leaving ends the loop.** Navigating away from this page stops capture,
- *    so there is no state where the microphone is open with nothing on screen
- *    saying so.
- *
- * The orb stays `thinking-orbs` at its tuned 64px per plan §0.2 — the library
- * ships two fixed designs rather than one scalable one, so CSS-scaling the
- * canvas to fill a screen would only blur it. Size is conveyed by the halo
- * around it, which is amplitude, not agent state.
- */
+/** Voice capture with the same durable transcript as chat. */
 
 import { Activity, Mic, MicOff, MessageSquareText, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -48,6 +25,8 @@ interface VoiceModeProps {
   onToggleTranscript: () => void;
   onToggleMic: () => void;
   onLeave: () => void;
+  onLoadOlder: () => void;
+  canLoadOlder: boolean;
 }
 
 /**
@@ -123,6 +102,8 @@ export function VoiceMode({
   onToggleTranscript,
   onToggleMic,
   onLeave,
+  onLoadOlder,
+  canLoadOlder,
 }: VoiceModeProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
 
@@ -227,6 +208,8 @@ export function VoiceMode({
           conversation={{ ...conversation, turns: settled }}
           documents={documents}
           orbState={orbState}
+          onLoadOlder={onLoadOlder}
+          canLoadOlder={canLoadOlder}
         />
       )}
 

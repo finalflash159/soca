@@ -1,35 +1,16 @@
-/**
- * Turn assembly — one transcript, both surfaces.
- *
- * Implements `docs/18-engine-protocol.md` §4 (`chat`), §5 (`voice`) and §6
- * (`answer_delta`). Three rules from those sections shape everything here:
- *
- * * **Append, never replace.** Concatenating every `answer_delta` `payload.text`
- *   in order reproduces the final answer exactly. A client that replaces on each
- *   delta shows only the last chunk.
- * * **`blocked` is a terminal outcome, not an error.** Per ADR 0003 a blocked
- *   turn is the system declining to answer without evidence, so it gets its own
- *   status rather than being folded into `failed`.
- * * **A spoken turn is a turn.** Voice and chat produce the same `Turn`, tagged
- *   by `surface`, in one ordered list.
- *
- * That last rule is why this file grew. Voice used to reduce into a separate
- * live-signals-only state, so the app had no spoken history at all: the moment
- * a voice turn ended, everything said in it was gone. The transcript was never
- * missing from the wire — `voice/asr` carries the recognised user text and
- * `voice/sentence` carries each guardrail-passed answer sentence — the client
- * simply dropped both.
- *
- * Voice text comes from `voice/sentence`, not from `answer_delta`. On the voice
- * surface a delta is a raw model token (§6), so it can carry a citation label
- * the final text strips and it breaks mid-word; `sentence` is the same text TTS
- * speaks, which is what a caption should show.
- */
+/** One transcript reducer for live chat, live voice, and engine-owned snapshots. */
 
-import type { EngineFrame, TerminalStatus, VoiceFrame, WorkflowFrame } from "./protocol";
+import type {
+  EngineFrame,
+  SessionSnapshotFrame,
+  TerminalStatus,
+  VoiceFrame,
+  WorkflowFrame,
+} from "./protocol";
 import { isChatFrame, isVoiceFrame, isWorkflowFrame } from "./protocol";
 
 export type TurnStatus = "streaming" | "achieved" | "blocked" | "failed";
+export type TurnPageLoadState = "idle" | "loading" | "error";
 
 /** Which surface produced a turn. Both render the same way. */
 export type Surface = "chat" | "voice";
@@ -41,6 +22,10 @@ export interface Citation {
 }
 
 export interface Turn {
+  /** Durable identity is present for restored turns and v3 live frames. */
+  sessionId: string | null;
+  turnId: string | null;
+  sequence: number | null;
   runId: string;
   goalId: string;
   surface: Surface;
@@ -79,6 +64,15 @@ export interface Turn {
 
 export interface ConversationState {
   turns: Turn[];
+  /** The owner of visible history. A mismatched durable frame is dropped. */
+  activeSessionId: string | null;
+  persistence: "ram_only" | "local_resumable" | null;
+  /** Observable protocol drift; the raw frame remains in the bounded transport log. */
+  droppedSessionFrames: number;
+  /** Exclusive sequence boundary for the next older durable-turn page. */
+  nextTurnCursor: number | null;
+  turnPageLoadState: TurnPageLoadState;
+  turnPageError: string | null;
   /**
    * True when the streamed chunks do not reassemble into the final answer,
    * ignoring the edges.
@@ -99,8 +93,19 @@ export interface ConversationState {
 
 export const initialConversation: ConversationState = {
   turns: [],
+  activeSessionId: null,
+  persistence: null,
+  droppedSessionFrames: 0,
+  nextTurnCursor: null,
+  turnPageLoadState: "idle",
+  turnPageError: null,
   reassemblyMismatch: false,
 };
+
+export type ConversationAction =
+  | EngineFrame
+  | { type: "turns_page_requested" }
+  | { type: "turns_page_failed"; message: string };
 
 export function turnStatus(turn: Turn): TurnStatus {
   if (turn.error !== null) {
@@ -117,8 +122,19 @@ export function turnText(turn: Turn): string {
   return turn.finalText ?? turn.streamedText;
 }
 
-function newTurn(runId: string, goalId: string, userText: string, surface: Surface): Turn {
+function newTurn(
+  runId: string,
+  goalId: string,
+  userText: string,
+  surface: Surface,
+  identity: Pick<Turn, "sessionId" | "turnId" | "sequence"> = {
+    sessionId: null,
+    turnId: null,
+    sequence: null,
+  },
+): Turn {
   return {
+    ...identity,
     runId,
     goalId,
     surface,
@@ -136,6 +152,99 @@ function newTurn(runId: string, goalId: string, userText: string, surface: Surfa
     error: null,
     deltaCount: 0,
   };
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function string(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function number(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function turnCursor(value: unknown): number | null {
+  const cursor = number(value);
+  return cursor !== null && Number.isInteger(cursor) && cursor >= 0 ? cursor : null;
+}
+
+function surface(value: unknown): Surface {
+  return value === "voice" ? "voice" : "chat";
+}
+
+function restoredTurn(value: Record<string, unknown>, sessionId: string): Turn | null {
+  const turnId = string(value.turn_id);
+  const sequence = number(value.sequence);
+  if (turnId === null || sequence === null) {
+    return null;
+  }
+  const status = string(value.status);
+  const assistantText = string(value.assistant_text);
+  const errorDetail = string(value.error_detail);
+  return {
+    ...newTurn(
+      turnId,
+      "",
+      string(value.user_text) ?? "",
+      surface(value.surface),
+      { sessionId, turnId, sequence },
+    ),
+    repair: string(value.repair_text),
+    finalText: assistantText ?? "",
+    route: string(value.route),
+    blocked: value.blocked === true,
+    citations: Array.isArray(value.citations) ? (value.citations as Citation[]) : [],
+    terminal: string(value.terminal_status) as TerminalStatus | null,
+    interrupted: status === "interrupted",
+    error: status === "failed" ? errorDetail ?? "Lượt trước không hoàn tất." : null,
+  };
+}
+
+/** Hydration is a data replacement, never a replay of live visual side effects. */
+export function hydrateConversation(frame: SessionSnapshotFrame): ConversationState | null {
+  const session = record(frame.session);
+  const sessionId = session === null ? null : string(session.session_id);
+  const nextTurnCursor = turnCursor(frame.next_turn_cursor);
+  if (
+    sessionId === null ||
+    !Array.isArray(frame.turns) ||
+    (frame.next_turn_cursor !== null && nextTurnCursor === null)
+  ) {
+    return null;
+  }
+  const turns: Turn[] = [];
+  for (const raw of frame.turns) {
+    const parsed = record(raw);
+    const turn = parsed === null ? null : restoredTurn(parsed, sessionId);
+    if (turn === null) return null;
+    turns.push(turn);
+  }
+  return {
+    ...initialConversation,
+    activeSessionId: sessionId,
+    persistence: "local_resumable",
+    nextTurnCursor,
+    turns,
+  };
+}
+
+function frameSessionId(frame: EngineFrame): string | null {
+  const direct = string((frame as Record<string, unknown>).session_id);
+  if (direct !== null) {
+    return direct;
+  }
+  const metadata = record((frame as Record<string, unknown>).metadata);
+  return metadata === null ? null : string(metadata.session_id);
+}
+
+function belongsToActiveSession(state: ConversationState, frame: EngineFrame): boolean {
+  const sessionId = frameSessionId(frame);
+  return sessionId === null || state.activeSessionId === null || sessionId === state.activeSessionId;
 }
 
 /**
@@ -381,8 +490,87 @@ function reduceVoiceTurn(state: ConversationState, frame: VoiceFrame): Conversat
 
 export function reduceConversation(
   state: ConversationState,
-  frame: EngineFrame,
+  action: ConversationAction,
 ): ConversationState {
+  if ("type" in action && action.type === "turns_page_requested") {
+    return state.nextTurnCursor === null
+      ? state
+      : { ...state, turnPageLoadState: "loading", turnPageError: null };
+  }
+  if ("type" in action && action.type === "turns_page_failed") {
+    return {
+      ...state,
+      turnPageLoadState: "error",
+      turnPageError:
+        typeof action.message === "string" ? action.message : "Không thể tải lượt cũ hơn. Hãy thử lại.",
+    };
+  }
+
+  const frame = action as EngineFrame;
+  if (frame.event === "session_snapshot" || frame.event === "session_turns_page") {
+    const hydrated = hydrateConversation(frame as SessionSnapshotFrame);
+    if (hydrated === null) {
+      return {
+        ...state,
+        droppedSessionFrames: state.droppedSessionFrames + 1,
+        ...(frame.event === "session_turns_page"
+          ? {
+              turnPageLoadState: "error" as const,
+              turnPageError: "Không thể đọc lượt cũ hơn; nội dung đang hiển thị không bị thay đổi.",
+            }
+          : {}),
+      };
+    }
+    if (frame.event === "session_turns_page") {
+      if (hydrated.activeSessionId !== state.activeSessionId) {
+        return { ...state, droppedSessionFrames: state.droppedSessionFrames + 1 };
+      }
+      const known = new Set(state.turns.map((turn) => turn.turnId));
+      return {
+        ...state,
+        turns: [...hydrated.turns.filter((turn) => !known.has(turn.turnId)), ...state.turns],
+        nextTurnCursor: hydrated.nextTurnCursor,
+        turnPageLoadState: "idle",
+        turnPageError: null,
+      };
+    }
+    return hydrated;
+  }
+
+  if (frame.event === "session_status") {
+    const sessionId = string((frame as Record<string, unknown>).active_session_id);
+    const persistence = (frame as Record<string, unknown>).persistence;
+    return {
+      ...state,
+      activeSessionId: sessionId ?? state.activeSessionId,
+      persistence:
+        persistence === "ram_only" || persistence === "local_resumable"
+          ? persistence
+          : state.persistence,
+    };
+  }
+
+  if (frame.event === "session_operation") {
+    const operation = frame as Record<string, unknown>;
+    if (
+      operation.action === "create" &&
+      operation.status === "completed" &&
+      state.persistence === "ram_only" &&
+      typeof operation.session_id === "string"
+    ) {
+      return {
+        ...initialConversation,
+        activeSessionId: operation.session_id,
+        persistence: "ram_only",
+      };
+    }
+    return state;
+  }
+
+  if (!belongsToActiveSession(state, frame)) {
+    return { ...state, droppedSessionFrames: state.droppedSessionFrames + 1 };
+  }
+
   if (isVoiceFrame(frame)) {
     return reduceVoiceTurn(state, frame);
   }
@@ -393,11 +581,16 @@ export function reduceConversation(
 
   if (isChatFrame(frame)) {
     if (frame.type === "start") {
+      const sessionId = frameSessionId(frame);
       return {
         ...state,
         turns: [
           ...state.turns,
-          newTurn(frame.run_id ?? "", frame.goal_id ?? "", frame.text ?? "", "chat"),
+          newTurn(frame.run_id ?? "", frame.goal_id ?? "", frame.text ?? "", "chat", {
+            sessionId,
+            turnId: typeof frame.turn_id === "string" ? frame.turn_id : null,
+            sequence: typeof frame.sequence === "number" ? frame.sequence : null,
+          }),
         ],
       };
     }

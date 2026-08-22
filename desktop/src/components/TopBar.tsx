@@ -27,6 +27,7 @@ export function TopBar({ orbState, sidebarOpen, onOpenSidebar, onToggleTheme }: 
     <header className="border-border flex h-14 shrink-0 items-center gap-3 border-b px-4">
       {!sidebarOpen && (
         <Button
+          id="open-sidebar"
           size="sm"
           variant="ghost"
           className="text-muted-foreground hover:text-foreground size-8 rounded-lg p-0"
