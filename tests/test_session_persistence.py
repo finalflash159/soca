@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from soca.memory import SessionCheckpointStore, SessionMemory
+import pytest
+
+from soca.memory import CheckpointConflictError, SessionCheckpointStore, SessionMemory
 
 
 def test_local_resumable_session_saves_resumes_and_clear_deletes(tmp_path: Path) -> None:
@@ -54,3 +56,27 @@ def test_local_session_exposes_private_checkpoint_path(tmp_path: Path) -> None:
     assert memory.checkpoint_path.parent == store.root
     assert memory.stats().persistence == "local_resumable"
     assert memory.stats().checkpoint_enabled is True
+
+
+def test_local_session_exposes_checkpoint_conflict_instead_of_losing_persistence(
+    tmp_path: Path,
+) -> None:
+    store = SessionCheckpointStore(tmp_path / "sessions")
+    first = SessionMemory(
+        thread_id="shared",
+        persistence="local_resumable",
+        checkpoint_store=store,
+        summary_enabled=False,
+    )
+    first.append("user", "lượt đầu")
+    second = SessionMemory(
+        thread_id="shared",
+        persistence="local_resumable",
+        checkpoint_store=store,
+        resume=True,
+        summary_enabled=False,
+    )
+    first.append("assistant", "đã lưu bản mới")
+
+    with pytest.raises(CheckpointConflictError):
+        second.append("assistant", "không được ghi đè im lặng")
