@@ -9,7 +9,6 @@ from soca.core.text_budget import truncate
 from soca.memory.base import MemoryRole, MemoryTurn
 from soca.memory.compaction_coordinator import CompactionResult, WorkingMemoryCompactionCoordinator
 from soca.memory.session_store import (
-    CheckpointConflictError,
     SessionCheckpointStore,
     _payload_digest,
 )
@@ -19,6 +18,7 @@ from soca.memory.working import WorkingMemory, WorkingMemoryPolicy, approximate_
 
 class MemoryCapacityError(RuntimeError):
     """Working memory exceeded its contract without a safe summary."""
+
 
 RECENT_CONVERSATION_HEADER = "Recent conversation:"
 VALID_ROLES = {"user", "assistant"}
@@ -105,9 +105,7 @@ class SessionMemory:
         self.working = WorkingMemory(
             thread_id=thread_id,
             policy=working_policy
-            or WorkingMemoryPolicy(
-                mode="background_summary" if summary_enabled else "trim_only"
-            ),
+            or WorkingMemoryPolicy(mode="background_summary" if summary_enabled else "trim_only"),
         )
         if resume and checkpoint_store is not None:
             loaded, revision, digest = checkpoint_store.load_with_metadata(
@@ -305,18 +303,13 @@ class SessionMemory:
     def _save_checkpoint(self) -> None:
         if self.persistence != "local_resumable" or self.checkpoint_store is None:
             return
-        try:
-            self.checkpoint_store.save(
-                self.working,
-                expected_revision=self._checkpoint_revision,
-                expected_digest=self._checkpoint_digest,
-            )
-            self._checkpoint_revision = self.working.snapshot.revision
-            self._checkpoint_digest = _payload_digest(self.working.to_dict())
-        except CheckpointConflictError:
-            # A second process owns this thread. Do not overwrite its newer
-            # state or turn a local privacy feature into data loss.
-            return
+        self.checkpoint_store.save(
+            self.working,
+            expected_revision=self._checkpoint_revision,
+            expected_digest=self._checkpoint_digest,
+        )
+        self._checkpoint_revision = self.working.snapshot.revision
+        self._checkpoint_digest = _payload_digest(self.working.to_dict())
 
     def _delete_checkpoint(self) -> None:
         if (
@@ -324,14 +317,11 @@ class SessionMemory:
             and self.checkpoint_store is not None
             and self._checkpoint_revision is not None
         ):
-            try:
-                self.checkpoint_store.delete(
-                    self.working.thread_id,
-                    expected_revision=self._checkpoint_revision,
-                    expected_digest=self._checkpoint_digest,
-                )
-            except CheckpointConflictError:
-                return
+            self.checkpoint_store.delete(
+                self.working.thread_id,
+                expected_revision=self._checkpoint_revision,
+                expected_digest=self._checkpoint_digest,
+            )
             self._checkpoint_revision = None
             self._checkpoint_digest = None
 
