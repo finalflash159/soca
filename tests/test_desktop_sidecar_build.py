@@ -41,7 +41,7 @@ def test_build_sidecar_uses_host_triple_and_explicit_dependency_closure(
     monkeypatch.setattr(builder.subprocess, "run", fake_run)
     destination = builder.build_sidecar(tmp_path / "binaries")
 
-    assert destination.name == "soca-engine-x86_64-unknown-linux-gnu"
+    assert destination.name == builder.sidecar_filename("x86_64-unknown-linux-gnu")
     assert destination.read_bytes() == b"frozen-engine"
     pyinstaller = commands[1]
     assert pyinstaller[:3] == [sys.executable, "-m", "PyInstaller"]
