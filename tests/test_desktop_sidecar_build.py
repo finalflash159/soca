@@ -34,7 +34,8 @@ def test_build_sidecar_uses_host_triple_and_explicit_dependency_closure(
             return subprocess.CompletedProcess(command, 0, "x86_64-unknown-linux-gnu\n", "")
         dist = Path(command[command.index("--distpath") + 1])
         dist.mkdir(parents=True)
-        (dist / builder.SIDECAR_BASENAME).write_bytes(b"frozen-engine")
+        suffix = ".exe" if builder.os.name == "nt" else ""
+        (dist / f"{builder.SIDECAR_BASENAME}{suffix}").write_bytes(b"frozen-engine")
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(builder.subprocess, "run", fake_run)

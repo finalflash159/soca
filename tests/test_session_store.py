@@ -40,6 +40,16 @@ def test_checkpoint_saves_when_descriptor_chmod_is_unavailable(tmp_path: Path, m
     assert json.loads(path.read_text(encoding="utf-8"))["thread_id"] == "windows-python-311"
 
 
+def test_checkpoint_skips_directory_sync_on_windows(tmp_path: Path, monkeypatch) -> None:
+    def directory_open(*_args: object, **_kwargs: object) -> int:
+        raise AssertionError("Windows must not open a directory for fsync")
+
+    monkeypatch.setattr(session_store.os, "name", "nt")
+    monkeypatch.setattr(session_store.os, "open", directory_open)
+
+    session_store._sync_checkpoint_directory(tmp_path)
+
+
 def test_checkpoint_rejects_non_private_file(tmp_path: Path) -> None:
     store = SessionCheckpointStore(tmp_path / "sessions")
     path = store._path("chat-1")

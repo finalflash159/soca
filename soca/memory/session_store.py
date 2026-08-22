@@ -99,11 +99,7 @@ class SessionCheckpointStore:
                     handle.flush()
                     os.fsync(handle.fileno())
                 os.replace(temporary, target)
-                directory_fd = os.open(self.root, os.O_RDONLY)
-                try:
-                    os.fsync(directory_fd)
-                finally:
-                    os.close(directory_fd)
+                _sync_checkpoint_directory(self.root)
                 os.chmod(target, 0o600)
             finally:
                 if os.path.exists(temporary):
@@ -202,6 +198,21 @@ def _set_private_file_mode(descriptor: int, path: Path, mode: int) -> None:
     # Python 3.11/3.12 on Windows lack os.fchmod. mkstemp created this path,
     # so changing it by path preserves the safe temporary-file write flow.
     os.chmod(path, mode)
+
+
+def _sync_checkpoint_directory(root: Path) -> None:
+    """Durably record a replacement where directory fsync is supported."""
+
+    # Windows does not allow a directory descriptor opened with os.O_RDONLY,
+    # while replacing the file is already atomic there. Do not disguise this
+    # platform constraint as a checkpoint-write failure.
+    if os.name == "nt":
+        return
+    directory_fd = os.open(root, os.O_RDONLY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
 
 
 def _working_payload(payload: object) -> object:
