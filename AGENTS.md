@@ -49,10 +49,12 @@ Every phase or large feature must follow this workflow:
 5. Run the relevant lint, typecheck, unit, integration, and real-flow gates.
 6. Push the branch and open a pull request into `main`.
 7. Do not request, wait for, or treat a Qodo review as a merge gate.
-8. Read and verify any human or CI findings that arrive; fix valid findings,
-   add regression coverage when appropriate, commit, and push.
+8. Read and verify CI findings; fix valid findings, add regression coverage
+   when appropriate, commit, and push. External review is optional and never a
+   merge gate.
 9. When every required CI/GitHub Actions check is green, merge the PR into
-   `main`. A pending, skipped, failed, or missing required check is not green.
+   `main` and immediately proceed to the next phase after step 10. A pending,
+   skipped, failed, or missing required check is not green.
 10. Run `git switch main` and `git pull --ff-only`, and confirm a clean working
     tree before starting the next phase from the updated `main`.
 
