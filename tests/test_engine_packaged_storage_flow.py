@@ -26,8 +26,13 @@ def _run_engine(env: dict[str, str]) -> list[dict[str, object]]:
         input='{"cmd":"sessions_list","limit":10}\n{"cmd":"quit"}\n',
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
     )
+    if process.returncode != 0:
+        raise AssertionError(
+            "desktop engine storage contract failed "
+            f"with exit code {process.returncode}\nstdout:\n{process.stdout}\nstderr:\n{process.stderr}"
+        )
     return [json.loads(line) for line in process.stdout.splitlines() if line.strip()]
 
 
