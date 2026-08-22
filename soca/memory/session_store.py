@@ -93,7 +93,7 @@ class SessionCheckpointStore:
                 prefix=".working-", suffix=".json", dir=self.root
             )
             try:
-                os.fchmod(descriptor, 0o600)
+                _set_private_file_mode(descriptor, Path(temporary), 0o600)
                 with os.fdopen(descriptor, "wb") as handle:
                     handle.write(payload)
                     handle.flush()
@@ -190,6 +190,18 @@ class SessionCheckpointStore:
                 os.lseek(descriptor, 0, os.SEEK_SET)
                 windows_lock.locking(descriptor, windows_lock.LK_UNLCK, 1)
             os.close(descriptor)
+
+
+def _set_private_file_mode(descriptor: int, path: Path, mode: int) -> None:
+    """Set the restrictive mode without requiring Python 3.13 on Windows."""
+
+    descriptor_chmod = getattr(os, "fchmod", None)
+    if descriptor_chmod is not None:
+        descriptor_chmod(descriptor, mode)
+        return
+    # Python 3.11/3.12 on Windows lack os.fchmod. mkstemp created this path,
+    # so changing it by path preserves the safe temporary-file write flow.
+    os.chmod(path, mode)
 
 
 def _working_payload(payload: object) -> object:
