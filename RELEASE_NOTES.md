@@ -6,7 +6,7 @@ Only install a release whose platform signature and download source you trust.
 If macOS Gatekeeper or Windows SmartScreen warns that an app is unsigned or
 unrecognized, stop rather than bypass the warning. A signed public release is
 published only after its release workflow has completed the signing and updater
-checks.
+checks and the release owner has reviewed and published the resulting draft.
 
 ## What stays on this device
 

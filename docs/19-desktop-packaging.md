@@ -89,6 +89,12 @@ artifacts are signed by Tauri; platform packages are signed separately. A
 successful build without those credentials is only a package proof, never a
 trusted public release.
 
+The workflow creates or updates an `app-v<version>` **draft** release. A release
+owner must inspect the signed installer artifacts, updater manifest and native
+CI evidence, then publish that draft deliberately. While it remains a draft,
+the updater endpoint continues to serve the last public release; a green build
+alone does not make a new version available to users.
+
 Updates preserve the app-data root. Rollback is an explicit operator action:
 install a verified, signed prior release that is compatible with the existing
 session schema, then keep the data root unchanged. There is no automatic

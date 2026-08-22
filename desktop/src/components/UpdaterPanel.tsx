@@ -12,7 +12,8 @@ type UpdateState =
   | { kind: "current" }
   | { kind: "available"; update: Update }
   | { kind: "installing"; received: number; total: number | null }
-  | { kind: "error"; message: string };
+  | { kind: "restart_required"; message: string }
+  | { kind: "error"; operation: "check" | "install"; message: string };
 
 function downloadLabel(received: number, total: number | null): string {
   if (total === null || total <= 0) return "Đang tải bản cập nhật…";
@@ -24,14 +25,15 @@ export function UpdaterPanel() {
   const [state, setState] = useState<UpdateState>({ kind: "idle" });
 
   const checkForUpdate = async () => {
-    if (state.kind === "available") await state.update.close();
     setState({ kind: "checking" });
     try {
+      if (state.kind === "available") await state.update.close();
       const update = await check();
       setState(update === null ? { kind: "current" } : { kind: "available", update });
     } catch (error) {
       setState({
         kind: "error",
+        operation: "check",
         message:
           error instanceof Error
             ? error.message
@@ -50,10 +52,21 @@ export function UpdaterPanel() {
         if (event.event === "Progress") received += event.data.chunkLength;
         setState({ kind: "installing", received, total });
       });
-      await relaunch();
+      try {
+        await relaunch();
+      } catch (error) {
+        setState({
+          kind: "restart_required",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Ứng dụng không thể tự mở lại.",
+        });
+      }
     } catch (error) {
       setState({
         kind: "error",
+        operation: "install",
         message:
           error instanceof Error
             ? error.message
@@ -64,14 +77,20 @@ export function UpdaterPanel() {
 
   const pending = state.kind === "checking" || state.kind === "installing";
   const notice =
-    state.kind === "current"
+    state.kind === "checking"
+      ? "Đang kiểm tra bản cập nhật đã ký…"
+      : state.kind === "current"
       ? "Bạn đang dùng bản mới nhất."
       : state.kind === "available"
         ? `Có bản ${state.update.version} (đang dùng ${state.update.currentVersion}).`
         : state.kind === "installing"
           ? downloadLabel(state.received, state.total)
+          : state.kind === "restart_required"
+            ? `Đã cài bản cập nhật nhưng chưa thể tự mở lại: ${state.message} Đóng rồi mở lại SoCa để dùng bản mới.`
           : state.kind === "error"
-            ? `Chưa có update khả dụng: ${state.message}`
+            ? state.operation === "check"
+              ? `Không thể kiểm tra cập nhật: ${state.message}`
+              : `Không thể cài bản cập nhật: ${state.message}`
             : "Chỉ kiểm tra bản phát hành đã ký qua HTTPS; không gửi nội dung phiên hay API key.";
 
   return (
@@ -80,7 +99,14 @@ export function UpdaterPanel() {
       title="Cập nhật ứng dụng"
       description="Bản cập nhật không xoá phiên, vault hay cấu hình trên máy."
       actions={
-        <Button size="sm" variant="outline" disabled={pending} onClick={() => void checkForUpdate()}>
+        <Button
+          size="sm"
+          variant="outline"
+          className="min-h-11 px-3"
+          aria-busy={state.kind === "checking"}
+          disabled={pending}
+          onClick={() => void checkForUpdate()}
+        >
           {state.kind === "checking" ? (
             <LoaderCircle className="animate-spin" aria-hidden="true" />
           ) : (
@@ -92,18 +118,28 @@ export function UpdaterPanel() {
     >
       <Field label="Trạng thái">
         {state.kind === "available" ? (
-          <div className="border-border flex items-center justify-between gap-3 rounded-lg border p-3">
+          <div
+            className="border-border flex items-center justify-between gap-3 rounded-lg border p-3"
+            role="status"
+          >
             <span className="text-sm font-medium">Sẵn sàng cài {state.update.version}</span>
-            <Button size="sm" disabled={pending} onClick={() => void installUpdate(state.update)}>
+            <Button
+              size="sm"
+              className="min-h-11 px-3"
+              disabled={pending}
+              onClick={() => void installUpdate(state.update)}
+            >
               Cài và mở lại
             </Button>
           </div>
         ) : (
           <p
             className={
-              state.kind === "error" ? "text-destructive text-sm" : "text-muted-foreground text-sm"
+              state.kind === "error" || state.kind === "restart_required"
+                ? "text-destructive text-sm"
+                : "text-muted-foreground text-sm"
             }
-            role={state.kind === "error" ? "alert" : "status"}
+            role={state.kind === "error" || state.kind === "restart_required" ? "alert" : "status"}
           >
             {notice}
           </p>

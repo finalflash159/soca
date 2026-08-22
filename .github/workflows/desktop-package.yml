@@ -4,10 +4,15 @@ on:
   pull_request:
     paths:
       - ".github/workflows/desktop-package.yml"
+      - ".github/workflows/desktop-release.yml"
       - "desktop/**"
       - "scripts/build_desktop_sidecar.py"
       - "scripts/verify_desktop_sidecar.py"
+      - "scripts/write_tauri_release_config.py"
       - "soca/**"
+      - "tests/test_desktop_sidecar_build.py"
+      - "tests/test_engine_packaged_storage_flow.py"
+      - "tests/test_tauri_release_config.py"
       - "pyproject.toml"
       - "uv.lock"
   workflow_dispatch:
@@ -55,6 +60,12 @@ jobs:
         run: |
           uv sync --locked --extra desktop-build --extra llm-remote
           npm ci --prefix desktop
+      - name: Run desktop packaging contracts
+        run: >
+          uv run pytest -q
+          tests/test_desktop_sidecar_build.py
+          tests/test_engine_packaged_storage_flow.py
+          tests/test_tauri_release_config.py
       - name: Run desktop unit suite
         run: npm test --prefix desktop
       - name: Build native installer with its external Python runtime
