@@ -290,7 +290,12 @@ class _ProtocolWriter:
         self._lock = threading.Lock()
 
     def emit(self, payload: dict[str, Any]) -> None:
-        line = json.dumps(_sanitize(payload), ensure_ascii=False)
+        # The protocol can be run directly by a Windows console, whose default
+        # text encoding is commonly a legacy code page (for example cp1252).
+        # ASCII-escaped JSON remains valid UTF-8 NDJSON and lets every JSON
+        # consumer recover the original Unicode text without relying on that
+        # console encoding.
+        line = json.dumps(_sanitize(payload), ensure_ascii=True)
         with self._lock:
             self._stream.write(line + "\n")
             self._stream.flush()
