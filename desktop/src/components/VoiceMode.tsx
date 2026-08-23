@@ -2,17 +2,16 @@
 
 import { Activity, Mic, MicOff, MessageSquareText, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { OrbState } from "thinking-orbs";
-import { ThinkingOrb } from "thinking-orbs";
 
+import { ActivityOrb } from "@/components/ActivityOrb";
 import { Button } from "@/components/ui/button";
 import { VoiceHud } from "@/components/VoiceHud";
 import { VoiceTranscript } from "@/components/VoiceTranscript";
 import type { Citation, ConversationState, Turn } from "@/engine/conversation";
 import type { CitationPreviewIndex } from "@/engine/citation-preview";
-import { orbLabel } from "@/engine/orb";
+import { orbLabel, type OrbState } from "@/engine/orb";
 import type { VoiceState } from "@/engine/voice";
-import { partialText, peakLevel } from "@/engine/voice";
+import { partialText } from "@/engine/voice";
 import { cn } from "@/lib/utils";
 
 interface VoiceModeProps {
@@ -28,16 +27,6 @@ interface VoiceModeProps {
   onLeave: () => void;
   onLoadOlder: () => void;
   canLoadOlder: boolean;
-}
-
-/**
- * Recent amplitude, smoothed.
- *
- * The raw per-frame rms makes the halo jitter; the peak of the last handful of
- * frames tracks speech without flickering on the gaps between syllables.
- */
-function recentLevel(levels: number[]): number {
-  return peakLevel(levels.slice(-6));
 }
 
 /**
@@ -71,9 +60,9 @@ function LiveTurn({ voice, turn }: { voice: VoiceState; turn: Turn | null }) {
   const answer = turn === null ? "" : turn.streamedText;
   if (answer !== "") {
     return (
-      <p className="max-w-2xl text-center text-[17px] leading-8">
+      <p className="max-w-2xl text-pretty text-center text-[17px] leading-8">
         {answer}
-        <span className="bg-primary ml-1 inline-block h-4 w-[2px] animate-pulse align-text-bottom" />
+        <span className="bg-primary ml-1 inline-block h-4 w-[2px] align-text-bottom" aria-hidden="true" />
       </p>
     );
   }
@@ -86,7 +75,7 @@ function LiveTurn({ voice, turn }: { voice: VoiceState; turn: Turn | null }) {
   // may still revise the tail, and showing both at one weight would present a
   // guess as a decision.
   return (
-    <p className="max-w-2xl text-center text-[17px] leading-8">
+    <p className="max-w-2xl text-pretty text-center text-[17px] leading-8">
       <span>{voice.partial?.committed}</span>{" "}
       <span className="text-muted-foreground">{voice.partial?.tentative}</span>
     </p>
@@ -132,7 +121,6 @@ export function VoiceMode({
   }, []);
 
   const running = voice.phase !== "off";
-  const level = running ? recentLevel(voice.levels) : 0;
 
   // The turn in progress stays centre stage; the transcript below shows only
   // what has finished. One turn, one place on screen at a time.
@@ -140,9 +128,7 @@ export function VoiceMode({
   const liveTurn =
     newest !== undefined && newest.surface === "voice" && newest.finalText === null ? newest : null;
   const settled = liveTurn === null ? conversation.turns : conversation.turns.slice(0, -1);
-  // The orb gives up the screen for history, not for an empty panel. On the
-  // first turn there is nothing settled yet, so it stays full size.
-  const compact = (transcriptOpen && settled.length > 0) || detailsOpen;
+  const historyVisible = transcriptOpen && !detailsOpen;
 
   const status = !running
     ? "Đang tắt mic"
@@ -163,41 +149,21 @@ export function VoiceMode({
     >
       <div
         className={cn(
-          "relative flex min-h-0 flex-col items-center justify-center gap-6",
-          // The orb yields the screen to the transcript rather than overlapping
-          // it — the same trade LiveKit's tile layout makes.
-          compact ? "shrink-0 pt-10 pb-4" : "flex-1",
+          "relative flex min-h-0 flex-col items-center justify-center gap-6 px-6",
+          // Keep the visual anchor fixed. Opening history changes only the
+          // surrounding layout, never the sphere cluster's size or shape.
+          historyVisible || detailsOpen ? "shrink-0 py-7" : "flex-1",
         )}
       >
-        <div
-          className={cn(
-            "relative flex items-center justify-center transition-[width,height] duration-300",
-            compact ? "size-32" : "size-[22rem]",
-          )}
-        >
-          {/* Amplitude halo. Only scale and opacity are driven by rms, so a
-              silent room reads as a still sphere rather than as noise. */}
-          <div
-            className="from-primary/70 via-primary/25 absolute inset-0 rounded-full bg-gradient-to-b to-transparent blur-2xl transition-transform duration-100"
-            style={{
-              transform: `scale(${0.72 + level * 0.28})`,
-              opacity: running ? 0.35 + level * 0.5 : 0.18,
-            }}
-            aria-hidden
-          />
-          <div
-            className="from-primary/40 to-primary/5 absolute inset-[12%] rounded-full bg-gradient-to-b transition-transform duration-100"
-            style={{ transform: `scale(${0.9 + level * 0.12})` }}
-            aria-hidden
-          />
-          <ThinkingOrb state={orbState} size={64} />
+        <div className="relative flex size-36 shrink-0 items-center justify-center">
+          <ActivityOrb state={orbState} size={128} />
         </div>
 
         {/* Always rendered, transcript open or not. This is the live turn, and
             hiding it behind the transcript toggle removed the one thing a voice
             screen exists to show. */}
-        <div className="flex min-h-24 flex-col items-center justify-start gap-3 px-8">
-          <p className="text-muted-foreground text-sm" role="status">
+        <div className="flex min-h-24 max-w-2xl flex-col items-center justify-start gap-3">
+          <p className="text-muted-foreground text-pretty text-center text-sm" role="status" aria-atomic="true">
             {status}
           </p>
           <LiveTurn voice={voice} turn={liveTurn} />
@@ -205,7 +171,7 @@ export function VoiceMode({
         </div>
       </div>
 
-      {transcriptOpen && !detailsOpen && (
+      {historyVisible && (
         <VoiceTranscript
           conversation={{ ...conversation, turns: settled }}
           citationPreviews={citationPreviews}

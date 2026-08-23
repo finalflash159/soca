@@ -1,9 +1,8 @@
 /** Shared, paged rendering of the engine-owned chat and voice transcript. */
 
 import { Mic } from "lucide-react";
-import type { OrbState } from "thinking-orbs";
-import { ThinkingOrb } from "thinking-orbs";
 
+import { ActivityOrb } from "@/components/ActivityOrb";
 import { Conversation, ConversationContent } from "@/components/ai-elements/conversation";
 import { AnswerBody } from "@/components/AnswerBody";
 import { CitationChip } from "@/components/CitationChip";
@@ -12,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import type { Citation, ConversationState, Turn } from "@/engine/conversation";
 import { blockedReason, phaseLabel, turnStatus, turnText } from "@/engine/conversation";
 import type { CitationPreviewIndex } from "@/engine/citation-preview";
+import type { OrbState } from "@/engine/orb";
 
 interface ChatViewProps {
   conversation: ConversationState;
@@ -81,7 +81,7 @@ function AssistantTurn({
         // earn their place: the orb is the only thing telling the user whether
         // the system is planning, retrieving, running a tool or calling out.
         <div className="flex items-center gap-2.5 py-0.5">
-          {live && <ThinkingOrb state={orbState} size={20} />}
+          {live && <ActivityOrb state={orbState} size={22} />}
           <span className="text-muted-foreground text-sm">
             {live ? orbLabel : phaseLabel(turn.phase)}
           </span>
@@ -93,7 +93,7 @@ function AssistantTurn({
           <AnswerBody text={text} />
           {status === "streaming" && (
             <span
-              className="bg-primary ml-0.5 inline-block h-4 w-[2px] animate-pulse align-text-bottom"
+              className="bg-primary ml-0.5 inline-block h-4 w-[2px] align-text-bottom"
               aria-hidden
             />
           )}

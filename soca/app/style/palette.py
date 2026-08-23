@@ -1,6 +1,6 @@
 """SoCa design tokens — the "dawn" palette (bình minh).
 
-Sơn Ca sings at first light: one warm-gold accent over a pre-dawn indigo sky.
+SoCa sings at first light: one warm-gold accent over a pre-dawn indigo sky.
 This module is the single source of truth for every color and glyph used by
 BOTH the console renderers and the Textual TUI, so the two surfaces never
 drift apart. It must stay importable without the `ui` extra — no textual

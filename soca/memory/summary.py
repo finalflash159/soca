@@ -33,9 +33,9 @@ def default_summary_model_root() -> Path:
     configured = os.environ.get(SUMMARY_MODEL_ROOT_ENV, "").strip()
     if configured:
         return Path(configured).expanduser().resolve()
-    data_home = os.environ.get("XDG_DATA_HOME")
-    base = Path(data_home) if data_home else Path.home() / ".local" / "share"
-    return base / "soca" / "models" / "summary"
+    from soca.model_paths import default_model_root
+
+    return default_model_root() / "summary"
 
 
 @dataclass(frozen=True)

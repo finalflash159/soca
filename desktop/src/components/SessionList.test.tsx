@@ -109,7 +109,7 @@ describe("SessionList", () => {
   it("has no automated WCAG A/AA violations in its ready state", async () => {
     renderList();
     document.documentElement.lang = "vi";
-    document.title = "Sơn Ca";
+    document.title = "SoCa";
     const results = await axe.run(document, {
       runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa"] },
       rules: { "color-contrast": { enabled: false } },

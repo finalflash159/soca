@@ -2,9 +2,8 @@
  * Light / dark, and the machinery to follow the OS.
  *
  * The class goes on `<html>` because three separate consumers look for it and
- * none of them can be told about a React context: Tailwind's `dark:` variant,
- * shadcn's tokens, and `thinking-orbs`, whose `auto` theme watches ancestors
- * with a `MutationObserver`. One class keeps all three in step.
+ * none of them can be told about a React context: Tailwind's `dark:` variant
+ * and shadcn's tokens. One class keeps both in step.
  */
 
 import { useCallback, useEffect, useState } from "react";

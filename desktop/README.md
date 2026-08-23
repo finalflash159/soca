@@ -80,10 +80,10 @@ cd src-tauri && cargo clippy --all-targets
 ```text
 src/components/StartupView.tsx  the window before the engine runs
 src/components/SessionView.tsx  the window after: rail, transcript, one control block
-src/components/VoiceMode.tsx    full-screen spoken turn; orb plus an rms-driven halo
+src/components/VoiceMode.tsx    full-screen spoken turn; fixed activity-sphere cluster
 src/components/SessionPanel.tsx prompt budget and token usage
 src/engine/protocol.ts   read-shapes for docs/18; no validation (§7 tolerates unknown fields)
-src/engine/orb.ts        engine frames → one of nine thinking-orbs states
+src/engine/orb.ts        engine frames → one of nine static activity-orb states
 src/engine/conversation.ts  chat turn assembly from the answer_delta stream
 src/engine/voice.ts      voice-loop state from the 20 voice event types
 src/engine/knowledge.ts  retrieval traces, memory traces, proposals, index jobs

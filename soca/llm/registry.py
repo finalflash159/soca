@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-MODELS_ROOT = REPO_ROOT / "models"
+from soca.model_paths import default_model_root
+
+MODELS_ROOT = default_model_root()
 
 
 @dataclass(frozen=True)

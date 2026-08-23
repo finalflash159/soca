@@ -114,7 +114,7 @@ describe("a real rejected utterance", () => {
 
   it("carries the repair prompt exactly once", () => {
     const turn = repaired.turns[0];
-    expect(turn.repair).toBe("Ơ, im ru luôn. Bạn nói lại giúp Sơn Ca một câu nha.");
+    expect(turn.repair).toBe("Ơ, im ru luôn. Bạn nói lại giúp SoCa một câu nha.");
     expect(turn.streamedText).toBe("");
     expect(turnText(turn)).toBe("");
   });

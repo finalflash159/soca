@@ -44,6 +44,7 @@ describe("catalog", () => {
         event: "llm_catalog",
         provider: "openai",
         models: [],
+        loading: true,
         pricing_as_of: "2026-07",
       } as EngineFrame,
     ]);
@@ -55,7 +56,7 @@ describe("catalog", () => {
   it("clears the loading flag when the real catalog arrives", () => {
     const state = fold([
       { event: "llm_catalog", provider: "openai", models: [] } as EngineFrame,
-      { event: "llm_catalog", provider: "openai", models: [model] } as EngineFrame,
+      { event: "llm_catalog", provider: "openai", models: [model], loading: false } as EngineFrame,
     ]);
     expect(state.catalogLoading.openai).toBe(false);
     expect(state.catalog.openai).toHaveLength(1);
@@ -64,7 +65,7 @@ describe("catalog", () => {
   it("keeps catalogs separate per provider", () => {
     const state = fold([
       { event: "llm_catalog", provider: "openai", models: [model] } as EngineFrame,
-      { event: "llm_catalog", provider: "groq", models: [] } as EngineFrame,
+      { event: "llm_catalog", provider: "groq", models: [], loading: true } as EngineFrame,
     ]);
     expect(state.catalog.openai).toHaveLength(1);
     expect(state.catalogLoading.groq).toBe(true);

@@ -9,12 +9,9 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-VALTEC_MODEL_ROOT = (
-    Path(__file__).resolve().parents[3]
-    / "models"
-    / "tts"
-    / "valtec_multispeaker"
-)
+from soca.model_paths import default_model_root
+
+VALTEC_MODEL_ROOT = default_model_root() / "tts" / "valtec_multispeaker"
 ARTIFACT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 
 

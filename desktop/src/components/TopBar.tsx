@@ -4,16 +4,16 @@
  * Carries the three things that are true no matter which page is open: how to
  * get the sidebar back, what this app is, and what the agent is doing right
  * now. The orb lives here for that last reason — plan §0.2 makes it the single
- * agent-state animation, and this is the one place on screen that never
- * changes, so it is the only place it can be *always* visible.
+ * agent state. The state is announced in text, while the official parrot mark
+ * remains a stable anchor rather than pretending to be a progress indicator.
  */
 
 import { Moon, PanelLeft, Sun } from "lucide-react";
-import type { OrbState } from "thinking-orbs";
-import { ThinkingOrb } from "thinking-orbs";
 
+import { ActivityOrb } from "@/components/ActivityOrb";
+import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
-import { orbLabel } from "@/engine/orb";
+import { orbLabel, type OrbState } from "@/engine/orb";
 
 interface TopBarProps {
   orbState: OrbState;
@@ -39,14 +39,12 @@ export function TopBar({ orbState, sidebarOpen, onOpenSidebar, onToggleTheme }: 
         </Button>
       )}
 
-      <div className="flex items-center gap-2.5">
-        <ThinkingOrb state={orbState} size={20} aria-hidden />
-        <span className="text-[15px] font-medium">Sơn Ca</span>
-      </div>
+      <BrandMark className="text-[15px] font-medium" iconClassName="text-base" />
 
-      <span className="text-muted-foreground ml-1 text-xs" role="status">
-        {orbLabel(orbState)}
-      </span>
+      <div className="text-muted-foreground ml-1 flex items-center gap-1.5 text-xs" role="status" aria-atomic="true">
+        <ActivityOrb state={orbState} size={18} />
+        <span>{orbLabel(orbState)}</span>
+      </div>
 
       <div className="ml-auto flex items-center gap-1">
         <Button

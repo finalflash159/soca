@@ -280,6 +280,8 @@ export interface LlmConfigFrame {
   effective_reasoning_enabled: boolean;
   reasoning_mandatory: boolean;
   runtime_ready: boolean;
+  runtime_reason?: string | null;
+  local_model_path?: string | null;
   settings_error: string | null;
   [key: string]: unknown;
 }

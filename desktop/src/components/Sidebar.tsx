@@ -13,6 +13,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { SessionList } from "@/components/SessionList";
 import type { SessionHistoryState, SessionSummary } from "@/engine/session-history";
@@ -137,7 +138,7 @@ export function Sidebar({
         >
           <PanelLeft className="size-4" />
         </Button>
-        <span className="text-sm font-medium">Sơn Ca</span>
+        <BrandMark className="text-sm font-medium" iconClassName="text-base" />
       </div>
 
       <div className="px-3 pt-3">

@@ -14,7 +14,7 @@ def test_runtime_prompt_uses_soca_and_bounded_context_sections() -> None:
         knowledge_prompt_text="[K1] wiki/dinh-duong/bua-sang.md\nCó đạm và rau.",
     )
 
-    assert "Bạn là Sơn Ca" in prompt
+    assert "Bạn là SoCa" in prompt
     assert "Memory:" in prompt
     assert "Knowledge:" in prompt
     assert "[K1]" in prompt
@@ -33,7 +33,7 @@ def test_split_embedded_system_prompt_extracts_runtime_system_block() -> None:
     assert system_prompt == SOCA_RUNTIME_SYSTEM_PROMPT.strip()
     assert "Memory:" in user_content
     assert "Câu hỏi hiện tại:" in user_content
-    assert "Bạn là Sơn Ca" not in user_content
+    assert "Bạn là SoCa" not in user_content
 
 
 def test_split_embedded_system_prompt_leaves_plain_user_text_alone() -> None:

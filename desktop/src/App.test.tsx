@@ -14,7 +14,6 @@ const tauri = vi.hoisted(() => ({
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: tauri.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: tauri.listen }));
-vi.mock("thinking-orbs", () => ({ ThinkingOrb: () => null }));
 
 import App from "./App";
 
@@ -184,6 +183,27 @@ describe("desktop session lifecycle", () => {
       expect(screen.getByText(/engine speaks protocol 2/i)).not.toBeNull();
     });
     expect(engineSendCommands()).toEqual([]);
+  });
+
+  it("stops a possibly live sidecar before retrying from startup recovery", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => {
+      expect(tauri.invoke).toHaveBeenCalledWith(
+        "engine_start",
+        expect.objectContaining({ options: expect.any(Object) }),
+      );
+    });
+    emit(STATUS_CHANNEL, { state: "failed", message: "engine already running" });
+
+    await user.click(screen.getByRole("button", { name: "Khởi động" }));
+
+    await waitFor(() => {
+      expect(tauri.invoke).toHaveBeenCalledWith("engine_stop");
+      expect(
+        tauri.invoke.mock.calls.filter(([command]) => command === "engine_start"),
+      ).toHaveLength(2);
+    });
   });
 
   it("loads older transcript pages with the engine's exclusive sequence boundary", async () => {

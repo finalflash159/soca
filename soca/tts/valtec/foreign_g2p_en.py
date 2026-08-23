@@ -3,14 +3,15 @@ from __future__ import annotations
 import logging
 import os
 from functools import lru_cache
-from pathlib import Path
 from typing import Any
+
+from soca.model_paths import default_model_root
 
 from .english_inventory import is_trained_ipa
 
 LOGGER = logging.getLogger(__name__)
 
-_NLTK_DATA = Path(__file__).resolve().parents[3] / "models" / "nltk_data"
+_NLTK_DATA = default_model_root() / "nltk_data"
 
 
 @lru_cache(maxsize=1)

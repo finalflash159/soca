@@ -13,6 +13,8 @@ pub fn run() {
             engine::engine_send,
             engine::engine_stop,
             engine::engine_is_running,
+            engine::engine_model_root,
+            engine::engine_set_model_root,
         ]);
 
     // Unsigned package proofs deliberately have no updater public key or

@@ -1,11 +1,9 @@
 /** Settled voice-mode turns rendered through the shared transcript. */
 
-import type { OrbState } from "thinking-orbs";
-
 import { ChatView } from "@/components/ChatView";
 import type { Citation, ConversationState } from "@/engine/conversation";
 import type { CitationPreviewIndex } from "@/engine/citation-preview";
-import { orbLabel } from "@/engine/orb";
+import { orbLabel, type OrbState } from "@/engine/orb";
 
 interface VoiceTranscriptProps {
   /** Settled turns only — `VoiceMode` removes the one still running. */

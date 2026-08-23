@@ -88,6 +88,7 @@ def _run(
     settings: LlmSettings | None = None,
     secrets: FakeSecrets | None = None,
     catalog_fetcher: CatalogFetcher = _catalog,
+    no_model: bool = True,
 ) -> tuple[ProtocolCapture, list[LlmSettings]]:
     capture = ProtocolCapture()
     saved: list[LlmSettings] = []
@@ -101,7 +102,7 @@ def _run(
         voice_config=None,
         text_config=TextRuntimeConfig(no_memory=True, vault=Path("/tmp/soca-test-vault")),
         profile="baseline",
-        no_model=True,
+        no_model=no_model,
         stdin=stdin(),
         stdout=capture,
         llm_settings_loader=lambda: settings or LlmSettings(),
@@ -128,6 +129,7 @@ def test_llm_models_filters_catalog_by_query() -> None:
 
     event = next(item for item in reversed(capture.events()) if item["event"] == "llm_catalog")
     assert event["provider"] == "groq"
+    assert event["loading"] is False
     assert [model["id"] for model in event["models"]] == ["qwen/qwen3-32b"]
     assert "supported_parameters" not in event["models"][0]
 
@@ -202,7 +204,7 @@ def test_llm_select_survives_an_unexpected_active_model_lookup_failure() -> None
     )
 
     assert saved[0].backend == "remote"
-    event = next(item for item in capture.events() if item["event"] == "llm_config")
+    event = [item for item in capture.events() if item["event"] == "llm_config"][-1]
     assert event["pricing"] is None
 
 
@@ -224,10 +226,150 @@ def test_llm_select_persists_remote_config_and_emits_active_config() -> None:
         model_id="llama-3.1-8b-instant",
     )
     assert saved[-1].model_context_window == 131_072
-    event = next(item for item in capture.events() if item["event"] == "llm_config")
+    event = [item for item in capture.events() if item["event"] == "llm_config"][-1]
     assert event["backend"] == "remote"
     assert event["provider"] == "groq"
     assert event["model"] == "llama-3.1-8b-instant"
+    assert event["runtime_ready"] is True
+    assert event["runtime_reason"] is None
+    assert event["local_model_path"] is None
+
+
+def test_remote_readiness_is_independent_of_local_model_presence() -> None:
+    capture, _ = _run(
+        [
+            {"cmd": "llm_models", "provider": "groq"},
+            {
+                "cmd": "llm_select",
+                "backend": "remote",
+                "provider": "groq",
+                "model": "llama-3.1-8b-instant",
+            },
+        ],
+        no_model=False,
+    )
+
+    event = [item for item in capture.events() if item["event"] == "llm_config"][-1]
+    assert event["backend"] == "remote"
+    assert event["runtime_ready"] is True
+    assert event["local_model_path"] is None
+
+
+def test_switching_from_remote_to_local_does_not_persist_remote_model_id() -> None:
+    capture, saved = _run(
+        [
+            {
+                "cmd": "llm_select",
+                "backend": "remote",
+                "provider": "groq",
+                "model": "llama-3.1-8b-instant",
+            },
+            {"cmd": "llm_select", "backend": "local", "provider": "groq"},
+        ]
+    )
+
+    assert saved[-1].backend == "local"
+    assert saved[-1].model_id == LlmSettings().model_id
+    config_events = [item for item in capture.events() if item["event"] == "llm_config"]
+    assert config_events[-1]["backend"] == "local"
+    assert config_events[-1]["model"] == LlmSettings().model_id
+
+
+def test_select_rejects_model_not_in_a_loaded_remote_catalog() -> None:
+    capture, saved = _run(
+        [
+            {"cmd": "llm_models", "provider": "groq"},
+            {
+                "cmd": "llm_select",
+                "backend": "remote",
+                "provider": "groq",
+                "model": "not-in-catalog",
+            },
+        ]
+    )
+
+    assert saved == []
+    error = next(item for item in capture.events() if item["event"] == "engine_error")
+    assert "không có trong danh mục" in error["message"].lower()
+
+
+def test_key_validation_emits_catalog_and_refreshes_remote_readiness() -> None:
+    capture, _ = _run(
+        [{"cmd": "llm_set_key", "provider": "openrouter", "key": "sk-new-1234"}],
+        settings=LlmSettings(
+            backend="remote",
+            provider_key="openrouter",
+            model_id="qwen/qwen3-32b",
+        ),
+        secrets=FakeSecrets(),
+    )
+
+    events = capture.events()
+    assert any(
+        item["event"] == "llm_key_status" and item.get("ok") is True for item in events
+    )
+    catalog = [item for item in events if item["event"] == "llm_catalog"][-1]
+    assert catalog["provider"] == "openrouter"
+    assert catalog["loading"] is False
+    config = [item for item in events if item["event"] == "llm_config"][-1]
+    assert config["runtime_ready"] is True
+
+
+def test_remote_config_emits_pending_before_a_fast_catalog_can_emit_ready() -> None:
+    started = threading.Event()
+    release = threading.Event()
+    capture = ProtocolCapture()
+    saved: list[LlmSettings] = []
+
+    def catalog(provider: LLMProvider, api_key: str) -> list[RemoteModelInfo]:
+        started.set()
+        assert release.wait(timeout=2.0)
+        return _catalog(provider, api_key)
+
+    engine = SocaEngine(
+        voice_config=None,
+        text_config=TextRuntimeConfig(no_memory=True, vault=Path("/tmp/soca-test-vault")),
+        profile="baseline",
+        no_model=True,
+        writer=_ProtocolWriter(capture),
+        llm_settings_loader=LlmSettings,
+        llm_settings_saver=saved.append,
+        secret_store=FakeSecrets({"groq": "sk-existing-1234"}),
+        catalog_fetcher=catalog,
+    )
+    try:
+        engine.dispatch(
+            {
+                "cmd": "llm_select",
+                "backend": "remote",
+                "provider": "groq",
+                "model": "llama-3.1-8b-instant",
+            }
+        )
+        assert started.wait(timeout=2.0)
+        initial = [item for item in capture.events() if item["event"] == "llm_config"]
+        assert initial
+        assert initial[-1]["runtime_ready"] is False
+    finally:
+        release.set()
+        engine.shutdown()
+
+    final = [item for item in capture.events() if item["event"] == "llm_config"]
+    assert final[-1]["runtime_ready"] is True
+
+
+def test_llm_config_reports_missing_local_model_without_touching_remote_key_state(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setattr("soca.llm.registry.MODELS_ROOT", tmp_path / "empty-models")
+    capture, _ = _run(
+        [{"cmd": "llm_config"}], settings=LlmSettings(backend="local"), no_model=False
+    )
+
+    event = next(item for item in capture.events() if item["event"] == "llm_config")
+    assert event["runtime_ready"] is False
+    assert event["runtime_reason"].startswith("Chưa tìm thấy model local tại ")
+    assert event["local_model_path"].endswith("Arcee-VyLinh.Q4_K_M.gguf")
 
 
 def test_llm_select_invalidates_previous_prompt_manifest() -> None:

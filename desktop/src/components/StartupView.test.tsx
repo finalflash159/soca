@@ -5,8 +5,6 @@ import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("thinking-orbs", () => ({ ThinkingOrb: () => null }));
-
 import { StartupView } from "./StartupView";
 
 afterEach(cleanup);
@@ -46,7 +44,7 @@ describe("StartupView", () => {
   it("has no automated WCAG A/AA violations in its recovery-ready state", async () => {
     render(<StartupView starting={false} problem={null} onStart={vi.fn()} />);
     document.documentElement.lang = "vi";
-    document.title = "Sơn Ca";
+    document.title = "SoCa";
     const results = await axe.run(document, {
       runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa"] },
       rules: { "color-contrast": { enabled: false } },

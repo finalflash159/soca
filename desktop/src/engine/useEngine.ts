@@ -104,6 +104,9 @@ export function useEngine() {
   // flushed on the same timer rather than rendering once per frame (§7 obl. 5).
   const voiceRef = useRef<VoiceState>(initialVoice);
   const voiceDirty = useRef(false);
+  // `invoke` resolves after Rust has accepted the child. Keep duplicate UI
+  // actions from issuing a second start while that round trip is in flight.
+  const startInFlight = useRef<Promise<boolean> | null>(null);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -187,31 +190,42 @@ export function useEngine() {
     };
   }, []);
 
-  const start = useCallback(async (options?: LaunchOptions): Promise<boolean> => {
-    setErrors([]);
-    setLog([]);
-    setHello(null);
-    setEngineStatus(null);
-    setVersionMismatch(null);
-    setConversation(initialConversation);
-    voiceRef.current = initialVoice;
-    setVoice(initialVoice);
-    setKnowledge(initialKnowledge);
-    setSettings(initialSettings);
-    setSession(initialSession);
-    setSessionHistory(initialSessionHistory);
-    setCitationPreviews(initialCitationPreviews);
-    try {
-      await invoke("engine_start", { options: options ?? null });
-      // The Running status also arrives as an event, but a resolved invoke is
-      // proof enough that the child spawned. Do not depend on event ordering
-      // for the one piece of state that gates the whole interface.
-      setStatus((previous) => (previous.state === "running" ? previous : { state: "running" }));
-      return true;
-    } catch (error) {
-      setStatus({ state: "failed", message: String(error) });
-      return false;
-    }
+  const start = useCallback((options?: LaunchOptions): Promise<boolean> => {
+    if (startInFlight.current !== null) return startInFlight.current;
+
+    const launch = (async () => {
+      setErrors([]);
+      setLog([]);
+      setHello(null);
+      setEngineStatus(null);
+      setVersionMismatch(null);
+      setConversation(initialConversation);
+      voiceRef.current = initialVoice;
+      setVoice(initialVoice);
+      setKnowledge(initialKnowledge);
+      setSettings(initialSettings);
+      setSession(initialSession);
+      setSessionHistory(initialSessionHistory);
+      setCitationPreviews(initialCitationPreviews);
+      setStatus({ state: "starting", program: options?.program ?? "bundled engine" });
+      try {
+        await invoke("engine_start", { options: options ?? null });
+        // The Running status also arrives as an event, but a resolved invoke is
+        // proof enough that the child spawned. Do not depend on event ordering
+        // for the one piece of state that gates the whole interface.
+        setStatus((previous) => (previous.state === "running" ? previous : { state: "running" }));
+        return true;
+      } catch (error) {
+        setStatus({ state: "failed", message: String(error) });
+        return false;
+      }
+    })();
+
+    startInFlight.current = launch;
+    void launch.finally(() => {
+      if (startInFlight.current === launch) startInFlight.current = null;
+    });
+    return launch;
   }, []);
 
   const stop = useCallback(async (): Promise<boolean> => {

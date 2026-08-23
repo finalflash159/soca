@@ -12,8 +12,9 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { ThinkingOrb } from "thinking-orbs";
 
+import { ActivityOrb } from "@/components/ActivityOrb";
+import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 
@@ -36,12 +37,16 @@ export function StartupView({ starting, problem, onStart }: StartupViewProps) {
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-6 px-6">
-      <ThinkingOrb state={starting ? "connecting" : "breathing"} size={64} />
+      <ActivityOrb state={starting ? "connecting" : "breathing"} size={96} />
 
       <div className="flex flex-col items-center gap-1 text-center">
-        <h1 className="text-lg font-medium tracking-tight">SoCa</h1>
+        <h1 className="text-lg font-medium tracking-tight">
+          <BrandMark iconClassName="text-xl" />
+        </h1>
         <p className="text-muted-foreground max-w-xs text-sm leading-relaxed">
-          Trợ lý tiếng Việt chạy trên máy bạn. Nhấn để khởi động engine.
+          {starting
+            ? "Đang chuẩn bị engine và kiểm tra protocol…"
+            : "Trợ lý tiếng Việt chạy trên máy bạn. Nhấn để khởi động engine."}
         </p>
       </div>
 

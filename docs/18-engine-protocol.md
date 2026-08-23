@@ -321,7 +321,9 @@ material.
 
 ### `llm_catalog`
 
-`{provider, models[], pricing_as_of}`. Each model exposes exactly:
+`{provider, models[], loading, pricing_as_of}`. `loading: true` means the frame
+is an explicit in-flight catalog state; `loading: false` is a completed response,
+including a valid empty catalog. Each model exposes exactly:
 `id`, `label`, `context_length`, `price_prompt_per_1m`,
 `price_completion_per_1m`, `pricing_source`, `max_output_tokens`,
 `reasoning_supported`, `reasoning_mandatory`.
@@ -330,9 +332,10 @@ material.
 adapter concern and would push the OpenRouter catalog past a comfortable frame
 size.
 
-An empty `models[]` is emitted immediately while a fetch runs in the background;
-a second `llm_catalog` follows when the catalog arrives. A client must treat the
-first frame as "loading", not as "no models".
+When a fetch is needed, an empty `models[]` with `loading: true` is emitted
+immediately while the request runs in the background; a second `llm_catalog`
+follows when the catalog arrives. A client must use the explicit `loading` field,
+not infer state from the number of models.
 
 ### `llm_key_status`
 
@@ -344,7 +347,16 @@ means validation is in flight. Never carries the key.
 Active LLM configuration: `backend`, `provider`, `model`, `max_tokens`,
 `effective_max_tokens`, `reasoning_enabled`, `effective_reasoning_enabled`,
 `reasoning_supported`, `reasoning_mandatory`, `temperature`, `top_p`,
-`pricing_as_of`, `pricing`, `context_length`, `runtime_ready`, `settings_error`.
+`pricing_as_of`, `pricing`, `context_length`, `runtime_ready`, `runtime_reason`,
+`local_model_path`, `settings_error`.
+
+`runtime_ready` is backend-specific. Local readiness checks the selected GGUF
+file and local engine mode. Remote readiness checks the provider key, a
+successfully fetched catalog for that key, and the selected model's presence in
+that catalog; it never depends on the local GGUF or embedding/index state.
+While a remote catalog is being fetched, `runtime_ready` is false and
+`runtime_reason` explains that the catalog is loading. Provider/model selection
+must not silently fall back to another provider or model.
 
 The `effective_*` pair matters: a model may force reasoning on
 (`reasoning_mandatory`), so `reasoning_enabled` is the request and
@@ -652,7 +664,8 @@ line ADR 0003 draws for capability turns.
 5. **Throttle `voice_level`.**
 6. **Never reconstruct routing, evidence, or memory-mode logic client-side.**
    The engine owns those; a UI that recomputes them will disagree with the CLI.
-7. **Treat the first `llm_catalog` frame as loading**, not as an empty catalog.
+7. **Use `llm_catalog.loading`** to distinguish an in-flight fetch from a
+   completed empty catalog; never infer loading from `models.length`.
 8. **Show `effective_*` values**, not the requested ones.
 
 ## 8. Conformance test

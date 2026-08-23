@@ -27,9 +27,14 @@ interface SettingsPanelProps {
   /** Backend, output cap and reasoning all travel on the same `llm_select`. */
   onApplyGeneration: (change: {
     backend?: string;
+    provider?: string;
+    model?: string;
     maxTokens?: number;
     reasoningEnabled?: boolean;
   }) => Promise<boolean>;
+  modelRoot: { path: string; source: "managed" | "external" } | null;
+  /** Returns an error message instead of hiding a failed native configuration change. */
+  onSetModelRoot: (path: string | null) => Promise<string | null>;
   engineError: string | null;
   sessionHistory: SessionHistoryState;
   persistenceChangePending: boolean;
@@ -94,6 +99,8 @@ export function SettingsPanel({
   onSelectModel,
   onSelectProfile,
   onApplyGeneration,
+  modelRoot,
+  onSetModelRoot,
   sessionHistory,
   persistenceChangePending,
   onRequestSessionPersistence,
@@ -101,20 +108,27 @@ export function SettingsPanel({
   engineError,
 }: SettingsPanelProps) {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [remoteSetup, setRemoteSetup] = useState(false);
   const [keyDraft, setKeyDraft] = useState("");
   const [query, setQuery] = useState("");
   const [maxTokensDraft, setMaxTokensDraft] = useState("");
   const [generationPending, setGenerationPending] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [profilePending, setProfilePending] = useState<string | null>(null);
+  const [modelRootDraft, setModelRootDraft] = useState("");
+  const [modelRootPending, setModelRootPending] = useState(false);
+  const [modelRootError, setModelRootError] = useState<string | null>(null);
   const lastEngineError = useRef<string | null>(engineError);
 
   const config = settings.config;
-  const provider = selectedProvider ?? config?.provider ?? null;
+  const provider =
+    selectedProvider ?? config?.provider ?? settings.providers[0]?.key ?? null;
   const activeModel = config?.model ?? null;
   // A provider list and a hosted-model catalog are meaningless on the local
-  // backend, and offering them there made "Máy này" look like a dead end.
-  const isRemote = config?.backend !== "local";
+  // backend. During an explicit Local → Remote setup, show the controls before
+  // committing the backend so the selection cannot inherit a local GGUF id.
+  const isRemote = config?.backend === "remote";
+  const showRemoteSettings = isRemote || remoteSetup;
 
   // The callbacks arrive as fresh closures on every render. Depending on their
   // identity would re-run these effects each time, each run sending a command,
@@ -135,22 +149,30 @@ export function SettingsPanel({
   }, [connected]);
 
   useEffect(() => {
-    if (!connected || provider === null || !isRemote) {
+    if (!connected || provider === null || !showRemoteSettings) {
       return;
     }
     const timer = window.setTimeout(() => loadModelsRef.current(provider, query), 300);
     return () => window.clearTimeout(timer);
-  }, [connected, provider, query, isRemote]);
+  }, [connected, provider, query, showRemoteSettings]);
 
   const models = provider !== null ? (settings.catalog[provider] ?? []) : [];
   const loading = provider !== null && settings.catalogLoading[provider] === true;
   const keyStatus = provider !== null ? settings.keyStatus[provider] : undefined;
 
   useEffect(() => {
+    if (isRemote) setRemoteSetup(false);
+  }, [isRemote]);
+
+  useEffect(() => {
     setMaxTokensDraft(config?.maxTokens?.toString() ?? "");
     setGenerationPending(false);
     setGenerationError(config?.settingsError ?? null);
   }, [config?.backend, config?.provider, config?.model, config?.maxTokens, config?.settingsError]);
+
+  useEffect(() => {
+    setModelRootDraft(modelRoot?.path ?? "");
+  }, [modelRoot?.path]);
 
   useEffect(() => {
     if (engineError === lastEngineError.current) return;
@@ -203,13 +225,13 @@ export function SettingsPanel({
       <Section
         icon={HardDrive}
         title="Phiên trên máy"
-        description="Sơn Ca chỉ ghi nội dung phiên sau khi bạn đồng ý rõ ràng. Audio và ASR partial không được lưu."
+        description="SoCa chỉ ghi nội dung phiên sau khi bạn đồng ý rõ ràng. Audio và ASR partial không được lưu."
       >
         <Field
           label="Lưu phiên trên máy"
           hint={
             sessionHistory.persistence === "local_resumable"
-              ? "Đang lưu chat/voice dạng văn bản, context làm việc và trạng thái mục tiêu trong thư mục dữ liệu riêng của Sơn Ca."
+              ? "Đang lưu chat/voice dạng văn bản, context làm việc và trạng thái mục tiêu trong thư mục dữ liệu riêng của SoCa."
               : "Phiên hiện tại chỉ ở trong bộ nhớ và sẽ không được ghi lại khi đóng ứng dụng."
           }
         >
@@ -236,7 +258,7 @@ export function SettingsPanel({
           label="Mở lại phiên gần nhất khi khởi động"
           hint={
             sessionHistory.persistence === "local_resumable"
-              ? "Chỉ mở lại nội dung đã hoàn tất; Sơn Ca không tự chạy lại lượt, tool hay mic còn dang dở."
+              ? "Chỉ mở lại nội dung đã hoàn tất; SoCa không tự chạy lại lượt, tool hay mic còn dang dở."
               : "Bật lưu phiên trên máy trước khi dùng tùy chọn này."
           }
           htmlFor="auto-open-last-session"
@@ -282,9 +304,8 @@ export function SettingsPanel({
               </p>
             )}
             {!config.runtimeReady && (
-              <p className="text-destructive text-sm">
-                Runtime chưa sẵn sàng
-                {config.settingsError !== null && ` · ${config.settingsError}`}
+              <p className="text-destructive text-sm" role="alert">
+                {config.runtimeReason ?? config.settingsError ?? "Runtime chưa sẵn sàng."}
               </p>
             )}
 
@@ -297,9 +318,18 @@ export function SettingsPanel({
               }
             >
               <Segmented
-                value={isRemote ? "remote" : "local"}
+                value={showRemoteSettings ? "remote" : "local"}
                 disabled={!connected || generationPending}
-                onChange={(backend) => void runGeneration(() => onApplyGeneration({ backend }))}
+                onChange={(backend) => {
+                  if (backend === "remote") {
+                    setRemoteSetup(true);
+                    setGenerationError(null);
+                    loadProvidersRef.current();
+                    return;
+                  }
+                  setRemoteSetup(false);
+                  void runGeneration(() => onApplyGeneration({ backend: "local" }));
+                }}
                 options={[
                   { value: "remote", label: "Từ xa" },
                   { value: "local", label: "Máy này" },
@@ -312,13 +342,73 @@ export function SettingsPanel({
               hint={
                 isRemote
                   ? `Qua ${config.provider} · cửa sổ ngữ cảnh ${config.contextLength ?? "—"}`
-                  : "Lấy theo profile bên dưới — protocol chưa có lệnh liệt kê model cục bộ."
+                  : config.localModelPath === null
+                    ? "Model local được chọn bởi profile đang hoạt động."
+                    : `Tệp đang được kiểm tra: ${config.localModelPath}`
               }
             >
               <div className="border-border bg-muted/40 flex h-10 items-center rounded-lg border px-3">
-                <span className="truncate font-mono text-sm">{config.model}</span>
+                <span className="truncate font-mono text-sm">
+                  {remoteSetup && !isRemote ? "Chưa áp dụng — hãy chọn model remote bên dưới" : config.model}
+                </span>
               </div>
             </Field>
+
+            {!showRemoteSettings && (
+              <Field
+                label="Thư mục model local"
+                hint={
+                  modelRoot?.source === "external"
+                    ? "Đang dùng thư mục bạn đã chọn. Lưu thay đổi sẽ khởi động lại engine; dữ liệu không bị sao chép."
+                    : "Mặc định là kho dữ liệu riêng của SoCa. Chọn thư mục model đã có nếu bạn muốn dùng model hiện hữu mà không sao chép."
+                }
+                htmlFor="local-model-root"
+              >
+                <div className="flex gap-2">
+                  <input
+                    id="local-model-root"
+                    className={`${INPUT} font-mono text-xs`}
+                    value={modelRootDraft}
+                    disabled={!connected || modelRootPending}
+                    placeholder="/đường/dẫn/tới/models"
+                    onChange={(event) => setModelRootDraft(event.target.value)}
+                  />
+                  <Button
+                    className="h-10 shrink-0"
+                    disabled={!connected || modelRootPending || modelRootDraft.trim() === ""}
+                    onClick={async () => {
+                      setModelRootPending(true);
+                      setModelRootError(null);
+                      const error = await onSetModelRoot(modelRootDraft.trim());
+                      setModelRootPending(false);
+                      setModelRootError(error);
+                    }}
+                  >
+                    {modelRootPending ? "Đang áp dụng…" : "Dùng thư mục này"}
+                  </Button>
+                </div>
+                {modelRoot?.source === "external" && (
+                  <Button
+                    className="mt-2"
+                    size="sm"
+                    variant="outline"
+                    disabled={!connected || modelRootPending}
+                    onClick={async () => {
+                      setModelRootPending(true);
+                      setModelRootError(null);
+                      const error = await onSetModelRoot(null);
+                      setModelRootPending(false);
+                      setModelRootError(error);
+                    }}
+                  >
+                    Trở về kho SoCa
+                  </Button>
+                )}
+                {modelRootError !== null && (
+                  <p className="text-destructive mt-2 text-sm" role="alert">{modelRootError}</p>
+                )}
+              </Field>
+            )}
 
             <Field
               label="Giới hạn token đầu ra"
@@ -375,19 +465,25 @@ export function SettingsPanel({
         )}
       </Section>
 
-      {isRemote && (
+      {showRemoteSettings && (
         <Section
           icon={KeyRound}
           title="Nhà cung cấp"
           description="Key nằm trong keyring của engine, không bao giờ lưu ở giao diện."
         >
+          {remoteSetup && !isRemote && (
+            <p className="bg-muted/40 text-muted-foreground rounded-lg border p-3 text-sm">
+              Chọn provider, xác thực API key và chọn model. SoCa chỉ chuyển sang remote sau khi
+              bạn chọn một model hợp lệ từ danh mục.
+            </p>
+          )}
           <Field label="Chọn nhà cung cấp" hint="Chấm tròn đánh dấu nơi đang chạy thật.">
             <div className="flex flex-wrap gap-2">
               {settings.providers.length === 0 ? (
                 <p className="text-muted-foreground text-sm">Chưa nạp nhà cung cấp nào.</p>
               ) : (
                 settings.providers.map((item) => {
-                  const active = config?.provider === item.key;
+                  const active = isRemote && config?.provider === item.key;
                   return (
                     <Button
                       key={item.key}
