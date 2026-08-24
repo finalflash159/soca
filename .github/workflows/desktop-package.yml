@@ -81,9 +81,11 @@ jobs:
           # The GTK plugin cannot reliably infer the version from a Tauri
           # binary in headless CI. The desktop runtime is built on GTK 3.
           DEPLOY_GTK_VERSION: "3"
-          # linuxdeploy runs ldd over the bundled Python extensions. Point it
-          # at Torch's explicit sidecar closure while it resolves Torchaudio.
-          LD_LIBRARY_PATH: ${{ runner.os == 'Linux' && format('{0}/desktop/src-tauri/resources/soca-engine/_internal/torch/lib', github.workspace) || '' }}
+          # linuxdeploy runs ldd over the bundled Python extensions. Torchaudio
+          # resolves CUDA from its own copied runtime and the sidecar root, then
+          # resolves Torch from Torch's native library directory. Keep the full
+          # explicit closure visible while linuxdeploy scans the frozen runtime.
+          LD_LIBRARY_PATH: ${{ runner.os == 'Linux' && format('{0}/desktop/src-tauri/resources/soca-engine/_internal/torchaudio/lib:{0}/desktop/src-tauri/resources/soca-engine/_internal:{0}/desktop/src-tauri/resources/soca-engine/_internal/torch/lib', github.workspace) || '' }}
         run: npm run tauri:build --prefix desktop -- --verbose --bundles ${{ matrix.bundles }}
       - name: Prove frozen sidecar migration and persistence outside the checkout
         shell: bash
