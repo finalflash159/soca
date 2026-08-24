@@ -22,8 +22,8 @@ TORCHAUDIO_TORCH_LIBRARIES = (
 )
 
 
-def cuda_runtime_binary_arguments() -> list[str]:
-    """Return explicit PyInstaller inputs for CUDA's namespace-package binaries."""
+def cuda_runtime_libraries() -> list[Path]:
+    """Locate the CUDA runtime files installed alongside Linux Torch."""
     if not sys.platform.startswith("linux"):
         return []
 
@@ -45,12 +45,20 @@ def cuda_runtime_binary_arguments() -> list[str]:
     if not libraries:
         raise RuntimeError("nvidia-cuda-runtime does not contain a libcudart shared library")
 
-    arguments: list[str] = []
-    for library in libraries:
-        # linuxdeploy only traverses the frozen runtime's direct library closure.
-        # Keep libcudart beside Torch, then link it into torchaudio below.
-        arguments.extend(["--add-binary", f"{library}{os.pathsep}."])
-    return arguments
+    return libraries
+
+
+def copy_linux_cuda_runtime_libraries(runtime: Path) -> None:
+    """Place CUDA beside the frozen interpreter before Tauri copies the sidecar."""
+    if not sys.platform.startswith("linux"):
+        return
+
+    internal = runtime / "_internal"
+    internal.mkdir(parents=True, exist_ok=True)
+    for library in cuda_runtime_libraries():
+        if not library.is_file():
+            raise RuntimeError(f"missing CUDA runtime library: {library}")
+        shutil.copy2(library, internal / library.name)
 
 
 def link_linux_torchaudio_dependencies(runtime: Path) -> None:
@@ -132,9 +140,6 @@ def pyinstaller_command(*, dist: Path, work: Path, spec: Path) -> list[str]:
         str(spec),
         str(ENTRY_POINT),
     ]
-    cuda_arguments = cuda_runtime_binary_arguments()
-    if cuda_arguments:
-        command[-1:-1] = cuda_arguments
     return command
 
 
@@ -156,6 +161,7 @@ def build_sidecar(output: Path) -> Path:
     executable = produced / f"{SIDECAR_BASENAME}{'.exe' if os.name == 'nt' else ''}"
     if not executable.is_file():
         raise RuntimeError(f"PyInstaller completed without producing {produced}")
+    copy_linux_cuda_runtime_libraries(produced)
     link_linux_torchaudio_dependencies(produced)
 
     output.mkdir(parents=True, exist_ok=True)

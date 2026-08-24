@@ -28,7 +28,7 @@ def test_build_sidecar_uses_one_directory_runtime_and_explicit_dependency_closur
     calibration = tmp_path / "data" / "asr"
     calibration.mkdir(parents=True)
     monkeypatch.setattr(builder, "ASR_CALIBRATION_DATA", calibration)
-    monkeypatch.setattr(builder, "cuda_runtime_binary_arguments", lambda: [])
+    monkeypatch.setattr(builder, "copy_linux_cuda_runtime_libraries", lambda runtime: None)
     commands: list[list[str]] = []
 
     def fake_run(command: list[str], **kwargs: object) -> None:
@@ -71,7 +71,7 @@ def test_build_sidecar_uses_one_directory_runtime_and_explicit_dependency_closur
     assert str(entry) == pyinstaller[-1]
 
 
-def test_linux_cuda_runtime_is_added_from_its_distribution(monkeypatch, tmp_path: Path) -> None:
+def test_linux_cuda_runtime_is_copied_from_its_distribution(monkeypatch, tmp_path: Path) -> None:
     builder = _builder_module()
     monkeypatch.setattr(builder.sys, "platform", "linux")
     library = tmp_path / "site-packages" / "nvidia" / "cu13" / "lib" / "libcudart.so.13"
@@ -87,16 +87,11 @@ def test_linux_cuda_runtime_is_added_from_its_distribution(monkeypatch, tmp_path
 
     monkeypatch.setattr(builder.metadata, "distribution", lambda name: Distribution())
 
-    expected_arguments = [
-        "--add-binary",
-        f"{library}{builder.os.pathsep}.",
-    ]
-    assert builder.cuda_runtime_binary_arguments() == expected_arguments
+    assert builder.cuda_runtime_libraries() == [library]
 
-    command = builder.pyinstaller_command(
-        dist=tmp_path / "dist", work=tmp_path / "work", spec=tmp_path / "spec"
-    )
-    assert command[command.index("--add-binary") : command.index("--add-binary") + 2] == expected_arguments
+    runtime = tmp_path / "runtime"
+    builder.copy_linux_cuda_runtime_libraries(runtime)
+    assert (runtime / "_internal" / "libcudart.so.13").read_bytes() == b"cuda"
 
 
 def test_linux_torchaudio_links_resolve_torch_shared_libraries(
