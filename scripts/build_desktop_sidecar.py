@@ -1,11 +1,4 @@
-"""Build the native, self-contained Python engine consumed by Tauri.
-
-The engine is a PyInstaller one-directory runtime bundled as a Tauri resource.
-Keeping its dependency tree beside the executable avoids extracting hundreds of
-megabytes into a temporary directory on every cold launch. PyInstaller still
-runs through the active native interpreter: each operating system builds its
-own runtime and native extensions are never cross-compiled.
-"""
+"""Build the PyInstaller runtime embedded in the desktop application."""
 
 from __future__ import annotations
 
@@ -19,6 +12,40 @@ from pathlib import Path
 SIDECAR_BASENAME = "soca-engine"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ENTRY_POINT = REPO_ROOT / "desktop" / "sidecar" / "soca_engine.py"
+TORCHAUDIO_TORCH_LIBRARIES = (
+    "libc10.so",
+    "libtorch.so",
+    "libtorch_cpu.so",
+    "libtorch_global_deps.so",
+)
+
+
+def link_linux_torchaudio_dependencies(runtime: Path) -> None:
+    """Expose Torch's shared libraries to Torchaudio and Linux AppImage tooling."""
+    if not sys.platform.startswith("linux"):
+        return
+
+    internal = runtime / "_internal"
+    torch_lib = internal / "torch" / "lib"
+    torchaudio_lib = internal / "torchaudio" / "lib"
+    if not torch_lib.is_dir() or not torchaudio_lib.is_dir():
+        return
+
+    library_directories = [torch_lib, *internal.glob("nvidia/*/lib")]
+    for library_directory in library_directories:
+        library_names = (
+            TORCHAUDIO_TORCH_LIBRARIES
+            if library_directory == torch_lib
+            else tuple(library.name for library in library_directory.glob("*.so*"))
+        )
+        for library_name in library_names:
+            library = library_directory / library_name
+            if not library.is_file():
+                continue
+            destination = torchaudio_lib / library_name
+            if destination.exists() or destination.is_symlink():
+                continue
+            destination.symlink_to(os.path.relpath(library, start=torchaudio_lib))
 
 
 def pyinstaller_command(*, dist: Path, work: Path, spec: Path) -> list[str]:
@@ -73,13 +100,14 @@ def build_sidecar(output: Path) -> Path:
     executable = produced / f"{SIDECAR_BASENAME}{'.exe' if os.name == 'nt' else ''}"
     if not executable.is_file():
         raise RuntimeError(f"PyInstaller completed without producing {produced}")
+    link_linux_torchaudio_dependencies(produced)
 
     output.mkdir(parents=True, exist_ok=True)
     destination = output / SIDECAR_BASENAME
     temporary = output / f".{SIDECAR_BASENAME}.tmp"
     if temporary.exists():
         shutil.rmtree(temporary)
-    shutil.copytree(produced, temporary, copy_function=shutil.copy2)
+    shutil.copytree(produced, temporary, copy_function=shutil.copy2, symlinks=True)
     if destination.exists():
         shutil.rmtree(destination)
     temporary.replace(destination)

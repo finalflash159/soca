@@ -55,3 +55,34 @@ def test_build_sidecar_uses_one_directory_runtime_and_explicit_dependency_closur
         pyinstaller.index("--copy-metadata") : pyinstaller.index("--copy-metadata") + 2
     ]
     assert str(entry) == pyinstaller[-1]
+
+
+def test_linux_torchaudio_links_resolve_torch_shared_libraries(
+    monkeypatch, tmp_path: Path
+) -> None:
+    builder = _builder_module()
+    monkeypatch.setattr(builder.sys, "platform", "linux")
+    internal = tmp_path / "_internal"
+    torch_lib = internal / "torch" / "lib"
+    torchaudio_lib = internal / "torchaudio" / "lib"
+    torch_lib.mkdir(parents=True)
+    torchaudio_lib.mkdir(parents=True)
+    (torch_lib / "libc10.so").write_bytes(b"torch")
+    (torch_lib / "libtorch.so").write_bytes(b"torch")
+    (torch_lib / "libtorch_cpu.so").write_bytes(b"torch")
+    (torch_lib / "libtorch_global_deps.so").write_bytes(b"torch")
+    (torch_lib / "libtorch_cuda.so").write_bytes(b"unused")
+    cuda_lib = internal / "nvidia" / "cuda_runtime" / "lib"
+    cuda_lib.mkdir(parents=True)
+    (cuda_lib / "libcudart.so.13").write_bytes(b"cuda")
+
+    builder.link_linux_torchaudio_dependencies(tmp_path)
+
+    for library in builder.TORCHAUDIO_TORCH_LIBRARIES:
+        linked = torchaudio_lib / library
+        assert linked.is_symlink()
+        assert linked.resolve() == torch_lib / library
+    cuda_link = torchaudio_lib / "libcudart.so.13"
+    assert cuda_link.is_symlink()
+    assert cuda_link.resolve() == cuda_lib / "libcudart.so.13"
+    assert not (torchaudio_lib / "libtorch_cuda.so").exists()
