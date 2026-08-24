@@ -71,7 +71,8 @@ function profileName(profileKey: string): string {
 function profileStatus(status: string): string {
   if (status === "ok") return "Ready";
   if (status === "missing" || status === "blocked") return "Needs setup";
-  return status;
+  if (status === "invalid") return "Unavailable";
+  return "Checking";
 }
 
 function voiceSetupMessage(component: RuntimeComponent | undefined): string {
@@ -103,7 +104,11 @@ function profileSummary(profile: SettingsState["profiles"][number]): string {
         : profile.key === "qwen-reference"
           ? "Qwen ASR reference profile for local speech recognition."
           : "Voice profile.";
-  return profile.status === "ok" ? summary : `${summary} Required model files need setup.`;
+  if (profile.status === "ok") return summary;
+  if (profile.status === "invalid") {
+    return `${summary} This profile is unavailable because its configuration could not be validated.`;
+  }
+  return `${summary} Required model files need setup.`;
 }
 
 /** A row of mutually exclusive choices, styled as one control. */
@@ -728,7 +733,7 @@ export function SettingsPanel({
           )}
         </Field>
         <Field
-          label="Voice profile"
+          label="Cấu hình thoại"
           hint="Profile chỉ áp dụng cho phiên thoại kế tiếp; chuyển profile không ngắt cuộc gọi đang diễn ra."
         >
           {settings.profiles.length === 0 ? (
@@ -749,12 +754,15 @@ export function SettingsPanel({
                     <span className="text-muted-foreground text-xs leading-5">{profileSummary(profile)}</span>
                     <details className="text-muted-foreground mt-1 text-[10px]">
                       <summary className="cursor-pointer select-none">Thông tin kỹ thuật</summary>
+                      {profile.note !== null && profile.note !== undefined && (
+                        <p className="mt-1 break-words leading-5">{profile.note}</p>
+                      )}
                       <p className="mt-1 break-words font-mono leading-5">
                         {[profile.asr, profile.tts, profile.voice].filter(Boolean).join(" · ")}
                       </p>
                     </details>
                   </div>
-                  {settings.activeProfile !== profile.key && (
+                  {settings.activeProfile !== profile.key && profile.status === "ok" && (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -764,7 +772,7 @@ export function SettingsPanel({
                         if (!(await onSelectProfile(profile.key))) setProfilePending(null);
                       }}
                     >
-                      {profilePending === profile.key ? "Applying…" : "Select"}
+                      {profilePending === profile.key ? "Đang áp dụng…" : "Chọn"}
                     </Button>
                   )}
                 </li>

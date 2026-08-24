@@ -164,4 +164,30 @@ describe("SettingsPanel remote configuration", () => {
       screen.getByText("Speech recognition is not installed for the selected voice profile."),
     ).toBeTruthy();
   });
+
+  it("does not expose the raw invalid status or an unusable profile action", () => {
+    renderPanel({
+      settings: {
+        ...initialSettings,
+        config: localConfig,
+        activeProfile: "baseline",
+        profiles: [
+          ...initialSettings.profiles,
+          {
+            key: "qwen-reference",
+            status: "invalid",
+            asr: "qwen3_asr_1_7b",
+            llm: "arcee_vylinh_3b_q4_k_m",
+            tts: "valtec",
+            voice: null,
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByText("Unavailable")).toBeTruthy();
+    expect(screen.queryByText("invalid")).toBeNull();
+    expect(screen.getByText(/configuration could not be validated/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Chọn" })).toBeNull();
+  });
 });

@@ -1162,6 +1162,11 @@ class SocaEngine:
                 "llm": item.llm_model,
                 "tts": item.tts_engine,
                 "voice": item.tts_voice,
+                # A profile-level validation failure is different from an
+                # absent ASR artifact. Preserve its diagnostic so clients can
+                # distinguish an unavailable profile from one that needs a
+                # download, without inferring it from a status token.
+                "note": item.notes,
             }
             for item in collect_runtime_profile_readiness()
         ]

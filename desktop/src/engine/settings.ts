@@ -60,6 +60,8 @@ export interface RuntimeProfile {
   llm: string | null;
   tts: string | null;
   voice: string | null;
+  /** Engine-authored profile diagnostic; never a secret. */
+  note?: string | null;
 }
 
 export interface RuntimeComponent {
@@ -191,6 +193,7 @@ export function reduceSettings(state: SettingsState, frame: EngineFrame): Settin
             llm: typeof profile.llm === "string" ? profile.llm : null,
             tts: typeof profile.tts === "string" ? profile.tts : null,
             voice: typeof profile.voice === "string" ? profile.voice : null,
+            note: typeof profile.note === "string" ? profile.note : null,
           };
         }),
         runtimeComponents: rawComponents.map((item) => {

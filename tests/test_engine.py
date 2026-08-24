@@ -443,11 +443,13 @@ def test_engine_status_does_not_load_embedding_runtime(monkeypatch, tmp_path: Pa
 
     assert code == 0
     event = next(item for item in capture.events() if item["event"] == "status")
+    profile = next(item for item in event["profiles"] if item["key"] == "baseline")
     embedding = next(item for item in event["runtime_components"] if item["id"] == "embedding")
     qwen = next(item for item in event["runtime_components"] if item["id"] == "qwen_asr_release")
     assert embedding["status"] == "missing"
     assert qwen["status"] in {"missing", "invalid", "provisioned", "unsupported"}
     assert "fallback" in qwen["detail"] or qwen["status"] != "unsupported"
+    assert isinstance(profile["note"], str) and profile["note"]
     assert event["knowledge_index"]["dense_state"] == "model_missing"
 
 
