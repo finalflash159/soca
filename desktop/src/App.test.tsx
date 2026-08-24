@@ -244,6 +244,53 @@ describe("desktop session lifecycle", () => {
     });
   });
 
+  it("waits for remote verification without sending a provisioned Qwen install to Settings", async () => {
+    const user = userEvent.setup();
+    await renderReadyApp();
+    emit(EVENT_CHANNEL, {
+      event: "llm_config",
+      backend: "remote",
+      provider: "openrouter",
+      model: "openai/gpt-5",
+      runtime_ready: false,
+      runtime_state: "checking",
+      runtime_reason: "Đang tải danh mục model của OpenRouter…",
+      settings_error: null,
+    });
+    emit(EVENT_CHANNEL, {
+      event: "status",
+      runtime_components: [
+        { id: "voice_asr", label: "Voice ASR", status: "ok", detail: "Qwen verified" },
+        { id: "voice_llm", label: "Voice LLM", status: "missing", detail: "catalog loading" },
+        { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+      ],
+    });
+
+    await user.click(screen.getByRole("button", { name: "Thoại" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Đang chuẩn bị Voice…")).not.toBeNull();
+    });
+    expect(screen.queryByRole("button", { name: "Mở thiết lập Voice" })).toBeNull();
+    expect((screen.getByRole("button", { name: "Bật mic" }) as HTMLButtonElement).disabled).toBe(true);
+
+    emit(EVENT_CHANNEL, {
+      event: "llm_config",
+      backend: "remote",
+      provider: "openrouter",
+      model: "openai/gpt-5",
+      runtime_ready: true,
+      runtime_state: "ready",
+      runtime_reason: null,
+      settings_error: null,
+    });
+
+    await waitFor(() => {
+      expect((screen.getByRole("button", { name: "Bật mic" }) as HTMLButtonElement).disabled).toBe(false);
+    });
+    expect(screen.queryByRole("button", { name: "Mở thiết lập Voice" })).toBeNull();
+  });
+
   it("uses the immersive orb only while the microphone is capturing", async () => {
     const user = userEvent.setup();
     await renderReadyApp();

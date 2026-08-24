@@ -349,7 +349,7 @@ means validation is in flight. Never carries the key.
 Active LLM configuration: `backend`, `provider`, `model`, `max_tokens`,
 `effective_max_tokens`, `reasoning_enabled`, `effective_reasoning_enabled`,
 `reasoning_supported`, `reasoning_mandatory`, `temperature`, `top_p`,
-`pricing_as_of`, `pricing`, `context_length`, `runtime_ready`, `runtime_reason`,
+`pricing_as_of`, `pricing`, `context_length`, `runtime_ready`, `runtime_state`, `runtime_reason`,
 `local_model_path`, `settings_error`.
 
 `runtime_ready` is backend-specific. Local readiness checks the selected GGUF
@@ -357,7 +357,10 @@ file and local engine mode. Remote readiness checks the provider key, a
 successfully fetched catalog for that key, and the selected model's presence in
 that catalog; it never depends on the local GGUF or embedding/index state.
 While a remote catalog is being fetched, `runtime_ready` is false and
-`runtime_reason` explains that the catalog is loading. Provider/model selection
+`runtime_state` is `checking`; it becomes `ready` only once the configured
+provider, model, and credentials are verified, and `blocked` for a terminal
+configuration failure. `runtime_reason` explains the state for people, while
+clients use `runtime_state` for control flow. Provider/model selection
 must not silently fall back to another provider or model.
 
 The `effective_*` pair matters: a model may force reasoning on

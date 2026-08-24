@@ -48,6 +48,8 @@ export interface LlmConfig {
   reasoningMandatory: boolean;
   contextLength: number | null;
   runtimeReady: boolean;
+  /** Typed engine lifecycle state; never infer control flow from diagnostic copy. */
+  runtimeState: "checking" | "ready" | "blocked";
   runtimeReason: string | null;
   localModelPath: string | null;
   settingsError: string | null;
@@ -69,6 +71,25 @@ export interface RuntimeComponent {
   label: string;
   status: string;
   detail: string | null;
+}
+
+const READY_COMPONENT_STATUSES = new Set(["ok", "ready", "loaded", "configured"]);
+
+export function runtimeStateFor(config: LlmConfig | null): LlmConfig["runtimeState"] {
+  if (config === null) return "checking";
+  // v3 frames from an earlier desktop build did not include runtime_state.
+  // Their boolean remains an explicit compatibility signal, not copy parsing.
+  return config.runtimeState ?? (config.runtimeReady ? "ready" : "blocked");
+}
+
+export function isVoiceComponentReady(
+  component: RuntimeComponent,
+  config: LlmConfig | null,
+): boolean {
+  if (component.id === "voice_llm") {
+    return runtimeStateFor(config) === "ready";
+  }
+  return READY_COMPONENT_STATUSES.has(component.status);
 }
 
 export interface SettingsState {
@@ -157,7 +178,15 @@ export function reduceSettings(state: SettingsState, frame: EngineFrame): Settin
       };
     }
 
-    case "llm_config":
+    case "llm_config": {
+      const runtimeReady = frame.runtime_ready === true;
+      const rawRuntimeState = frame.runtime_state;
+      const runtimeState =
+        rawRuntimeState === "checking" || rawRuntimeState === "ready" || rawRuntimeState === "blocked"
+          ? rawRuntimeState
+          : runtimeReady
+            ? "ready"
+            : "blocked";
       return {
         ...state,
         config: {
@@ -171,12 +200,14 @@ export function reduceSettings(state: SettingsState, frame: EngineFrame): Settin
           reasoningSupported: frame.reasoning_supported === true,
           reasoningMandatory: frame.reasoning_mandatory === true,
           contextLength: numOrNull(frame.context_length),
-          runtimeReady: frame.runtime_ready === true,
+          runtimeReady,
+          runtimeState,
           runtimeReason: typeof frame.runtime_reason === "string" ? frame.runtime_reason : null,
           localModelPath: typeof frame.local_model_path === "string" ? frame.local_model_path : null,
           settingsError: typeof frame.settings_error === "string" ? frame.settings_error : null,
         },
       };
+    }
 
     case "status": {
       const raw = Array.isArray(frame.profiles) ? frame.profiles : [];

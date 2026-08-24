@@ -39,6 +39,7 @@ const localConfig = {
   reasoningMandatory: false,
   contextLength: 8192,
   runtimeReady: true,
+  runtimeState: "ready" as const,
   runtimeReason: null,
   localModelPath: "/models/model.gguf",
   settingsError: null,
@@ -142,6 +143,7 @@ describe("SettingsPanel remote configuration", () => {
           model: remoteModel.id,
           localModelPath: null,
           runtimeReady: false,
+          runtimeState: "checking",
           runtimeReason: "Đang tải danh mục model của OpenRouter…",
         },
         catalog: { openrouter: [] },
@@ -149,7 +151,7 @@ describe("SettingsPanel remote configuration", () => {
       },
     });
 
-    expect(screen.getByText(/đang tải danh mục model/i)).toBeTruthy();
+    expect(screen.getByText("Đang xác minh model chat đã chọn.")).toBeTruthy();
     expect(screen.queryByText(/chưa tìm thấy model local/i)).toBeNull();
     expect(screen.getByLabelText("Thư mục model Voice và On-device")).toBeTruthy();
   });

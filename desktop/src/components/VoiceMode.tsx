@@ -5,7 +5,12 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { VoiceHud } from "@/components/VoiceHud";
-import { VoiceOrb, voiceOrbStatusFor, voicePresentationFor } from "@/components/VoiceOrb";
+import {
+  VoiceOrb,
+  voiceOrbModeFor,
+  voiceOrbStatusFor,
+  voicePresentationFor,
+} from "@/components/VoiceOrb";
 import { VoiceTranscript } from "@/components/VoiceTranscript";
 import type { Citation, ConversationState, Turn } from "@/engine/conversation";
 import type { CitationPreviewIndex } from "@/engine/citation-preview";
@@ -22,6 +27,7 @@ interface VoiceModeProps {
   onRequestCitationPreview: (citation: Citation) => Promise<boolean>;
   connected: boolean;
   ready: boolean;
+  checking: boolean;
   setupSummary: string | null;
   setupDetail: string | null;
   transcriptOpen: boolean;
@@ -93,6 +99,7 @@ export function VoiceMode({
   onRequestCitationPreview,
   connected,
   ready,
+  checking,
   setupSummary,
   setupDetail,
   transcriptOpen,
@@ -138,7 +145,7 @@ export function VoiceMode({
     newest !== undefined && newest.surface === "voice" && newest.finalText === null ? newest : null;
   const settled = liveTurn === null ? conversation.turns : conversation.turns.slice(0, -1);
   const historyVisible = transcriptOpen && !detailsOpen && !immersive;
-  const status = voiceOrbStatusFor(ready ? voice.phase : "setup");
+  const status = voiceOrbStatusFor(voiceOrbModeFor(voice, ready, checking));
 
   return (
       <div
@@ -156,13 +163,17 @@ export function VoiceMode({
         )}
         data-voice-presentation={presentation}
       >
-        <VoiceOrb voice={voice} ready={ready} presentation={presentation} />
+        <VoiceOrb voice={voice} ready={ready} checking={checking} presentation={presentation} />
 
         <div className={cn("flex max-w-2xl flex-col items-center justify-start gap-3", immersive ? "min-h-0" : "min-h-20")}>
           <p className="text-muted-foreground text-pretty text-center text-sm" role="status" aria-atomic="true">
             {status}
           </p>
-          {!ready ? (
+          {!ready && checking ? (
+            <p className="text-muted-foreground max-w-md text-center text-sm leading-6" role="status">
+              {setupSummary ?? "Đang xác minh Voice trên máy này…"}
+            </p>
+          ) : !ready ? (
             <div className="border-border bg-card w-full max-w-md rounded-xl border p-4 text-left shadow-sm">
               <h2 className="text-sm font-medium">Thiết lập Voice trước khi bật microphone</h2>
               <p className="text-muted-foreground mt-1 text-sm leading-6">

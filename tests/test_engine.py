@@ -453,6 +453,34 @@ def test_engine_status_does_not_load_embedding_runtime(monkeypatch, tmp_path: Pa
     assert event["knowledge_index"]["dense_state"] == "model_missing"
 
 
+def test_remote_catalog_completion_refreshes_voice_readiness_status() -> None:
+    """A checked remote model must replace the provisional Voice snapshot."""
+    from types import SimpleNamespace
+
+    from soca.llm.providers import get_provider
+
+    provider = get_provider("openrouter")
+    api_key = "test-key"
+    fingerprint = SocaEngine._catalog_fingerprint(api_key)
+    engine = object.__new__(SocaEngine)
+    engine.catalog_fetcher = lambda _provider, _key: []
+    engine._catalog_lock = threading.Lock()
+    engine._catalog_cache = {}
+    engine._catalog_failures = {}
+    engine._catalog_inflight = {(provider.key, fingerprint)}
+    engine._catalog_threads = set()
+    engine.llm_settings = SimpleNamespace(backend="remote", provider_key=provider.key)
+    events: list[str] = []
+    engine._refresh_active_model_capabilities = lambda *_args: None
+    engine._emit_catalog = lambda *_args: events.append("catalog")
+    engine._emit_llm_config = lambda: events.append("llm_config")
+    engine._cmd_status = lambda: events.append("status")
+
+    engine._catalog_worker(provider, api_key, fingerprint, "config", "")
+
+    assert events == ["catalog", "llm_config", "status"]
+
+
 def test_engine_blocks_runtime_when_saved_llm_settings_are_invalid() -> None:
     capture = ProtocolCapture()
 

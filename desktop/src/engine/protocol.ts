@@ -283,6 +283,8 @@ export interface LlmConfigFrame {
   effective_reasoning_enabled: boolean;
   reasoning_mandatory: boolean;
   runtime_ready: boolean;
+  /** Whether the engine is still resolving a route, has a usable route, or is blocked. */
+  runtime_state?: "checking" | "ready" | "blocked";
   runtime_reason?: string | null;
   local_model_path?: string | null;
   settings_error: string | null;

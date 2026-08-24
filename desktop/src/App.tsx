@@ -20,6 +20,10 @@ import {
 } from "@/components/ui/dialog";
 import { documentIndex } from "@/engine/documents";
 import {
+  isVoiceComponentReady,
+  runtimeStateFor,
+} from "@/engine/settings";
+import {
   launchOptions,
   saveSessionPersistence,
   savedSessionPersistence,
@@ -120,13 +124,11 @@ export default function App() {
     voiceComponentIds.has(component.id),
   );
   const voiceBlocker = voiceComponents.find(
-    // Python readiness uses `ok` for a verified Qwen artifact + calibration.
-    // Treating that truthful terminal state as a blocker was why the Voice
-    // page said ASR was missing while its own diagnostics said it was verified.
-    (component) => !["ok", "ready", "loaded", "configured"].includes(component.status),
+    (component) => !isVoiceComponentReady(component, llmConfig),
   );
   const voiceReady = runtimeReady && voiceComponents.length === voiceComponentIds.size && voiceBlocker === undefined;
-  const runtimeChecking = /^(Đang tải|Đang kiểm tra)/u.test(runtimeReason);
+  const runtimeChecking = runtimeStateFor(llmConfig) === "checking";
+  const voiceChecking = runtimeChecking || voiceComponents.length !== voiceComponentIds.size;
   const voiceReason = !runtimeReady
     ? runtimeReason
     : voiceBlocker !== undefined
@@ -628,6 +630,7 @@ export default function App() {
                 citationPreviews={engine.citationPreviews}
                 connected={connected && !sessionChanging}
                 ready={voiceReady}
+                checking={voiceChecking}
                 setupSummary={voiceSetupSummary}
                 setupDetail={voiceReason}
                 transcriptOpen={transcriptOpen}

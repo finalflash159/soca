@@ -374,6 +374,12 @@ class SocaEngine:
         # submit, startup, or model picker look frozen.
         self._catalog_lock = threading.Lock()
         self._catalog_cache: dict[str, tuple[str, list[RemoteModelInfo]]] = {}
+        # A failed catalog request is a terminal readiness result for the
+        # current credential fingerprint.  Remembering it prevents the UI
+        # from presenting an endless "checking" state or silently retrying on
+        # every config refresh.  A new key has a new fingerprint and can be
+        # tried explicitly.
+        self._catalog_failures: dict[str, tuple[str, str]] = {}
         self._catalog_inflight: set[tuple[str, str]] = set()
         self._catalog_threads: set[threading.Thread] = set()
         self._key_validation_tokens: dict[str, str] = {}
@@ -1595,8 +1601,13 @@ class SocaEngine:
                 catalog = self._cached_catalog(provider, api_key)
             else:
                 catalog = None
-            if api_key and catalog is None:
+            if api_key and catalog is None and self._catalog_failure(provider, api_key) is None:
                 catalog_fetch = (provider, api_key)
+        runtime_state = (
+            "ready"
+            if runtime_ready
+            else ("checking" if catalog_fetch is not None else "blocked")
+        )
         payload: dict[str, Any] = {
             "event": "llm_config",
             "backend": settings.backend,
@@ -1614,6 +1625,7 @@ class SocaEngine:
             "pricing": active_model,
             "context_length": self._model_context_length(),
             "runtime_ready": runtime_ready,
+            "runtime_state": runtime_state,
             "runtime_reason": runtime_reason,
             "local_model_path": local_model_path,
             "settings_error": self._settings_error,
@@ -1646,6 +1658,9 @@ class SocaEngine:
                 return False, f"Chưa có API key cho {provider.label}.", None
             catalog = self._cached_catalog(provider, api_key)
             if catalog is None:
+                failure = self._catalog_failure(provider, api_key)
+                if failure is not None:
+                    return False, failure, None
                 return False, f"Đang tải danh mục model của {provider.label}…", None
             if not any(model.id == settings.model_id for model in catalog):
                 return (
@@ -1707,6 +1722,23 @@ class SocaEngine:
             if cached is None or cached[0] != fingerprint:
                 return None
             return list(cached[1])
+
+    def _catalog_failure(self, provider: LLMProvider, api_key: str) -> str | None:
+        fingerprint = self._catalog_fingerprint(api_key)
+        with self._catalog_lock:
+            failure = self._catalog_failures.get(provider.key)
+        if failure is None or failure[0] != fingerprint:
+            return None
+        return failure[1]
+
+    def _remember_catalog_failure(
+        self,
+        provider: LLMProvider,
+        fingerprint: str,
+        detail: str,
+    ) -> None:
+        with self._catalog_lock:
+            self._catalog_failures[provider.key] = (fingerprint, detail)
 
     def _emit_catalog(
         self,
@@ -1776,7 +1808,15 @@ class SocaEngine:
                 if self._key_validation_is_current(provider.key, fingerprint):
                     self._emit_key_status(provider.key, ok=False, message=str(exc))
             else:
-                self._error(str(exc), provider=provider.key)
+                detail = str(exc)
+                self._remember_catalog_failure(provider, fingerprint, detail)
+                self._error(detail, provider=provider.key)
+                if (
+                    self.llm_settings.backend == "remote"
+                    and self.llm_settings.provider_key == provider.key
+                ):
+                    self._emit_llm_config()
+                    self._cmd_status()
             return
         except Exception as exc:  # noqa: BLE001 - external catalog adapters are untrusted
             LOGGER.warning(
@@ -1792,10 +1832,15 @@ class SocaEngine:
                         message="Không thể xác thực API key. Hãy thử lại sau.",
                     )
             else:
-                self._error(
-                    f"Không thể lấy danh sách model của {provider.label}.",
-                    provider=provider.key,
-                )
+                detail = f"Không thể lấy danh sách model của {provider.label}."
+                self._remember_catalog_failure(provider, fingerprint, detail)
+                self._error(detail, provider=provider.key)
+                if (
+                    self.llm_settings.backend == "remote"
+                    and self.llm_settings.provider_key == provider.key
+                ):
+                    self._emit_llm_config()
+                    self._cmd_status()
             return
         finally:
             request_key = (provider.key, fingerprint)
@@ -1805,6 +1850,7 @@ class SocaEngine:
 
         with self._catalog_lock:
             self._catalog_cache[provider.key] = (fingerprint, list(catalog))
+            self._catalog_failures.pop(provider.key, None)
 
         self._refresh_active_model_capabilities(provider, catalog)
 
@@ -1819,6 +1865,13 @@ class SocaEngine:
             self.llm_settings.backend == "remote" and self.llm_settings.provider_key == provider.key
         ):
             self._emit_llm_config()
+            # `status` owns Voice dependency readiness.  Without a fresh
+            # snapshot, a client can retain the pre-catalog `voice_llm`
+            # "missing" state even after `llm_config` says the remote route is
+            # ready, which incorrectly routes a fully provisioned user into
+            # Voice setup.
+            if purpose == "config":
+                self._cmd_status()
 
     def _refresh_active_model_capabilities(
         self,

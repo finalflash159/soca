@@ -15,8 +15,12 @@ export function voicePresentationFor(voice: VoiceState, ready: boolean): VoicePr
   return ready && voice.phase === "listening" ? "immersive" : "compact";
 }
 
-export function voiceOrbModeFor(voice: VoiceState, ready: boolean): VoiceOrbMode {
-  return ready ? voice.phase : "setup";
+export function voiceOrbModeFor(
+  voice: VoiceState,
+  ready: boolean,
+  checking = false,
+): VoiceOrbMode {
+  return ready ? voice.phase : checking ? "starting" : "setup";
 }
 
 export function voiceOrbStatusFor(mode: VoiceOrbMode): string {
@@ -48,11 +52,12 @@ function recentLevel(levels: number[]): number {
 interface VoiceOrbProps {
   voice: VoiceState;
   ready: boolean;
+  checking?: boolean;
   presentation: VoicePresentation;
 }
 
-export function VoiceOrb({ voice, ready, presentation }: VoiceOrbProps) {
-  const mode = voiceOrbModeFor(voice, ready);
+export function VoiceOrb({ voice, ready, checking = false, presentation }: VoiceOrbProps) {
+  const mode = voiceOrbModeFor(voice, ready, checking);
   const level =
     mode === "listening"
       ? recentLevel(voice.levels)

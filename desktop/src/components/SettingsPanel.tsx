@@ -9,9 +9,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { UpdaterPanel } from "@/components/UpdaterPanel";
-import type { LlmConfig, RuntimeComponent, SettingsState } from "@/engine/settings";
+import {
+  isVoiceComponentReady,
+  modelPrice,
+  runtimeStateFor,
+  type LlmConfig,
+  type RuntimeComponent,
+  type SettingsState,
+} from "@/engine/settings";
 import type { SessionHistoryState } from "@/engine/session-history";
-import { modelPrice } from "@/engine/settings";
 import type { ThemeChoice } from "@/theme";
 import { cn } from "@/lib/utils";
 
@@ -208,10 +214,12 @@ export function SettingsPanel({
   const voiceComponents = settings.runtimeComponents.filter((component) =>
     ["voice_asr", "voice_llm", "tts"].includes(component.id),
   );
+  const runtimeState = runtimeStateFor(config);
   const voiceBlocker = voiceComponents.find(
-    (component) => !["ok", "ready", "loaded", "configured"].includes(component.status),
+    (component) => !isVoiceComponentReady(component, config),
   );
-  const voiceReady = voiceComponents.length === 3 && voiceBlocker === undefined;
+  const voiceChecking = runtimeState === "checking" || voiceComponents.length !== 3;
+  const voiceReady = !voiceChecking && runtimeState === "ready" && voiceBlocker === undefined;
   const qwenAsrComponent = voiceComponents.find((component) => component.id === "voice_asr");
   const qwenAsrReady = qwenAsrComponent !== undefined && ["ok", "ready", "loaded", "configured"].includes(qwenAsrComponent.status);
 
@@ -462,15 +470,17 @@ export function SettingsPanel({
             >
               <div className="border-border bg-muted/30 flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm">
                 <Badge variant={config.runtimeReady ? "secondary" : "outline"}>
-                  {config.runtimeReady ? "Ready" : "Needs setup"}
+                  {runtimeState === "checking" ? "Checking" : config.runtimeReady ? "Ready" : "Needs setup"}
                 </Badge>
                 <div className="min-w-0 flex-1 text-xs leading-5">
-                  {config.runtimeReady
+                  {runtimeState === "checking"
+                    ? "Đang xác minh model chat đã chọn."
+                    : config.runtimeReady
                     ? isRemote
                       ? "Remote chat is configured."
                       : "On-device chat model is available."
                     : chatSetupMessage(config)}
-                  {!config.runtimeReady &&
+                  {!config.runtimeReady && runtimeState !== "checking" &&
                     (config.runtimeReason ?? config.settingsError ?? chatComponent?.detail) !== undefined && (
                       <details className="text-muted-foreground mt-2 text-xs">
                         <summary className="cursor-pointer select-none">Thông tin kỹ thuật</summary>
@@ -788,21 +798,23 @@ export function SettingsPanel({
           ) : (
             <div className="border-border bg-muted/30 flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm">
               <Badge variant={voiceReady ? "secondary" : "outline"}>
-                {voiceReady ? "Ready" : "Needs setup"}
+                {voiceReady ? "Ready" : voiceChecking ? "Checking" : "Needs setup"}
               </Badge>
               <div className="min-w-0 flex-1 leading-5">
                 {voiceReady
                   ? "Qwen ASR, model trả lời và giọng đọc đã sẵn sàng."
-                  : voiceBlocker === undefined
+                  : voiceChecking
+                    ? "Đang xác minh Voice. Bạn không cần chọn lại thư mục model."
+                    : voiceBlocker === undefined
                     ? "Đang chờ trạng thái thoại hoàn chỉnh…"
                     : voiceSetupMessage(voiceBlocker)}
-                {!voiceReady && voiceBlocker?.detail !== null && voiceBlocker?.detail !== undefined && (
+                {!voiceReady && !voiceChecking && voiceBlocker?.detail !== null && voiceBlocker?.detail !== undefined && (
                   <details className="text-muted-foreground mt-2 text-xs">
                     <summary className="cursor-pointer select-none">Thông tin kỹ thuật</summary>
                     <p className="mt-1 break-words font-mono leading-5">{voiceBlocker.detail}</p>
                   </details>
                 )}
-                {!voiceReady && (
+                {!voiceReady && !voiceChecking && voiceBlocker?.id === "voice_asr" && (
                   <Button
                     className="mt-3"
                     size="sm"

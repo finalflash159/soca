@@ -516,6 +516,7 @@ fn spawn_reader(
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
+        let mut received_bye = false;
         for line in reader.lines() {
             let line = match line {
                 Ok(line) => line,
@@ -547,6 +548,7 @@ fn spawn_reader(
                         eprintln!("[soca-desktop] event emit failed: {error}");
                     }
                     if is_bye {
+                        received_bye = true;
                         // Ignored on purpose: the receiver is dropped when a stop
                         // times out, and the thread must still drain to EOF.
                         let _ = bye_tx.send(());
@@ -560,12 +562,21 @@ fn spawn_reader(
             }
         }
         if !stopping.load(Ordering::SeqCst) {
-            emit_status(
-                &app,
+            // `bye` is the engine's normal EOF contract. The native stop path
+            // marks `stopping` first, but an engine may also receive stdin EOF
+            // while the WebView is being torn down. Reporting that clean exit
+            // as a crash was the source of the misleading startup alert.
+            let status = if received_bye {
+                EngineStatus::Stopped {
+                    code: None,
+                    graceful: true,
+                }
+            } else {
                 EngineStatus::Failed {
                     message: "engine stdout closed unexpectedly".to_string(),
-                },
-            );
+                }
+            };
+            emit_status(&app, status);
         }
     })
 }
