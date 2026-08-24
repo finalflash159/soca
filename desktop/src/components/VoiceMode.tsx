@@ -149,7 +149,7 @@ export function VoiceMode({
   const historyVisible = transcriptOpen && !detailsOpen;
 
   const status = !ready
-    ? "Voice needs setup"
+    ? "Voice cần thiết lập"
     : !running
     ? "Microphone off"
     : voice.phase === "starting"
@@ -199,19 +199,19 @@ export function VoiceMode({
           </p>
           {!ready ? (
             <div className="border-border bg-card w-full max-w-md rounded-xl border p-4 text-left shadow-sm">
-              <h2 className="text-sm font-medium">Set up Voice before using the microphone</h2>
+              <h2 className="text-sm font-medium">Thiết lập Voice trước khi bật microphone</h2>
               <p className="text-muted-foreground mt-1 text-sm leading-6">
-                {setupSummary ?? "Voice is still checking its local components."}
+                {setupSummary ?? "Voice đang kiểm tra các thành phần trên máy này."}
               </p>
               {setupDetail !== null && (
                 <details className="text-muted-foreground mt-3 text-xs">
-                  <summary className="cursor-pointer select-none">Technical details</summary>
+                  <summary className="cursor-pointer select-none">Thông tin kỹ thuật</summary>
                   <p className="mt-2 break-words font-mono leading-5">{setupDetail}</p>
                 </details>
               )}
               <Button className="mt-4" size="sm" onClick={onOpenSetup}>
                 <Settings2 className="size-4" />
-                Open Voice setup
+                Mở thiết lập Voice
               </Button>
             </div>
           ) : (

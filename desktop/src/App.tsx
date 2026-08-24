@@ -114,9 +114,13 @@ export default function App() {
     voiceComponentIds.has(component.id),
   );
   const voiceBlocker = voiceComponents.find(
-    (component) => !["ready", "loaded", "configured"].includes(component.status),
+    // Python readiness uses `ok` for a verified Qwen artifact + calibration.
+    // Treating that truthful terminal state as a blocker was why the Voice
+    // page said ASR was missing while its own diagnostics said it was verified.
+    (component) => !["ok", "ready", "loaded", "configured"].includes(component.status),
   );
   const voiceReady = runtimeReady && voiceComponents.length === voiceComponentIds.size && voiceBlocker === undefined;
+  const runtimeChecking = /^(Đang tải|Đang kiểm tra)/u.test(runtimeReason);
   const voiceReason = !runtimeReady
     ? runtimeReason
     : voiceBlocker !== undefined
@@ -125,15 +129,17 @@ export default function App() {
         ? "Đang kiểm tra ASR và TTS…"
         : null;
   const voiceSetupSummary = !runtimeReady
-    ? "The response model for Voice needs setup."
+    ? runtimeChecking
+      ? "Đang xác minh model trả lời cho Voice…"
+      : "Model trả lời cho Voice chưa sẵn sàng."
     : voiceBlocker?.id === "voice_asr"
-      ? "Speech recognition needs setup."
+      ? "Qwen ASR chưa sẵn sàng."
       : voiceBlocker?.id === "voice_llm"
-        ? "The response model for Voice needs setup."
+        ? "Model trả lời cho Voice chưa sẵn sàng."
         : voiceBlocker?.id === "tts"
-          ? "Speech output needs setup."
+          ? "Giọng đọc trả lời chưa sẵn sàng."
           : voiceComponents.length !== voiceComponentIds.size
-            ? "Checking Voice setup…"
+            ? "Đang kiểm tra Voice…"
             : null;
 
   const startWithPersistence = async (

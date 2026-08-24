@@ -230,15 +230,15 @@ describe("desktop session lifecycle", () => {
     await user.click(screen.getByRole("button", { name: "Thoại" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Set up Voice before using the microphone")).not.toBeNull();
+      expect(screen.getByText("Thiết lập Voice trước khi bật microphone")).not.toBeNull();
       expect(
-        screen.getByText("Speech recognition needs setup."),
+        screen.getByText("Qwen ASR chưa sẵn sàng."),
       ).not.toBeNull();
     });
     expect(screen.getByTestId("voice-orb").getAttribute("data-orb-state")).toBe("solving");
     expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
 
-    await user.click(screen.getByRole("button", { name: "Open Voice setup" }));
+    await user.click(screen.getByRole("button", { name: "Mở thiết lập Voice" }));
     await waitFor(() => {
       expect(screen.getByText("Trạng thái thoại")).not.toBeNull();
     });

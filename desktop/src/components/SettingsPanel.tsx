@@ -83,13 +83,16 @@ function profileStatus(profile: SettingsState["profiles"][number]): string {
 
 function voiceSetupMessage(component: RuntimeComponent | undefined): string {
   if (component === undefined) return "Đang kiểm tra các thành phần thoại…";
+  if (component.status === "checking" || component.detail?.startsWith("Đang tải") === true) {
+    return `Đang xác minh ${component.label}…`;
+  }
   switch (component.id) {
     case "voice_asr":
-      return "Speech recognition is not installed for the selected voice profile.";
+      return "Qwen ASR chưa sẵn sàng cho profile đang chọn.";
     case "voice_llm":
-      return "The response model for voice needs setup.";
+      return "Model trả lời cho Voice chưa sẵn sàng.";
     case "tts":
-      return "Speech output needs setup.";
+      return "Giọng đọc trả lời chưa sẵn sàng.";
     default:
       return "A required voice component needs setup.";
   }
@@ -206,9 +209,11 @@ export function SettingsPanel({
     ["voice_asr", "voice_llm", "tts"].includes(component.id),
   );
   const voiceBlocker = voiceComponents.find(
-    (component) => !["ready", "loaded", "configured"].includes(component.status),
+    (component) => !["ok", "ready", "loaded", "configured"].includes(component.status),
   );
   const voiceReady = voiceComponents.length === 3 && voiceBlocker === undefined;
+  const qwenAsrComponent = voiceComponents.find((component) => component.id === "voice_asr");
+  const qwenAsrReady = qwenAsrComponent !== undefined && ["ok", "ready", "loaded", "configured"].includes(qwenAsrComponent.status);
 
   // The callbacks arrive as fresh closures on every render. Depending on their
   // identity would re-run these effects each time, each run sending a command,
@@ -548,7 +553,7 @@ export function SettingsPanel({
                   onClick={() => void chooseModelRoot()}
                 >
                   <FolderOpen className="size-4" />
-                  Chọn thư mục…
+                  Chọn thư mục model…
                 </Button>
                 <Button
                   className="h-10 shrink-0"
@@ -787,7 +792,7 @@ export function SettingsPanel({
               </Badge>
               <div className="min-w-0 flex-1 leading-5">
                 {voiceReady
-                  ? "Speech recognition, response model, and speech output are ready."
+                  ? "Qwen ASR, model trả lời và giọng đọc đã sẵn sàng."
                   : voiceBlocker === undefined
                     ? "Đang chờ trạng thái thoại hoàn chỉnh…"
                     : voiceSetupMessage(voiceBlocker)}
@@ -808,7 +813,7 @@ export function SettingsPanel({
                       window.setTimeout(() => (input as HTMLInputElement | null)?.focus(), 250);
                     }}
                   >
-                    Set up Qwen ASR
+                    Thiết lập Qwen ASR
                   </Button>
                 )}
               </div>
@@ -816,19 +821,33 @@ export function SettingsPanel({
           )}
         </Field>
         <Field
-          label="Qwen ASR setup"
-          hint="Qwen Release is the required speech recognizer. The app validates the selected worker runtime and immutable local model store before the microphone can start."
+          label="Qwen ASR"
+          hint="Qwen Release là bộ nhận diện bắt buộc. “Dùng thư mục” chỉ xác minh một bản Qwen đã có và khởi động lại engine; nó không tải, sao chép hoặc cài model."
         >
-          <div className="border-border flex flex-col gap-4 rounded-lg border p-3">
+          <div className="border-border flex flex-col gap-3 rounded-lg border p-3">
+            {qwenAsrReady && (
+              <div className="flex items-center gap-2 text-sm">
+                <Badge variant="secondary">Sẵn sàng</Badge>
+                <span>Qwen ASR đã được xác minh; không có tác vụ tải xuống đang chạy.</span>
+              </div>
+            )}
+            <details open={!qwenAsrReady} className="group">
+              <summary className="cursor-pointer list-none text-sm font-medium marker:hidden">
+                {qwenAsrReady ? "Thay đổi bản cài Qwen hiện có" : "Dùng bản cài Qwen hiện có"}
+              </summary>
+              <p className="text-muted-foreground mt-2 text-xs leading-5">
+                Màn hình này chưa tải model. Hai nút dưới đây chỉ lưu đường dẫn, kiểm tra chữ ký/receipt và khởi động lại engine. Vì vậy không có thanh tiến trình tải xuống.
+              </p>
+              <div className="mt-4 flex flex-col gap-4">
             <div>
-              <p className="text-sm font-medium">Qwen worker runtime</p>
+              <p className="text-sm font-medium">Môi trường chạy Qwen</p>
               <p className="text-muted-foreground mt-1 text-xs leading-5">
-                Choose the verified <code>runtime/qwen-asr</code> folder containing <code>uv.lock</code>, <code>.runtime-receipt.json</code>, and <code>.venv</code>.
+                Chỉ dùng khi bạn đã cài Qwen trước đó: chọn thư mục <code>runtime/qwen-asr</code> có <code>uv.lock</code>, <code>.runtime-receipt.json</code> và <code>.venv</code>.
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 <input
                   id="qwen-runtime-root"
-                  aria-label="Qwen worker runtime"
+                  aria-label="Môi trường chạy Qwen"
                   className={`${INPUT} min-w-0 flex-1 font-mono text-xs`}
                   value={qwenRuntimeRootDraft}
                   disabled={!connected || qwenSetupPending !== null}
@@ -836,22 +855,22 @@ export function SettingsPanel({
                   onChange={(event) => setQwenRuntimeRootDraft(event.target.value)}
                 />
                 <Button type="button" variant="outline" disabled={!connected || qwenSetupPending !== null} onClick={() => void chooseQwenRoot("runtime")}>
-                  <FolderOpen className="size-4" /> Choose folder…
+                  <FolderOpen className="size-4" /> Chọn runtime…
                 </Button>
                 <Button type="button" disabled={!connected || qwenSetupPending !== null || qwenRuntimeRootDraft.trim() === ""} onClick={() => void applyQwenRoot("runtime", qwenRuntimeRootDraft.trim())}>
-                  {qwenSetupPending === "runtime" ? "Applying…" : "Use folder"}
+                  {qwenSetupPending === "runtime" ? "Đang kiểm tra…" : "Dùng thư mục này"}
                 </Button>
               </div>
             </div>
             <div>
-              <p className="text-sm font-medium">Qwen model store</p>
+              <p className="text-sm font-medium">Kho model Qwen</p>
               <p className="text-muted-foreground mt-1 text-xs leading-5">
-                Choose the folder that contains <code>asr/receipts/qwen3_asr_0_6b.json</code>; SoCa never downloads or substitutes an ASR model while starting Voice.
+                Chỉ dùng khi model đã có: chọn thư mục chứa <code>asr/receipts/qwen3_asr_0_6b.json</code>. SoCa không thay model ASR khi khởi động Voice.
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
                 <input
                   id="qwen-asr-model-root"
-                  aria-label="Qwen model store"
+                  aria-label="Kho model Qwen"
                   className={`${INPUT} min-w-0 flex-1 font-mono text-xs`}
                   value={qwenAsrModelRootDraft}
                   disabled={!connected || qwenSetupPending !== null}
@@ -859,14 +878,16 @@ export function SettingsPanel({
                   onChange={(event) => setQwenAsrModelRootDraft(event.target.value)}
                 />
                 <Button type="button" variant="outline" disabled={!connected || qwenSetupPending !== null} onClick={() => void chooseQwenRoot("model")}>
-                  <FolderOpen className="size-4" /> Choose folder…
+                  <FolderOpen className="size-4" /> Chọn kho model…
                 </Button>
                 <Button type="button" disabled={!connected || qwenSetupPending !== null || qwenAsrModelRootDraft.trim() === ""} onClick={() => void applyQwenRoot("model", qwenAsrModelRootDraft.trim())}>
-                  {qwenSetupPending === "model" ? "Applying…" : "Use folder"}
+                  {qwenSetupPending === "model" ? "Đang kiểm tra…" : "Dùng thư mục này"}
                 </Button>
               </div>
             </div>
             {qwenSetupError !== null && <p className="text-destructive text-xs" role="alert">{qwenSetupError}</p>}
+              </div>
+            </details>
           </div>
         </Field>
         <Field

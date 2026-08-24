@@ -164,7 +164,7 @@ describe("SettingsPanel remote configuration", () => {
       },
     });
 
-    await user.click(screen.getByRole("button", { name: "Chọn thư mục…" }));
+    await user.click(screen.getByRole("button", { name: "Chọn thư mục model…" }));
 
     expect(nativeOpen).toHaveBeenCalledWith(expect.objectContaining({ directory: true, multiple: false }));
     expect(props.onSetModelRoot).toHaveBeenCalledWith("/Volumes/models");
@@ -175,7 +175,7 @@ describe("SettingsPanel remote configuration", () => {
     nativeOpen.mockRejectedValueOnce(new Error("permission denied"));
     const { props } = renderPanel();
 
-    await user.click(screen.getByRole("button", { name: "Chọn thư mục…" }));
+    await user.click(screen.getByRole("button", { name: "Chọn thư mục model…" }));
 
     expect((await screen.findByRole("alert")).textContent).toMatch(/không thể mở hộp chọn thư mục/i);
     expect(props.onSetModelRoot).not.toHaveBeenCalled();
@@ -197,7 +197,7 @@ describe("SettingsPanel remote configuration", () => {
 
     expect(screen.getByText("Trạng thái thoại")).toBeTruthy();
     expect(
-      screen.getByText("Speech recognition is not installed for the selected voice profile."),
+      screen.getByText("Qwen ASR chưa sẵn sàng cho profile đang chọn."),
     ).toBeTruthy();
   });
 
@@ -224,8 +224,8 @@ describe("SettingsPanel remote configuration", () => {
     expect(screen.getByText("Unavailable")).toBeTruthy();
     expect(screen.queryByText("invalid")).toBeNull();
     expect(screen.getByText(/runtime or immutable model store/i)).toBeTruthy();
-    expect(screen.getByLabelText("Qwen worker runtime")).toBeTruthy();
-    expect(screen.getByLabelText("Qwen model store")).toBeTruthy();
+    expect(screen.getByLabelText("Môi trường chạy Qwen")).toBeTruthy();
+    expect(screen.getByLabelText("Kho model Qwen")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Chọn" })).toBeNull();
   });
 
@@ -234,7 +234,7 @@ describe("SettingsPanel remote configuration", () => {
     nativeOpen.mockResolvedValueOnce("/Volumes/qwen-models");
     const { props } = renderPanel();
 
-    await user.click(screen.getAllByRole("button", { name: "Choose folder…" })[1]);
+    await user.click(screen.getByRole("button", { name: "Chọn kho model…" }));
 
     expect(props.onSetQwenAsrModelRoot).toHaveBeenCalledWith("/Volumes/qwen-models");
   });
