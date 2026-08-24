@@ -90,6 +90,12 @@ def link_linux_torchaudio_dependencies(runtime: Path) -> None:
             destination = torchaudio_lib / library_name
             if destination.exists() or destination.is_symlink():
                 continue
+            if library_directory == internal:
+                # linuxdeploy resolves this dependency while scanning
+                # libtorchaudio. Keep a concrete file in that directory;
+                # a relative symlink is not part of its dependency search.
+                shutil.copy2(library, destination)
+                continue
             destination.symlink_to(os.path.relpath(library, start=torchaudio_lib))
 
 

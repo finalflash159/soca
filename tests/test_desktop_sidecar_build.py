@@ -119,6 +119,7 @@ def test_linux_torchaudio_links_resolve_torch_shared_libraries(
         assert linked.is_symlink()
         assert linked.resolve() == torch_lib / library
     cuda_link = torchaudio_lib / "libcudart.so.13"
-    assert cuda_link.is_symlink()
-    assert cuda_link.resolve() == cuda_lib / "libcudart.so.13"
+    assert cuda_link.is_file()
+    assert not cuda_link.is_symlink()
+    assert cuda_link.read_bytes() == b"cuda"
     assert not (torchaudio_lib / "libtorch_cuda.so").exists()
