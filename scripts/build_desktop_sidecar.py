@@ -35,7 +35,7 @@ def cuda_runtime_binary_arguments() -> list[str]:
         ) from error
 
     libraries = [
-        (Path(distribution.locate_file(file)), file.parent.as_posix())
+        Path(distribution.locate_file(file))
         for file in distribution.files or ()
         if len(file.parts) >= 4
         and file.parts[0] == "nvidia"
@@ -46,8 +46,10 @@ def cuda_runtime_binary_arguments() -> list[str]:
         raise RuntimeError("nvidia-cuda-runtime does not contain a libcudart shared library")
 
     arguments: list[str] = []
-    for library, destination in libraries:
-        arguments.extend(["--add-binary", f"{library}{os.pathsep}{destination}"])
+    for library in libraries:
+        # linuxdeploy only traverses the frozen runtime's direct library closure.
+        # Keep libcudart beside Torch, then link it into torchaudio below.
+        arguments.extend(["--add-binary", f"{library}{os.pathsep}."])
     return arguments
 
 
@@ -62,12 +64,16 @@ def link_linux_torchaudio_dependencies(runtime: Path) -> None:
     if not torch_lib.is_dir() or not torchaudio_lib.is_dir():
         return
 
-    library_directories = [torch_lib, *internal.glob("nvidia/*/lib")]
+    library_directories = [torch_lib, internal, *internal.glob("nvidia/*/lib")]
     for library_directory in library_directories:
         library_names = (
             TORCHAUDIO_TORCH_LIBRARIES
             if library_directory == torch_lib
-            else tuple(library.name for library in library_directory.glob("*.so*"))
+            else (
+                tuple(library.name for library in library_directory.glob("libcudart.so*"))
+                if library_directory == internal
+                else tuple(library.name for library in library_directory.glob("*.so*"))
+            )
         )
         for library_name in library_names:
             library = library_directory / library_name

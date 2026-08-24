@@ -89,7 +89,7 @@ def test_linux_cuda_runtime_is_added_from_its_distribution(monkeypatch, tmp_path
 
     expected_arguments = [
         "--add-binary",
-        f"{library}{builder.os.pathsep}nvidia/cu13/lib",
+        f"{library}{builder.os.pathsep}.",
     ]
     assert builder.cuda_runtime_binary_arguments() == expected_arguments
 
@@ -114,8 +114,7 @@ def test_linux_torchaudio_links_resolve_torch_shared_libraries(
     (torch_lib / "libtorch_cpu.so").write_bytes(b"torch")
     (torch_lib / "libtorch_global_deps.so").write_bytes(b"torch")
     (torch_lib / "libtorch_cuda.so").write_bytes(b"unused")
-    cuda_lib = internal / "nvidia" / "cu13" / "lib"
-    cuda_lib.mkdir(parents=True)
+    cuda_lib = internal
     (cuda_lib / "libcudart.so.13").write_bytes(b"cuda")
 
     builder.link_linux_torchaudio_dependencies(tmp_path)
