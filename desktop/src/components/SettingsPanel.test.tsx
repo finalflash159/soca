@@ -9,6 +9,10 @@ import { SettingsPanel } from "./SettingsPanel";
 import { initialSettings, type SettingsState } from "@/engine/settings";
 import type { SessionHistoryState } from "@/engine/session-history";
 
+const { nativeOpen } = vi.hoisted(() => ({ nativeOpen: vi.fn() }));
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: nativeOpen }));
+
 const sessionHistory: SessionHistoryState = {
   sessions: [],
   nextCursor: null,
@@ -144,6 +148,33 @@ describe("SettingsPanel remote configuration", () => {
     expect(screen.getByText(/đang tải danh mục model/i)).toBeTruthy();
     expect(screen.queryByText(/chưa tìm thấy model local/i)).toBeNull();
     expect(screen.getByLabelText("Thư mục model Voice và On-device")).toBeTruthy();
+  });
+
+  it("lets a Remote user pick and apply an existing Voice model directory", async () => {
+    const user = userEvent.setup();
+    nativeOpen.mockResolvedValueOnce("/Volumes/models");
+    const { props } = renderPanel({
+      settings: {
+        ...initialSettings,
+        config: { ...localConfig, backend: "remote", localModelPath: null },
+      },
+    });
+
+    await user.click(screen.getByRole("button", { name: "Chọn thư mục…" }));
+
+    expect(nativeOpen).toHaveBeenCalledWith(expect.objectContaining({ directory: true, multiple: false }));
+    expect(props.onSetModelRoot).toHaveBeenCalledWith("/Volumes/models");
+  });
+
+  it("reports a native directory-picker failure without applying a model path", async () => {
+    const user = userEvent.setup();
+    nativeOpen.mockRejectedValueOnce(new Error("permission denied"));
+    const { props } = renderPanel();
+
+    await user.click(screen.getByRole("button", { name: "Chọn thư mục…" }));
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(/không thể mở hộp chọn thư mục/i);
+    expect(props.onSetModelRoot).not.toHaveBeenCalled();
   });
 
   it("shows each voice dependency instead of presenting an unavailable microphone as ready", () => {

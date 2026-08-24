@@ -1,7 +1,8 @@
 /** User-controlled appearance, session privacy, model, key, and voice settings. */
 
-import { AudioLines, Cpu, HardDrive, KeyRound, Palette } from "lucide-react";
+import { AudioLines, Cpu, FolderOpen, HardDrive, KeyRound, Palette } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 
 import { Field, Section } from "@/components/Page";
 import { Badge } from "@/components/ui/badge";
@@ -247,6 +248,31 @@ export function SettingsPanel({
     setModelRootDraft(modelRoot?.path ?? "");
   }, [modelRoot?.path]);
 
+  const applyModelRoot = async (path: string | null) => {
+    setModelRootPending(true);
+    setModelRootError(null);
+    const error = await onSetModelRoot(path);
+    setModelRootPending(false);
+    setModelRootError(error);
+  };
+
+  const chooseModelRoot = async () => {
+    setModelRootError(null);
+    try {
+      const selected = await open({
+        title: "Chọn thư mục model cho Voice",
+        directory: true,
+        multiple: false,
+        defaultPath: modelRootDraft.trim() || modelRoot?.path,
+      });
+      if (typeof selected !== "string") return;
+      setModelRootDraft(selected);
+      await applyModelRoot(selected);
+    } catch (error) {
+      setModelRootError(`Không thể mở hộp chọn thư mục: ${String(error)}`);
+    }
+  };
+
   useEffect(() => {
     if (engineError === lastEngineError.current) return;
     lastEngineError.current = engineError;
@@ -463,7 +489,7 @@ export function SettingsPanel({
               }
               htmlFor="local-model-root"
             >
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <input
                   id="local-model-root"
                   className={`${INPUT} font-mono text-xs`}
@@ -474,16 +500,19 @@ export function SettingsPanel({
                 />
                 <Button
                   className="h-10 shrink-0"
-                  disabled={!connected || modelRootPending || modelRootDraft.trim() === ""}
-                  onClick={async () => {
-                    setModelRootPending(true);
-                    setModelRootError(null);
-                    const error = await onSetModelRoot(modelRootDraft.trim());
-                    setModelRootPending(false);
-                    setModelRootError(error);
-                  }}
+                  disabled={!connected || modelRootPending}
+                  variant="outline"
+                  onClick={() => void chooseModelRoot()}
                 >
-                  {modelRootPending ? "Đang áp dụng…" : "Dùng thư mục này"}
+                  <FolderOpen className="size-4" />
+                  Chọn thư mục…
+                </Button>
+                <Button
+                  className="h-10 shrink-0"
+                  disabled={!connected || modelRootPending || modelRootDraft.trim() === ""}
+                  onClick={() => void applyModelRoot(modelRootDraft.trim())}
+                >
+                  {modelRootPending ? "Đang áp dụng…" : "Dùng đường dẫn"}
                 </Button>
               </div>
               {modelRoot?.source === "external" && (
@@ -492,13 +521,7 @@ export function SettingsPanel({
                   size="sm"
                   variant="outline"
                   disabled={!connected || modelRootPending}
-                  onClick={async () => {
-                    setModelRootPending(true);
-                    setModelRootError(null);
-                    const error = await onSetModelRoot(null);
-                    setModelRootPending(false);
-                    setModelRootError(error);
-                  }}
+                  onClick={() => void applyModelRoot(null)}
                 >
                   Trở về kho SoCa
                 </Button>
