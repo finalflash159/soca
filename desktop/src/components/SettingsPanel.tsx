@@ -36,6 +36,10 @@ interface SettingsPanelProps {
   modelRoot: { path: string; source: "managed" | "external" } | null;
   /** Returns an error message instead of hiding a failed native configuration change. */
   onSetModelRoot: (path: string | null) => Promise<string | null>;
+  qwenAsrModelRoot: { path: string; source: "managed" | "external" } | null;
+  qwenRuntimeRoot: { path: string; source: "managed" | "external" } | null;
+  onSetQwenAsrModelRoot: (path: string | null) => Promise<string | null>;
+  onSetQwenRuntimeRoot: (path: string | null) => Promise<string | null>;
   engineError: string | null;
   sessionHistory: SessionHistoryState;
   persistenceChangePending: boolean;
@@ -70,7 +74,6 @@ function profileName(profileKey: string): string {
 }
 
 function profileStatus(profile: SettingsState["profiles"][number]): string {
-  if (profile.key.startsWith("qwen-") && profile.status === "invalid") return "Not included";
   const { status } = profile;
   if (status === "ok") return "Ready";
   if (status === "missing" || status === "blocked") return "Needs setup";
@@ -100,19 +103,14 @@ function chatSetupMessage(config: LlmConfig): string {
 
 function profileSummary(profile: SettingsState["profiles"][number]): string {
   const summary =
-    profile.key === "baseline"
-      ? "Default on-device Vietnamese voice profile."
-      : profile.key === "qwen-release"
-        ? "Qwen ASR release profile for local speech recognition."
-        : profile.key === "qwen-reference"
-          ? "Qwen ASR reference profile for local speech recognition."
-          : "Voice profile.";
+    profile.key === "qwen-release"
+      ? "Default Qwen ASR profile for local speech recognition."
+      : profile.key === "qwen-reference"
+        ? "Qwen ASR reference profile for local speech recognition."
+        : "Voice profile.";
   if (profile.status === "ok") return summary;
-  if (profile.key.startsWith("qwen-") && profile.status === "invalid") {
-    return `${summary} Qwen is not included in the desktop release. It requires a separately verified worker runtime and model artifact.`;
-  }
   if (profile.status === "invalid") {
-    return `${summary} This profile is unavailable because its configuration could not be validated.`;
+    return `${summary} Its Qwen runtime or immutable model store could not be verified.`;
   }
   return `${summary} Required model files need setup.`;
 }
@@ -165,6 +163,10 @@ export function SettingsPanel({
   onApplyGeneration,
   modelRoot,
   onSetModelRoot,
+  qwenAsrModelRoot,
+  qwenRuntimeRoot,
+  onSetQwenAsrModelRoot,
+  onSetQwenRuntimeRoot,
   sessionHistory,
   persistenceChangePending,
   onRequestSessionPersistence,
@@ -183,6 +185,10 @@ export function SettingsPanel({
   const [modelRootDraft, setModelRootDraft] = useState("");
   const [modelRootPending, setModelRootPending] = useState(false);
   const [modelRootError, setModelRootError] = useState<string | null>(null);
+  const [qwenAsrModelRootDraft, setQwenAsrModelRootDraft] = useState("");
+  const [qwenRuntimeRootDraft, setQwenRuntimeRootDraft] = useState("");
+  const [qwenSetupPending, setQwenSetupPending] = useState<"model" | "runtime" | null>(null);
+  const [qwenSetupError, setQwenSetupError] = useState<string | null>(null);
   const lastEngineError = useRef<string | null>(engineError);
   const voiceSetupRef = useRef<HTMLDivElement>(null);
 
@@ -248,6 +254,14 @@ export function SettingsPanel({
     setModelRootDraft(modelRoot?.path ?? "");
   }, [modelRoot?.path]);
 
+  useEffect(() => {
+    setQwenAsrModelRootDraft(qwenAsrModelRoot?.path ?? "");
+  }, [qwenAsrModelRoot?.path]);
+
+  useEffect(() => {
+    setQwenRuntimeRootDraft(qwenRuntimeRoot?.path ?? "");
+  }, [qwenRuntimeRoot?.path]);
+
   const applyModelRoot = async (path: string | null) => {
     setModelRootPending(true);
     setModelRootError(null);
@@ -270,6 +284,35 @@ export function SettingsPanel({
       await applyModelRoot(selected);
     } catch (error) {
       setModelRootError(`Không thể mở hộp chọn thư mục: ${String(error)}`);
+    }
+  };
+
+  const applyQwenRoot = async (
+    kind: "model" | "runtime",
+    path: string | null,
+  ) => {
+    setQwenSetupPending(kind);
+    setQwenSetupError(null);
+    const error = await (kind === "model" ? onSetQwenAsrModelRoot(path) : onSetQwenRuntimeRoot(path));
+    setQwenSetupPending(null);
+    setQwenSetupError(error);
+  };
+
+  const chooseQwenRoot = async (kind: "model" | "runtime") => {
+    setQwenSetupError(null);
+    try {
+      const selected = await open({
+        title: kind === "model" ? "Choose the Qwen model store" : "Choose the Qwen worker runtime",
+        directory: true,
+        multiple: false,
+        defaultPath: kind === "model" ? qwenAsrModelRootDraft : qwenRuntimeRootDraft,
+      });
+      if (typeof selected !== "string") return;
+      if (kind === "model") setQwenAsrModelRootDraft(selected);
+      else setQwenRuntimeRootDraft(selected);
+      await applyQwenRoot(kind, selected);
+    } catch (error) {
+      setQwenSetupError(`Could not open the folder picker: ${String(error)}`);
     }
   };
 
@@ -760,17 +803,71 @@ export function SettingsPanel({
                     size="sm"
                     variant="outline"
                     onClick={() => {
-                      const input = document.getElementById("local-model-root");
+                      const input = document.getElementById("qwen-asr-model-root");
                       input?.scrollIntoView({ behavior: "smooth", block: "center" });
                       window.setTimeout(() => (input as HTMLInputElement | null)?.focus(), 250);
                     }}
                   >
-                    Choose a SoCa model folder
+                    Set up Qwen ASR
                   </Button>
                 )}
               </div>
             </div>
           )}
+        </Field>
+        <Field
+          label="Qwen ASR setup"
+          hint="Qwen Release is the required speech recognizer. The app validates the selected worker runtime and immutable local model store before the microphone can start."
+        >
+          <div className="border-border flex flex-col gap-4 rounded-lg border p-3">
+            <div>
+              <p className="text-sm font-medium">Qwen worker runtime</p>
+              <p className="text-muted-foreground mt-1 text-xs leading-5">
+                Choose the verified <code>runtime/qwen-asr</code> folder containing <code>uv.lock</code>, <code>.runtime-receipt.json</code>, and <code>.venv</code>.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <input
+                  id="qwen-runtime-root"
+                  aria-label="Qwen worker runtime"
+                  className={`${INPUT} min-w-0 flex-1 font-mono text-xs`}
+                  value={qwenRuntimeRootDraft}
+                  disabled={!connected || qwenSetupPending !== null}
+                  placeholder="/absolute/path/to/runtime/qwen-asr"
+                  onChange={(event) => setQwenRuntimeRootDraft(event.target.value)}
+                />
+                <Button type="button" variant="outline" disabled={!connected || qwenSetupPending !== null} onClick={() => void chooseQwenRoot("runtime")}>
+                  <FolderOpen className="size-4" /> Choose folder…
+                </Button>
+                <Button type="button" disabled={!connected || qwenSetupPending !== null || qwenRuntimeRootDraft.trim() === ""} onClick={() => void applyQwenRoot("runtime", qwenRuntimeRootDraft.trim())}>
+                  {qwenSetupPending === "runtime" ? "Applying…" : "Use folder"}
+                </Button>
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Qwen model store</p>
+              <p className="text-muted-foreground mt-1 text-xs leading-5">
+                Choose the folder that contains <code>asr/receipts/qwen3_asr_0_6b.json</code>; SoCa never downloads or substitutes an ASR model while starting Voice.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <input
+                  id="qwen-asr-model-root"
+                  aria-label="Qwen model store"
+                  className={`${INPUT} min-w-0 flex-1 font-mono text-xs`}
+                  value={qwenAsrModelRootDraft}
+                  disabled={!connected || qwenSetupPending !== null}
+                  placeholder="/absolute/path/to/soca/models"
+                  onChange={(event) => setQwenAsrModelRootDraft(event.target.value)}
+                />
+                <Button type="button" variant="outline" disabled={!connected || qwenSetupPending !== null} onClick={() => void chooseQwenRoot("model")}>
+                  <FolderOpen className="size-4" /> Choose folder…
+                </Button>
+                <Button type="button" disabled={!connected || qwenSetupPending !== null || qwenAsrModelRootDraft.trim() === ""} onClick={() => void applyQwenRoot("model", qwenAsrModelRootDraft.trim())}>
+                  {qwenSetupPending === "model" ? "Applying…" : "Use folder"}
+                </Button>
+              </div>
+            </div>
+            {qwenSetupError !== null && <p className="text-destructive text-xs" role="alert">{qwenSetupError}</p>}
+          </div>
         </Field>
         <Field
           label="Cấu hình thoại"

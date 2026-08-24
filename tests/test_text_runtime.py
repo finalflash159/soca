@@ -50,7 +50,7 @@ def _config(vault: Path, **overrides) -> TextRuntimeConfig:
 def test_text_runtime_default_llm_follows_default_runtime_profile() -> None:
     config = TextRuntimeConfig()
 
-    assert config.profile_key == "baseline"
+    assert config.profile_key == "qwen-release"
     assert config.llm_model == "arcee_vylinh_3b_q4_k_m"
     assert config.knowledge_retrieval_mode == "hybrid"
     assert config.knowledge_dense_backend == "aiteamvn_v2"

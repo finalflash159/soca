@@ -104,14 +104,14 @@ def test_missing_sample_paths_reports_missing_audio(tmp_path: Path) -> None:
 
 
 def test_parse_profiles_defaults_and_dedupes() -> None:
-    assert parse_profiles([], all_profiles=False) == ["baseline"]
-    assert parse_profiles(["baseline,baseline"], all_profiles=False) == ["baseline"]
+    assert parse_profiles([], all_profiles=False) == ["qwen-release"]
+    assert parse_profiles(["qwen-release,qwen-release"], all_profiles=False) == ["qwen-release"]
 
 
 def test_parse_profiles_can_select_all_profiles() -> None:
     profiles = parse_profiles([], all_profiles=True)
 
-    assert profiles == ["baseline", "qwen-release", "qwen-reference"]
+    assert profiles == ["qwen-release", "qwen-reference"]
 
 
 @pytest.mark.parametrize("profile", ["quality", "edge"])
@@ -128,7 +128,7 @@ def test_parse_profiles_rejects_unknown_profile() -> None:
 def test_parser_rejects_runtime_tts_model_override() -> None:
     with pytest.raises(SystemExit):
         eval_voice_loop.build_parser().parse_args(
-            ["--profile", "baseline", "--tts-model", "other_tts"]
+            ["--profile", "qwen-release", "--tts-model", "other_tts"]
         )
 
 
@@ -292,7 +292,7 @@ def test_run_profile_eval_with_fake_runtime(monkeypatch, tmp_path: Path) -> None
     )
 
     result = run_profile_eval(
-        "baseline",
+        "qwen-release",
         [VoiceLoopSample("hello", audio_path, expected_text="xin chào")],
         args=args,
     )
@@ -359,7 +359,7 @@ def test_run_profile_eval_playback_selects_sounddevice(monkeypatch, tmp_path: Pa
         first_clause=False,
     )
 
-    result = run_profile_eval("baseline", [VoiceLoopSample("hi", audio_path)], args=args)
+    result = run_profile_eval("qwen-release", [VoiceLoopSample("hi", audio_path)], args=args)
 
     assert seen["sink"] == "SoundDevicePlayer"
     assert result["playback_sink"] == "SoundDevicePlayer"
@@ -403,7 +403,7 @@ def test_run_profile_eval_forwards_dense_backend(
         knowledge_dense_backend="aiteamvn_v2",
     )
 
-    result = run_profile_eval("baseline", [], args=args)
+    result = run_profile_eval("qwen-release", [], args=args)
 
     assert result["status"] == "skipped_unavailable"
     assert seen["backend"] == "aiteamvn_v2"
@@ -418,9 +418,9 @@ def test_write_outputs_creates_report_and_latest(tmp_path: Path) -> None:
         category="free_chat",
     )
     result = {
-        "profile": "baseline",
+        "profile": "qwen-release",
         "config": {
-            "asr_model": "phowhisper_base",
+            "asr_model": "qwen3_asr_0_6b",
             "llm_model": "arcee_vylinh_3b_q4_k_m",
             "tts_model": "valtec_multispeaker",
             "tts_voice": "NF",

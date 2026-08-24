@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -26,17 +25,17 @@ def test_resolver_does_not_accept_tts_model_override() -> None:
     assert "tts_model" not in parameters
 
 
-def test_baseline_resolves_former_quality_stack_with_valtec(tmp_path: Path) -> None:
-    config = resolve_voice_runtime_config(profile_key="baseline", vault=tmp_path)
+def test_qwen_release_resolves_required_voice_stack_with_valtec(tmp_path: Path) -> None:
+    config = resolve_voice_runtime_config(profile_key="qwen-release", vault=tmp_path)
 
-    assert config.asr_model == "phowhisper_small"
+    assert config.asr_model == "qwen3_asr_0_6b"
     assert config.llm_model == "arcee_vylinh_3b_q4_k_m"
     assert not hasattr(config, "tts_model")
     assert config.tts_voice == "NF"
 
 
 def test_voice_defaults_to_the_shared_semantic_policy(tmp_path: Path) -> None:
-    config = resolve_voice_runtime_config(profile_key="baseline", vault=tmp_path)
+    config = resolve_voice_runtime_config(profile_key="qwen-release", vault=tmp_path)
     assert config.tool_router_mode == "cascade"
     assert config.tool_router_response_mode == "json_schema"
     assert config.semantic_router_enabled is False
@@ -62,7 +61,7 @@ def test_explicit_valtec_voice_override_is_allowed(
     tmp_path: Path,
 ) -> None:
     config = resolve_voice_runtime_config(
-        profile_key="baseline",
+        profile_key="qwen-release",
         tts_voice=voice,
         vault=tmp_path,
     )
@@ -71,11 +70,11 @@ def test_explicit_valtec_voice_override_is_allowed(
 
 
 def test_first_clause_defaults_to_profile_and_can_be_overridden(tmp_path: Path) -> None:
-    default = resolve_voice_runtime_config(profile_key="baseline", vault=tmp_path)
-    assert default.first_clause_enabled is True  # baseline profile default
+    default = resolve_voice_runtime_config(profile_key="qwen-release", vault=tmp_path)
+    assert default.first_clause_enabled is True  # release profile default
 
     off = resolve_voice_runtime_config(
-        profile_key="baseline",
+        profile_key="qwen-release",
         first_clause_enabled=False,
         vault=tmp_path,
     )
@@ -87,7 +86,7 @@ def test_first_clause_defaults_to_profile_and_can_be_overridden(tmp_path: Path) 
 def test_unknown_valtec_voice_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="Unknown Valtec voice"):
         resolve_voice_runtime_config(
-            profile_key="baseline",
+            profile_key="qwen-release",
             tts_voice="not-a-valtec-voice",
             vault=tmp_path,
         )
@@ -124,17 +123,7 @@ def test_voice_runtime_uses_shared_knowledge_setup(
         raising=False,
     )
     monkeypatch.setattr(voice_runtime, "SpeechDetector", lambda: object())
-    monkeypatch.setattr(voice_runtime, "PhoWhisperVoiceBackend", lambda *_args, **_kwargs: object())
-    monkeypatch.setattr(voice_runtime, "RobustASR", lambda *_args, **_kwargs: object())
-    monkeypatch.setattr(
-        voice_runtime,
-        "load_confidence_guard_calibration",
-        lambda model_key: SimpleNamespace(
-            model_key=model_key,
-            min_avg_logprob=-0.5,
-            max_compression_ratio=2.4,
-        ),
-    )
+    monkeypatch.setattr(voice_runtime, "_build_voice_asr", lambda *_args, **_kwargs: object())
     def fake_engine_factory(settings, secrets, **kwargs):
         del settings, secrets, kwargs
         return object()
@@ -142,7 +131,7 @@ def test_voice_runtime_uses_shared_knowledge_setup(
     monkeypatch.setattr(voice_runtime, "VoicePipeline", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(voice_runtime, "default_repair_catalog", lambda: object())
     config = resolve_voice_runtime_config(
-        profile_key="baseline",
+        profile_key="qwen-release",
         vault=tmp_path,
         adaptive_endpoint=False,
         no_memory=True,
@@ -164,7 +153,7 @@ def test_voice_runtime_uses_selected_remote_llm_without_local_construction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = resolve_voice_runtime_config(
-        profile_key="baseline",
+        profile_key="qwen-release",
         vault=tmp_path,
         adaptive_endpoint=False,
         no_memory=True,
@@ -185,17 +174,7 @@ def test_voice_runtime_uses_selected_remote_llm_without_local_construction(
         return object()
 
     monkeypatch.setattr(voice_runtime, "SpeechDetector", lambda: object())
-    monkeypatch.setattr(voice_runtime, "PhoWhisperVoiceBackend", lambda *_args, **_kwargs: object())
-    monkeypatch.setattr(voice_runtime, "RobustASR", lambda *_args, **_kwargs: object())
-    monkeypatch.setattr(
-        voice_runtime,
-        "load_confidence_guard_calibration",
-        lambda model_key: SimpleNamespace(
-            model_key=model_key,
-            min_avg_logprob=-0.5,
-            max_compression_ratio=2.4,
-        ),
-    )
+    monkeypatch.setattr(voice_runtime, "_build_voice_asr", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(voice_runtime, "create_tts_engine", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(voice_runtime, "VoicePipeline", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(voice_runtime, "default_repair_catalog", lambda: object())
@@ -234,7 +213,7 @@ def test_voice_runtime_closes_asr_when_later_startup_fails(
     asr = CloseSpy()
     llm = LLMSpy()
     config = resolve_voice_runtime_config(
-        profile_key="baseline",
+        profile_key="qwen-release",
         vault=tmp_path / "missing-vault",
         adaptive_endpoint=False,
         no_memory=True,

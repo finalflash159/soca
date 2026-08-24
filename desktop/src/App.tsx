@@ -82,6 +82,8 @@ export default function App() {
   const [sessionTransition, setSessionTransition] = useState<string | null>(null);
   const [settingsFocus, setSettingsFocus] = useState<"voice" | null>(null);
   const [modelRoot, setModelRoot] = useState<ModelRoot | null>(null);
+  const [qwenAsrModelRoot, setQwenAsrModelRoot] = useState<ModelRoot | null>(null);
+  const [qwenRuntimeRoot, setQwenRuntimeRoot] = useState<ModelRoot | null>(null);
   const autoStarted = useRef(false);
   const loadedHello = useRef<object | null>(null);
   const handledOperation = useRef<string | null>(null);
@@ -190,6 +192,50 @@ export default function App() {
     }
   };
 
+  const refreshQwenRoot = useCallback(async (
+    command: "engine_qwen_asr_model_root" | "engine_qwen_runtime_root",
+    setRoot: (root: ModelRoot | null) => void,
+  ): Promise<ModelRoot | null> => {
+    try {
+      const result = await invoke<unknown>(command);
+      if (result === null) {
+        setRoot(null);
+        return null;
+      }
+      if (typeof result === "object" && result !== null &&
+        typeof (result as { path?: unknown }).path === "string" &&
+        (result as { source?: unknown }).source === "external") {
+        const root = result as ModelRoot;
+        setRoot(root);
+        return root;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const setQwenRootAndRestart = async (
+    command: "engine_set_qwen_asr_model_root" | "engine_set_qwen_runtime_root",
+    valueKey: "modelRoot" | "runtimeRoot",
+    path: string | null,
+    setRoot: (root: ModelRoot | null) => void,
+  ): Promise<string | null> => {
+    try {
+      const result = await invoke<unknown>(command, { [valueKey]: path });
+      if (result !== null && (typeof result !== "object" ||
+        typeof (result as { path?: unknown }).path !== "string" ||
+        (result as { source?: unknown }).source !== "external")) {
+        return "Desktop could not confirm the Qwen folder selection.";
+      }
+      setRoot(result as ModelRoot | null);
+      await restartEngine();
+      return null;
+    } catch (error) {
+      return String(error);
+    }
+  };
+
   // List, status and preferences are read only after hello establishes the v3
   // contract. The WebView therefore never sends a normal command to a client it
   // has not verified as compatible.
@@ -211,6 +257,11 @@ export default function App() {
   useEffect(() => {
     void refreshModelRoot();
   }, [refreshModelRoot]);
+
+  useEffect(() => {
+    void refreshQwenRoot("engine_qwen_asr_model_root", setQwenAsrModelRoot);
+    void refreshQwenRoot("engine_qwen_runtime_root", setQwenRuntimeRoot);
+  }, [refreshQwenRoot]);
 
   useEffect(() => {
     const compact = window.matchMedia("(max-width: 760px)");
@@ -678,6 +729,20 @@ export default function App() {
                   }}
                   modelRoot={modelRoot}
                   onSetModelRoot={setModelRootAndRestart}
+                  qwenAsrModelRoot={qwenAsrModelRoot}
+                  qwenRuntimeRoot={qwenRuntimeRoot}
+                  onSetQwenAsrModelRoot={(path) => setQwenRootAndRestart(
+                    "engine_set_qwen_asr_model_root",
+                    "modelRoot",
+                    path,
+                    setQwenAsrModelRoot,
+                  )}
+                  onSetQwenRuntimeRoot={(path) => setQwenRootAndRestart(
+                    "engine_set_qwen_runtime_root",
+                    "runtimeRoot",
+                    path,
+                    setQwenRuntimeRoot,
+                  )}
                 />
               </PageBody>
             </div>

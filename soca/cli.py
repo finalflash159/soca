@@ -799,7 +799,7 @@ def chat(
         "\b\nQuick examples:\n"
         "  uv run soca ui              # mở main UI\n"
         "  uv run soca ui chat\n"
-        "  uv run soca ui voice baseline"
+        "  uv run soca ui voice qwen-release"
     ),
 )
 @click.argument(
@@ -1088,7 +1088,7 @@ def engine(
     )
 
 
-@main.command(epilog=("\b\nQuick examples:\n  uv run soca voice\n  uv run soca voice baseline"))
+@main.command(epilog=("\b\nQuick examples:\n  uv run soca voice\n  uv run soca voice qwen-release"))
 @click.argument(
     "quick_profile",
     required=False,

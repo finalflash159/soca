@@ -26,13 +26,13 @@ def test_ui_default_launches_ink_app(monkeypatch) -> None:
     import soca.cli as cli
 
     monkeypatch.setattr(cli, "_launch_ink_ui", fake_launch)
-    result = CliRunner().invoke(main, ["ui", "voice", "baseline", "--no-model"])
+    result = CliRunner().invoke(main, ["ui", "voice", "qwen-release", "--no-model"])
 
     assert result.exit_code == 0, result.output
     assert calls == [
         {
             "mode": "voice",
-            "profile": "baseline",
+            "profile": "qwen-release",
             "no_model": True,
             "vault": default_vault_root(),
         }

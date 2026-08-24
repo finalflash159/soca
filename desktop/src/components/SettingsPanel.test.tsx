@@ -87,6 +87,10 @@ function renderPanel(
     onApplyGeneration: vi.fn(async () => true),
     modelRoot: { path: "/models", source: "managed" },
     onSetModelRoot: vi.fn(async () => null),
+    qwenAsrModelRoot: null,
+    qwenRuntimeRoot: null,
+    onSetQwenAsrModelRoot: vi.fn(async () => null),
+    onSetQwenRuntimeRoot: vi.fn(async () => null),
     engineError: null,
     sessionHistory,
     persistenceChangePending: false,
@@ -197,7 +201,7 @@ describe("SettingsPanel remote configuration", () => {
     ).toBeTruthy();
   });
 
-  it("does not expose the raw invalid status or an unusable profile action", () => {
+  it("explains a Qwen validation failure and exposes its setup controls", () => {
     renderPanel({
       settings: {
         ...initialSettings,
@@ -217,9 +221,21 @@ describe("SettingsPanel remote configuration", () => {
       },
     });
 
-    expect(screen.getByText("Not included")).toBeTruthy();
+    expect(screen.getByText("Unavailable")).toBeTruthy();
     expect(screen.queryByText("invalid")).toBeNull();
-    expect(screen.getByText(/not included in the desktop release/i)).toBeTruthy();
+    expect(screen.getByText(/runtime or immutable model store/i)).toBeTruthy();
+    expect(screen.getByLabelText("Qwen worker runtime")).toBeTruthy();
+    expect(screen.getByLabelText("Qwen model store")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Chọn" })).toBeNull();
+  });
+
+  it("applies a chosen Qwen model store independently from general models", async () => {
+    const user = userEvent.setup();
+    nativeOpen.mockResolvedValueOnce("/Volumes/qwen-models");
+    const { props } = renderPanel();
+
+    await user.click(screen.getAllByRole("button", { name: "Choose folder…" })[1]);
+
+    expect(props.onSetQwenAsrModelRoot).toHaveBeenCalledWith("/Volumes/qwen-models");
   });
 });

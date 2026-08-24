@@ -33,7 +33,7 @@ from soca.tts.errors import TTSRuntimeUnavailableError
         ["--tier-b"],
         ["--all"],
         ["--voice-map", "valtec_multispeaker=SF"],
-        ["--profile", "baseline"],
+        ["--profile", "qwen-release"],
     ],
 )
 def test_parser_rejects_multi_model_selectors(args: list[str]) -> None:
@@ -97,9 +97,9 @@ def test_load_prompts_rejects_empty_file(tmp_path: Path) -> None:
         load_prompts(prompt_path)
 
 
-def test_build_valtec_eval_target_uses_baseline_voice() -> None:
+def test_build_valtec_eval_target_uses_qwen_release_voice() -> None:
     assert build_valtec_eval_target(voice=None) == ValtecEvalTarget(
-        profile_key="baseline",
+        profile_key="qwen-release",
         requested_voice="NF",
         voice_source="profile",
     )
@@ -107,7 +107,7 @@ def test_build_valtec_eval_target_uses_baseline_voice() -> None:
 
 def test_build_valtec_eval_target_accepts_explicit_voice() -> None:
     assert build_valtec_eval_target(voice="SF") == ValtecEvalTarget(
-        profile_key="baseline",
+        profile_key="qwen-release",
         requested_voice="SF",
         voice_source="cli",
     )
@@ -115,7 +115,7 @@ def test_build_valtec_eval_target_accepts_explicit_voice() -> None:
 
 def test_worker_payload_round_trips_target() -> None:
     target = ValtecEvalTarget(
-        profile_key="baseline",
+        profile_key="qwen-release",
         requested_voice="SF",
         voice_source="profile",
     )

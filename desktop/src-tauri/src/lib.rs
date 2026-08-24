@@ -17,6 +17,10 @@ pub fn run() {
             engine::engine_hello,
             engine::engine_model_root,
             engine::engine_set_model_root,
+            engine::engine_qwen_asr_model_root,
+            engine::engine_set_qwen_asr_model_root,
+            engine::engine_qwen_runtime_root,
+            engine::engine_set_qwen_runtime_root,
         ]);
 
     // Unsigned package proofs deliberately have no updater public key or

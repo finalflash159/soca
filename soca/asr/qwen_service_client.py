@@ -21,6 +21,7 @@ from .qwen_ipc_protocol import (
     recv_header,
     send_frame,
 )
+from .qwen_runtime import default_qwen_venv_python
 from .qwen_service_identity import (
     QwenServiceIdentity,
     QwenServiceIdentityError,
@@ -31,7 +32,9 @@ from .result import ASRResult
 
 LOGGER = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[2]
-QWEN_VENV_PYTHON = REPO_ROOT / "runtime" / "qwen-asr" / ".venv" / "bin" / "python"
+# Kept as a source-runtime compatibility export. Runtime resolution in the
+# client remains dynamic so a desktop-selected worker is not frozen at import.
+QWEN_VENV_PYTHON = default_qwen_venv_python()
 DEFAULT_STARTUP_TIMEOUT_S = 60.0
 DEFAULT_REQUEST_TIMEOUT_S = 30.0
 DEFAULT_SHUTDOWN_TIMEOUT_S = 5.0
@@ -92,7 +95,7 @@ class QwenASRServiceClient:
         ):
             if value <= 0:
                 raise ValueError(f"{name} must be positive")
-        executable = python_executable or QWEN_VENV_PYTHON
+        executable = python_executable or default_qwen_venv_python()
         if not executable.is_file():
             raise QwenServiceUnavailable(
                 f"{executable} not found. Run scripts/provision_qwen_runtime.py "

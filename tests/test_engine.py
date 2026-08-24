@@ -443,7 +443,7 @@ def test_engine_status_does_not_load_embedding_runtime(monkeypatch, tmp_path: Pa
 
     assert code == 0
     event = next(item for item in capture.events() if item["event"] == "status")
-    profile = next(item for item in event["profiles"] if item["key"] == "baseline")
+    profile = next(item for item in event["profiles"] if item["key"] == "qwen-release")
     embedding = next(item for item in event["runtime_components"] if item["id"] == "embedding")
     qwen = next(item for item in event["runtime_components"] if item["id"] == "qwen_asr_release")
     assert embedding["status"] == "missing"

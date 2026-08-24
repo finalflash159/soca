@@ -14,10 +14,10 @@ from .qwen_artifacts import (
     default_asr_model_root,
     validate_private_receipt,
 )
+from .qwen_runtime import default_qwen_runtime_root
 from .qwen_store import ArtifactState, QwenArtifactStore
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_RUNTIME_ROOT = REPO_ROOT / "runtime" / "qwen-asr"
+DEFAULT_RUNTIME_ROOT = default_qwen_runtime_root()
 
 
 class QwenReadinessState(StrEnum):
@@ -42,7 +42,7 @@ def inspect_qwen_readiness(
     spec: QwenASRArtifactSpec,
     *,
     store_root: Path | None = None,
-    runtime_root: Path = DEFAULT_RUNTIME_ROOT,
+    runtime_root: Path | None = None,
     system: str | None = None,
     machine: str | None = None,
 ) -> QwenStaticReadiness:
@@ -54,7 +54,7 @@ def inspect_qwen_readiness(
             QwenReadinessState.UNSUPPORTED,
             f"unsupported platform {actual_system}/{actual_machine}; no fallback attempted",
         )
-    runtime_error = _inspect_runtime(spec, runtime_root)
+    runtime_error = _inspect_runtime(spec, runtime_root or default_qwen_runtime_root())
     if runtime_error is not None:
         return _result(spec, QwenReadinessState.INVALID, runtime_error)
     try:

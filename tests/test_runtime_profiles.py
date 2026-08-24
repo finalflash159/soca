@@ -14,8 +14,8 @@ from soca.llm.registry import LLM_MODEL_REGISTRY
 from soca.tts import VALTEC_TTS_CONFIG
 
 
-def test_default_voice_runtime_profile_is_baseline() -> None:
-    assert DEFAULT_VOICE_RUNTIME_PROFILE_KEY == "baseline"
+def test_default_voice_runtime_profile_is_qwen_release() -> None:
+    assert DEFAULT_VOICE_RUNTIME_PROFILE_KEY == "qwen-release"
     assert DEFAULT_VOICE_RUNTIME_PROFILE_KEY in VOICE_RUNTIME_PROFILES
 
 
@@ -34,9 +34,8 @@ def test_all_profiles_reference_registered_models() -> None:
         assert profile.llm_model in LLM_MODEL_REGISTRY
 
 
-def test_qwen_profiles_are_explicit_and_baseline_remains_default() -> None:
+def test_qwen_profiles_are_the_only_product_voice_profiles() -> None:
     assert set(VOICE_RUNTIME_PROFILES) == {
-        "baseline",
         "qwen-reference",
         "qwen-release",
     }
@@ -44,15 +43,6 @@ def test_qwen_profiles_are_explicit_and_baseline_remains_default() -> None:
         VALTEC_TTS_CONFIG.default_voice
     }
     assert set(VALTEC_TTS_CONFIG.voices) == {"NF", "SF", "NM1", "SM", "NM2"}
-
-
-def test_baseline_uses_the_former_quality_stack() -> None:
-    baseline = get_voice_runtime_profile("baseline")
-
-    assert baseline.asr_model == "phowhisper_small"
-    assert baseline.llm_model == "arcee_vylinh_3b_q4_k_m"
-    assert not hasattr(baseline, "tts_model")
-    assert baseline.tts_voice == VALTEC_TTS_CONFIG.default_voice
 
 
 @pytest.mark.parametrize("profile_key", ["quality", "edge", "balanced_vieneu"])

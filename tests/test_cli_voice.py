@@ -37,9 +37,7 @@ def test_voice_command_delegates_to_app_voice_loop(monkeypatch) -> None:
         [
             "voice",
             "--profile",
-            "baseline",
-            "--asr-model",
-            "phowhisper_base",
+            "qwen-release",
             "--voice",
             "SF",
             "--max-tokens",
@@ -59,8 +57,8 @@ def test_voice_command_delegates_to_app_voice_loop(monkeypatch) -> None:
     assert captured["player"] is player_sentinel  # console barge-in wired via DuplexAecSink
 
     config = captured["config"]
-    assert config.profile_key == "baseline"
-    assert config.asr_model == "phowhisper_base"
+    assert config.profile_key == "qwen-release"
+    assert config.asr_model == "qwen3_asr_0_6b"
     assert config.llm_model == "arcee_vylinh_3b_q4_k_m"
     assert not hasattr(config, "tts_model")
     assert config.tts_voice == "SF"
@@ -88,10 +86,10 @@ def test_voice_command_accepts_quick_profile_argument(monkeypatch) -> None:
     monkeypatch.setattr("soca.core.duplex_aec_sink.DuplexAecSink", lambda **kwargs: object())
     monkeypatch.setattr("soca.app.voice_loop.run_voice_loop", fake_run_voice_loop)
 
-    result = CliRunner().invoke(main, ["voice", "baseline", "--no-warmup"])
+    result = CliRunner().invoke(main, ["voice", "qwen-release", "--no-warmup"])
 
     assert result.exit_code == 0, result.output
-    assert captured["config"].profile_key == "baseline"
+    assert captured["config"].profile_key == "qwen-release"
     assert captured["warmup"] is False
 
 
@@ -101,7 +99,7 @@ def test_voice_command_shows_help() -> None:
     assert result.exit_code == 0
     assert "Run the interactive SoCa microphone voice loop" in result.output
     assert "Quick form: soca voice [profile]" in result.output
-    assert "soca voice baseline" in result.output
+    assert "soca voice qwen-release" in result.output
     assert "soca voice quality" not in result.output
     assert "soca voice edge" not in result.output
     assert "--profile" not in result.output

@@ -25,6 +25,14 @@ def test_voice_profile_round_trips_with_private_permissions(tmp_path):
     assert json.loads(path.read_text(encoding="utf-8")) == {"profile": "qwen-release"}
 
 
+def test_legacy_baseline_profile_is_migrated_to_qwen_release(tmp_path):
+    path = tmp_path / "voice.json"
+    path.write_text('{"profile": "baseline"}', encoding="utf-8")
+
+    assert load_voice_profile(path) == "qwen-release"
+    assert json.loads(path.read_text(encoding="utf-8")) == {"profile": "qwen-release"}
+
+
 def test_voice_profile_save_wraps_config_directory_errors(tmp_path, monkeypatch):
     path = tmp_path / "voice.json"
 
