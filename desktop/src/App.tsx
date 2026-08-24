@@ -3,10 +3,7 @@ import { nanoid } from "nanoid";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
-import { KnowledgePanel } from "@/components/KnowledgePanel";
 import { EmptyState, PageBody, PageHeader } from "@/components/Page";
-import { SessionPanel } from "@/components/SessionPanel";
-import { SettingsPanel } from "@/components/SettingsPanel";
 import type { PageId } from "@/components/Sidebar";
 import { Sidebar } from "@/components/Sidebar";
 import { StartupView } from "@/components/StartupView";
@@ -38,6 +35,15 @@ const SIDEBAR_PREFERENCE_STORAGE_KEY = "soca.sidebar-open.v1";
 
 const ChatPage = lazy(async () => ({ default: (await import("@/components/ChatPage")).ChatPage }));
 const VoiceMode = lazy(async () => ({ default: (await import("@/components/VoiceMode")).VoiceMode }));
+const KnowledgePanel = lazy(async () => ({
+  default: (await import("@/components/KnowledgePanel")).KnowledgePanel,
+}));
+const SessionPanel = lazy(async () => ({
+  default: (await import("@/components/SessionPanel")).SessionPanel,
+}));
+const SettingsPanel = lazy(async () => ({
+  default: (await import("@/components/SettingsPanel")).SettingsPanel,
+}));
 
 function PageLoading() {
   return <p className="text-muted-foreground p-6 text-sm" role="status">Đang mở trang…</p>;
@@ -643,19 +649,21 @@ export default function App() {
             <div className="min-h-0 flex-1 overflow-auto">
               <PageBody wide>
                 <PageHeader title="Kiến thức" description="Nguồn tài liệu, chỉ mục truy xuất và bộ nhớ phiên." />
-                <KnowledgePanel
-                  knowledge={engine.knowledge}
-                  connected={connected && !sessionChanging}
-                  onInit={() => void engine.send({ cmd: "knowledge_init" })}
-                  onIndex={() => void engine.send({ cmd: "knowledge_index" })}
-                  onRefreshMemory={() => {
-                    void engine.send({ cmd: "memory" });
-                    void engine.send({ cmd: "memory_proposals" });
-                  }}
-                  onCompact={() => void engine.send({ cmd: "memory_compact", action: "request" })}
-                  onApprove={(id) => void engine.send({ cmd: "memory_approve", proposal_id: id })}
-                  onReject={(id) => void engine.send({ cmd: "memory_reject", proposal_id: id })}
-                />
+                <Suspense fallback={<PageLoading />}>
+                  <KnowledgePanel
+                    knowledge={engine.knowledge}
+                    connected={connected && !sessionChanging}
+                    onInit={() => void engine.send({ cmd: "knowledge_init" })}
+                    onIndex={() => void engine.send({ cmd: "knowledge_index" })}
+                    onRefreshMemory={() => {
+                      void engine.send({ cmd: "memory" });
+                      void engine.send({ cmd: "memory_proposals" });
+                    }}
+                    onCompact={() => void engine.send({ cmd: "memory_compact", action: "request" })}
+                    onApprove={(id) => void engine.send({ cmd: "memory_approve", proposal_id: id })}
+                    onReject={(id) => void engine.send({ cmd: "memory_reject", proposal_id: id })}
+                  />
+                </Suspense>
               </PageBody>
             </div>
           )}
@@ -672,14 +680,16 @@ export default function App() {
                     hint={connected ? "Mở lại trang này sau một lượt." : "Engine chưa chạy."}
                   />
                 ) : (
-                  <SessionPanel
-                    session={engine.session}
-                    connected={connected && !sessionChanging}
-                    onRefresh={() => {
-                      void engine.send({ cmd: "context" });
-                      void engine.send({ cmd: "usage" });
-                    }}
-                  />
+                  <Suspense fallback={<PageLoading />}>
+                    <SessionPanel
+                      session={engine.session}
+                      connected={connected && !sessionChanging}
+                      onRefresh={() => {
+                        void engine.send({ cmd: "context" });
+                        void engine.send({ cmd: "usage" });
+                      }}
+                    />
+                  </Suspense>
                 )}
               </PageBody>
             </div>
@@ -688,68 +698,70 @@ export default function App() {
           {page === "settings" && (
             <div className="min-h-0 flex-1 overflow-auto">
               <PageBody>
-                <SettingsPanel
-                  settings={engine.settings}
-                  focusVoiceSetup={settingsFocus === "voice"}
-                  connected={connected && !sessionChanging}
-                  engineError={engine.errors[engine.errors.length - 1] ?? null}
-                  themeChoice={theme.choice}
-                  onSetTheme={theme.setChoice}
-                  sessionHistory={engine.sessionHistory}
-                  persistenceChangePending={persistenceChangePending}
-                  onRequestSessionPersistence={requestPersistenceChange}
-                  onSetAutoOpenLast={(auto_open_last) =>
-                    void engine.send({ cmd: "session_preferences_set", request_id: nanoid(), auto_open_last })
-                  }
-                  onLoadProviders={() => {
-                    void engine.send({ cmd: "llm_providers" });
-                    void engine.send({ cmd: "llm_config" });
-                    void engine.send({ cmd: "status" });
-                  }}
-                  onSetKey={(provider, key) => void engine.send({ cmd: "llm_set_key", provider, key })}
-                  onLoadModels={(provider, query) => void engine.send({ cmd: "llm_models", provider, query })}
-                  onSelectModel={(provider, modelId) =>
-                    engine.send({
-                      cmd: "llm_select",
-                      backend: "remote",
-                      provider,
-                      model: modelId,
-                      max_tokens: engine.settings.config?.maxTokens ?? 4096,
-                      reasoning_enabled: engine.settings.config?.reasoningEnabled ?? false,
-                    })
-                  }
-                  onSelectProfile={(profileKey) => engine.send({ cmd: "voice_profile_select", profile: profileKey })}
-                  onApplyGeneration={(change) => {
-                    const config = engine.settings.config;
-                    const backend = change.backend ?? config?.backend ?? "local";
-                    const model =
-                      change.model ?? (config?.backend === backend ? config.model : undefined);
-                    return engine.send({
-                      cmd: "llm_select",
-                      backend,
-                      provider: config?.provider ?? "openrouter",
-                      ...(model === undefined ? {} : { model }),
-                      max_tokens: change.maxTokens ?? config?.maxTokens ?? 4096,
-                      reasoning_enabled: change.reasoningEnabled ?? config?.reasoningEnabled ?? false,
-                    });
-                  }}
-                  modelRoot={modelRoot}
-                  onSetModelRoot={setModelRootAndRestart}
-                  qwenAsrModelRoot={qwenAsrModelRoot}
-                  qwenRuntimeRoot={qwenRuntimeRoot}
-                  onSetQwenAsrModelRoot={(path) => setQwenRootAndRestart(
-                    "engine_set_qwen_asr_model_root",
-                    "modelRoot",
-                    path,
-                    setQwenAsrModelRoot,
-                  )}
-                  onSetQwenRuntimeRoot={(path) => setQwenRootAndRestart(
-                    "engine_set_qwen_runtime_root",
-                    "runtimeRoot",
-                    path,
-                    setQwenRuntimeRoot,
-                  )}
-                />
+                <Suspense fallback={<PageLoading />}>
+                  <SettingsPanel
+                    settings={engine.settings}
+                    focusVoiceSetup={settingsFocus === "voice"}
+                    connected={connected && !sessionChanging}
+                    engineError={engine.errors[engine.errors.length - 1] ?? null}
+                    themeChoice={theme.choice}
+                    onSetTheme={theme.setChoice}
+                    sessionHistory={engine.sessionHistory}
+                    persistenceChangePending={persistenceChangePending}
+                    onRequestSessionPersistence={requestPersistenceChange}
+                    onSetAutoOpenLast={(auto_open_last) =>
+                      void engine.send({ cmd: "session_preferences_set", request_id: nanoid(), auto_open_last })
+                    }
+                    onLoadProviders={() => {
+                      void engine.send({ cmd: "llm_providers" });
+                      void engine.send({ cmd: "llm_config" });
+                      void engine.send({ cmd: "status" });
+                    }}
+                    onSetKey={(provider, key) => void engine.send({ cmd: "llm_set_key", provider, key })}
+                    onLoadModels={(provider, query) => void engine.send({ cmd: "llm_models", provider, query })}
+                    onSelectModel={(provider, modelId) =>
+                      engine.send({
+                        cmd: "llm_select",
+                        backend: "remote",
+                        provider,
+                        model: modelId,
+                        max_tokens: engine.settings.config?.maxTokens ?? 4096,
+                        reasoning_enabled: engine.settings.config?.reasoningEnabled ?? false,
+                      })
+                    }
+                    onSelectProfile={(profileKey) => engine.send({ cmd: "voice_profile_select", profile: profileKey })}
+                    onApplyGeneration={(change) => {
+                      const config = engine.settings.config;
+                      const backend = change.backend ?? config?.backend ?? "local";
+                      const model =
+                        change.model ?? (config?.backend === backend ? config.model : undefined);
+                      return engine.send({
+                        cmd: "llm_select",
+                        backend,
+                        provider: config?.provider ?? "openrouter",
+                        ...(model === undefined ? {} : { model }),
+                        max_tokens: change.maxTokens ?? config?.maxTokens ?? 4096,
+                        reasoning_enabled: change.reasoningEnabled ?? config?.reasoningEnabled ?? false,
+                      });
+                    }}
+                    modelRoot={modelRoot}
+                    onSetModelRoot={setModelRootAndRestart}
+                    qwenAsrModelRoot={qwenAsrModelRoot}
+                    qwenRuntimeRoot={qwenRuntimeRoot}
+                    onSetQwenAsrModelRoot={(path) => setQwenRootAndRestart(
+                      "engine_set_qwen_asr_model_root",
+                      "modelRoot",
+                      path,
+                      setQwenAsrModelRoot,
+                    )}
+                    onSetQwenRuntimeRoot={(path) => setQwenRootAndRestart(
+                      "engine_set_qwen_runtime_root",
+                      "runtimeRoot",
+                      path,
+                      setQwenRuntimeRoot,
+                    )}
+                  />
+                </Suspense>
               </PageBody>
             </div>
           )}

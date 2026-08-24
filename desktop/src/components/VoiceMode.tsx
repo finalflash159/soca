@@ -1,18 +1,18 @@
 /** Voice capture with the same durable transcript as chat. */
 
 import { Activity, Mic, MicOff, MessageSquareText, Settings2, X } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { VoiceHud } from "@/components/VoiceHud";
+import { VoiceOrb, voiceOrbStatusFor, voicePresentationFor } from "@/components/VoiceOrb";
 import { VoiceTranscript } from "@/components/VoiceTranscript";
 import type { Citation, ConversationState, Turn } from "@/engine/conversation";
 import type { CitationPreviewIndex } from "@/engine/citation-preview";
-import { orbLabel, type OrbState } from "@/engine/orb";
+import type { OrbState } from "@/engine/orb";
 import type { VoiceState } from "@/engine/voice";
-import { partialText, peakLevel } from "@/engine/voice";
+import { partialText } from "@/engine/voice";
 import { cn } from "@/lib/utils";
-import { ThinkingOrb } from "thinking-orbs";
 
 interface VoiceModeProps {
   orbState: OrbState;
@@ -33,18 +33,12 @@ interface VoiceModeProps {
   canLoadOlder: boolean;
 }
 
-/** Smooth the engine's real microphone RMS frames without fabricating progress. */
-function recentLevel(levels: number[]): number {
-  return peakLevel(levels.slice(-6));
-}
-
 /**
  * The live turn, centre stage.
  *
- * This is where a spoken turn happens, and it stays here for the whole of it —
- * the partial transcript growing word by word as you speak, then the answer
- * arriving sentence by sentence as it is spoken. Only when the turn closes does
- * it leave and become a pair of bubbles in the transcript below.
+ * While the microphone is live, the immersive Voice orb owns the whole stage
+ * and intentionally hides words. Once capture ends, the compact surface shows
+ * the partial transcript and streamed answer without duplicating them below.
  *
  * The layer split is Pipecat's `TranscriptOverlay`: what is happening now is
  * large, centred and ephemeral; the record is small, aligned and permanent.
@@ -134,11 +128,8 @@ export function VoiceMode({
   }, []);
 
   const running = voice.phase !== "off";
-  const level = running ? recentLevel(voice.levels) : 0;
-  // `breathing` is intentionally a face-on ring. It reads as a generic
-  // spinner in the setup state, so use the product's established three-
-  // dimensional thinking treatment until Voice can be started.
-  const displayOrbState: OrbState = ready ? orbState : "solving";
+  const presentation = voicePresentationFor(voice, ready);
+  const immersive = presentation === "immersive";
 
   // The turn in progress stays centre stage; the transcript below shows only
   // what has finished. One turn, one place on screen at a time.
@@ -146,54 +137,28 @@ export function VoiceMode({
   const liveTurn =
     newest !== undefined && newest.surface === "voice" && newest.finalText === null ? newest : null;
   const settled = liveTurn === null ? conversation.turns : conversation.turns.slice(0, -1);
-  const historyVisible = transcriptOpen && !detailsOpen;
-
-  const status = !ready
-    ? "Voice cần thiết lập"
-    : !running
-    ? "Microphone off"
-    : voice.phase === "starting"
-      ? "Preparing voice runtime…"
-      : orbLabel(orbState);
+  const historyVisible = transcriptOpen && !detailsOpen && !immersive;
+  const status = voiceOrbStatusFor(ready ? voice.phase : "setup");
 
   return (
-    <div
-      // Fills the page area. The sidebar and top bar are outside it, so
-      // settings, the engine health dot and the restart button stay one click
-      // away mid-call — this screen used to cover the window and hide them.
+      <div
+        // Fills the page area. The sidebar and top bar are outside it, so
+        // settings, the engine health dot and the restart button stay one click
+        // away mid-call — this screen used to cover the window and hide them.
       className="bg-background flex h-full w-full flex-col"
       role="region"
       aria-label="Chế độ thoại"
     >
       <div
         className={cn(
-          "relative flex min-h-0 flex-col items-center justify-center gap-6 px-6",
-          // Keep the visual anchor fixed. Opening history changes only the
-          // surrounding layout, never the sphere cluster's size or shape.
-          historyVisible || detailsOpen ? "shrink-0 py-7" : "flex-1",
+          "relative flex min-h-0 flex-col items-center justify-center px-6",
+          immersive ? "flex-1 gap-8 py-10" : "shrink-0 gap-4 py-7",
         )}
+        data-voice-presentation={presentation}
       >
-        <div
-          className={cn(
-            "voice-orb-response relative flex shrink-0 items-center justify-center",
-            historyVisible || detailsOpen ? "size-32" : "size-48",
-          )}
-          style={{ "--voice-level": level } as CSSProperties}
-          data-testid="voice-activity"
-        >
-          <ThinkingOrb
-            state={displayOrbState}
-            size={64}
-            aria-hidden
-            data-testid="voice-orb"
-            data-orb-state={displayOrbState}
-          />
-        </div>
+        <VoiceOrb voice={voice} ready={ready} presentation={presentation} />
 
-        {/* Always rendered, transcript open or not. This is the live turn, and
-            hiding it behind the transcript toggle removed the one thing a voice
-            screen exists to show. */}
-        <div className="flex min-h-24 max-w-2xl flex-col items-center justify-start gap-3">
+        <div className={cn("flex max-w-2xl flex-col items-center justify-start gap-3", immersive ? "min-h-0" : "min-h-20")}>
           <p className="text-muted-foreground text-pretty text-center text-sm" role="status" aria-atomic="true">
             {status}
           </p>
@@ -214,12 +179,12 @@ export function VoiceMode({
                 Mở thiết lập Voice
               </Button>
             </div>
-          ) : (
+          ) : !immersive ? (
             <>
               <LiveTurn voice={voice} turn={liveTurn} />
               {voice.error !== null && <p className="text-destructive text-sm">{voice.error}</p>}
             </>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -237,7 +202,7 @@ export function VoiceMode({
       {/* Diagnostics live here rather than in settings, because every reading
           on them is live: navigating away from this page stops the loop, so a
           level meter on another page would only ever show a dead mic. */}
-      {detailsOpen && (
+      {detailsOpen && !immersive && (
         <div className="min-h-0 flex-1 overflow-auto px-6 pb-2">
           <VoiceHud voice={voice} />
         </div>

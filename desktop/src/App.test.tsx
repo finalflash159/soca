@@ -235,12 +235,44 @@ describe("desktop session lifecycle", () => {
         screen.getByText("Qwen ASR chưa sẵn sàng."),
       ).not.toBeNull();
     });
-    expect(screen.getByTestId("voice-orb").getAttribute("data-orb-state")).toBe("solving");
+    expect(screen.getByTestId("voice-orb").getAttribute("data-voice-orb-mode")).toBe("setup");
     expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
 
     await user.click(screen.getByRole("button", { name: "Mở thiết lập Voice" }));
     await waitFor(() => {
       expect(screen.getByText("Trạng thái thoại")).not.toBeNull();
+    });
+  });
+
+  it("uses the immersive orb only while the microphone is capturing", async () => {
+    const user = userEvent.setup();
+    await renderReadyApp();
+    emit(EVENT_CHANNEL, {
+      event: "status",
+      runtime_components: [
+        { id: "voice_asr", label: "Voice ASR", status: "ready", detail: "qwen" },
+        { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote" },
+        { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+      ],
+    });
+
+    await user.click(screen.getByRole("button", { name: "Thoại" }));
+    emit(EVENT_CHANNEL, { event: "voice", type: "recording", metadata: {} });
+    await waitFor(() => {
+      expect(screen.getByTestId("voice-orb").getAttribute("data-voice-orb-presentation")).toBe("immersive");
+    });
+
+    emit(EVENT_CHANNEL, {
+      event: "voice",
+      type: "asr_partial",
+      metadata: { committed: "xin chào", tentative: " SoCa" },
+    });
+    expect(screen.queryByText("xin chào")).toBeNull();
+
+    emit(EVENT_CHANNEL, { event: "voice", type: "recorded", metadata: {} });
+    await waitFor(() => {
+      expect(screen.getByTestId("voice-orb").getAttribute("data-voice-orb-presentation")).toBe("compact");
+      expect(screen.getByText("xin chào")).not.toBeNull();
     });
   });
 

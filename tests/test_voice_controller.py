@@ -234,6 +234,80 @@ def test_voice_monitor_reports_microphone_level_for_nonempty_audio() -> None:
     assert level.metadata["rms"] == 0.25
 
 
+def test_voice_monitor_forwards_live_microphone_levels_from_recorder() -> None:
+    config = make_config()
+    pipeline = FakePipeline([])
+    bundle = make_bundle(config, pipeline, detector=FakeDetector(has_speech=True))
+
+    def recorder(*_args, **kwargs) -> np.ndarray:
+        on_level = kwargs["on_level"]
+        on_level(0.1)
+        on_level(0.6)
+        return np.full(1600, 0.25, dtype=np.float32)
+
+    queue: Queue = Queue()
+    controller = VoiceMonitorController(
+        config,
+        runtime_builder=lambda _config, *, session_memory=None: bundle,
+        recorder=recorder,
+        player=FakeAudioSink(),  # type: ignore[arg-type]
+        warmup=False,
+    )
+
+    controller.run_loop(queue, stop_event=Event(), max_turns=1)
+
+    events = _drain_voice_events(queue)
+    microphone_levels = [
+        event.metadata["rms"]
+        for event in events
+        if event.type == "voice_level" and event.metadata.get("source") == "microphone"
+    ]
+    assert microphone_levels == [0.1, 0.6]
+
+
+def test_voice_monitor_reports_timed_assistant_levels_from_played_pcm() -> None:
+    config = make_config()
+    output = np.full(768, 0.4, dtype=np.float32)
+    pipeline = FakePipeline(
+        [
+            StreamingEvent(
+                type="tts",
+                text="SoCa đang nói.",
+                audio=output,
+                sample_rate=16_000,
+                metadata={"chunk_index": 0},
+            ),
+            StreamingEvent(
+                type="playback_started",
+                text="SoCa đang nói.",
+                metadata={"chunk_index": 0},
+            ),
+            StreamingEvent(type="done", text="SoCa đang nói."),
+        ]
+    )
+    bundle = make_bundle(config, pipeline, detector=FakeDetector(has_speech=True))
+    queue: Queue = Queue()
+    controller = VoiceMonitorController(
+        config,
+        runtime_builder=lambda _config, *, session_memory=None: bundle,
+        recorder=lambda *_args, **_kwargs: np.full(1600, 0.25, dtype=np.float32),
+        player=FakeAudioSink(),  # type: ignore[arg-type]
+        warmup=False,
+    )
+
+    controller.run_loop(queue, stop_event=Event(), max_turns=1)
+
+    events = _drain_voice_events(queue)
+    assistant_levels = [
+        event
+        for event in events
+        if event.type == "voice_level" and event.metadata.get("source") == "assistant"
+    ]
+    assert assistant_levels
+    assert all(event.metadata["chunk_index"] == 0 for event in assistant_levels)
+    assert all(event.metadata["rms"] == pytest.approx(0.4) for event in assistant_levels)
+
+
 def test_voice_monitor_passive_silence_waits_before_calling_out() -> None:
     config = make_config()
     pipeline = FakePipeline([StreamingEvent(type="asr", text="should not run")])
@@ -450,7 +524,9 @@ class FakeContextAwareASR:
         return None
 
 
-def _bundle_with_raw_asr(config: ResolvedVoiceRuntimeConfig, inner_asr: object) -> VoiceRuntimeBundle:
+def _bundle_with_raw_asr(
+    config: ResolvedVoiceRuntimeConfig, inner_asr: object
+) -> VoiceRuntimeBundle:
     return VoiceRuntimeBundle(
         config=config,
         detector=object(),
@@ -479,9 +555,3 @@ def test_build_partial_transcriber_passes_empty_context_for_a_context_aware_back
 
     assert text == "hypothesis"
     assert inner.calls == [{"audio_len": 160, "context": ""}]
-
-
-
-
-
-

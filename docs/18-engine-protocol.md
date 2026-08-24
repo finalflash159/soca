@@ -541,7 +541,11 @@ rather than an invented transcript (see [04 — ASR robustness](04-asr-robustnes
 Render it as a turn, not as a failure.
 
 `voice_level` is high-frequency. A client must throttle or coalesce it; do not
-re-render the tree per frame.
+re-render the tree per frame. `metadata.source` is `microphone` for an RMS
+frame from the recorder's PCM block, or `assistant` for a timed RMS frame from
+generated PCM after the matching `playback_started` event. The event contains
+only scalar telemetry, never raw audio. Clients must keep the two sources
+separate: microphone telemetry is not a proxy for speaker output.
 
 ## 6. Workflow events
 

@@ -144,6 +144,19 @@ describe("voice", () => {
     );
   });
 
+  it("keeps speaking state when assistant playback telemetry arrives", () => {
+    expect(
+      stateAfter([
+        { event: "voice", type: "playback_started" } as EngineFrame,
+        {
+          event: "voice",
+          type: "voice_level",
+          metadata: { source: "assistant", rms: 0.4 },
+        } as EngineFrame,
+      ]),
+    ).toBe("composing");
+  });
+
   it("stops listening once capture ends", () => {
     expect(
       fold([

@@ -50,8 +50,10 @@ export interface VoiceState {
   profile: string | null;
   asrModel: string | null;
   endpoint: EndpointConfig | null;
-  /** Newest last, capped at LEVEL_HISTORY. */
+  /** Newest microphone RMS readings last, capped at LEVEL_HISTORY. */
   levels: number[];
+  /** Newest assistant-output RMS readings last, capped at LEVEL_HISTORY. */
+  assistantLevels: number[];
   partial: PartialTranscript | null;
   bargeIn: BargeInState;
   /** A rejected transcript became a Vietnamese repair prompt — not an error. */
@@ -67,6 +69,7 @@ export const initialVoice: VoiceState = {
   asrModel: null,
   endpoint: null,
   levels: [],
+  assistantLevels: [],
   partial: null,
   bargeIn: "idle",
   repairPrompt: null,
@@ -119,6 +122,7 @@ function reduceVoiceFrame(state: VoiceState, frame: VoiceFrame): VoiceState {
         ...state,
         phase: "off",
         levels: [],
+        assistantLevels: [],
         partial: null,
         bargeIn: "idle",
       };
@@ -141,7 +145,16 @@ function reduceVoiceFrame(state: VoiceState, frame: VoiceFrame): VoiceState {
 
     case "voice_level": {
       const rms = numberOrNull(metadata.rms);
-      return rms === null ? state : { ...state, levels: pushLevel(state.levels, rms) };
+      if (rms === null) {
+        return state;
+      }
+      // Older engines did not publish a source. Treat those readings as
+      // microphone telemetry so a new desktop UI remains compatible with a
+      // running older sidecar, while a current engine can keep both signals
+      // distinct for the Voice orb.
+      return metadata.source === "assistant"
+        ? { ...state, assistantLevels: pushLevel(state.assistantLevels, rms) }
+        : { ...state, levels: pushLevel(state.levels, rms) };
     }
 
     case "asr_partial":

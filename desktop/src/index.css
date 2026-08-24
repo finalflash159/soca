@@ -142,9 +142,10 @@
   --sidebar-ring: #e6c07b;
 }
 
-/* The voice orb reacts only to the engine-provided RMS level.  It never draws
-   a halo, ring, countdown or synthetic progress; reduced-motion users retain
-   the same textual state without movement. */
+/* The dedicated Voice orb never infers activity from text. Its size and glow
+   are driven by engine RMS: microphone while listening and generated PCM while
+   SoCa speaks. The assistant's gentle drift distinguishes turn-taking, while
+   amplitude remains an observed signal in both cases. */
 @layer components {
   .soca-scrollbar {
     scrollbar-color: var(--border) transparent;
@@ -162,15 +163,105 @@
     background-clip: padding-box;
   }
 
-  .voice-orb-response {
-    transform: scale(calc(0.96 + var(--voice-level, 0) * 0.08));
-    transition: transform 100ms ease-out;
+  .voice-orb {
+    --voice-orb-level: 0;
+    position: relative;
+    display: grid;
+    width: 7.5rem;
+    aspect-ratio: 1;
+    place-items: center;
+    isolation: isolate;
+  }
+
+  .voice-orb--immersive {
+    width: min(58vw, 26rem);
+  }
+
+  .voice-orb__aura,
+  .voice-orb__motion,
+  .voice-orb__core {
+    grid-area: 1 / 1;
+  }
+
+  .voice-orb__aura {
+    width: 100%;
+    height: 100%;
+    opacity: calc(0.12 + var(--voice-orb-level) * 0.28);
+    filter: blur(calc(8px + var(--voice-orb-level) * 22px));
+    transform: scale(calc(1.04 + var(--voice-orb-level) * 0.16));
+    transition: opacity 100ms linear, filter 100ms linear, transform 100ms linear;
+  }
+
+  .voice-orb__motion {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    place-items: center;
+    transform: scaleX(calc(0.98 + var(--voice-orb-level) * 0.1)) scaleY(calc(0.98 + var(--voice-orb-level) * 0.14));
+    transition: transform 90ms cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform;
+  }
+
+  .voice-orb__core {
+    width: 100%;
+    height: 100%;
+    filter: saturate(0.92) brightness(0.96);
+    will-change: transform, filter;
+  }
+
+  .voice-orb--listening .voice-orb__aura {
+    opacity: calc(0.16 + var(--voice-orb-level) * 0.44);
+    filter: blur(calc(10px + var(--voice-orb-level) * 30px));
+  }
+
+  .voice-orb--listening .voice-orb__core {
+    filter: saturate(calc(0.96 + var(--voice-orb-level) * 0.3)) brightness(calc(0.94 + var(--voice-orb-level) * 0.18));
+  }
+
+  .voice-orb--speaking .voice-orb__aura {
+    opacity: calc(0.18 + var(--voice-orb-level) * 0.38);
+  }
+
+  .voice-orb--speaking .voice-orb__core {
+    animation: voice-orb-assistant-drift 2.8s ease-in-out infinite;
+    filter: saturate(calc(0.9 + var(--voice-orb-level) * 0.24)) brightness(calc(0.98 + var(--voice-orb-level) * 0.14));
+  }
+
+  .voice-orb--thinking .voice-orb__core,
+  .voice-orb--transcribing .voice-orb__core,
+  .voice-orb--starting .voice-orb__core {
+    animation: voice-orb-processing-breath 2s ease-in-out infinite;
+  }
+
+  @keyframes voice-orb-assistant-drift {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-2%) rotate(1.2deg);
+    }
+  }
+
+  @keyframes voice-orb-processing-breath {
+    0%,
+    100% {
+      opacity: 0.88;
+      transform: scale(0.985);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.015);
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .voice-orb-response {
+    .voice-orb__aura,
+    .voice-orb__motion,
+    .voice-orb__core {
       transform: none;
       transition: none;
+      animation: none;
     }
   }
 }

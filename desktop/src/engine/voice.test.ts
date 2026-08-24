@@ -75,6 +75,17 @@ describe("levels", () => {
       voice("voice_level", { metadata: { rms: 0.5 } }),
     ]);
     expect(state.levels).toEqual([0.1, 0.5]);
+    expect(state.assistantLevels).toEqual([]);
+  });
+
+  it("keeps assistant output telemetry separate from microphone telemetry", () => {
+    const state = fold([
+      voice("voice_level", { metadata: { rms: 0.1, source: "microphone" } }),
+      voice("voice_level", { metadata: { rms: 0.5, source: "assistant" } }),
+    ]);
+
+    expect(state.levels).toEqual([0.1]);
+    expect(state.assistantLevels).toEqual([0.5]);
   });
 
   it("clamps out-of-range readings instead of trusting them", () => {

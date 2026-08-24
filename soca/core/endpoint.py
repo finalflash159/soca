@@ -22,6 +22,7 @@ from soca.core.turn_taking import (
 
 _DEBUG = os.environ.get("SOCA_ENDPOINT_DEBUG", "") not in ("", "0")
 
+
 class _PartialWorker:
     """Background re-transcriber: buffer -> text -> LocalAgreement -> callback.
 
@@ -30,8 +31,8 @@ class _PartialWorker:
     """
 
     def __init__(self, chunks, config, *, on_partial, transcriber):
-        self._chunks = chunks                    # list SHARED with the main loop
-        self._interval = config.partial_interval_ms / 1000        # SEED (seconds) - Tier 1
+        self._chunks = chunks  # list SHARED with the main loop
+        self._interval = config.partial_interval_ms / 1000  # SEED (seconds) - Tier 1
         self._ewma_ms = config.partial_interval_ms / PARTIAL_MARGIN  # initial per-call estimate
         self._on_partial = on_partial
         self._transcriber = transcriber
@@ -41,9 +42,7 @@ class _PartialWorker:
         self._last_len = 0
         self._thread: threading.Thread | None = None
         if on_partial is not None and transcriber is not None:
-            self._thread = threading.Thread(
-                target=self._run, daemon=True, name="soca-partial-asr"
-            )
+            self._thread = threading.Thread(target=self._run, daemon=True, name="soca-partial-asr")
             self._thread.start()
 
     def notify_speech(self) -> None:
@@ -65,22 +64,22 @@ class _PartialWorker:
         self._interval = clamp_interval_ms(PARTIAL_MARGIN * self._ewma_ms) / 1000
 
     def _run(self) -> None:
-        while not self._done.wait(self._interval):        # self._interval changes dynamically
+        while not self._done.wait(self._interval):  # self._interval changes dynamically
             if not self._speech.is_set():
                 continue
-            snapshot_chunks = list(self._chunks)          # copy REF list (GIL-safe)
+            snapshot_chunks = list(self._chunks)  # copy REF list (GIL-safe)
             if not snapshot_chunks:
                 continue
             audio = np.concatenate(snapshot_chunks).astype(np.float32, copy=False)
-            if len(audio) - self._last_len < 6400:        # <400ms new audio -> skip this tick
+            if len(audio) - self._last_len < 6400:  # <400ms new audio -> skip this tick
                 continue
             self._last_len = len(audio)
             t0 = time.perf_counter()
             try:
                 text = self._transcriber(audio) or ""
-            except Exception:                             # ASR error must not kill the mic
-                continue                                  # (not measured -> EWMA stays clean)
-            self._adapt_interval((time.perf_counter() - t0) * 1000)   # measure REAL wall-time
+            except Exception:  # ASR error must not kill the mic
+                continue  # (not measured -> EWMA stays clean)
+            self._adapt_interval((time.perf_counter() - t0) * 1000)  # measure REAL wall-time
             committed, tentative = self._agreement.update(text)
             try:
                 self._on_partial(committed, tentative)
@@ -109,6 +108,7 @@ class EndpointConfig:
     use_incremental_vad: bool = True
     partial_interval_ms: int = 900
 
+
 def _apply_env_overrides(config: EndpointConfig) -> EndpointConfig:
     """Live-tuning knobs, same culture as SOCA_BARGE_* (frozen -> replace)."""
     from dataclasses import replace
@@ -130,6 +130,7 @@ def _apply_env_overrides(config: EndpointConfig) -> EndpointConfig:
 def effective_endpoint_config(config: EndpointConfig | None = None) -> EndpointConfig:
     """Return the endpoint configuration after process-level tuning overrides."""
     return _apply_env_overrides(config or EndpointConfig())
+
 
 def should_stop_recording(
     speech_timestamps: list[dict[str, int]],
@@ -169,7 +170,7 @@ def _turn_window(chunks, config, *, max_s: float = 8.0):
 
 def _decide_required_silence(config, silence_ms, chunks, turn_detector) -> float:
     if not config.adaptive:
-        return float(config.endpoint_silence_ms)          # fixed, deterministic
+        return float(config.endpoint_silence_ms)  # fixed, deterministic
     if silence_ms < config.floor_silence_ms:
         return float(config.ceil_silence_ms)
     window = _turn_window(chunks, config)
@@ -196,6 +197,7 @@ def record_until_silence(
     turn_detector=None,
     on_partial=None,
     partial_transcriber=None,
+    on_level=None,
     stream_factory=None,
 ) -> np.ndarray:
     config = effective_endpoint_config(config)
@@ -210,9 +212,7 @@ def record_until_silence(
         and vad_model is not None
         and config.sample_rate == 16000
     ):
-        tracker = IncrementalVadTracker(
-            vad_model, threshold=getattr(detector, "threshold", 0.5)
-        )
+        tracker = IncrementalVadTracker(vad_model, threshold=getattr(detector, "threshold", 0.5))
         tracker.reset()
     if config.adaptive and turn_detector is None:
         raise ValueError("adaptive endpoint requires a turn detector")
@@ -236,9 +236,7 @@ def record_until_silence(
         chunks, config, on_partial=on_partial, transcriber=partial_transcriber
     )
     try:
-        with stream_factory(
-            samplerate=config.sample_rate, channels=1, dtype="float32"
-        ) as stream:
+        with stream_factory(samplerate=config.sample_rate, channels=1, dtype="float32") as stream:
             while total_samples < max_samples:
                 if stop_event is not None and stop_event.is_set():
                     break
@@ -246,6 +244,16 @@ def record_until_silence(
                 block_mono = np.asarray(block, dtype=np.float32).reshape(-1)
                 chunks.append(block_mono)
                 total_samples += len(block_mono)
+
+                if on_level is not None:
+                    # A visual meter consumes the exact PCM block that VAD and
+                    # ASR receive. Callback failure is observational only and
+                    # must never interrupt microphone capture.
+                    try:
+                        rms = float(np.sqrt(np.mean(np.square(block_mono))))
+                        on_level(min(1.0, max(0.0, rms)) if np.isfinite(rms) else 0.0)
+                    except Exception:
+                        pass
 
                 if total_samples < int(config.sample_rate * config.min_audio_ms / 1000):
                     continue
@@ -262,8 +270,7 @@ def record_until_silence(
                     timestamps = detector.speech_timestamps(audio)
                     seen = has_seen_speech or bool(timestamps)
                     speech_ms = (
-                        sum(t["end"] - t["start"] for t in timestamps)
-                        / config.sample_rate * 1000
+                        sum(t["end"] - t["start"] for t in timestamps) / config.sample_rate * 1000
                     )
                     last_end = timestamps[-1]["end"] if timestamps else 0
                     silence_ms = (len(audio) - last_end) / config.sample_rate * 1000
@@ -274,15 +281,14 @@ def record_until_silence(
                 if not has_seen_speech:
                     continue
 
-                required = _decide_required_silence(
-                    config, silence_ms, chunks, turn_detector
-                )
+                required = _decide_required_silence(config, silence_ms, chunks, turn_detector)
                 if _DEBUG:
                     print(
                         f"[endpoint] adaptive={config.adaptive} "
                         f"speech={speech_ms:5.0f}ms "
                         f"silence={silence_ms:4.0f}/{required:4.0f}ms",
-                        file=sys.stderr, flush=True,
+                        file=sys.stderr,
+                        flush=True,
                     )
                 if silence_ms >= required:
                     break

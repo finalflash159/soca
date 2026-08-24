@@ -21,7 +21,7 @@
  *    by "nén working memory". The `memory` turn phase is archive retrieval.
  */
 
-import type { EngineFrame, WorkflowFrame } from "./protocol";
+import type { EngineFrame, VoiceFrame, WorkflowFrame } from "./protocol";
 import { isChatFrame, isVoiceFrame, isWorkflowFrame } from "./protocol";
 
 export type OrbState =
@@ -93,8 +93,8 @@ function reduceWorkflow(activity: OrbActivity, frame: WorkflowFrame): OrbActivit
   return activity;
 }
 
-function reduceVoice(activity: OrbActivity, type: string): OrbActivity {
-  switch (type) {
+function reduceVoice(activity: OrbActivity, frame: VoiceFrame): OrbActivity {
+  switch (frame.type) {
     case "loading":
     case "warmup":
       return { ...activity, voiceLoading: true };
@@ -103,11 +103,17 @@ function reduceVoice(activity: OrbActivity, type: string): OrbActivity {
       // only `loop_started` means the microphone is actually open.
       return { ...activity, voiceLoading: false };
     case "recording":
-    case "voice_level":
     case "barge_in":
       // A barge-in hands the floor back to the user, so it is a listening state
       // even though it interrupts playback.
       return { ...activity, listening: true, speaking: false };
+    case "voice_level":
+      // Output-level telemetry arrives while SoCa speaks. It is not an input
+      // event and must never make the shared header/chat activity claim the
+      // microphone is listening.
+      return frame.metadata?.source === "assistant"
+        ? activity
+        : { ...activity, listening: true, speaking: false };
     case "recorded":
     case "transcribing":
       return { ...activity, listening: false };
@@ -148,7 +154,7 @@ export function reduceActivity(activity: OrbActivity, frame: EngineFrame): OrbAc
   }
 
   if (isVoiceFrame(frame)) {
-    return reduceVoice(activity, frame.type);
+    return reduceVoice(activity, frame);
   }
 
   if (isChatFrame(frame)) {
