@@ -68,7 +68,9 @@ function profileName(profileKey: string): string {
   }
 }
 
-function profileStatus(status: string): string {
+function profileStatus(profile: SettingsState["profiles"][number]): string {
+  if (profile.key.startsWith("qwen-") && profile.status === "invalid") return "Not included";
+  const { status } = profile;
   if (status === "ok") return "Ready";
   if (status === "missing" || status === "blocked") return "Needs setup";
   if (status === "invalid") return "Unavailable";
@@ -105,6 +107,9 @@ function profileSummary(profile: SettingsState["profiles"][number]): string {
           ? "Qwen ASR reference profile for local speech recognition."
           : "Voice profile.";
   if (profile.status === "ok") return summary;
+  if (profile.key.startsWith("qwen-") && profile.status === "invalid") {
+    return `${summary} Qwen is not included in the desktop release. It requires a separately verified worker runtime and model artifact.`;
+  }
   if (profile.status === "invalid") {
     return `${summary} This profile is unavailable because its configuration could not be validated.`;
   }
@@ -703,7 +708,7 @@ export function SettingsPanel({
         <Section
           icon={AudioLines}
           title="Thoại"
-          description="Chat và voice được thiết lập riêng. Remote chat vẫn dùng được khi ASR hoặc TTS chưa cài."
+          description="Chat và Voice được thiết lập riêng. Mở Voice để xem trạng thái; dùng phần này để hoàn tất các thành phần còn thiếu."
         >
         <Field
           label="Trạng thái thoại"
@@ -728,6 +733,20 @@ export function SettingsPanel({
                     <p className="mt-1 break-words font-mono leading-5">{voiceBlocker.detail}</p>
                   </details>
                 )}
+                {!voiceReady && (
+                  <Button
+                    className="mt-3"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const input = document.getElementById("local-model-root");
+                      input?.scrollIntoView({ behavior: "smooth", block: "center" });
+                      window.setTimeout(() => (input as HTMLInputElement | null)?.focus(), 250);
+                    }}
+                  >
+                    Choose a SoCa model folder
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -747,7 +766,7 @@ export function SettingsPanel({
                       ? profile.status === "ok"
                         ? "Active"
                         : "Active · Needs setup"
-                      : profileStatus(profile.status)}
+                      : profileStatus(profile)}
                   </Badge>
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-sm font-medium">{profileName(profile.key)}</span>

@@ -122,6 +122,17 @@ export default function App() {
       : voiceComponents.length !== voiceComponentIds.size
         ? "Đang kiểm tra ASR và TTS…"
         : null;
+  const voiceSetupSummary = !runtimeReady
+    ? "The response model for Voice needs setup."
+    : voiceBlocker?.id === "voice_asr"
+      ? "Speech recognition needs setup."
+      : voiceBlocker?.id === "voice_llm"
+        ? "The response model for Voice needs setup."
+        : voiceBlocker?.id === "tts"
+          ? "Speech output needs setup."
+          : voiceComponents.length !== voiceComponentIds.size
+            ? "Checking Voice setup…"
+            : null;
 
   const startWithPersistence = async (
     persistence: LaunchSessionPersistence,
@@ -320,8 +331,8 @@ export default function App() {
   }
 
   const openPage = (next: PageId) => {
-    const destination = next === "voice" && !voiceReady ? "settings" : next;
-    setSettingsFocus(destination !== next ? "voice" : null);
+    const destination = next;
+    setSettingsFocus(null);
     setPage(destination);
     if (!connected) return;
     if (destination === "session") {
@@ -337,7 +348,7 @@ export default function App() {
       }
     }
     if (destination === "voice" && !sessionChanging && engine.voice.phase === "off") {
-      void engine.send({ cmd: "voice_start" });
+      for (const cmd of ["status", "llm_config"] as const) void engine.send({ cmd });
     }
   };
 
@@ -436,7 +447,7 @@ export default function App() {
   };
 
   const toggleMic = () => {
-    if (!sessionChanging) {
+    if (!sessionChanging && voiceReady) {
       void engine.send(engine.voice.phase === "off" ? { cmd: "voice_start" } : { cmd: "voice_stop" });
     }
   };
@@ -553,9 +564,16 @@ export default function App() {
                 conversation={engine.conversation}
                 citationPreviews={engine.citationPreviews}
                 connected={connected && !sessionChanging}
+                ready={voiceReady}
+                setupSummary={voiceSetupSummary}
+                setupDetail={voiceReason}
                 transcriptOpen={transcriptOpen}
                 onToggleTranscript={() => setTranscriptOpen((open) => !open)}
                 onToggleMic={toggleMic}
+                onOpenSetup={() => {
+                  openPage("settings");
+                  setSettingsFocus("voice");
+                }}
                 onLeave={() => leaveVoice("chat")}
                 onLoadOlder={() => void engine.requestOlderTurns()}
                 canLoadOlder={canLoadOlderTurns}

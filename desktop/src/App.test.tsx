@@ -215,7 +215,7 @@ describe("desktop session lifecycle", () => {
     });
   });
 
-  it("routes an unavailable voice runtime to its actionable settings instead of opening a dead microphone", async () => {
+  it("opens Voice even when setup is incomplete and offers a direct setup action", async () => {
     const user = userEvent.setup();
     await renderReadyApp();
     emit(EVENT_CHANNEL, {
@@ -227,16 +227,20 @@ describe("desktop session lifecycle", () => {
       ],
     });
 
-    await user.click(screen.getByRole("button", { name: "Thiết lập thoại" }));
+    await user.click(screen.getByRole("button", { name: "Thoại" }));
 
     await waitFor(() => {
-      expect(screen.queryByText("Runtime chưa sẵn sàng")).toBeNull();
-      expect(screen.getByText("Trạng thái thoại")).not.toBeNull();
+      expect(screen.getByText("Set up Voice before using the microphone")).not.toBeNull();
       expect(
-        screen.getByText("Speech recognition is not installed for the selected voice profile."),
+        screen.getByText("Speech recognition needs setup."),
       ).not.toBeNull();
     });
     expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Open Voice setup" }));
+    await waitFor(() => {
+      expect(screen.getByText("Trạng thái thoại")).not.toBeNull();
+    });
   });
 
   it("loads older transcript pages with the engine's exclusive sequence boundary", async () => {

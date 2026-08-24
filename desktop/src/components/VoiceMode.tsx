@@ -1,6 +1,6 @@
 /** Voice capture with the same durable transcript as chat. */
 
-import { Activity, Mic, MicOff, MessageSquareText, X } from "lucide-react";
+import { Activity, Mic, MicOff, MessageSquareText, Settings2, X } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -21,9 +21,13 @@ interface VoiceModeProps {
   citationPreviews: CitationPreviewIndex;
   onRequestCitationPreview: (citation: Citation) => Promise<boolean>;
   connected: boolean;
+  ready: boolean;
+  setupSummary: string | null;
+  setupDetail: string | null;
   transcriptOpen: boolean;
   onToggleTranscript: () => void;
   onToggleMic: () => void;
+  onOpenSetup: () => void;
   onLeave: () => void;
   onLoadOlder: () => void;
   canLoadOlder: boolean;
@@ -94,9 +98,13 @@ export function VoiceMode({
   citationPreviews,
   onRequestCitationPreview,
   connected,
+  ready,
+  setupSummary,
+  setupDetail,
   transcriptOpen,
   onToggleTranscript,
   onToggleMic,
+  onOpenSetup,
   onLeave,
   onLoadOlder,
   canLoadOlder,
@@ -136,7 +144,9 @@ export function VoiceMode({
   const settled = liveTurn === null ? conversation.turns : conversation.turns.slice(0, -1);
   const historyVisible = transcriptOpen && !detailsOpen;
 
-  const status = !running
+  const status = !ready
+    ? "Voice needs setup"
+    : !running
     ? "Microphone off"
     : voice.phase === "starting"
       ? "Preparing voice runtime…"
@@ -177,8 +187,29 @@ export function VoiceMode({
           <p className="text-muted-foreground text-pretty text-center text-sm" role="status" aria-atomic="true">
             {status}
           </p>
-          <LiveTurn voice={voice} turn={liveTurn} />
-          {voice.error !== null && <p className="text-destructive text-sm">{voice.error}</p>}
+          {!ready ? (
+            <div className="border-border bg-card w-full max-w-md rounded-xl border p-4 text-left shadow-sm">
+              <h2 className="text-sm font-medium">Set up Voice before using the microphone</h2>
+              <p className="text-muted-foreground mt-1 text-sm leading-6">
+                {setupSummary ?? "Voice is still checking its local components."}
+              </p>
+              {setupDetail !== null && (
+                <details className="text-muted-foreground mt-3 text-xs">
+                  <summary className="cursor-pointer select-none">Technical details</summary>
+                  <p className="mt-2 break-words font-mono leading-5">{setupDetail}</p>
+                </details>
+              )}
+              <Button className="mt-4" size="sm" onClick={onOpenSetup}>
+                <Settings2 className="size-4" />
+                Open Voice setup
+              </Button>
+            </div>
+          ) : (
+            <>
+              <LiveTurn voice={voice} turn={liveTurn} />
+              {voice.error !== null && <p className="text-destructive text-sm">{voice.error}</p>}
+            </>
+          )}
         </div>
       </div>
 
@@ -214,7 +245,7 @@ export function VoiceMode({
             title={running ? "Tắt mic" : "Bật mic"}
             aria-label={running ? "Tắt mic" : "Bật mic"}
             aria-pressed={running}
-            disabled={!connected}
+            disabled={!connected || !ready}
             onClick={onToggleMic}
           >
             {running ? <Mic className="size-5" /> : <MicOff className="size-5" />}

@@ -185,9 +185,9 @@ describe("SettingsPanel remote configuration", () => {
       },
     });
 
-    expect(screen.getByText("Unavailable")).toBeTruthy();
+    expect(screen.getByText("Not included")).toBeTruthy();
     expect(screen.queryByText("invalid")).toBeNull();
-    expect(screen.getByText(/configuration could not be validated/i)).toBeTruthy();
+    expect(screen.getByText(/not included in the desktop release/i)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Chọn" })).toBeNull();
   });
 });
