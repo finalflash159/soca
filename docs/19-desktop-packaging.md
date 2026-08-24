@@ -12,7 +12,7 @@ installer when any of those inputs is absent.
 
 | Capability | State | Evidence / remaining gate |
 | --- | --- | --- |
-| Bundled engine | implemented | PyInstaller native sidecar, attached through Tauri `externalBin` |
+| Bundled engine | implemented | PyInstaller native one-directory runtime, attached through Tauri `resources` |
 | Persistence outside a checkout | implemented | frozen-sidecar migration/persistence verifier runs in packaging CI |
 | macOS arm64 installer | locally reproducible | signed/notarized release is blocked on Apple credentials and CI evidence |
 | Windows x64 installer | defined in CI | native package and signing evidence are pending the Windows workflow |
@@ -22,9 +22,12 @@ installer when any of those inputs is absent.
 ## What is in a bundle
 
 `npm run package:sidecar` invokes PyInstaller using the active native Python
-interpreter. The output is named `soca-engine-$RUST_TARGET_TRIPLE`, which is the
-filename convention Tauri requires for `externalBin`. The binary is ignored by
-Git and is recreated on every package build.
+interpreter. It produces `src-tauri/resources/soca-engine/`: the executable and
+its native dependency closure. Tauri copies every file from that directory into
+`$RESOURCE/resources/soca-engine/`. The generated runtime is ignored by Git and
+recreated on every package build. Unlike a PyInstaller one-file executable, it
+does not unpack hundreds of megabytes into a temporary directory at every cold
+launch.
 
 `npm run tauri:build` first builds that sidecar and then invokes Tauri with
 [`tauri.package.conf.json`](../desktop/src-tauri/tauri.package.conf.json). A
@@ -33,10 +36,25 @@ to `PATH`, Homebrew, a virtual environment, or a checkout. The recovery field
 in the startup UI is the sole explicit override; a missing bundled engine is a
 visible startup error.
 
+On packaged desktop builds, macOS Keychain access runs in a bounded helper
+process (750 ms). A stale security-service prompt can hold Python's GIL, so a
+thread timeout would not keep the engine responsive. The parent terminates the
+helper at the deadline and continues through the existing explicit environment
+and owner-only `0600` JSON credential paths; it reports the normal no-key
+readiness state when none exists. This never substitutes a provider, model, or
+local runtime. CLI behavior remains keyring-first and synchronous.
+
 The runtime is self-contained, but model weights are intentionally not embedded.
 They can be large and are provisioned by the engine. A package can therefore
 start without a checkout, but a local-model conversation still needs its chosen
 model artifact; remote operation needs its configured provider/key.
+
+The frozen launcher emits its single protocol-v3 `hello` before importing the
+heavy ASR/TTS/indexing stack. That frame establishes compatibility only: the UI
+continues to show the actual model/backend readiness from the initialized
+engine's `llm_config` and runtime-component frames, and keeps chat disabled
+until that readiness is true. It never substitutes a model or treats the
+preflight as model-loaded.
 
 The engine reports local and remote readiness as distinct states: missing local
 weights never block a configured remote provider, and remote readiness is only
@@ -137,9 +155,9 @@ The independent runtime proof deliberately runs outside the source checkout:
 
 ```bash
 uv run python scripts/verify_desktop_sidecar.py \
-  --sidecar desktop/src-tauri/binaries/soca-engine-aarch64-apple-darwin
+  --sidecar desktop/src-tauri/resources/soca-engine/soca-engine
 uv run python scripts/verify_desktop_remote_settings.py \
-  --sidecar desktop/src-tauri/target/release/bundle/macos/SoCa.app/Contents/MacOS/soca-engine
+  --sidecar desktop/src-tauri/target/release/bundle/macos/SoCa.app/Contents/Resources/resources/soca-engine/soca-engine
 ```
 
 The storage verifier exercises the frozen session protocol, legacy migration,

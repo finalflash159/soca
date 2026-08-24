@@ -3205,6 +3205,7 @@ def run_engine(
     catalog_fetcher: CatalogFetcher = fetch_catalog,
     llm_engine_factory: EngineBuilder = DEFAULT_LLM_ENGINE_FACTORY,
     session_repository: SessionRepository | None = None,
+    hello_emitted: bool = False,
 ) -> int:
     """Run the engine loop until ``quit`` or EOF. Returns a process exit code."""
     reader = stdin or sys.stdin
@@ -3233,7 +3234,15 @@ def run_engine(
     # Keep protocol stdout pristine: reroute stray prints (model loaders,
     # warnings) to stderr for the duration of the loop.
     with contextlib.redirect_stdout(sys.stderr):
-        engine.hello()
+        if not hello_emitted:
+            engine.hello()
+        else:
+            # The frozen desktop launcher emitted the compatibility handshake
+            # before importing this heavy runtime. Context and any typed
+            # settings failure must still come from the initialized engine.
+            engine._cmd_context()
+            if engine._settings_error is not None:
+                engine._error(engine._settings_error, code="llm_settings_invalid")
         try:
             for line in reader:
                 line = line.strip()

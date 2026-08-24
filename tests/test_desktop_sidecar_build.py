@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -17,7 +16,7 @@ def _builder_module() -> ModuleType:
     return module
 
 
-def test_build_sidecar_uses_host_triple_and_explicit_dependency_closure(
+def test_build_sidecar_uses_one_directory_runtime_and_explicit_dependency_closure(
     monkeypatch, tmp_path: Path
 ) -> None:
     builder = _builder_module()
@@ -28,23 +27,24 @@ def test_build_sidecar_uses_host_triple_and_explicit_dependency_closure(
     monkeypatch.setattr(builder, "ENTRY_POINT", entry)
     commands: list[list[str]] = []
 
-    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(command: list[str], **kwargs: object) -> None:
         commands.append(command)
-        if command[:3] == ["rustc", "--print", "host-tuple"]:
-            return subprocess.CompletedProcess(command, 0, "x86_64-unknown-linux-gnu\n", "")
         dist = Path(command[command.index("--distpath") + 1])
-        dist.mkdir(parents=True)
+        runtime = dist / builder.SIDECAR_BASENAME
+        runtime.mkdir(parents=True)
         suffix = ".exe" if builder.os.name == "nt" else ""
-        (dist / f"{builder.SIDECAR_BASENAME}{suffix}").write_bytes(b"frozen-engine")
-        return subprocess.CompletedProcess(command, 0, "", "")
+        (runtime / f"{builder.SIDECAR_BASENAME}{suffix}").write_bytes(b"frozen-engine")
 
     monkeypatch.setattr(builder.subprocess, "run", fake_run)
-    destination = builder.build_sidecar(tmp_path / "binaries")
+    destination = builder.build_sidecar(tmp_path / "resources")
 
-    assert destination.name == builder.sidecar_filename("x86_64-unknown-linux-gnu")
+    assert destination.name == f"{builder.SIDECAR_BASENAME}{'.exe' if builder.os.name == 'nt' else ''}"
+    assert destination.parent.name == builder.SIDECAR_BASENAME
     assert destination.read_bytes() == b"frozen-engine"
-    pyinstaller = commands[1]
+    pyinstaller = commands[0]
     assert pyinstaller[:3] == [sys.executable, "-m", "PyInstaller"]
+    assert "--onedir" in pyinstaller
+    assert "--onefile" not in pyinstaller
     assert ["--collect-all", "soca"] == pyinstaller[
         pyinstaller.index("--collect-all") : pyinstaller.index("--collect-all") + 2
     ]
@@ -55,19 +55,3 @@ def test_build_sidecar_uses_host_triple_and_explicit_dependency_closure(
         pyinstaller.index("--copy-metadata") : pyinstaller.index("--copy-metadata") + 2
     ]
     assert str(entry) == pyinstaller[-1]
-
-
-def test_rust_target_triple_falls_back_to_verbose_output(monkeypatch) -> None:
-    builder = _builder_module()
-    calls = 0
-
-    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            return subprocess.CompletedProcess(command, 1, "", "unsupported")
-        return subprocess.CompletedProcess(command, 0, "host: aarch64-apple-darwin\n", "")
-
-    monkeypatch.setattr(builder.subprocess, "run", fake_run)
-
-    assert builder.rust_target_triple() == "aarch64-apple-darwin"

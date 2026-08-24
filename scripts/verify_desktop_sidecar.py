@@ -72,8 +72,11 @@ def verify(sidecar: Path) -> None:
         environment.pop("VIRTUAL_ENV", None)
 
         first = _run_engine(sidecar, environment=environment, cwd=isolated_cwd)
-        if not any(frame.get("event") == "hello" for frame in first):
+        hello_frames = [frame for frame in first if frame.get("event") == "hello"]
+        if not hello_frames:
             raise RuntimeError("frozen sidecar did not complete the protocol hello")
+        if len(hello_frames) != 1:
+            raise RuntimeError("frozen sidecar emitted more than one protocol hello")
         page = next((frame for frame in first if frame.get("event") == "sessions_page"), None)
         if page is None or not any(item.get("checkpoint_only") for item in page.get("sessions", [])):
             raise RuntimeError("frozen sidecar did not migrate the legacy session")

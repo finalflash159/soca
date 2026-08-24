@@ -18,7 +18,7 @@ def release_config(environment: dict[str, str], *, platform: str) -> dict[str, o
 
     bundle: dict[str, object] = {
         "createUpdaterArtifacts": True,
-        "externalBin": ["binaries/soca-engine"],
+        "resources": ["resources/soca-engine/**/*"],
     }
     if platform == "darwin":
         identity = environment.get("APPLE_SIGNING_IDENTITY", "").strip()

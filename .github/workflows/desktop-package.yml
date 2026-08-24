@@ -73,15 +73,15 @@ jobs:
           tests/test_tauri_release_config.py
       - name: Run desktop unit suite
         run: npm test --prefix desktop
-      - name: Build native installer with its external Python runtime
+      - name: Build native installer with its bundled Python runtime
         run: npm run tauri:build --prefix desktop -- --bundles ${{ matrix.bundles }}
       - name: Prove frozen sidecar migration and persistence outside the checkout
         shell: bash
         run: |
-          sidecar_path=$(find desktop/src-tauri/binaries -type f -name 'soca-engine-*' ! -name '*.tmp' -print -quit)
+          sidecar_path=$(find desktop/src-tauri/resources/soca-engine -type f -name 'soca-engine*' ! -name '*.tmp' -print -quit)
           test -n "$sidecar_path"
           if [ "$RUNNER_OS" = "macOS" ]; then
-            bundled_sidecar=desktop/src-tauri/target/release/bundle/macos/SoCa.app/Contents/MacOS/soca-engine
+            bundled_sidecar=desktop/src-tauri/target/release/bundle/macos/SoCa.app/Contents/Resources/resources/soca-engine/soca-engine
             test -f "$bundled_sidecar"
             test "$(shasum -a 256 "$sidecar_path" | awk '{print $1}')" = "$(shasum -a 256 "$bundled_sidecar" | awk '{print $1}')"
             sidecar_path="$bundled_sidecar"

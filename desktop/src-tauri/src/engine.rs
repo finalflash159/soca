@@ -21,7 +21,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{path::BaseDirectory, AppHandle, Emitter, Manager, State};
 
 /// Frontend event channel for one decoded protocol frame.
 pub const EVENT_CHANNEL: &str = "soca://engine-event";
@@ -34,7 +34,7 @@ const GRACEFUL_BYE_TIMEOUT: Duration = Duration::from_secs(35);
 const EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 /// Poll interval while waiting for process exit.
 const EXIT_POLL: Duration = Duration::from_millis(50);
-/// Basename registered in `bundle.externalBin`.
+/// Basename of the one-directory runtime registered in `bundle.resources`.
 const SIDECAR_BASENAME: &str = "soca-engine";
 const MODEL_ROOT_OVERRIDE_FILE: &str = "model-root.txt";
 
@@ -109,17 +109,16 @@ fn engine_args(options: &[String]) -> Vec<String> {
 /// start a random venv or PATH installation after its selected runtime fails.
 fn engine_candidates(app: &AppHandle) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
-    let filename = sidecar_filename();
+    let relative = PathBuf::from("resources")
+        .join(SIDECAR_BASENAME)
+        .join(sidecar_filename());
 
-    // Tauri places externalBin files next to the executable. resource_dir is
-    // retained for bundle layouts used by older Tauri versions and test hosts.
-    if let Ok(dir) = app.path().resource_dir() {
-        candidates.push(dir.join(&filename));
-    }
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            candidates.push(dir.join(filename));
-        }
+    // The map in tauri.package.conf.json places the complete PyInstaller
+    // one-directory runtime at `$RESOURCE/resources/soca-engine`. Resolve it
+    // through Tauri rather than guessing an install layout or falling back to
+    // PATH.
+    if let Ok(path) = app.path().resolve(&relative, BaseDirectory::Resource) {
+        candidates.push(path);
     }
     candidates
 }
@@ -348,6 +347,10 @@ struct Running {
 #[derive(Default)]
 pub struct EngineState {
     running: Mutex<Option<Running>>,
+    /// The protocol contract emits hello before reading input. Cache that
+    /// durable fact natively so a WebView reload/event-registration race cannot
+    /// strand a healthy engine on its startup screen.
+    hello: Arc<Mutex<Option<serde_json::Value>>>,
 }
 
 fn emit_status(app: &AppHandle, status: EngineStatus) {
@@ -364,6 +367,7 @@ fn spawn_reader(
     stdout: std::process::ChildStdout,
     bye_tx: mpsc::Sender<()>,
     stopping: Arc<AtomicBool>,
+    hello: Arc<Mutex<Option<serde_json::Value>>>,
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
@@ -381,6 +385,15 @@ fn spawn_reader(
             }
             match serde_json::from_str::<serde_json::Value>(trimmed) {
                 Ok(frame) => {
+                    if frame
+                        .get("event")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|name| name == "hello")
+                    {
+                        if let Ok(mut cached) = hello.lock() {
+                            *cached = Some(frame.clone());
+                        }
+                    }
                     let is_bye = frame
                         .get("event")
                         .and_then(serde_json::Value::as_str)
@@ -492,7 +505,11 @@ pub fn engine_start(
 
     let stopping = Arc::new(AtomicBool::new(false));
     let (bye_tx, bye_rx) = mpsc::channel();
-    let reader = spawn_reader(app.clone(), stdout, bye_tx, Arc::clone(&stopping));
+    let hello = Arc::clone(&state.hello);
+    if let Ok(mut cached) = hello.lock() {
+        *cached = None;
+    }
+    let reader = spawn_reader(app.clone(), stdout, bye_tx, Arc::clone(&stopping), hello);
     let stderr_drain = spawn_stderr_drain(stderr);
 
     *guard = Some(Running {
@@ -531,6 +548,17 @@ pub fn engine_send(
 pub fn engine_is_running(state: State<'_, EngineState>) -> Result<bool, String> {
     let guard = state.running.lock().map_err(|_| "engine state poisoned")?;
     Ok(guard.is_some())
+}
+
+/// Return the sidecar's first protocol frame after it has been decoded. Unlike
+/// a frontend event, this can be queried after a WebView reload.
+#[tauri::command]
+pub fn engine_hello(state: State<'_, EngineState>) -> Result<Option<serde_json::Value>, String> {
+    let hello = state
+        .hello
+        .lock()
+        .map_err(|_| "engine hello state poisoned")?;
+    Ok(hello.clone())
 }
 
 #[tauri::command]

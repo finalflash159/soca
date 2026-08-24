@@ -50,7 +50,7 @@ export function launchOptions(
   const args = ["--session-persistence", persistence];
   if (root === "") {
     // Leaving `program` unset is intentional: Rust resolves only the Tauri
-    // externalBin sidecar for a release build and never guesses from PATH.
+    // bundled resource runtime for a release build and never guesses from PATH.
     return { args };
   }
   return { program, args, env: { PYTHONPATH: root } };

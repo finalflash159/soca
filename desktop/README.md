@@ -139,13 +139,15 @@ escalate — needs direct control of the child's stdio and exit. The plugin's
 abstraction does not expose enough of it, and `bye` is the only evidence the
 engine released the microphone and its provider clients.
 
-**The package includes the Python sidecar.** Tauri's `externalBin` entry embeds
-a PyInstaller-built `soca-engine-$TARGET_TRIPLE` in every native package. It is
-the only automatic production engine route, so a Finder/Start Menu launch has
-no hidden dependency on PATH or a checkout. The build also explicitly collects
-`llama_cpp` native libraries and `torchcodec` distribution metadata; without
-them a freeze can build yet fail before the protocol `hello` frame. The exact
-package size is a release artifact, not a stable claim in this repository.
+**The package includes the Python runtime.** Tauri's resource map embeds the
+complete PyInstaller `soca-engine/` directory in every native package. Keeping
+the executable beside its dependencies avoids one-file extraction on every
+cold launch while retaining the only automatic production engine route: a
+Finder/Start Menu launch has no hidden dependency on PATH or a checkout. The
+build also explicitly collects `llama_cpp` native libraries and `torchcodec`
+distribution metadata; without them a freeze can build yet fail before the
+protocol `hello` frame. The exact package size is a release artifact, not a
+stable claim in this repository.
 
 The Settings page contains a signed-updater surface. Only signed release builds
 register the updater plugin; package proofs report that update checking is
