@@ -73,6 +73,24 @@ jobs:
           tests/test_tauri_release_config.py
       - name: Run desktop unit suite
         run: npm test --prefix desktop
+      - name: Install linuxdeploy with host-driver exclusion support
+        if: runner.os == 'Linux'
+        env:
+          XDG_CACHE_HOME: ${{ runner.temp }}/soca-cache
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64) arch="x86_64" ;;
+            aarch64|arm64) arch="aarch64" ;;
+            *) echo "Unsupported linuxdeploy architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+          tools_dir="$XDG_CACHE_HOME/tauri"
+          mkdir -p "$tools_dir"
+          curl --fail --location --retry 3 --show-error \
+            --output "$tools_dir/linuxdeploy-${arch}.AppImage" \
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${arch}.AppImage"
+          chmod +x "$tools_dir/linuxdeploy-${arch}.AppImage"
+          "$tools_dir/linuxdeploy-${arch}.AppImage" --appimage-extract-and-run --version
       - name: Build native installer with its bundled Python runtime
         env:
           # `linuxdeploy` is itself an AppImage.  Explicit extraction keeps
@@ -86,6 +104,10 @@ jobs:
           # resolves Torch from Torch's native library directory. Keep the full
           # explicit closure visible while linuxdeploy scans the frozen runtime.
           LD_LIBRARY_PATH: ${{ runner.os == 'Linux' && format('{0}/desktop/src-tauri/resources/soca-engine/_internal/torchaudio/lib:{0}/desktop/src-tauri/resources/soca-engine/_internal:{0}/desktop/src-tauri/resources/soca-engine/_internal/torch/lib', github.workspace) || '' }}
+          # The NVIDIA driver belongs to the host. The bundled CUDA runtime is
+          # self-contained, but linuxdeploy must not attempt to deploy libcuda.
+          LINUXDEPLOY_EXCLUDED_LIBRARIES: ${{ runner.os == 'Linux' && 'libcuda.so*' || '' }}
+          XDG_CACHE_HOME: ${{ runner.temp }}/soca-cache
         run: npm run tauri:build --prefix desktop -- --verbose --bundles ${{ matrix.bundles }}
       - name: Prove frozen sidecar migration and persistence outside the checkout
         shell: bash
