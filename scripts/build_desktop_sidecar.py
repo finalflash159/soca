@@ -20,6 +20,11 @@ TORCHAUDIO_TORCH_LIBRARIES = (
     "libtorch_cpu.so",
     "libtorch_global_deps.so",
 )
+DESKTOP_EXCLUDED_MODULES = (
+    "librosa",
+    "numba",
+    "llvmlite",
+)
 
 
 def cuda_runtime_libraries() -> list[Path]:
@@ -116,6 +121,17 @@ def pyinstaller_command(*, dist: Path, work: Path, spec: Path) -> list[str]:
         # editable checkout at runtime.
         "--collect-all",
         "soca",
+        # Desktop Voice always starts one of the Qwen service profiles.  The
+        # retained PhoWhisper file-import helper is source/CLI compatibility
+        # only and is the sole reason that librosa's JIT stack enters an
+        # otherwise Qwen-only frozen engine.  Exclude that unreachable stack:
+        # it prevents linuxdeploy from trying to bundle TBB, while the Qwen
+        # worker continues to own all ASR inference dependencies.
+        *(
+            option
+            for module in DESKTOP_EXCLUDED_MODULES
+            for option in ("--exclude-module", module)
+        ),
         # Runtime readiness and the production ASR guard both load the
         # committed calibration JSON beside the frozen package root. Without
         # this data closure a desktop build can find every model file yet

@@ -52,6 +52,14 @@ def test_build_sidecar_uses_one_directory_runtime_and_explicit_dependency_closur
     assert ["--collect-all", "soca"] == pyinstaller[
         pyinstaller.index("--collect-all") : pyinstaller.index("--collect-all") + 2
     ]
+    excluded_modules = [
+        pyinstaller[index : index + 2]
+        for index, value in enumerate(pyinstaller)
+        if value == "--exclude-module"
+    ]
+    assert ["--exclude-module", "librosa"] in excluded_modules
+    assert ["--exclude-module", "numba"] in excluded_modules
+    assert ["--exclude-module", "llvmlite"] in excluded_modules
     assert ["--add-data", f"{calibration}{builder.os.pathsep}data/asr"] == pyinstaller[
         pyinstaller.index("--add-data") : pyinstaller.index("--add-data") + 2
     ]
