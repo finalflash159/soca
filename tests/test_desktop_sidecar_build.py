@@ -25,6 +25,7 @@ def test_build_sidecar_uses_one_directory_runtime_and_explicit_dependency_closur
     entry.write_text("print('entry')\n", encoding="utf-8")
     monkeypatch.setattr(builder, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(builder, "ENTRY_POINT", entry)
+    monkeypatch.setattr(builder, "cuda_runtime_binary_arguments", lambda: [])
     commands: list[list[str]] = []
 
     def fake_run(command: list[str], **kwargs: object) -> None:
@@ -58,11 +59,38 @@ def test_build_sidecar_uses_one_directory_runtime_and_explicit_dependency_closur
     ]
     assert ["--collect-binaries", "torch"] in binary_collections
     assert ["--collect-binaries", "torchaudio"] in binary_collections
-    assert ["--collect-binaries", "nvidia.cuda_runtime"] in binary_collections
     assert ["--copy-metadata", "torchcodec"] == pyinstaller[
         pyinstaller.index("--copy-metadata") : pyinstaller.index("--copy-metadata") + 2
     ]
     assert str(entry) == pyinstaller[-1]
+
+
+def test_linux_cuda_runtime_is_added_from_its_distribution(monkeypatch, tmp_path: Path) -> None:
+    builder = _builder_module()
+    monkeypatch.setattr(builder.sys, "platform", "linux")
+    library = tmp_path / "site-packages" / "nvidia" / "cu13" / "lib" / "libcudart.so.13"
+    library.parent.mkdir(parents=True)
+    library.write_bytes(b"cuda")
+
+    class Distribution:
+        files = (Path("nvidia/cu13/lib/libcudart.so.13"),)
+
+        def locate_file(self, file: Path) -> Path:
+            assert file == self.files[0]
+            return library
+
+    monkeypatch.setattr(builder.metadata, "distribution", lambda name: Distribution())
+
+    expected_arguments = [
+        "--add-binary",
+        f"{library}{builder.os.pathsep}nvidia/cu13/lib",
+    ]
+    assert builder.cuda_runtime_binary_arguments() == expected_arguments
+
+    command = builder.pyinstaller_command(
+        dist=tmp_path / "dist", work=tmp_path / "work", spec=tmp_path / "spec"
+    )
+    assert command[command.index("--add-binary") : command.index("--add-binary") + 2] == expected_arguments
 
 
 def test_linux_torchaudio_links_resolve_torch_shared_libraries(
@@ -80,7 +108,7 @@ def test_linux_torchaudio_links_resolve_torch_shared_libraries(
     (torch_lib / "libtorch_cpu.so").write_bytes(b"torch")
     (torch_lib / "libtorch_global_deps.so").write_bytes(b"torch")
     (torch_lib / "libtorch_cuda.so").write_bytes(b"unused")
-    cuda_lib = internal / "nvidia" / "cuda_runtime" / "lib"
+    cuda_lib = internal / "nvidia" / "cu13" / "lib"
     cuda_lib.mkdir(parents=True)
     (cuda_lib / "libcudart.so.13").write_bytes(b"cuda")
 

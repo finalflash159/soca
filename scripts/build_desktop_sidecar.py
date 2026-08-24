@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+from importlib import metadata
 from pathlib import Path
 
 SIDECAR_BASENAME = "soca-engine"
@@ -18,6 +19,35 @@ TORCHAUDIO_TORCH_LIBRARIES = (
     "libtorch_cpu.so",
     "libtorch_global_deps.so",
 )
+
+
+def cuda_runtime_binary_arguments() -> list[str]:
+    """Return explicit PyInstaller inputs for CUDA's namespace-package binaries."""
+    if not sys.platform.startswith("linux"):
+        return []
+
+    try:
+        distribution = metadata.distribution("nvidia-cuda-runtime")
+    except metadata.PackageNotFoundError as error:
+        raise RuntimeError(
+            "Linux desktop sidecar requires the nvidia-cuda-runtime distribution"
+        ) from error
+
+    libraries = [
+        (Path(distribution.locate_file(file)), file.parent.as_posix())
+        for file in distribution.files or ()
+        if len(file.parts) >= 4
+        and file.parts[0] == "nvidia"
+        and file.parts[-2] == "lib"
+        and file.name.startswith("libcudart.so")
+    ]
+    if not libraries:
+        raise RuntimeError("nvidia-cuda-runtime does not contain a libcudart shared library")
+
+    arguments: list[str] = []
+    for library, destination in libraries:
+        arguments.extend(["--add-binary", f"{library}{os.pathsep}{destination}"])
+    return arguments
 
 
 def link_linux_torchaudio_dependencies(runtime: Path) -> None:
@@ -49,7 +79,7 @@ def link_linux_torchaudio_dependencies(runtime: Path) -> None:
 
 
 def pyinstaller_command(*, dist: Path, work: Path, spec: Path) -> list[str]:
-    return [
+    command = [
         sys.executable,
         "-m",
         "PyInstaller",
@@ -76,11 +106,6 @@ def pyinstaller_command(*, dist: Path, work: Path, spec: Path) -> list[str]:
         "torch",
         "--collect-binaries",
         "torchaudio",
-        # Torch's CUDA runtime is a separate distribution. It is loaded by
-        # libtorchaudio at runtime, so bundle it explicitly instead of relying
-        # on PyInstaller's import analysis to discover it.
-        "--collect-binaries",
-        "nvidia.cuda_runtime",
         # transformers checks this distribution's version during ASR imports.
         # Do not collect torchcodec's bundled libpython: it is a separate
         # runtime and would conflict with the interpreter frozen by PyInstaller.
@@ -94,6 +119,10 @@ def pyinstaller_command(*, dist: Path, work: Path, spec: Path) -> list[str]:
         str(spec),
         str(ENTRY_POINT),
     ]
+    cuda_arguments = cuda_runtime_binary_arguments()
+    if cuda_arguments:
+        command[-1:-1] = cuda_arguments
+    return command
 
 
 def build_sidecar(output: Path) -> Path:
