@@ -93,7 +93,7 @@ jobs:
         shell: bash
         run: |
           npm run package:sidecar --prefix desktop
-          sidecar_path=$(find desktop/src-tauri/binaries -type f -name 'soca-engine-*' ! -name '*.tmp' -print -quit)
+          sidecar_path=$(find desktop/src-tauri/resources/soca-engine -type f -name 'soca-engine*' ! -name '*.tmp' -print -quit)
           test -n "$sidecar_path"
           uv run python scripts/verify_desktop_sidecar.py --sidecar "$sidecar_path"
       - name: Build signed installers and updater artifacts

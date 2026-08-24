@@ -1,6 +1,6 @@
 # SoCa system documentation
 
-SoCa (Sơn Ca) is a local-first Vietnamese voice assistant. Audio capture,
+SoCa is a local-first Vietnamese voice assistant. Audio capture,
 endpointing, ASR, TTS, knowledge retrieval, memory, indexing and session state
 run on the machine. The LLM is local by default; the user can explicitly select
 OpenAI, Gemini, OpenRouter or Groq for both chat and voice. That selection sends

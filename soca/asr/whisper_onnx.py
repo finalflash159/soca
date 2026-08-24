@@ -9,7 +9,7 @@ import numpy as np
 import onnxruntime as ort
 from transformers import WhisperProcessor
 
-from .registry import DEFAULT_ASR_MODEL_KEY, REPO_ROOT, get_asr_model_config
+from .registry import DEFAULT_ASR_MODEL_KEY, get_asr_model_config
 from .result import ASRResult
 
 
@@ -84,6 +84,14 @@ class VietnameseASR:
 
     def runtime_metadata(self, max_new_tokens: int = 128) -> dict:
         """Return the inference identity used by ASR evaluation artifacts."""
+        def display_path(path: Path) -> str:
+            # Source evidence is conveniently repo-relative; a bundled app may
+            # intentionally use an external user-selected model root instead.
+            try:
+                return str(path.relative_to(Path(__file__).resolve().parents[2]))
+            except ValueError:
+                return str(path)
+
         return {
             "backend": self.BACKEND,
             "asr_class": f"{self.__class__.__module__}.{self.__class__.__name__}",
@@ -93,8 +101,8 @@ class VietnameseASR:
             # Repo-relative, not the workstation's absolute path: this file
             # is committed, and the absolute path is both non-portable and
             # leaks the local username.
-            "model_dir": str(self.model_dir.relative_to(REPO_ROOT)),
-            "onnx_dir": str(self.onnx_dir.relative_to(REPO_ROOT)),
+            "model_dir": display_path(self.model_dir),
+            "onnx_dir": display_path(self.onnx_dir),
             "encoder_filename": self.ENCODER_FILENAME,
             "decoder_filename": self.DECODER_FILENAME,
             "decoder_variant": self.DECODER_VARIANT,

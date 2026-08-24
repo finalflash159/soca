@@ -4,7 +4,7 @@
 # Bộ chọn random no-repeat sẽ rút một biến thể, tránh lặp câu vừa dùng.
 #
 # Quy ước giọng văn (rút ra từ cách giới trẻ VN nói chuyện, pha vùng miền):
-#   - SoCa tự xưng "Sơn Ca" / "mình", gọi người dùng "bạn" — thân thiện, không thảo mai.
+#   - SoCa tự xưng "SoCa" / "mình", gọi người dùng "bạn" — thân thiện, không thảo mai.
 #   - Trộn tiểu từ vùng miền cho tự nhiên: "nha/nhé/nhen/á/nè/hông/ta/xíu".
 #   - attempt_1 (gọi với vào im lặng) được phép vui, dùng trend chào hỏi nước ngoài
 #     (moshi moshi - Nhật, annyeong/yeoboseyo - Hàn, alô) như kiểu "alo có ai không".
@@ -18,13 +18,13 @@
 action = "reprompt"
 variants = [
   "Alo alo, có ai ngoài đó hông ta?",
-  "Moshi moshi? Sơn Ca chưa nghe thấy gì hết á.",
-  "Ơ, im ru luôn. Bạn nói lại giúp Sơn Ca một câu nha.",
+  "Moshi moshi? SoCa chưa nghe thấy gì hết á.",
+  "Ơ, im ru luôn. Bạn nói lại giúp SoCa một câu nha.",
   "Annyeong? Hình như mình hụt mất câu vừa rồi rồi.",
-  "Annyeonghaseyo? Sơn Ca gọi một tiếng, bạn còn đó không?",
+  "Annyeonghaseyo? SoCa gọi một tiếng, bạn còn đó không?",
   "Alô alô, mình nghe chưa ra. Bạn nói lại lần nữa nhé.",
   "Ủa, có ai đang nói hông ta? Mình chưa bắt được tiếng.",
-  "Hế lô, Sơn Ca đây. Mình chưa nghe rõ, bạn nhắc lại nha.",
+  "Hế lô, SoCa đây. Mình chưa nghe rõ, bạn nhắc lại nha.",
   "Yeoboseyo? Mình chờ nãy giờ mà chưa nghe thấy gì á.",
 ]
 
@@ -77,7 +77,7 @@ variants = [
 action = "redirect"
 variants = [
   "Cái này mình chưa làm được rồi. Mình giúp được mấy việc như trả lời, tra ghi chú của bạn nè.",
-  "Việc đó hơi quá sức Sơn Ca. Nhưng mình hỗ trợ bạn hỏi đáp với tra cứu được nha.",
+  "Việc đó hơi quá sức SoCa. Nhưng mình hỗ trợ bạn hỏi đáp với tra cứu được nha.",
 ]
 
 # --- guardrail_blocked: chặn an toàn (ít biến thể, KHÔNG đùa) --------------------
@@ -116,7 +116,7 @@ variants = [
 [session_inactive.no_reply_1]
 action = "no_reply_followup"
 variants = [
-  "Sơn Ca vẫn ở đây nha, bạn cứ thong thả.",
+  "SoCa vẫn ở đây nha, bạn cứ thong thả.",
   "Mình đợi nè, khi nào sẵn sàng bạn nói tiếp nha.",
 ]
 

@@ -2,11 +2,15 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-async function loadWithRoot(root: string) {
+async function loadModuleWithRoot(root: string, program = "/repo/.venv/bin/soca") {
   vi.stubGlobal("__SOCA_CHECKOUT_ROOT__", root);
+  vi.stubGlobal("__SOCA_DEV_ENGINE_PROGRAM__", root === "" ? "" : program);
   vi.resetModules();
-  const module = await import("./launch");
-  return module.launchOptions();
+  return import("./launch");
+}
+
+async function loadWithRoot(root: string, program = "/repo/.venv/bin/soca") {
+  return (await loadModuleWithRoot(root, program)).launchOptions();
 }
 
 describe("launchOptions", () => {
@@ -18,13 +22,13 @@ describe("launchOptions", () => {
     expect(options.env).toEqual({ PYTHONPATH: "/repo/worktrees/desktop-app" });
   });
 
-  it("uses `soca` only for a checkout-backed development build", async () => {
-    expect((await loadWithRoot("/repo")).program).toBe("soca");
+  it("uses this checkout's virtualenv executable for a development build", async () => {
+    expect((await loadWithRoot("/repo")).program).toBe("/repo/.venv/bin/soca");
     expect((await loadWithRoot("")).program).toBeUndefined();
   });
 
   it("passes the explicit privacy mode to the sidecar", async () => {
-    const module = await import("./launch");
+    const module = await loadModuleWithRoot("/repo");
     expect(module.launchOptions("local_resumable").args).toEqual([
       "--session-persistence",
       "local_resumable",
@@ -40,7 +44,7 @@ describe("launchOptions", () => {
   });
 
   it("reports an unavailable WebView store instead of claiming the launch choice was saved", async () => {
-    const module = await import("./launch");
+    const module = await loadModuleWithRoot("/repo");
     const original = Object.getOwnPropertyDescriptor(window, "localStorage");
     try {
       Object.defineProperty(window, "localStorage", {

@@ -17,6 +17,12 @@ import { cn } from "@/lib/utils";
 
 interface ComposerProps {
   connected: boolean;
+  /** The selected LLM can accept a turn, independently of sidecar transport. */
+  runtimeReady?: boolean;
+  runtimeReason?: string | null;
+  /** Voice additionally needs its local ASR/TTS profile to be ready. */
+  voiceReady?: boolean;
+  voiceReason?: string | null;
   /** Shown in the placeholder while the engine is still coming up. */
   starting?: boolean;
   documents: VaultDocument[];
@@ -32,6 +38,10 @@ interface ComposerProps {
 
 export function Composer({
   connected,
+  runtimeReady = true,
+  runtimeReason = null,
+  voiceReady = true,
+  voiceReason = null,
   starting = false,
   documents,
   model,
@@ -57,9 +67,11 @@ export function Composer({
           .slice(0, 8);
   const paletteOpen = !paletteDismissed && (commands.length > 0 || mention !== null);
 
+  const available = connected && runtimeReady;
+
   const submit = () => {
     const text = draft.trim();
-    if (text === "" || !connected) {
+    if (text === "" || !available) {
       return;
     }
     onSend(text);
@@ -69,7 +81,11 @@ export function Composer({
 
   const placeholder = starting
     ? "Đang khởi động engine…"
-    : connected
+    : !connected
+      ? "Engine chưa chạy"
+      : !runtimeReady
+        ? runtimeReason ?? "Thiết lập model để bắt đầu"
+        : connected
       ? "Mình giúp được gì?"
       : "Engine chưa chạy";
 
@@ -150,7 +166,7 @@ export function Composer({
           value={draft}
           rows={variant === "hero" ? 2 : 1}
           placeholder={placeholder}
-          disabled={!connected}
+          disabled={!available}
           aria-label="Message"
           onChange={(event) => {
             setDraft(event.target.value);
@@ -190,7 +206,7 @@ export function Composer({
             <span
               className={cn(
                 "size-1.5 shrink-0 rounded-full",
-                connected ? "bg-chart-3" : "bg-muted-foreground/50",
+                available ? "bg-chart-3" : "bg-destructive",
               )}
               aria-hidden
             />
@@ -220,8 +236,8 @@ export function Composer({
               size="sm"
               variant="ghost"
               className="text-muted-foreground hover:text-foreground size-8 rounded-lg p-0"
-              title="Chế độ thoại"
-              aria-label="Chế độ thoại"
+              title={voiceReady ? "Chế độ thoại" : voiceReason ?? "Thiết lập thoại"}
+              aria-label={voiceReady ? "Chế độ thoại" : "Thiết lập thoại"}
               disabled={!connected}
               onClick={onEnterVoiceMode}
             >
@@ -230,7 +246,7 @@ export function Composer({
             <Button
               size="sm"
               className="size-8 rounded-full p-0"
-              disabled={!connected || draft.trim() === ""}
+              disabled={!available || draft.trim() === ""}
               onClick={submit}
               title="Gửi"
               aria-label="Gửi"

@@ -44,6 +44,7 @@ describe("catalog", () => {
         event: "llm_catalog",
         provider: "openai",
         models: [],
+        loading: true,
         pricing_as_of: "2026-07",
       } as EngineFrame,
     ]);
@@ -55,7 +56,7 @@ describe("catalog", () => {
   it("clears the loading flag when the real catalog arrives", () => {
     const state = fold([
       { event: "llm_catalog", provider: "openai", models: [] } as EngineFrame,
-      { event: "llm_catalog", provider: "openai", models: [model] } as EngineFrame,
+      { event: "llm_catalog", provider: "openai", models: [model], loading: false } as EngineFrame,
     ]);
     expect(state.catalogLoading.openai).toBe(false);
     expect(state.catalog.openai).toHaveLength(1);
@@ -64,7 +65,7 @@ describe("catalog", () => {
   it("keeps catalogs separate per provider", () => {
     const state = fold([
       { event: "llm_catalog", provider: "openai", models: [model] } as EngineFrame,
-      { event: "llm_catalog", provider: "groq", models: [] } as EngineFrame,
+      { event: "llm_catalog", provider: "groq", models: [], loading: true } as EngineFrame,
     ]);
     expect(state.catalog.openai).toHaveLength(1);
     expect(state.catalogLoading.groq).toBe(true);
@@ -222,6 +223,27 @@ describe("runtime profiles", () => {
     expect(state.profiles).toHaveLength(2);
     expect(state.profiles[0].asr).toBe("qwen3_asr_0_6b");
     expect(state.profiles[1].tts).toBeNull();
+  });
+});
+
+describe("runtime components", () => {
+  it("preserves typed readiness details for the settings and voice entry gates", () => {
+    const state = fold([
+      {
+        event: "status",
+        runtime_components: [
+          { id: "chat_llm", label: "Chat LLM", status: "ready", detail: "remote · openrouter:gpt" },
+          { id: "voice_asr", label: "Voice ASR", status: "missing", detail: "qwen-asr" },
+          { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+        ],
+      } as EngineFrame,
+    ]);
+
+    expect(state.runtimeComponents).toEqual([
+      { id: "chat_llm", label: "Chat LLM", status: "ready", detail: "remote · openrouter:gpt" },
+      { id: "voice_asr", label: "Voice ASR", status: "missing", detail: "qwen-asr" },
+      { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+    ]);
   });
 });
 

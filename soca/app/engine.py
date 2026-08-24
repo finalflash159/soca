@@ -85,7 +85,7 @@ from soca.llm.providers import (
     get_provider,
     search_models,
 )
-from soca.llm.registry import LLM_MODEL_REGISTRY
+from soca.llm.registry import LLM_MODEL_REGISTRY, get_model_config
 from soca.memory import (
     CoreMemoryStore,
     MemoryCommands,
@@ -1228,12 +1228,14 @@ class SocaEngine:
         elif self._settings_error is not None:
             add("chat_llm", "Chat LLM", "invalid", self._settings_error)
         elif settings.backend == "remote":
-            key_state = "ready" if self.secret_store.has_key(settings.provider_key) else "missing"
+            remote_ready, remote_reason, _ = self._llm_runtime_readiness(settings)
+            key_state = "ready" if remote_ready else "missing"
             add(
                 "chat_llm",
                 "Chat LLM",
                 key_state,
-                f"remote · {settings.provider_key}:{settings.model_id}",
+                f"remote · {settings.provider_key}:{settings.model_id}"
+                + (f" · {remote_reason}" if remote_reason else ""),
             )
         else:
             local_config = get_model_config(settings.model_id)
@@ -1273,7 +1275,7 @@ class SocaEngine:
             )
             voice_settings = self._selected_voice_settings()
             if voice_settings.backend == "remote":
-                voice_llm_ready = self.secret_store.has_key(voice_settings.provider_key)
+                voice_llm_ready, voice_reason, _ = self._llm_runtime_readiness(voice_settings)
                 voice_llm_state = (
                     "loaded"
                     if voice_bundle is not None
@@ -1281,6 +1283,7 @@ class SocaEngine:
                 )
                 voice_llm_detail = (
                     f"remote · {voice_settings.provider_key}:{voice_settings.model_id}"
+                    + (f" · {voice_reason}" if voice_reason else "")
                 )
             else:
                 local_config = get_model_config(voice_settings.model_id)
@@ -1306,12 +1309,9 @@ class SocaEngine:
                 tts_state = "missing"
             add("tts", "TTS", tts_state, f"{VALTEC_TTS_CONFIG.key}/{self.voice_config.tts_voice}")
 
-            smart_turn_path = (
-                Path(__file__).resolve().parents[2]
-                / "models"
-                / "smart-turn-v3-onnx"
-                / SMART_TURN_MODEL_FILE
-            )
+            from soca.model_paths import default_model_root
+
+            smart_turn_path = default_model_root() / "smart-turn-v3-onnx" / SMART_TURN_MODEL_FILE
             if not self.voice_config.adaptive_endpoint:
                 smart_state = "disabled"
             elif voice_bundle is not None and voice_bundle.turn_detector is not None:
@@ -1436,13 +1436,17 @@ class SocaEngine:
             return
         api_key = self.secret_store.get_key(provider.key)
         if not api_key:
-            self._error(f"Chưa có API key cho {provider.label}.")
+            self._emit_key_status(
+                provider.key,
+                ok=False,
+                message=f"Chưa có API key cho {provider.label}.",
+            )
             return
         cached = self._cached_catalog(provider, api_key)
         if cached is not None:
             self._emit_catalog(provider, cached, query)
             return
-        self._emit_catalog(provider, [], query)
+        self._emit_catalog(provider, [], query, loading=True)
         self._start_catalog_fetch(provider, api_key, purpose="models", query=query)
 
     def _cmd_llm_set_key(self, command: dict[str, Any]) -> None:
@@ -1480,7 +1484,27 @@ class SocaEngine:
             self._error("LLM backend phải là 'local' hoặc 'remote'.")
             return
         provider_key = command.get("provider", self.llm_settings.provider_key)
-        model_id = command.get("model", self.llm_settings.model_id)
+        requested_model = command.get("model")
+        if requested_model is None:
+            if backend == "local":
+                # A backend switch must never carry a hosted model id into the
+                # local runtime. Keep the current model only for local-to-local
+                # generation edits; otherwise select the configured local default.
+                model_id = (
+                    self.llm_settings.model_id
+                    if self.llm_settings.backend == "local"
+                    else DEFAULT_SETTINGS.model_id
+                )
+            elif (
+                self.llm_settings.backend == "remote"
+                and provider_key == self.llm_settings.provider_key
+            ):
+                model_id = self.llm_settings.model_id
+            else:
+                self._error("Hãy chọn một model remote từ danh mục trước khi áp dụng.")
+                return
+        else:
+            model_id = requested_model
         if not isinstance(provider_key, str) or not isinstance(model_id, str):
             self._error("LLM provider và model phải là chuỗi.")
             return
@@ -1492,9 +1516,23 @@ class SocaEngine:
         if not isinstance(reasoning_enabled, bool):
             self._error("Reasoning phải là true hoặc false.")
             return
-        model_info = (
-            self._remote_model_info(provider_key, model_id) if backend == "remote" else None
-        )
+        model_info = None
+        if backend == "remote":
+            api_key = self.secret_store.get_key(provider_key)
+            if api_key:
+                try:
+                    provider = get_provider(provider_key)
+                except ValueError as exc:
+                    self._error(str(exc))
+                    return
+                catalog = self._cached_catalog(provider, api_key)
+                if catalog is not None:
+                    model_info = next((item for item in catalog if item.id == model_id), None)
+                    if model_info is None:
+                        self._error(
+                            f"Model '{model_id}' không có trong danh mục hiện tại của {provider.label}."
+                        )
+                        return
         try:
             settings = LlmSettings(
                 backend=backend,
@@ -1543,11 +1581,17 @@ class SocaEngine:
     def _emit_llm_config(self) -> None:
         settings = self.llm_settings
         active_model = self._active_remote_model(settings)
+        runtime_ready, runtime_reason, local_model_path = self._llm_runtime_readiness(settings)
+        catalog_fetch: tuple[LLMProvider, str] | None = None
         if settings.backend == "remote":
             provider = get_provider(settings.provider_key)
             api_key = self.secret_store.get_key(provider.key)
-            if api_key and active_model is None:
-                self._start_catalog_fetch(provider, api_key, purpose="config")
+            if api_key:
+                catalog = self._cached_catalog(provider, api_key)
+            else:
+                catalog = None
+            if api_key and catalog is None:
+                catalog_fetch = (provider, api_key)
         payload: dict[str, Any] = {
             "event": "llm_config",
             "backend": settings.backend,
@@ -1564,11 +1608,58 @@ class SocaEngine:
             "pricing_as_of": PRICING_TABLE_AS_OF,
             "pricing": active_model,
             "context_length": self._model_context_length(),
-            "runtime_ready": self._settings_error is None,
+            "runtime_ready": runtime_ready,
+            "runtime_reason": runtime_reason,
+            "local_model_path": local_model_path,
             "settings_error": self._settings_error,
         }
         self.writer.emit(payload)
         self._cmd_context()
+        # Emit the current (possibly pending) state before starting the worker.
+        # Otherwise a fast catalog response can overtake this frame and the
+        # stale `runtime_ready=false` payload would be delivered last.
+        if catalog_fetch is not None:
+            fetch_provider, fetch_key = catalog_fetch
+            self._start_catalog_fetch(fetch_provider, fetch_key, purpose="config")
+
+    def _llm_runtime_readiness(
+        self, settings: LlmSettings
+    ) -> tuple[bool, str | None, str | None]:
+        """Report whether the selected backend can accept a chat without loading it.
+
+        Local and remote are intentionally independent: a missing GGUF must
+        never prevent a configured remote provider from running, and a remote
+        key must never be sent or consulted for local readiness.
+        """
+
+        if self._settings_error is not None:
+            return False, self._settings_error, None
+        if settings.backend == "remote":
+            provider = get_provider(settings.provider_key)
+            api_key = self.secret_store.get_key(provider.key)
+            if not api_key:
+                return False, f"Chưa có API key cho {provider.label}.", None
+            catalog = self._cached_catalog(provider, api_key)
+            if catalog is None:
+                return False, f"Đang tải danh mục model của {provider.label}…", None
+            if not any(model.id == settings.model_id for model in catalog):
+                return (
+                    False,
+                    f"Model '{settings.model_id}' không có trong danh mục hiện tại của {provider.label}.",
+                    None,
+                )
+            return True, None, None
+        if self.no_model:
+            return False, "Engine đang chạy với --no-model.", None
+
+        local_path = get_model_config(settings.model_id).local_path
+        if local_path.is_file():
+            return True, None, str(local_path)
+        return (
+            False,
+            f"Chưa tìm thấy model local tại {local_path}.",
+            str(local_path),
+        )
 
     def _active_remote_model(self, settings: LlmSettings) -> RemoteModelInfo | None:
         if settings.backend != "remote":
@@ -1617,6 +1708,8 @@ class SocaEngine:
         provider: LLMProvider,
         catalog: list[RemoteModelInfo],
         query: str,
+        *,
+        loading: bool = False,
     ) -> None:
         self.writer.emit(
             {
@@ -1625,6 +1718,7 @@ class SocaEngine:
                 "models": [
                     _model_protocol_payload(model) for model in search_models(catalog, query)
                 ],
+                "loading": loading,
                 "pricing_as_of": PRICING_TABLE_AS_OF,
             }
         )
@@ -1643,6 +1737,8 @@ class SocaEngine:
             if purpose == "key":
                 self._complete_key_validation(provider, api_key, fingerprint)
             elif purpose == "models":
+                self._emit_catalog(provider, cached, query)
+            elif purpose == "config":
                 self._emit_catalog(provider, cached, query)
             return
 
@@ -1784,6 +1880,14 @@ class SocaEngine:
             ok=True,
             masked=self.secret_store.mask(api_key),
         )
+        cached = self._cached_catalog(provider, api_key)
+        if cached is not None:
+            self._emit_catalog(provider, cached, "")
+        if (
+            self.llm_settings.backend == "remote"
+            and self.llm_settings.provider_key == provider.key
+        ):
+            self._emit_llm_config()
 
     def _provider_from_command(self, command: dict[str, Any]) -> LLMProvider | None:
         raw_provider = command.get("provider")
@@ -3101,6 +3205,7 @@ def run_engine(
     catalog_fetcher: CatalogFetcher = fetch_catalog,
     llm_engine_factory: EngineBuilder = DEFAULT_LLM_ENGINE_FACTORY,
     session_repository: SessionRepository | None = None,
+    hello_emitted: bool = False,
 ) -> int:
     """Run the engine loop until ``quit`` or EOF. Returns a process exit code."""
     reader = stdin or sys.stdin
@@ -3129,7 +3234,15 @@ def run_engine(
     # Keep protocol stdout pristine: reroute stray prints (model loaders,
     # warnings) to stderr for the duration of the loop.
     with contextlib.redirect_stdout(sys.stderr):
-        engine.hello()
+        if not hello_emitted:
+            engine.hello()
+        else:
+            # The frozen desktop launcher emitted the compatibility handshake
+            # before importing this heavy runtime. Context and any typed
+            # settings failure must still come from the initialized engine.
+            engine._cmd_context()
+            if engine._settings_error is not None:
+                engine._error(engine._settings_error, code="llm_settings_invalid")
         try:
             for line in reader:
                 line = line.strip()

@@ -1,6 +1,6 @@
 # 19 — Desktop packaging and release evidence
 
-Updated 2026-08-22.
+Updated 2026-08-23.
 
 ## Release status
 
@@ -12,7 +12,7 @@ installer when any of those inputs is absent.
 
 | Capability | State | Evidence / remaining gate |
 | --- | --- | --- |
-| Bundled engine | implemented | PyInstaller native sidecar, attached through Tauri `externalBin` |
+| Bundled engine | implemented | PyInstaller native one-directory runtime, attached through Tauri `resources` |
 | Persistence outside a checkout | implemented | frozen-sidecar migration/persistence verifier runs in packaging CI |
 | macOS arm64 installer | locally reproducible | signed/notarized release is blocked on Apple credentials and CI evidence |
 | Windows x64 installer | defined in CI | native package and signing evidence are pending the Windows workflow |
@@ -22,9 +22,12 @@ installer when any of those inputs is absent.
 ## What is in a bundle
 
 `npm run package:sidecar` invokes PyInstaller using the active native Python
-interpreter. The output is named `soca-engine-$RUST_TARGET_TRIPLE`, which is the
-filename convention Tauri requires for `externalBin`. The binary is ignored by
-Git and is recreated on every package build.
+interpreter. It produces `src-tauri/resources/soca-engine/`: the executable and
+its native dependency closure. Tauri copies every file from that directory into
+`$RESOURCE/resources/soca-engine/`. The generated runtime is ignored by Git and
+recreated on every package build. Unlike a PyInstaller one-file executable, it
+does not unpack hundreds of megabytes into a temporary directory at every cold
+launch.
 
 `npm run tauri:build` first builds that sidecar and then invokes Tauri with
 [`tauri.package.conf.json`](../desktop/src-tauri/tauri.package.conf.json). A
@@ -33,10 +36,38 @@ to `PATH`, Homebrew, a virtual environment, or a checkout. The recovery field
 in the startup UI is the sole explicit override; a missing bundled engine is a
 visible startup error.
 
+On packaged desktop builds, macOS Keychain access runs in a bounded helper
+process (750 ms). A stale security-service prompt can hold Python's GIL, so a
+thread timeout would not keep the engine responsive. The parent terminates the
+helper at the deadline and continues through the existing explicit environment
+and owner-only `0600` JSON credential paths; it reports the normal no-key
+readiness state when none exists. This never substitutes a provider, model, or
+local runtime. CLI behavior remains keyring-first and synchronous.
+
 The runtime is self-contained, but model weights are intentionally not embedded.
 They can be large and are provisioned by the engine. A package can therefore
 start without a checkout, but a local-model conversation still needs its chosen
 model artifact; remote operation needs its configured provider/key.
+
+The frozen launcher emits its single protocol-v3 `hello` before importing the
+heavy ASR/TTS/indexing stack. That frame establishes compatibility only: the UI
+continues to show the actual model/backend readiness from the initialized
+engine's `llm_config` and runtime-component frames, and keeps chat disabled
+until that readiness is true. It never substitutes a model or treats the
+preflight as model-loaded.
+
+The engine reports local and remote readiness as distinct states: missing local
+weights never block a configured remote provider, and remote readiness is only
+reported after its key, provider catalog and selected model are all valid. A
+missing remote key never pretends that the local model is unavailable.
+
+For local use, SoCa first looks in its managed model root under app data. The
+**Thư mục model local** control can instead select an existing absolute
+`models/` directory; it persists only that path, restarts the sidecar, and does
+not copy or silently delete multi-gigabyte artifacts. This makes an existing
+developer/downloaded model usable by the package while keeping model placement
+an explicit user choice. If neither location has the selected GGUF, the UI
+shows the exact expected file instead of claiming the runtime is ready.
 
 ## Data, sessions, migration, and uninstall
 
@@ -48,7 +79,12 @@ At packaged-runtime launch, the Rust host maps the engine's XDG directories and
 <Tauri app-data>/data    -> XDG_DATA_HOME
 <Tauri app-data>/state   -> XDG_STATE_HOME
 <Tauri app-data>/vault   -> SOCA_VAULT
+<Tauri app-data>/data/soca/models -> SOCA_MODEL_ROOT (managed default)
 ```
+
+`SOCA_MODEL_ROOT` points at the managed model root unless the user explicitly
+selects an existing external model directory through the settings UI; only the
+selected path is persisted.
 
 This root is selected by the operating system and Tauri for the application
 identifier `com.finalflash159.soca`; it is deliberately not the installation
@@ -119,8 +155,21 @@ The independent runtime proof deliberately runs outside the source checkout:
 
 ```bash
 uv run python scripts/verify_desktop_sidecar.py \
-  --sidecar desktop/src-tauri/binaries/soca-engine-aarch64-apple-darwin
+  --sidecar desktop/src-tauri/resources/soca-engine/soca-engine
+uv run python scripts/verify_desktop_remote_settings.py \
+  --sidecar desktop/src-tauri/target/release/bundle/macos/SoCa.app/Contents/Resources/resources/soca-engine/soca-engine
 ```
+
+The storage verifier exercises the frozen session protocol, legacy migration,
+and persistence path. The remote-settings verifier proves the packaged remote
+contract without spending a real credential: it only picks a provider with no
+key resolvable through the real chain (keyring, env, JSON fallback), then
+injects an invalid key and requires the live provider catalog request to end
+in a typed provider failure — OpenAI-compatible endpoints answer 401/403 with
+the typed auth error, while Google's compatibility shim answers HTTP 400 with
+the typed catalog error — instead of a fake catalog or a silent fallback. This
+is failure-route evidence only; a successful catalog load and chat still need
+the release-owner real-flow matrix.
 
 On pull requests, [`desktop-package.yml`](../.github/workflows/desktop-package.yml)
 builds native macOS arm64, Windows x64, and Linux x64 artifacts, then runs this

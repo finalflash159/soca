@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import math
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -12,6 +11,7 @@ import numpy as np
 from soca.knowledge.indexing.identity import EmbeddingFingerprint, sha256_file
 from soca.knowledge.indexing.vector import stable_exact_top_k
 from soca.knowledge.retriever import RankedHit
+from soca.model_paths import default_model_root
 
 FASTEMBED_E5_MODEL = "intfloat/multilingual-e5-small"
 MODEL2VEC_MODEL = "minishlab/potion-multilingual-128M"
@@ -25,14 +25,7 @@ _CUSTOM_E5_REGISTERED = False
 
 
 def default_model_home() -> Path:
-    configured = os.environ.get("XDG_DATA_HOME")
-    if configured:
-        base = Path(configured).expanduser()
-        if not base.is_absolute():
-            raise ValueError("XDG_DATA_HOME must be absolute")
-    else:
-        base = Path.home() / ".local" / "share"
-    return base / "soca" / "models"
+    return default_model_root()
 
 
 def _normalize_rows(vectors: np.ndarray, *, expected_rows: int) -> np.ndarray:

@@ -1,6 +1,7 @@
 import { BookOpen } from "lucide-react";
 import { nanoid } from "nanoid";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 import { KnowledgePanel } from "@/components/KnowledgePanel";
 import { EmptyState, PageBody, PageHeader } from "@/components/Page";
@@ -32,6 +33,7 @@ import { useEngine } from "@/engine/useEngine";
 import { useTheme } from "@/theme";
 
 type PersistenceChange = "enable" | "disable";
+type ModelRoot = { path: string; source: "managed" | "external" };
 const SIDEBAR_PREFERENCE_STORAGE_KEY = "soca.sidebar-open.v1";
 
 const ChatPage = lazy(async () => ({ default: (await import("@/components/ChatPage")).ChatPage }));
@@ -76,8 +78,10 @@ export default function App() {
   const [persistenceChangePending, setPersistenceChangePending] = useState(false);
   const [pendingNewAfterVoiceStop, setPendingNewAfterVoiceStop] = useState(false);
   const [sessionAlert, setSessionAlert] = useState<string | null>(null);
+  const [runtimeAlert, setRuntimeAlert] = useState<string | null>(null);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [sessionTransition, setSessionTransition] = useState<string | null>(null);
+  const [modelRoot, setModelRoot] = useState<ModelRoot | null>(null);
   const autoStarted = useRef(false);
   const loadedHello = useRef<object | null>(null);
   const handledOperation = useRef<string | null>(null);
@@ -95,8 +99,29 @@ export default function App() {
     (turn) => turn.finalText === null && turn.error === null,
   );
   const sessionBusy = activeTurn || voiceRunning || engine.sessionHistory.busy || sessionChanging;
-  const displayedSessionAlert = sessionAlert ?? engine.sessionHistory.snapshotError;
+  const displayedSessionAlert = runtimeAlert ?? sessionAlert ?? engine.sessionHistory.snapshotError;
   const canLoadOlderTurns = connected && !sessionChanging && !engine.sessionHistory.busy;
+  const llmConfig = engine.settings.config;
+  const runtimeReady = llmConfig?.runtimeReady === true;
+  const runtimeReason =
+    llmConfig?.runtimeReason ??
+    llmConfig?.settingsError ??
+    (llmConfig === null ? "Đang kiểm tra cấu hình model…" : "Model hiện tại chưa sẵn sàng.");
+  const voiceComponentIds = new Set(["voice_asr", "voice_llm", "tts"]);
+  const voiceComponents = engine.settings.runtimeComponents.filter((component) =>
+    voiceComponentIds.has(component.id),
+  );
+  const voiceBlocker = voiceComponents.find(
+    (component) => !["ready", "loaded", "configured"].includes(component.status),
+  );
+  const voiceReady = runtimeReady && voiceComponents.length === voiceComponentIds.size && voiceBlocker === undefined;
+  const voiceReason = !runtimeReady
+    ? runtimeReason
+    : voiceBlocker !== undefined
+      ? `${voiceBlocker.label}: ${voiceBlocker.detail ?? voiceBlocker.status}`
+      : voiceComponents.length !== voiceComponentIds.size
+        ? "Đang kiểm tra ASR và TTS…"
+        : null;
 
   const startWithPersistence = async (
     persistence: LaunchSessionPersistence,
@@ -108,11 +133,50 @@ export default function App() {
     });
 
   const restartEngine = async (program?: string) => {
-    if (engine.status.state === "running" || engine.status.state === "starting") {
-      const stopped = await engine.stop();
-      if (!stopped) return;
-    }
+    // The native sidecar can still be alive when the WebView previously missed
+    // a status event (for example during a reload). `engine_stop` is idempotent,
+    // so always reconcile it before retrying instead of trusting stale UI state.
+    const stopped = await engine.stop();
+    if (!stopped) return;
     await startWithPersistence(launchPersistence, program);
+  };
+
+  const refreshModelRoot = useCallback(async (): Promise<ModelRoot | null> => {
+    try {
+      const result = await invoke<unknown>("engine_model_root");
+      if (
+        typeof result === "object" && result !== null &&
+        typeof (result as { path?: unknown }).path === "string" &&
+        ((result as { source?: unknown }).source === "managed" ||
+          (result as { source?: unknown }).source === "external")
+      ) {
+        const next = result as ModelRoot;
+        setModelRoot(next);
+        return next;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const setModelRootAndRestart = async (path: string | null): Promise<string | null> => {
+    try {
+      const result = await invoke<unknown>("engine_set_model_root", { modelRoot: path });
+      if (
+        typeof result !== "object" || result === null ||
+        typeof (result as { path?: unknown }).path !== "string" ||
+        ((result as { source?: unknown }).source !== "managed" &&
+          (result as { source?: unknown }).source !== "external")
+      ) {
+        return "Desktop không xác nhận được thư mục model đã chọn.";
+      }
+      setModelRoot(result as ModelRoot);
+      await restartEngine();
+      return null;
+    } catch (error) {
+      return String(error);
+    }
   };
 
   // List, status and preferences are read only after hello establishes the v3
@@ -124,6 +188,7 @@ export default function App() {
     void engine.requestSessions();
     void engine.send({ cmd: "session_status" });
     void engine.send({ cmd: "session_preferences_get" });
+    void engine.send({ cmd: "llm_config" });
   }, [connected, engine]);
 
   useEffect(() => {
@@ -131,6 +196,10 @@ export default function App() {
     autoStarted.current = true;
     void startWithPersistence(launchPersistence);
   }, [engine.ready, launchPersistence]);
+
+  useEffect(() => {
+    void refreshModelRoot();
+  }, [refreshModelRoot]);
 
   useEffect(() => {
     const compact = window.matchMedia("(max-width: 760px)");
@@ -242,22 +311,36 @@ export default function App() {
     );
   }
 
+  if (starting && !protocolReady) {
+    return (
+      <main className="h-screen">
+        <StartupView starting={true} problem={null} onStart={(program) => void restartEngine(program)} />
+      </main>
+    );
+  }
+
   const openPage = (next: PageId) => {
-    setPage(next);
+    const destination = next === "voice" && !voiceReady ? "settings" : next;
+    if (destination !== next) {
+      setRuntimeAlert(voiceReason ?? "Thiết lập thoại trước khi bật mic.");
+    } else {
+      setRuntimeAlert(null);
+    }
+    setPage(destination);
     if (!connected) return;
-    if (next === "session") {
+    if (destination === "session") {
       for (const cmd of ["status", "context", "usage"] as const) void engine.send({ cmd });
       void engine.send({ cmd: "session_status" });
     }
-    if (next === "knowledge") {
+    if (destination === "knowledge") {
       for (const cmd of ["memory", "memory_proposals", "status"] as const) void engine.send({ cmd });
     }
-    if (next === "settings") {
+    if (destination === "settings") {
       for (const cmd of ["llm_providers", "llm_config", "status", "session_preferences_get"] as const) {
         void engine.send({ cmd });
       }
     }
-    if (next === "voice" && !sessionChanging && engine.voice.phase === "off") {
+    if (destination === "voice" && !sessionChanging && engine.voice.phase === "off") {
       void engine.send({ cmd: "voice_start" });
     }
   };
@@ -343,7 +426,7 @@ export default function App() {
       return;
     }
     if (!saveSessionPersistence(next)) {
-      setSessionAlert("Không thể lưu lựa chọn riêng tư của bạn trên máy. Sơn Ca đã khởi động lại với chế độ trước đó.");
+      setSessionAlert("Không thể lưu lựa chọn riêng tư của bạn trên máy. SoCa đã khởi động lại với chế độ trước đó.");
       await startWithPersistence(previous);
       setPersistenceChangePending(false);
       return;
@@ -424,7 +507,7 @@ export default function App() {
           {sessionNotice !== null && <p className="sr-only" role="status">{sessionNotice}</p>}
           {displayedSessionAlert !== null && (
             <Alert variant="destructive" className="mx-6 mt-4 w-auto" role="alert">
-              <AlertTitle>Không thể cập nhật phiên</AlertTitle>
+              <AlertTitle>{runtimeAlert !== null ? "Runtime chưa sẵn sàng" : "Không thể cập nhật phiên"}</AlertTitle>
               <AlertDescription>{displayedSessionAlert}</AlertDescription>
             </Alert>
           )}
@@ -448,6 +531,10 @@ export default function App() {
                 citationPreviews={engine.citationPreviews}
                 model={engine.settings.config?.model ?? null}
                 connected={connected && !sessionChanging}
+                runtimeReady={runtimeReady}
+                runtimeReason={runtimeReason}
+                voiceReady={voiceReady}
+                voiceReason={voiceReason}
                 starting={starting}
                 onSend={(text) => void engine.send({ cmd: "chat", text })}
                 onCommand={(command) => {
@@ -566,15 +653,20 @@ export default function App() {
                   onSelectProfile={(profileKey) => engine.send({ cmd: "voice_profile_select", profile: profileKey })}
                   onApplyGeneration={(change) => {
                     const config = engine.settings.config;
+                    const backend = change.backend ?? config?.backend ?? "local";
+                    const model =
+                      change.model ?? (config?.backend === backend ? config.model : undefined);
                     return engine.send({
                       cmd: "llm_select",
-                      backend: change.backend ?? config?.backend ?? "remote",
+                      backend,
                       provider: config?.provider ?? "openrouter",
-                      model: config?.model ?? "",
+                      ...(model === undefined ? {} : { model }),
                       max_tokens: change.maxTokens ?? config?.maxTokens ?? 4096,
                       reasoning_enabled: change.reasoningEnabled ?? config?.reasoningEnabled ?? false,
                     });
                   }}
+                  modelRoot={modelRoot}
+                  onSetModelRoot={setModelRootAndRestart}
                 />
               </PageBody>
             </div>
@@ -590,8 +682,8 @@ export default function App() {
             </DialogTitle>
             <DialogDescription>
               {persistenceChange === "enable"
-                ? "Sơn Ca sẽ khởi động lại để lưu các phiên tiếp theo dưới dạng văn bản, context làm việc và trạng thái mục tiêu. Phiên hiện tại đang ở RAM sẽ không được ghi ngược lại. Audio và ASR partial không được lưu."
-                : "Sơn Ca sẽ khởi động lại ở chế độ chỉ dùng RAM. Các phiên đã lưu vẫn ở trên máy và không bị xóa."}
+                ? "SoCa sẽ khởi động lại để lưu các phiên tiếp theo dưới dạng văn bản, context làm việc và trạng thái mục tiêu. Phiên hiện tại đang ở RAM sẽ không được ghi ngược lại. Audio và ASR partial không được lưu."
+                : "SoCa sẽ khởi động lại ở chế độ chỉ dùng RAM. Các phiên đã lưu vẫn ở trên máy và không bị xóa."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

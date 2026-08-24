@@ -80,10 +80,10 @@ cd src-tauri && cargo clippy --all-targets
 ```text
 src/components/StartupView.tsx  the window before the engine runs
 src/components/SessionView.tsx  the window after: rail, transcript, one control block
-src/components/VoiceMode.tsx    full-screen spoken turn; orb plus an rms-driven halo
+src/components/VoiceMode.tsx    full-screen spoken turn; fixed activity-sphere cluster
 src/components/SessionPanel.tsx prompt budget and token usage
 src/engine/protocol.ts   read-shapes for docs/18; no validation (§7 tolerates unknown fields)
-src/engine/orb.ts        engine frames → one of nine thinking-orbs states
+src/engine/orb.ts        engine frames → one of nine static activity-orb states
 src/engine/conversation.ts  chat turn assembly from the answer_delta stream
 src/engine/voice.ts      voice-loop state from the 20 voice event types
 src/engine/knowledge.ts  retrieval traces, memory traces, proposals, index jobs
@@ -139,13 +139,15 @@ escalate — needs direct control of the child's stdio and exit. The plugin's
 abstraction does not expose enough of it, and `bye` is the only evidence the
 engine released the microphone and its provider clients.
 
-**The package includes the Python sidecar.** Tauri's `externalBin` entry embeds
-a PyInstaller-built `soca-engine-$TARGET_TRIPLE` in every native package. It is
-the only automatic production engine route, so a Finder/Start Menu launch has
-no hidden dependency on PATH or a checkout. The build also explicitly collects
-`llama_cpp` native libraries and `torchcodec` distribution metadata; without
-them a freeze can build yet fail before the protocol `hello` frame. The exact
-package size is a release artifact, not a stable claim in this repository.
+**The package includes the Python runtime.** Tauri's resource map embeds the
+complete PyInstaller `soca-engine/` directory in every native package. Keeping
+the executable beside its dependencies avoids one-file extraction on every
+cold launch while retaining the only automatic production engine route: a
+Finder/Start Menu launch has no hidden dependency on PATH or a checkout. The
+build also explicitly collects `llama_cpp` native libraries and `torchcodec`
+distribution metadata; without them a freeze can build yet fail before the
+protocol `hello` frame. The exact package size is a release artifact, not a
+stable claim in this repository.
 
 The Settings page contains a signed-updater surface. Only signed release builds
 register the updater plugin; package proofs report that update checking is

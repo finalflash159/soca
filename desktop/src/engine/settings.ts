@@ -48,6 +48,8 @@ export interface LlmConfig {
   reasoningMandatory: boolean;
   contextLength: number | null;
   runtimeReady: boolean;
+  runtimeReason: string | null;
+  localModelPath: string | null;
   settingsError: string | null;
 }
 
@@ -60,16 +62,24 @@ export interface RuntimeProfile {
   voice: string | null;
 }
 
+export interface RuntimeComponent {
+  id: string;
+  label: string;
+  status: string;
+  detail: string | null;
+}
+
 export interface SettingsState {
   providers: Provider[];
-  /** Keyed by provider; empty array means "loading", per docs/18 §4. */
+  /** Keyed by provider; an empty array can be a valid empty catalog. */
   catalog: Record<string, CatalogModel[]>;
-  /** True between the request and the first non-empty catalog frame. */
+  /** True only while the engine is fetching a catalog. */
   catalogLoading: Record<string, boolean>;
   pricingAsOf: string | null;
   keyStatus: Record<string, KeyStatus>;
   config: LlmConfig | null;
   profiles: RuntimeProfile[];
+  runtimeComponents: RuntimeComponent[];
   activeProfile: string | null;
 }
 
@@ -81,6 +91,7 @@ export const initialSettings: SettingsState = {
   keyStatus: {},
   config: null,
   profiles: [],
+  runtimeComponents: [],
   activeProfile: null,
 };
 
@@ -113,9 +124,9 @@ export function reduceSettings(state: SettingsState, frame: EngineFrame): Settin
     case "llm_catalog": {
       const provider = str(frame.provider);
       const models = Array.isArray(frame.models) ? (frame.models as CatalogModel[]) : [];
-      // docs/18 §4: the first frame is emitted immediately with an empty list
-      // while the fetch runs. Treat it as loading, never as "no models".
-      const loading = models.length === 0;
+      // The engine marks loading explicitly. An empty completed catalog is a
+      // truthful provider response and must not look like a hanging picker.
+      const loading = frame.loading === true;
       return {
         ...state,
         catalog: { ...state.catalog, [provider]: models },
@@ -159,12 +170,15 @@ export function reduceSettings(state: SettingsState, frame: EngineFrame): Settin
           reasoningMandatory: frame.reasoning_mandatory === true,
           contextLength: numOrNull(frame.context_length),
           runtimeReady: frame.runtime_ready === true,
+          runtimeReason: typeof frame.runtime_reason === "string" ? frame.runtime_reason : null,
+          localModelPath: typeof frame.local_model_path === "string" ? frame.local_model_path : null,
           settingsError: typeof frame.settings_error === "string" ? frame.settings_error : null,
         },
       };
 
     case "status": {
       const raw = Array.isArray(frame.profiles) ? frame.profiles : [];
+      const rawComponents = Array.isArray(frame.runtime_components) ? frame.runtime_components : [];
       return {
         ...state,
         activeProfile: typeof frame.active_profile === "string" ? frame.active_profile : state.activeProfile,
@@ -177,6 +191,15 @@ export function reduceSettings(state: SettingsState, frame: EngineFrame): Settin
             llm: typeof profile.llm === "string" ? profile.llm : null,
             tts: typeof profile.tts === "string" ? profile.tts : null,
             voice: typeof profile.voice === "string" ? profile.voice : null,
+          };
+        }),
+        runtimeComponents: rawComponents.map((item) => {
+          const component = item as Record<string, unknown>;
+          return {
+            id: str(component.id),
+            label: str(component.label, str(component.name, "Runtime")),
+            status: str(component.status, "unknown"),
+            detail: typeof component.detail === "string" ? component.detail : null,
           };
         }),
       };

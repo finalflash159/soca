@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -198,12 +197,12 @@ def _absolute_path(path: Path) -> Path:
 
 
 def default_asr_model_root() -> Path:
-    configured = os.environ.get("XDG_DATA_HOME")
-    if configured is not None:
-        base = _absolute_path(Path(configured))
-    else:
-        base = Path.home() / ".local" / "share"
-    return base / "soca" / "models" / "asr"
+    from soca.model_paths import default_model_root
+
+    try:
+        return default_model_root() / "asr"
+    except ValueError as exc:
+        raise QwenArtifactManifestError(str(exc)) from exc
 
 
 def validate_private_receipt(path: Path) -> None:

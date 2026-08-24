@@ -75,6 +75,22 @@ def test_no_memory_disables_session_even_with_vault(tmp_path: Path) -> None:
     assert bundle.memory_status == "disabled"
 
 
+def test_empty_vault_does_not_force_load_dense_knowledge_model(tmp_path: Path) -> None:
+    (tmp_path / "wiki").mkdir()
+    bundle = build_text_runtime(
+        TextRuntimeConfig(
+            vault=tmp_path,
+            no_llm=True,
+            no_memory=True,
+            knowledge_retrieval_mode="hybrid",
+        )
+    )
+
+    assert bundle.knowledge_status == "disabled:empty"
+    assert bundle.runtime.knowledge_builder is None
+    bundle.close()
+
+
 def test_text_runtime_does_not_register_removed_memory_write_tool(tmp_path: Path) -> None:
     (tmp_path / "wiki").mkdir()
     (tmp_path / "memory").mkdir()

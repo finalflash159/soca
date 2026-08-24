@@ -52,7 +52,7 @@ invent a repair line dynamically.
 Each `[kind.slot]` has an `action` and a list of `variants`. The selector uses
 **random no-repeat** so it does not reuse the most recent prompt. Tone principles:
 
-- SoCa refers to itself as **"Sơn Ca"** or **"mình"**, and addresses the user as
+- SoCa refers to itself as **"SoCa"** or **"mình"**, and addresses the user as
   **"bạn"**: friendly without being syrupy.
 - Vietnamese particles (`nha/nhé/á/nè/hông/ta`) add subtle variation.
 - `no_input.attempt_1` can be **playful**, including greeting trends such as

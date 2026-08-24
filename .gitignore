@@ -104,3 +104,4 @@ ui/dist/
 edge/soca-edge/target/
 desktop/src-tauri/binaries/*
 !desktop/src-tauri/binaries/.gitkeep
+desktop/src-tauri/resources/

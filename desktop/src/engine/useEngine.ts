@@ -33,6 +33,8 @@ import { initialVoice, reduceVoice } from "./voice";
 
 const EVENT_CHANNEL = "soca://engine-event";
 const STATUS_CHANNEL = "soca://engine-status";
+const HELLO_POLL_INTERVAL_MS = 100;
+const HELLO_TIMEOUT_MS = 45_000;
 
 /** Mirrors `LaunchOptions` in `src-tauri/src/engine.rs`. Built by `launch.ts`. */
 export interface LaunchOptions {
@@ -104,6 +106,29 @@ export function useEngine() {
   // flushed on the same timer rather than rendering once per frame (§7 obl. 5).
   const voiceRef = useRef<VoiceState>(initialVoice);
   const voiceDirty = useRef(false);
+  const helloRef = useRef<HelloFrame | null>(null);
+  // `invoke` resolves after Rust has accepted the child. Keep duplicate UI
+  // actions from issuing a second start while that round trip is in flight.
+  const startInFlight = useRef<Promise<boolean> | null>(null);
+
+  const acceptHello = useCallback((candidate: unknown): boolean => {
+    if (
+      typeof candidate !== "object" ||
+      candidate === null ||
+      (candidate as { event?: unknown }).event !== "hello"
+    ) {
+      return false;
+    }
+    const helloFrame = candidate as HelloFrame;
+    helloRef.current = helloFrame;
+    setHello(helloFrame);
+    setVersionMismatch(
+      helloIsCompatible(helloFrame)
+        ? null
+        : `engine speaks protocol ${helloFrame.protocol_version}; this app implements ${PROTOCOL_VERSION}`,
+    );
+    return true;
+  }, []);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -138,13 +163,7 @@ export function useEngine() {
       setCitationPreviews((previous) => reduceCitationPreviews(previous, frame));
 
       if (frame.event === "hello") {
-        const helloFrame = frame as HelloFrame;
-        setHello(helloFrame);
-        setVersionMismatch(
-          helloIsCompatible(helloFrame)
-            ? null
-            : `engine speaks protocol ${helloFrame.protocol_version}; this app implements ${PROTOCOL_VERSION}`,
-        );
+        acceptHello(frame);
       } else if (frame.event === "status") {
         setEngineStatus(frame as StatusFrame);
       } else if (frame.event === "engine_error") {
@@ -185,34 +204,67 @@ export function useEngine() {
         unlisten();
       }
     };
-  }, []);
+  }, [acceptHello]);
 
-  const start = useCallback(async (options?: LaunchOptions): Promise<boolean> => {
-    setErrors([]);
-    setLog([]);
-    setHello(null);
-    setEngineStatus(null);
-    setVersionMismatch(null);
-    setConversation(initialConversation);
-    voiceRef.current = initialVoice;
-    setVoice(initialVoice);
-    setKnowledge(initialKnowledge);
-    setSettings(initialSettings);
-    setSession(initialSession);
-    setSessionHistory(initialSessionHistory);
-    setCitationPreviews(initialCitationPreviews);
-    try {
-      await invoke("engine_start", { options: options ?? null });
-      // The Running status also arrives as an event, but a resolved invoke is
-      // proof enough that the child spawned. Do not depend on event ordering
-      // for the one piece of state that gates the whole interface.
-      setStatus((previous) => (previous.state === "running" ? previous : { state: "running" }));
-      return true;
-    } catch (error) {
-      setStatus({ state: "failed", message: String(error) });
-      return false;
-    }
-  }, []);
+  const start = useCallback((options?: LaunchOptions): Promise<boolean> => {
+    if (startInFlight.current !== null) return startInFlight.current;
+
+    const launch = (async () => {
+      setErrors([]);
+      setLog([]);
+      helloRef.current = null;
+      setHello(null);
+      setEngineStatus(null);
+      setVersionMismatch(null);
+      setConversation(initialConversation);
+      voiceRef.current = initialVoice;
+      setVoice(initialVoice);
+      setKnowledge(initialKnowledge);
+      setSettings(initialSettings);
+      setSession(initialSession);
+      setSessionHistory(initialSessionHistory);
+      setCitationPreviews(initialCitationPreviews);
+      setStatus({ state: "starting", program: options?.program ?? "bundled engine" });
+      try {
+        await invoke("engine_start", { options: options ?? null });
+        const deadline = Date.now() + HELLO_TIMEOUT_MS;
+        let nativeHandshakeAvailable = true;
+        while (helloRef.current === null && Date.now() < deadline) {
+          const cached = await invoke<unknown>("engine_hello");
+          // Undefined is a unit-test/mock response. The native command
+          // serializes Option as either a frame or null.
+          if (cached === undefined) {
+            nativeHandshakeAvailable = false;
+            break;
+          }
+          if (acceptHello(cached)) break;
+          await new Promise<void>((resolve) => window.setTimeout(resolve, HELLO_POLL_INTERVAL_MS));
+        }
+        if (nativeHandshakeAvailable && helloRef.current === null) {
+          await invoke("engine_stop");
+          setStatus({
+            state: "failed",
+            message: "Engine không gửi xác nhận protocol trong 45 giây. Đã dừng tiến trình để bạn có thể thử lại.",
+          });
+          return false;
+        }
+        // The Running status also arrives as an event, but a resolved invoke is
+        // proof enough that the child spawned. Do not depend on event ordering
+        // for the one piece of state that gates the whole interface.
+        setStatus((previous) => (previous.state === "running" ? previous : { state: "running" }));
+        return true;
+      } catch (error) {
+        setStatus({ state: "failed", message: String(error) });
+        return false;
+      }
+    })();
+
+    startInFlight.current = launch;
+    void launch.finally(() => {
+      if (startInFlight.current === launch) startInFlight.current = null;
+    });
+    return launch;
+  }, [acceptHello]);
 
   const stop = useCallback(async (): Promise<boolean> => {
     try {

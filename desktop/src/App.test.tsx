@@ -14,7 +14,6 @@ const tauri = vi.hoisted(() => ({
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: tauri.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: tauri.listen }));
-vi.mock("thinking-orbs", () => ({ ThinkingOrb: () => null }));
 
 import App from "./App";
 
@@ -55,6 +54,15 @@ async function renderReadyApp(): Promise<void> {
     profile: "baseline",
     no_model: true,
     stack: {},
+  });
+  emit(EVENT_CHANNEL, {
+    event: "llm_config",
+    backend: "remote",
+    provider: "openrouter",
+    model: "openai/gpt-5",
+    runtime_ready: true,
+    runtime_reason: null,
+    settings_error: null,
   });
   await waitFor(() => {
     expect((screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement).disabled).toBe(false);
@@ -184,6 +192,48 @@ describe("desktop session lifecycle", () => {
       expect(screen.getByText(/engine speaks protocol 2/i)).not.toBeNull();
     });
     expect(engineSendCommands()).toEqual([]);
+  });
+
+  it("stops a possibly live sidecar before retrying from startup recovery", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await waitFor(() => {
+      expect(tauri.invoke).toHaveBeenCalledWith(
+        "engine_start",
+        expect.objectContaining({ options: expect.any(Object) }),
+      );
+    });
+    emit(STATUS_CHANNEL, { state: "failed", message: "engine already running" });
+
+    await user.click(screen.getByRole("button", { name: "Khởi động" }));
+
+    await waitFor(() => {
+      expect(tauri.invoke).toHaveBeenCalledWith("engine_stop");
+      expect(
+        tauri.invoke.mock.calls.filter(([command]) => command === "engine_start"),
+      ).toHaveLength(2);
+    });
+  });
+
+  it("routes an unavailable voice runtime to its actionable settings instead of opening a dead microphone", async () => {
+    const user = userEvent.setup();
+    await renderReadyApp();
+    emit(EVENT_CHANNEL, {
+      event: "status",
+      runtime_components: [
+        { id: "voice_asr", label: "Voice ASR", status: "missing", detail: "qwen-asr" },
+        { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote · openrouter:gpt" },
+        { id: "tts", label: "TTS", status: "missing", detail: "valtec" },
+      ],
+    });
+
+    await user.click(screen.getByRole("button", { name: "Thiết lập thoại" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("Voice ASR: qwen-asr");
+      expect(screen.getByText("Sẵn sàng thoại")).not.toBeNull();
+    });
+    expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
   });
 
   it("loads older transcript pages with the engine's exclusive sequence boundary", async () => {

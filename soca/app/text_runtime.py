@@ -265,7 +265,16 @@ def build_text_runtime(
     manifest_provider: Callable[[], str] | None = None
     owned_context_sources: list[object] = []
 
-    if vault.is_dir():
+    # The desktop creates an empty vault scaffold on first run. An empty
+    # scaffold is not a knowledge corpus and must not force-load the dense
+    # embedding artifact before the first chat. Once a real wiki document is
+    # present, the configured retrieval mode remains authoritative and a
+    # missing hybrid model is surfaced as a typed startup failure.
+    has_knowledge_documents = vault.is_dir() and any(
+        path.is_file() and path.name not in {"index.md", "log.md"}
+        for path in vault.glob("wiki/**/*.md")
+    )
+    if has_knowledge_documents:
         knowledge = build_knowledge_runtime_setup(
             vault,
             knowledge_limit=config.knowledge_limit,
@@ -285,6 +294,8 @@ def build_text_runtime(
 
         manifest_provider = provide_manifest
         knowledge_status = knowledge.status
+    elif vault.is_dir():
+        knowledge_status = "disabled:empty"
 
     selected_settings = llm_settings or load_settings()
     if config.llm_model_is_override:

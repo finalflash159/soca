@@ -1,5 +1,5 @@
 /**
- * Engine frames → `thinking-orbs` state.
+ * Engine frames → static activity-orb state.
  *
  * Implements the plan's orb-state mapping, but against the vocabulary the
  * engine actually emits (`docs/18-engine-protocol.md`) rather than the prose
@@ -21,10 +21,19 @@
  *    by "nén working memory". The `memory` turn phase is archive retrieval.
  */
 
-import type { OrbState } from "thinking-orbs";
-
 import type { EngineFrame, WorkflowFrame } from "./protocol";
 import { isChatFrame, isVoiceFrame, isWorkflowFrame } from "./protocol";
+
+export type OrbState =
+  | "breathing"
+  | "connecting"
+  | "composing"
+  | "listening"
+  | "searching"
+  | "shaping"
+  | "solving"
+  | "weaving"
+  | "working";
 
 /** Everything the orb needs, derived from the frame stream. */
 export interface OrbActivity {

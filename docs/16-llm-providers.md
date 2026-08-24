@@ -90,7 +90,15 @@ adapter matrix and typed failure contract.
 5. `llm_select` persists the chosen provider/model and effective generation
    controls.
 6. `llm_config` reports the current selection and readiness, not a static
-   baseline label.
+   baseline label. Remote readiness is true only after the selected provider's
+   catalog has been fetched successfully and contains the selected model; it is
+   independent of local GGUF/embedding availability.
+
+Switching Local → Remote is a two-step settings flow: the desktop first opens
+remote setup, then commits `llm_select` only after the user chooses a model from
+the current provider catalog. Switching Remote → Local omits the hosted model
+identifier and lets the engine select the local default. This prevents backend
+IDs from crossing the data boundary.
 
 The selection is visible in `/status` for both chat and voice. A provider/model
 catalog failure is shown as not ready; it is not replaced by a stale model or a

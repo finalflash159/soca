@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "package:sidecar": "uv run --extra desktop-build python ../scripts/build_desktop_sidecar.py --output src-tauri/binaries",
+    "package:sidecar": "uv run --extra desktop-build python ../scripts/build_desktop_sidecar.py --output src-tauri/resources",
     "build:release": "npm run package:sidecar && npm run build",
     "preview": "vite preview",
     "tauri": "tauri",

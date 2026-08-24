@@ -233,8 +233,11 @@ export interface StatusFrame {
   knowledge_vault?: unknown;
   knowledge_index?: unknown | null;
   runtime_components?: Array<{
+    id?: string;
+    label?: string;
     name?: string;
     status?: string;
+    detail?: string;
     [key: string]: unknown;
   }>;
 }
@@ -280,6 +283,8 @@ export interface LlmConfigFrame {
   effective_reasoning_enabled: boolean;
   reasoning_mandatory: boolean;
   runtime_ready: boolean;
+  runtime_reason?: string | null;
+  local_model_path?: string | null;
   settings_error: string | null;
   [key: string]: unknown;
 }

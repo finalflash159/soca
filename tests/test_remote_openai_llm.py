@@ -182,7 +182,7 @@ def test_generate_injects_soca_persona_system_message():
 
     messages = client.calls[0]["messages"]
     assert messages[0]["role"] == "system"
-    assert "Sơn Ca" in messages[0]["content"]
+    assert "SoCa" in messages[0]["content"]
     assert messages[-1]["role"] == "user"
     assert messages[-1]["content"] == "Thời tiết hôm nay?"
 

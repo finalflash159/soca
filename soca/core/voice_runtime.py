@@ -742,7 +742,9 @@ def warm_up_voice_runtime(
 
 
 def _smart_turn_model_dir() -> Path:
-    return Path(__file__).resolve().parents[2] / "models" / "smart-turn-v3-onnx"
+    from soca.model_paths import default_model_root
+
+    return default_model_root() / "smart-turn-v3-onnx"
 
 
 def _warm_up_asr(bundle: VoiceRuntimeBundle, *, seconds: float) -> VoiceRuntimeWarmupResult:

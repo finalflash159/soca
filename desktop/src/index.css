@@ -142,6 +142,23 @@
   --sidebar-ring: #e6c07b;
 }
 
+/* The voice orb reacts only to the engine-provided RMS level.  It never draws
+   a halo, ring, countdown or synthetic progress; reduced-motion users retain
+   the same textual state without movement. */
+@layer components {
+  .voice-orb-response {
+    transform: scale(calc(0.96 + var(--voice-level, 0) * 0.08));
+    transition: transform 100ms ease-out;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .voice-orb-response {
+      transform: none;
+      transition: none;
+    }
+  }
+}
+
 /* Syntax highlighting.
    `rehype-highlight` only attaches `hljs-*` classes; the colours are ours. A
    stock highlight.js stylesheet would hard-code one background and one set of

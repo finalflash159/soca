@@ -1,8 +1,6 @@
 /** Shared, paged rendering of the engine-owned chat and voice transcript. */
 
 import { Mic } from "lucide-react";
-import type { OrbState } from "thinking-orbs";
-import { ThinkingOrb } from "thinking-orbs";
 
 import { Conversation, ConversationContent } from "@/components/ai-elements/conversation";
 import { AnswerBody } from "@/components/AnswerBody";
@@ -12,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import type { Citation, ConversationState, Turn } from "@/engine/conversation";
 import { blockedReason, phaseLabel, turnStatus, turnText } from "@/engine/conversation";
 import type { CitationPreviewIndex } from "@/engine/citation-preview";
+import type { OrbState } from "@/engine/orb";
+import { ThinkingOrb } from "thinking-orbs";
 
 interface ChatViewProps {
   conversation: ConversationState;
@@ -81,7 +81,7 @@ function AssistantTurn({
         // earn their place: the orb is the only thing telling the user whether
         // the system is planning, retrieving, running a tool or calling out.
         <div className="flex items-center gap-2.5 py-0.5">
-          {live && <ThinkingOrb state={orbState} size={20} />}
+          {live && <ThinkingOrb state={orbState} size={20} aria-hidden />}
           <span className="text-muted-foreground text-sm">
             {live ? orbLabel : phaseLabel(turn.phase)}
           </span>

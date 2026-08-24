@@ -5,7 +5,7 @@
 
  SoCa</code></pre>
 
-<h1 align="center">SoCa <sub>(Sơn Ca)</sub></h1>
+<h1 align="center">🦜 SoCa</h1>
 
 <p align="center">
   <strong>Vietnamese voice assistant · offline-first by default</strong><br>

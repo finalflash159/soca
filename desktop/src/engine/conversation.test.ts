@@ -88,13 +88,13 @@ describe("streaming assembly", () => {
 
   it("separates blocks so they never concatenate", () => {
     // Whatever the separator, it must not be nothing: raw concatenation gives
-    // "Sơn Ca.Hôm nay". The reassembly check collapses whitespace, so a blank
+    // "SoCa.Hôm nay". The reassembly check collapses whitespace, so a blank
     // line and a space both compare equal to the final answer.
     const state = fold([
       start("q"),
-      delta("Xin chào! Mình là Sơn Ca."),
+      delta("Xin chào! Mình là SoCa."),
       delta("Hôm nay mình giúp gì được?"),
-      done("Xin chào! Mình là Sơn Ca. Hôm nay mình giúp gì được?"),
+      done("Xin chào! Mình là SoCa. Hôm nay mình giúp gì được?"),
     ]);
     expect(state.turns[0].streamedText).not.toContain("Ca.Hôm");
     expect(state.reassemblyMismatch).toBe(false);

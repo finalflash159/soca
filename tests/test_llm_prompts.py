@@ -23,7 +23,7 @@ def test_phogpt_completion_prompt_injects_persona() -> None:
 
     prompt = build_completion_prompt("Bạn là ai?", config, inject_persona=True)
 
-    assert "Bạn là Sơn Ca" in prompt
+    assert "Bạn là SoCa" in prompt
     assert "Câu hỏi của tôi: Bạn là ai?" in prompt
 
 
@@ -40,7 +40,7 @@ def test_chat_messages_include_system_and_user() -> None:
     messages = build_chat_messages("Xin chào", config, inject_persona=True)
 
     assert messages[0]["role"] == "system"
-    assert "Bạn là Sơn Ca" in messages[0]["content"]
+    assert "Bạn là SoCa" in messages[0]["content"]
     assert messages[1] == {"role": "user", "content": "Xin chào"}
 
 
@@ -85,7 +85,7 @@ def test_chat_messages_promote_runtime_prompt_to_system_role() -> None:
     assert messages[1]["role"] == "user"
     assert "Recent conversation:" in messages[1]["content"]
     assert "Câu hỏi hiện tại:" in messages[1]["content"]
-    assert "Bạn là Sơn Ca" not in messages[1]["content"]
+    assert "Bạn là SoCa" not in messages[1]["content"]
 
 
 def test_chat_messages_promote_runtime_prompt_before_qwen_no_think_marker() -> None:
@@ -97,7 +97,7 @@ def test_chat_messages_promote_runtime_prompt_before_qwen_no_think_marker() -> N
     assert messages[0]["role"] == "system"
     assert messages[0]["content"] == SOCA_RUNTIME_SYSTEM_PROMPT.strip()
     assert messages[1]["content"].endswith("/no_think")
-    assert "Bạn là Sơn Ca" not in messages[1]["content"]
+    assert "Bạn là SoCa" not in messages[1]["content"]
 
 
 def test_chat_messages_reject_phogpt() -> None:
