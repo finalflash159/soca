@@ -7,6 +7,7 @@ on:
       - ".github/workflows/desktop-release.yml"
       - "desktop/**"
       - "scripts/build_desktop_sidecar.py"
+      - "scripts/download_smart_turn.py"
       - "scripts/verify_desktop_sidecar.py"
       - "scripts/write_tauri_release_config.py"
       - "soca/**"
@@ -65,6 +66,8 @@ jobs:
         run: |
           uv sync --locked --extra dev --extra desktop-build --extra llm-remote
           npm ci --prefix desktop
+      - name: Provision pinned Smart Turn endpointing model
+        run: uv run python scripts/download_smart_turn.py
       - name: Run desktop packaging contracts
         run: >
           uv run pytest -q

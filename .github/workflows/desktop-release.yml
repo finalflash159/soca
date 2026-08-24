@@ -82,6 +82,8 @@ jobs:
         run: |
           uv sync --locked --extra desktop-build --extra llm-remote
           npm ci --prefix desktop
+      - name: Provision pinned Smart Turn endpointing model
+        run: uv run python scripts/download_smart_turn.py
       - name: Write release-only updater and signing configuration
         env:
           TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
