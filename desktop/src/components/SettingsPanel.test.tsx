@@ -193,6 +193,7 @@ describe("SettingsPanel remote configuration", () => {
           { id: "voice_asr", label: "Voice ASR", status: "missing", detail: "qwen-asr" },
           { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote · openrouter:gpt" },
           { id: "tts", label: "TTS", status: "missing", detail: "valtec" },
+          { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
         ],
       },
     });
@@ -229,6 +230,26 @@ describe("SettingsPanel remote configuration", () => {
     expect(screen.getByLabelText("Môi trường chạy Qwen")).toBeTruthy();
     expect(screen.getByLabelText("Kho model Qwen")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Chọn" })).toBeNull();
+  });
+
+  it("does not send a verified Qwen installation back to folder setup while calibration is pending", () => {
+    renderPanel({
+      settings: {
+        ...initialSettings,
+        config: localConfig,
+        runtimeComponents: [
+          { id: "chat_llm", label: "Chat LLM", status: "ready", detail: "local · chat.gguf" },
+          { id: "voice_asr", label: "Voice ASR", status: "not_ready", detail: "confidence calibration identity is not qualified" },
+          { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote · openrouter:gpt" },
+          { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+          { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+        ],
+      },
+    });
+
+    expect(screen.getByText(/Qwen ASR và model đã được xác minh/i)).toBeTruthy();
+    expect(screen.getByText("Verification required")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Thiết lập Qwen ASR" })).toBeNull();
   });
 
   it("applies a chosen Qwen model store independently from general models", async () => {

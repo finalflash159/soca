@@ -1043,6 +1043,48 @@ def test_engine_voice_start_streams_loop_events() -> None:
     assert router_trace["memory_access_plan"]["archive_mode"] == "semantic"
 
 
+def test_engine_keeps_running_when_voice_controller_initialization_fails(monkeypatch) -> None:
+    capture = ProtocolCapture()
+
+    from soca.app.engine import SocaEngine
+
+    def fail_controller(_self):
+        raise ModuleNotFoundError("silero_vad.data")
+
+    monkeypatch.setattr(SocaEngine, "_ensure_voice_controller", fail_controller)
+
+    def stdin():
+        yield '{"cmd": "voice_start"}\n'
+        capture.wait_for('"voice_startup_failed"')
+        yield '{"cmd": "status"}\n'
+        capture.wait_for('"event": "status"')
+        yield '{"cmd": "quit"}\n'
+
+    code = run_engine(
+        voice_config=make_voice_config(),
+        text_config=make_text_config(),
+        profile="baseline",
+        stdin=stdin(),
+        stdout=capture,
+        warmup_voice=False,
+    )
+
+    assert code == 0
+    voice_error = next(
+        event
+        for event in capture.events()
+        if event["event"] == "voice" and event["type"] == "error"
+    )
+    assert voice_error["metadata"]["error_code"] == "voice_startup_failed"
+    assert voice_error["metadata"]["detail"] == "ModuleNotFoundError"
+    assert any(
+        event.get("code") == "voice_startup_failed"
+        for event in capture.events()
+        if event["event"] == "engine_error"
+    )
+    assert any(event["event"] == "status" for event in capture.events())
+
+
 def test_engine_passes_one_selected_settings_and_goal_store_to_voice_builder(
     monkeypatch,
 ) -> None:

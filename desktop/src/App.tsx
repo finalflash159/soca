@@ -119,7 +119,7 @@ export default function App() {
     llmConfig?.runtimeReason ??
     llmConfig?.settingsError ??
     (llmConfig === null ? "Đang kiểm tra cấu hình model…" : "Model hiện tại chưa sẵn sàng.");
-  const voiceComponentIds = new Set(["voice_asr", "voice_llm", "tts"]);
+  const voiceComponentIds = new Set(["voice_asr", "voice_llm", "tts", "smart_turn"]);
   const voiceComponents = engine.settings.runtimeComponents.filter((component) =>
     voiceComponentIds.has(component.id),
   );
@@ -136,16 +136,24 @@ export default function App() {
       : voiceComponents.length !== voiceComponentIds.size
         ? "Đang kiểm tra ASR và TTS…"
         : null;
+  const qwenCalibrationPending =
+    voiceBlocker?.id === "voice_asr" &&
+    voiceBlocker.status === "not_ready" &&
+    voiceBlocker.detail?.startsWith("confidence calibration") === true;
   const voiceSetupSummary = !runtimeReady
     ? runtimeChecking
       ? "Đang xác minh model trả lời cho Voice…"
       : "Model trả lời cho Voice chưa sẵn sàng."
+    : qwenCalibrationPending
+      ? "Qwen ASR đã cài đặt, nhưng runtime này chưa có calibration được xác nhận."
     : voiceBlocker?.id === "voice_asr"
       ? "Qwen ASR chưa sẵn sàng."
       : voiceBlocker?.id === "voice_llm"
         ? "Model trả lời cho Voice chưa sẵn sàng."
         : voiceBlocker?.id === "tts"
           ? "Giọng đọc trả lời chưa sẵn sàng."
+          : voiceBlocker?.id === "smart_turn"
+            ? "Voice endpointing chưa sẵn sàng."
           : voiceComponents.length !== voiceComponentIds.size
             ? "Đang kiểm tra Voice…"
             : null;
@@ -633,6 +641,7 @@ export default function App() {
                 checking={voiceChecking}
                 setupSummary={voiceSetupSummary}
                 setupDetail={voiceReason}
+                setupActionAvailable={!qwenCalibrationPending}
                 transcriptOpen={transcriptOpen}
                 onToggleTranscript={() => setTranscriptOpen((open) => !open)}
                 onToggleMic={toggleMic}

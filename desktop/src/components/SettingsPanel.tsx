@@ -84,6 +84,7 @@ function profileStatus(profile: SettingsState["profiles"][number]): string {
   if (status === "ok") return "Ready";
   if (status === "missing" || status === "blocked") return "Needs setup";
   if (status === "invalid") return "Unavailable";
+  if (status === "not_ready") return "Verification required";
   return "Checking";
 }
 
@@ -94,6 +95,9 @@ function voiceSetupMessage(component: RuntimeComponent | undefined): string {
   }
   switch (component.id) {
     case "voice_asr":
+      if (component.status === "not_ready" && component.detail?.startsWith("confidence calibration")) {
+        return "Qwen ASR và model đã được xác minh; Voice đang chờ calibration tương ứng với runtime này.";
+      }
       return "Qwen ASR chưa sẵn sàng cho profile đang chọn.";
     case "voice_llm":
       return "Model trả lời cho Voice chưa sẵn sàng.";
@@ -120,6 +124,9 @@ function profileSummary(profile: SettingsState["profiles"][number]): string {
   if (profile.status === "ok") return summary;
   if (profile.status === "invalid") {
     return `${summary} Its Qwen runtime or immutable model store could not be verified.`;
+  }
+  if (profile.status === "not_ready") {
+    return `${summary} Its Qwen installation is verified, but the runtime still needs an approved calibration.`;
   }
   return `${summary} Required model files need setup.`;
 }
@@ -212,16 +219,21 @@ export function SettingsPanel({
   const showRemoteSettings = isRemote || remoteSetup;
   const chatComponent = settings.runtimeComponents.find((component) => component.id === "chat_llm");
   const voiceComponents = settings.runtimeComponents.filter((component) =>
-    ["voice_asr", "voice_llm", "tts"].includes(component.id),
+    ["voice_asr", "voice_llm", "tts", "smart_turn"].includes(component.id),
   );
   const runtimeState = runtimeStateFor(config);
   const voiceBlocker = voiceComponents.find(
     (component) => !isVoiceComponentReady(component, config),
   );
-  const voiceChecking = runtimeState === "checking" || voiceComponents.length !== 3;
+  const voiceChecking = runtimeState === "checking" || voiceComponents.length !== 4;
   const voiceReady = !voiceChecking && runtimeState === "ready" && voiceBlocker === undefined;
   const qwenAsrComponent = voiceComponents.find((component) => component.id === "voice_asr");
-  const qwenAsrReady = qwenAsrComponent !== undefined && ["ok", "ready", "loaded", "configured"].includes(qwenAsrComponent.status);
+  const qwenCalibrationPending =
+    qwenAsrComponent?.status === "not_ready" &&
+    qwenAsrComponent.detail?.startsWith("confidence calibration") === true;
+  const qwenAsrVerified = qwenAsrComponent !== undefined && (
+    ["ok", "ready", "loaded", "configured"].includes(qwenAsrComponent.status) || qwenCalibrationPending
+  );
 
   // The callbacks arrive as fresh closures on every render. Depending on their
   // identity would re-run these effects each time, each run sending a command,
@@ -814,7 +826,7 @@ export function SettingsPanel({
                     <p className="mt-1 break-words font-mono leading-5">{voiceBlocker.detail}</p>
                   </details>
                 )}
-                {!voiceReady && !voiceChecking && voiceBlocker?.id === "voice_asr" && (
+                {!voiceReady && !voiceChecking && voiceBlocker?.id === "voice_asr" && !qwenCalibrationPending && (
                   <Button
                     className="mt-3"
                     size="sm"
@@ -837,15 +849,21 @@ export function SettingsPanel({
           hint="Qwen Release là bộ nhận diện bắt buộc. “Dùng thư mục” chỉ xác minh một bản Qwen đã có và khởi động lại engine; nó không tải, sao chép hoặc cài model."
         >
           <div className="border-border flex flex-col gap-3 rounded-lg border p-3">
-            {qwenAsrReady && (
+            {qwenAsrVerified && (
               <div className="flex items-center gap-2 text-sm">
-                <Badge variant="secondary">Sẵn sàng</Badge>
-                <span>Qwen ASR đã được xác minh; không có tác vụ tải xuống đang chạy.</span>
+                <Badge variant={qwenCalibrationPending ? "outline" : "secondary"}>
+                  {qwenCalibrationPending ? "Verification required" : "Sẵn sàng"}
+                </Badge>
+                <span>
+                  {qwenCalibrationPending
+                    ? "Qwen model và runtime đã được xác minh. Đừng chọn lại thư mục; microphone mở sau khi calibration được xác nhận."
+                    : "Qwen ASR đã được xác minh; không có tác vụ tải xuống đang chạy."}
+                </span>
               </div>
             )}
-            <details open={!qwenAsrReady} className="group">
+            <details open={!qwenAsrVerified} className="group">
               <summary className="cursor-pointer list-none text-sm font-medium marker:hidden">
-                {qwenAsrReady ? "Thay đổi bản cài Qwen hiện có" : "Dùng bản cài Qwen hiện có"}
+                {qwenAsrVerified ? "Thay đổi bản cài Qwen hiện có" : "Dùng bản cài Qwen hiện có"}
               </summary>
               <p className="text-muted-foreground mt-2 text-xs leading-5">
                 Màn hình này chưa tải model. Hai nút dưới đây chỉ lưu đường dẫn, kiểm tra chữ ký/receipt và khởi động lại engine. Vì vậy không có thanh tiến trình tải xuống.

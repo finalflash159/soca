@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -742,6 +743,13 @@ def warm_up_voice_runtime(
 
 
 def _smart_turn_model_dir() -> Path:
+    # The desktop sidecar owns this immutable endpointing artifact.  It is
+    # shipped beside the frozen interpreter, while source workflows retain the
+    # explicit model-root convention for reproducible local development.
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if isinstance(frozen_root, str) and frozen_root:
+        return Path(frozen_root) / "data" / "smart-turn-v3-onnx"
+
     from soca.model_paths import default_model_root
 
     return default_model_root() / "smart-turn-v3-onnx"

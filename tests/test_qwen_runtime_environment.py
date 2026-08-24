@@ -25,6 +25,7 @@ def test_worker_runtime_is_exact_and_excludes_demo_dependencies() -> None:
     uv = project["tool"]["uv"]
 
     assert project["project"]["requires-python"] == "==3.11.*"
+    assert "httpx==0.28.1" in project["project"]["dependencies"]
     assert uv["required-version"] == "==0.11.16"
     assert set(uv["exclude-dependencies"]) == {
         "flask",
@@ -59,6 +60,7 @@ def test_worker_sbom_matches_the_minimal_runtime() -> None:
     components = {component["name"] for component in sbom["components"]}
 
     assert "qwen-asr" in components
+    assert "httpx" in components
     assert not components.intersection({"flask", "gradio", "qwen-omni-utils", "sox"})
 
 

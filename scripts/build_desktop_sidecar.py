@@ -14,6 +14,7 @@ SIDECAR_BASENAME = "soca-engine"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ENTRY_POINT = REPO_ROOT / "desktop" / "sidecar" / "soca_engine.py"
 ASR_CALIBRATION_DATA = REPO_ROOT / "data" / "asr"
+SMART_TURN_MODEL = REPO_ROOT / "models" / "smart-turn-v3-onnx" / "smart-turn-v3.2-cpu.onnx"
 TORCHAUDIO_TORCH_LIBRARIES = (
     "libc10.so",
     "libtorch.so",
@@ -25,6 +26,11 @@ DESKTOP_EXCLUDED_MODULES = (
     "numba",
     "llvmlite",
 )
+# `DuplexAecSink` imports Silero's packaged TorchScript model only when Voice
+# starts.  It is not reachable from import analysis alone, so collect its
+# package data explicitly.  Omitting it lets Chat start but crashes the frozen
+# sidecar on the first microphone click.
+DESKTOP_COLLECT_ALL_MODULES = ("soca", "silero_vad")
 
 
 def cuda_runtime_libraries() -> list[Path]:
@@ -119,8 +125,11 @@ def pyinstaller_command(*, dist: Path, work: Path, spec: Path) -> list[str]:
         # ``soca`` loads providers and runtime profiles dynamically. Collecting its
         # submodules is the explicit closure, rather than relying on a developer's
         # editable checkout at runtime.
-        "--collect-all",
-        "soca",
+        *(
+            option
+            for module in DESKTOP_COLLECT_ALL_MODULES
+            for option in ("--collect-all", module)
+        ),
         # Desktop Voice always starts one of the Qwen service profiles.  The
         # retained PhoWhisper file-import helper is source/CLI compatibility
         # only and is the sole reason that librosa's JIT stack enters an
@@ -138,6 +147,11 @@ def pyinstaller_command(*, dist: Path, work: Path, spec: Path) -> list[str]:
         # truthfully reject Voice as uncalibrated.
         "--add-data",
         f"{ASR_CALIBRATION_DATA}{os.pathsep}data/asr",
+        # The Qwen release profile has adaptive endpointing enabled.  Smart
+        # Turn is therefore part of the required desktop Voice closure, not a
+        # developer-only download beneath the app-data model root.
+        "--add-data",
+        f"{SMART_TURN_MODEL}{os.pathsep}data/smart-turn-v3-onnx",
         # llama-cpp-python locates libllama relative to its package at runtime;
         # its native libraries are not visible through Python imports alone.
         "--collect-binaries",
@@ -170,6 +184,8 @@ def build_sidecar(output: Path) -> Path:
         raise RuntimeError(f"missing frozen sidecar entry point: {ENTRY_POINT}")
     if not ASR_CALIBRATION_DATA.is_dir():
         raise RuntimeError(f"missing ASR calibration data: {ASR_CALIBRATION_DATA}")
+    if not SMART_TURN_MODEL.is_file():
+        raise RuntimeError(f"missing Smart Turn model: {SMART_TURN_MODEL}")
 
     build_root = REPO_ROOT / "build" / "desktop-sidecar"
     dist = build_root / "dist"

@@ -1320,9 +1320,9 @@ class SocaEngine:
                 tts_state = "missing"
             add("tts", "TTS", tts_state, f"{VALTEC_TTS_CONFIG.key}/{self.voice_config.tts_voice}")
 
-            from soca.model_paths import default_model_root
+            from soca.core.voice_runtime import _smart_turn_model_dir
 
-            smart_turn_path = default_model_root() / "smart-turn-v3-onnx" / SMART_TURN_MODEL_FILE
+            smart_turn_path = _smart_turn_model_dir() / SMART_TURN_MODEL_FILE
             if not self.voice_config.adaptive_endpoint:
                 smart_state = "disabled"
             elif voice_bundle is not None and voice_bundle.turn_detector is not None:
@@ -2849,7 +2849,36 @@ class SocaEngine:
             self._error("voice already running")
             return
 
-        controller = self._ensure_voice_controller()
+        # Constructing the duplex audio path loads native AEC/VAD resources.
+        # That boundary used to run on the stdin command thread without an
+        # exception boundary: one missing bundled resource ended the whole
+        # sidecar and made desktop fall back to its startup screen.  Starting
+        # Voice may fail, but it must never turn a healthy chat engine into a
+        # dead process.
+        try:
+            controller = self._ensure_voice_controller()
+        except Exception as exc:  # noqa: BLE001 - native audio dependency boundary
+            LOGGER.exception("voice controller initialization failed")
+            detail = type(exc).__name__
+            self.writer.emit(
+                {
+                    "event": "voice",
+                    "type": "error",
+                    "text": "Voice không thể khởi động trên máy này. Hãy thử lại.",
+                    "metadata": {
+                        "error_code": "voice_startup_failed",
+                        "component": "audio_pipeline",
+                        "detail": detail,
+                    },
+                }
+            )
+            self._error(
+                "voice controller initialization failed",
+                code="voice_startup_failed",
+                component="audio_pipeline",
+                detail=detail,
+            )
+            return
         stop_event = threading.Event()
         self.voice_stop_event = stop_event
         queue: Queue[VoiceMonitorEvent | None] = Queue()
@@ -3314,7 +3343,21 @@ def run_engine(
                 if not isinstance(command, dict):
                     engine._error("command must be a JSON object", line=line[:200])
                     continue
-                if not engine.dispatch(command):
+                try:
+                    should_continue = engine.dispatch(command)
+                except Exception as exc:  # noqa: BLE001 - protocol command boundary
+                    # A command bug must be visible and recoverable.  Letting it
+                    # escape closes stdout, which native desktop can only report
+                    # as a generic sidecar crash.
+                    LOGGER.exception("engine command failed", extra={"command": command.get("cmd")})
+                    engine._error(
+                        "engine command failed",
+                        code="engine_command_failed",
+                        command=str(command.get("cmd") or ""),
+                        detail=type(exc).__name__,
+                    )
+                    continue
+                if not should_continue:
                     break
         finally:
             engine.shutdown()

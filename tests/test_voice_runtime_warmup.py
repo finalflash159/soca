@@ -318,3 +318,11 @@ def test_voice_runtime_warmup_error_preserves_typed_failures() -> None:
 
 def test_smart_turn_model_dir_points_to_repo_models_dir() -> None:
     assert _smart_turn_model_dir().as_posix().endswith("/models/smart-turn-v3-onnx")
+
+
+def test_smart_turn_model_dir_uses_the_frozen_sidecar_asset(monkeypatch, tmp_path) -> None:
+    import sys
+
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+
+    assert _smart_turn_model_dir() == tmp_path / "data" / "smart-turn-v3-onnx"

@@ -30,6 +30,7 @@ interface VoiceModeProps {
   checking: boolean;
   setupSummary: string | null;
   setupDetail: string | null;
+  setupActionAvailable: boolean;
   transcriptOpen: boolean;
   onToggleTranscript: () => void;
   onToggleMic: () => void;
@@ -102,6 +103,7 @@ export function VoiceMode({
   checking,
   setupSummary,
   setupDetail,
+  setupActionAvailable,
   transcriptOpen,
   onToggleTranscript,
   onToggleMic,
@@ -175,7 +177,11 @@ export function VoiceMode({
             </p>
           ) : !ready ? (
             <div className="border-border bg-card w-full max-w-md rounded-xl border p-4 text-left shadow-sm">
-              <h2 className="text-sm font-medium">Thiết lập Voice trước khi bật microphone</h2>
+              <h2 className="text-sm font-medium">
+                {setupActionAvailable
+                  ? "Thiết lập Voice trước khi bật microphone"
+                  : "Voice đang chờ xác nhận runtime"}
+              </h2>
               <p className="text-muted-foreground mt-1 text-sm leading-6">
                 {setupSummary ?? "Voice đang kiểm tra các thành phần trên máy này."}
               </p>
@@ -185,15 +191,33 @@ export function VoiceMode({
                   <p className="mt-2 break-words font-mono leading-5">{setupDetail}</p>
                 </details>
               )}
-              <Button className="mt-4" size="sm" onClick={onOpenSetup}>
-                <Settings2 className="size-4" />
-                Mở thiết lập Voice
-              </Button>
+              {setupActionAvailable ? (
+                <Button className="mt-4" size="sm" onClick={onOpenSetup}>
+                  <Settings2 className="size-4" />
+                  Mở thiết lập Voice
+                </Button>
+              ) : (
+                <p className="text-muted-foreground mt-4 text-xs leading-5" role="status">
+                  Không cần chọn lại model hoặc runtime. Microphone sẽ được mở khi runtime đã được xác nhận.
+                </p>
+              )}
             </div>
           ) : !immersive ? (
             <>
-              <LiveTurn voice={voice} turn={liveTurn} />
-              {voice.error !== null && <p className="text-destructive text-sm">{voice.error}</p>}
+              {voice.error !== null ? (
+                <div
+                  className="border-destructive/35 bg-destructive/5 w-full max-w-md rounded-xl border p-4 text-left"
+                  role="alert"
+                >
+                  <h2 className="text-sm font-medium">Voice chưa thể bắt đầu</h2>
+                  <p className="text-muted-foreground mt-1 text-sm leading-6">{voice.error}</p>
+                  <Button className="mt-4" size="sm" onClick={onToggleMic}>
+                    Thử lại
+                  </Button>
+                </div>
+              ) : (
+                <LiveTurn voice={voice} turn={liveTurn} />
+              )}
             </>
           ) : null}
         </div>

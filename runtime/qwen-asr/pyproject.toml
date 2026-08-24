@@ -4,6 +4,7 @@ version = "0.1.0"
 requires-python = "==3.11.*"
 dependencies = [
   "accelerate==1.12.0",
+  "httpx==0.28.1",
   "librosa==0.11.0",
   "nagisa==0.2.11",
   "numpy==2.4.6",

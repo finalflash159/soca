@@ -28,6 +28,10 @@ def test_build_sidecar_uses_one_directory_runtime_and_explicit_dependency_closur
     calibration = tmp_path / "data" / "asr"
     calibration.mkdir(parents=True)
     monkeypatch.setattr(builder, "ASR_CALIBRATION_DATA", calibration)
+    smart_turn_model = tmp_path / "models" / "smart-turn-v3-onnx" / "smart-turn-v3.2-cpu.onnx"
+    smart_turn_model.parent.mkdir(parents=True)
+    smart_turn_model.write_bytes(b"smart-turn")
+    monkeypatch.setattr(builder, "SMART_TURN_MODEL", smart_turn_model)
     monkeypatch.setattr(builder, "copy_linux_cuda_runtime_libraries", lambda runtime: None)
     commands: list[list[str]] = []
 
@@ -49,9 +53,13 @@ def test_build_sidecar_uses_one_directory_runtime_and_explicit_dependency_closur
     assert pyinstaller[:3] == [sys.executable, "-m", "PyInstaller"]
     assert "--onedir" in pyinstaller
     assert "--onefile" not in pyinstaller
-    assert ["--collect-all", "soca"] == pyinstaller[
-        pyinstaller.index("--collect-all") : pyinstaller.index("--collect-all") + 2
+    collected_modules = [
+        pyinstaller[index : index + 2]
+        for index, value in enumerate(pyinstaller)
+        if value == "--collect-all"
     ]
+    assert ["--collect-all", "soca"] in collected_modules
+    assert ["--collect-all", "silero_vad"] in collected_modules
     excluded_modules = [
         pyinstaller[index : index + 2]
         for index, value in enumerate(pyinstaller)
@@ -63,6 +71,15 @@ def test_build_sidecar_uses_one_directory_runtime_and_explicit_dependency_closur
     assert ["--add-data", f"{calibration}{builder.os.pathsep}data/asr"] == pyinstaller[
         pyinstaller.index("--add-data") : pyinstaller.index("--add-data") + 2
     ]
+    add_data = [
+        pyinstaller[index : index + 2]
+        for index, value in enumerate(pyinstaller)
+        if value == "--add-data"
+    ]
+    assert [
+        "--add-data",
+        f"{smart_turn_model}{builder.os.pathsep}data/smart-turn-v3-onnx",
+    ] in add_data
     assert ["--collect-binaries", "llama_cpp"] == pyinstaller[
         pyinstaller.index("--collect-binaries") : pyinstaller.index("--collect-binaries") + 2
     ]

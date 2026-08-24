@@ -272,6 +272,9 @@ def test_worker_environment_is_offline_and_does_not_inherit_tokens(monkeypatch, 
     socket_dir = Path(tempfile.mkdtemp(prefix="soca-qwen-test-", dir="/tmp"))
     monkeypatch.setenv("HF_TOKEN", "must-not-reach-worker")
     monkeypatch.setenv("HUGGING_FACE_HUB_TOKEN", "also-private")
+    monkeypatch.setenv("PYTHONPATH", "/frozen-sidecar/_internal")
+    monkeypatch.setenv("PYTHONHOME", "/frozen-sidecar")
+    monkeypatch.setenv("VIRTUAL_ENV", "/another-venv")
     model_path = tmp_path / "model"
     model_path.mkdir()
     launch = QwenServiceLaunch.for_provisioning(QWEN_RELEASE_ARTIFACT, model_path)
@@ -307,6 +310,10 @@ def test_worker_environment_is_offline_and_does_not_inherit_tokens(monkeypatch, 
         assert "PATH" in environment
         assert "HF_TOKEN" not in environment
         assert "HUGGING_FACE_HUB_TOKEN" not in environment
+        assert "PYTHONPATH" not in environment
+        assert "PYTHONHOME" not in environment
+        assert "VIRTUAL_ENV" not in environment
+        assert environment["PYTHONNOUSERSITE"] == "1"
         assert environment["HF_HUB_OFFLINE"] == "1"
         assert environment["TRANSFORMERS_OFFLINE"] == "1"
         assert environment["PYTORCH_ENABLE_MPS_FALLBACK"] == "0"

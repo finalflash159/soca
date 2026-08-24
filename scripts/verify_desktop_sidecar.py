@@ -61,10 +61,25 @@ def _verify_asr_calibration(sidecar: Path) -> None:
         raise RuntimeError("frozen sidecar ASR confidence calibration has an invalid schema")
 
 
+def _verify_voice_aec_resources(sidecar: Path) -> None:
+    """Ensure the first Voice click can load Silero's packaged VAD model."""
+    data = sidecar.parent / "_internal" / "silero_vad" / "data"
+    if not data.is_dir() or not any(data.iterdir()):
+        raise RuntimeError("frozen sidecar is missing the Silero VAD package data required by Voice")
+
+
+def _verify_smart_turn_resource(sidecar: Path) -> None:
+    model = sidecar.parent / "_internal" / "data" / "smart-turn-v3-onnx" / "smart-turn-v3.2-cpu.onnx"
+    if not model.is_file() or model.stat().st_size == 0:
+        raise RuntimeError("frozen sidecar is missing the Smart Turn model required by Voice")
+
+
 def verify(sidecar: Path) -> None:
     if not sidecar.is_file():
         raise RuntimeError(f"sidecar does not exist: {sidecar}")
     _verify_asr_calibration(sidecar)
+    _verify_voice_aec_resources(sidecar)
+    _verify_smart_turn_resource(sidecar)
 
     with tempfile.TemporaryDirectory(prefix="soca-frozen-sidecar-") as temporary:
         root = Path(temporary)

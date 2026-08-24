@@ -224,6 +224,7 @@ describe("desktop session lifecycle", () => {
         { id: "voice_asr", label: "Voice ASR", status: "missing", detail: "qwen-asr" },
         { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote · openrouter:gpt" },
         { id: "tts", label: "TTS", status: "missing", detail: "valtec" },
+        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
       ],
     });
 
@@ -263,6 +264,7 @@ describe("desktop session lifecycle", () => {
         { id: "voice_asr", label: "Voice ASR", status: "ok", detail: "Qwen verified" },
         { id: "voice_llm", label: "Voice LLM", status: "missing", detail: "catalog loading" },
         { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
       ],
     });
 
@@ -291,6 +293,30 @@ describe("desktop session lifecycle", () => {
     expect(screen.queryByRole("button", { name: "Mở thiết lập Voice" })).toBeNull();
   });
 
+  it("keeps a verified Qwen installation in Voice while calibration is pending", async () => {
+    const user = userEvent.setup();
+    await renderReadyApp();
+    emit(EVENT_CHANNEL, {
+      event: "status",
+      runtime_components: [
+        { id: "voice_asr", label: "Voice ASR", status: "not_ready", detail: "confidence calibration identity is not qualified" },
+        { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote · openrouter:gpt" },
+        { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+      ],
+    });
+
+    await user.click(screen.getByRole("button", { name: "Thoại" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Voice đang chờ xác nhận runtime")).not.toBeNull();
+      expect(screen.getByText("Qwen ASR đã cài đặt, nhưng runtime này chưa có calibration được xác nhận.")).not.toBeNull();
+    });
+    expect(screen.queryByRole("button", { name: "Mở thiết lập Voice" })).toBeNull();
+    expect((screen.getByRole("button", { name: "Bật mic" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
+  });
+
   it("uses the immersive orb only while the microphone is capturing", async () => {
     const user = userEvent.setup();
     await renderReadyApp();
@@ -300,6 +326,7 @@ describe("desktop session lifecycle", () => {
         { id: "voice_asr", label: "Voice ASR", status: "ready", detail: "qwen" },
         { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote" },
         { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
       ],
     });
 
@@ -321,6 +348,42 @@ describe("desktop session lifecycle", () => {
       expect(screen.getByTestId("voice-orb").getAttribute("data-voice-orb-presentation")).toBe("compact");
       expect(screen.getByText("xin chào")).not.toBeNull();
     });
+  });
+
+  it("keeps Voice open and offers retry when the engine rejects voice startup", async () => {
+    const user = userEvent.setup();
+    await renderReadyApp();
+    emit(EVENT_CHANNEL, {
+      event: "status",
+      runtime_components: [
+        { id: "voice_asr", label: "Voice ASR", status: "ready", detail: "qwen" },
+        { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote" },
+        { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+      ],
+    });
+
+    await user.click(screen.getByRole("button", { name: "Thoại" }));
+    await user.click(screen.getByRole("button", { name: "Bật mic" }));
+    await waitFor(() => {
+      expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(true);
+    });
+
+    emit(EVENT_CHANNEL, {
+      event: "voice",
+      type: "error",
+      text: "Voice không thể khởi động trên máy này. Hãy thử lại.",
+      metadata: { error_code: "voice_startup_failed" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("Voice chưa thể bắt đầu");
+      expect(screen.getByRole("button", { name: "Thử lại" })).not.toBeNull();
+    });
+    expect(screen.queryByText("Trợ lý tiếng Việt chạy trên máy bạn.")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Thử lại" }));
+    expect(engineSendCommands().filter((command) => command.cmd === "voice_start")).toHaveLength(2);
   });
 
   it("loads older transcript pages with the engine's exclusive sequence boundary", async () => {
