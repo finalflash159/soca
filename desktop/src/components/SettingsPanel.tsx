@@ -454,61 +454,59 @@ export function SettingsPanel({
               </div>
             </Field>
 
-            {!showRemoteSettings && (
-              <Field
-                label="Thư mục model On-device"
-                hint={
-                  modelRoot?.source === "external"
-                    ? "Đang dùng thư mục bạn đã chọn. Lưu thay đổi sẽ khởi động lại engine; dữ liệu không bị sao chép."
-                    : "Mặc định là kho dữ liệu riêng của SoCa. Chọn thư mục model đã có nếu bạn muốn dùng model hiện hữu mà không sao chép."
-                }
-                htmlFor="local-model-root"
-              >
-                <div className="flex gap-2">
-                  <input
-                    id="local-model-root"
-                    className={`${INPUT} font-mono text-xs`}
-                    value={modelRootDraft}
-                    disabled={!connected || modelRootPending}
-                    placeholder="/đường/dẫn/tới/models"
-                    onChange={(event) => setModelRootDraft(event.target.value)}
-                  />
-                  <Button
-                    className="h-10 shrink-0"
-                    disabled={!connected || modelRootPending || modelRootDraft.trim() === ""}
-                    onClick={async () => {
-                      setModelRootPending(true);
-                      setModelRootError(null);
-                      const error = await onSetModelRoot(modelRootDraft.trim());
-                      setModelRootPending(false);
-                      setModelRootError(error);
-                    }}
-                  >
-                    {modelRootPending ? "Đang áp dụng…" : "Dùng thư mục này"}
-                  </Button>
-                </div>
-                {modelRoot?.source === "external" && (
-                  <Button
-                    className="mt-2"
-                    size="sm"
-                    variant="outline"
-                    disabled={!connected || modelRootPending}
-                    onClick={async () => {
-                      setModelRootPending(true);
-                      setModelRootError(null);
-                      const error = await onSetModelRoot(null);
-                      setModelRootPending(false);
-                      setModelRootError(error);
-                    }}
-                  >
-                    Trở về kho SoCa
-                  </Button>
-                )}
-                {modelRootError !== null && (
-                  <p className="text-destructive mt-2 text-sm" role="alert">{modelRootError}</p>
-                )}
-              </Field>
-            )}
+            <Field
+              label="Thư mục model Voice và On-device"
+              hint={
+                modelRoot?.source === "external"
+                  ? "Đang dùng thư mục bạn đã chọn cho Voice và model On-device. Lưu thay đổi sẽ khởi động lại engine; dữ liệu không bị sao chép."
+                  : "Kho riêng của SoCa hiện đang được dùng. Voice vẫn cần ASR và TTS ở đây, kể cả khi câu trả lời dùng Remote."
+              }
+              htmlFor="local-model-root"
+            >
+              <div className="flex gap-2">
+                <input
+                  id="local-model-root"
+                  className={`${INPUT} font-mono text-xs`}
+                  value={modelRootDraft}
+                  disabled={!connected || modelRootPending}
+                  placeholder="/đường/dẫn/tới/models"
+                  onChange={(event) => setModelRootDraft(event.target.value)}
+                />
+                <Button
+                  className="h-10 shrink-0"
+                  disabled={!connected || modelRootPending || modelRootDraft.trim() === ""}
+                  onClick={async () => {
+                    setModelRootPending(true);
+                    setModelRootError(null);
+                    const error = await onSetModelRoot(modelRootDraft.trim());
+                    setModelRootPending(false);
+                    setModelRootError(error);
+                  }}
+                >
+                  {modelRootPending ? "Đang áp dụng…" : "Dùng thư mục này"}
+                </Button>
+              </div>
+              {modelRoot?.source === "external" && (
+                <Button
+                  className="mt-2"
+                  size="sm"
+                  variant="outline"
+                  disabled={!connected || modelRootPending}
+                  onClick={async () => {
+                    setModelRootPending(true);
+                    setModelRootError(null);
+                    const error = await onSetModelRoot(null);
+                    setModelRootPending(false);
+                    setModelRootError(error);
+                  }}
+                >
+                  Trở về kho SoCa
+                </Button>
+              )}
+              {modelRootError !== null && (
+                <p className="text-destructive mt-2 text-sm" role="alert">{modelRootError}</p>
+              )}
+            </Field>
 
             <Field
               label="Giới hạn token đầu ra"

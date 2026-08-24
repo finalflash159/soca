@@ -143,6 +143,7 @@ describe("SettingsPanel remote configuration", () => {
 
     expect(screen.getByText(/đang tải danh mục model/i)).toBeTruthy();
     expect(screen.queryByText(/chưa tìm thấy model local/i)).toBeNull();
+    expect(screen.getByLabelText("Thư mục model Voice và On-device")).toBeTruthy();
   });
 
   it("shows each voice dependency instead of presenting an unavailable microphone as ready", () => {

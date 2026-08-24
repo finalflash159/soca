@@ -25,6 +25,9 @@ def test_build_sidecar_uses_one_directory_runtime_and_explicit_dependency_closur
     entry.write_text("print('entry')\n", encoding="utf-8")
     monkeypatch.setattr(builder, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(builder, "ENTRY_POINT", entry)
+    calibration = tmp_path / "data" / "asr"
+    calibration.mkdir(parents=True)
+    monkeypatch.setattr(builder, "ASR_CALIBRATION_DATA", calibration)
     monkeypatch.setattr(builder, "cuda_runtime_binary_arguments", lambda: [])
     commands: list[list[str]] = []
 
@@ -48,6 +51,9 @@ def test_build_sidecar_uses_one_directory_runtime_and_explicit_dependency_closur
     assert "--onefile" not in pyinstaller
     assert ["--collect-all", "soca"] == pyinstaller[
         pyinstaller.index("--collect-all") : pyinstaller.index("--collect-all") + 2
+    ]
+    assert ["--add-data", f"{calibration}{builder.os.pathsep}data/asr"] == pyinstaller[
+        pyinstaller.index("--add-data") : pyinstaller.index("--add-data") + 2
     ]
     assert ["--collect-binaries", "llama_cpp"] == pyinstaller[
         pyinstaller.index("--collect-binaries") : pyinstaller.index("--collect-binaries") + 2

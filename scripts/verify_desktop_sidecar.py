@@ -47,9 +47,24 @@ def _legacy_checkpoint(root: Path) -> None:
     SessionCheckpointStore(root).save(memory)
 
 
+def _verify_asr_calibration(sidecar: Path) -> None:
+    """Guard the data file that makes a provisioned PhoWhisper runtime usable."""
+    calibration = sidecar.parent / "_internal" / "data" / "asr" / "threshold_calibration.json"
+    try:
+        payload = json.loads(calibration.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            "frozen sidecar is missing readable ASR confidence calibration"
+        ) from exc
+    calibrations = payload.get("asr_confidence_by_model") if isinstance(payload, dict) else None
+    if not isinstance(calibrations, dict) or "phowhisper_small" not in calibrations:
+        raise RuntimeError("frozen sidecar ASR confidence calibration has an invalid schema")
+
+
 def verify(sidecar: Path) -> None:
     if not sidecar.is_file():
         raise RuntimeError(f"sidecar does not exist: {sidecar}")
+    _verify_asr_calibration(sidecar)
 
     with tempfile.TemporaryDirectory(prefix="soca-frozen-sidecar-") as temporary:
         root = Path(temporary)
