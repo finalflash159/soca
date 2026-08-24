@@ -69,6 +69,18 @@ def pyinstaller_command(*, dist: Path, work: Path, spec: Path) -> list[str]:
         # its native libraries are not visible through Python imports alone.
         "--collect-binaries",
         "llama_cpp",
+        # Torchaudio loads Torch shared objects dynamically. Make the native
+        # closure explicit so the frozen runtime and AppImage bundle contain
+        # libc10/libtorch instead of depending on a build runner's environment.
+        "--collect-binaries",
+        "torch",
+        "--collect-binaries",
+        "torchaudio",
+        # Torch's CUDA runtime is a separate distribution. It is loaded by
+        # libtorchaudio at runtime, so bundle it explicitly instead of relying
+        # on PyInstaller's import analysis to discover it.
+        "--collect-binaries",
+        "nvidia.cuda_runtime",
         # transformers checks this distribution's version during ASR imports.
         # Do not collect torchcodec's bundled libpython: it is a separate
         # runtime and would conflict with the interpreter frozen by PyInstaller.

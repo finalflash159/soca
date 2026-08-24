@@ -78,9 +78,9 @@ export default function App() {
   const [persistenceChangePending, setPersistenceChangePending] = useState(false);
   const [pendingNewAfterVoiceStop, setPendingNewAfterVoiceStop] = useState(false);
   const [sessionAlert, setSessionAlert] = useState<string | null>(null);
-  const [runtimeAlert, setRuntimeAlert] = useState<string | null>(null);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [sessionTransition, setSessionTransition] = useState<string | null>(null);
+  const [settingsFocus, setSettingsFocus] = useState<"voice" | null>(null);
   const [modelRoot, setModelRoot] = useState<ModelRoot | null>(null);
   const autoStarted = useRef(false);
   const loadedHello = useRef<object | null>(null);
@@ -99,7 +99,7 @@ export default function App() {
     (turn) => turn.finalText === null && turn.error === null,
   );
   const sessionBusy = activeTurn || voiceRunning || engine.sessionHistory.busy || sessionChanging;
-  const displayedSessionAlert = runtimeAlert ?? sessionAlert ?? engine.sessionHistory.snapshotError;
+  const displayedSessionAlert = sessionAlert ?? engine.sessionHistory.snapshotError;
   const canLoadOlderTurns = connected && !sessionChanging && !engine.sessionHistory.busy;
   const llmConfig = engine.settings.config;
   const runtimeReady = llmConfig?.runtimeReady === true;
@@ -321,11 +321,7 @@ export default function App() {
 
   const openPage = (next: PageId) => {
     const destination = next === "voice" && !voiceReady ? "settings" : next;
-    if (destination !== next) {
-      setRuntimeAlert(voiceReason ?? "Thiết lập thoại trước khi bật mic.");
-    } else {
-      setRuntimeAlert(null);
-    }
+    setSettingsFocus(destination !== next ? "voice" : null);
     setPage(destination);
     if (!connected) return;
     if (destination === "session") {
@@ -504,7 +500,7 @@ export default function App() {
           {sessionNotice !== null && <p className="sr-only" role="status">{sessionNotice}</p>}
           {displayedSessionAlert !== null && (
             <Alert variant="destructive" className="mx-6 mt-4 w-auto" role="alert">
-              <AlertTitle>{runtimeAlert !== null ? "Runtime chưa sẵn sàng" : "Không thể cập nhật phiên"}</AlertTitle>
+              <AlertTitle>Không thể cập nhật phiên</AlertTitle>
               <AlertDescription>{displayedSessionAlert}</AlertDescription>
             </Alert>
           )}
@@ -529,7 +525,6 @@ export default function App() {
                 model={engine.settings.config?.model ?? null}
                 connected={connected && !sessionChanging}
                 runtimeReady={runtimeReady}
-                runtimeReason={runtimeReason}
                 voiceReady={voiceReady}
                 voiceReason={voiceReason}
                 starting={starting}
@@ -620,6 +615,7 @@ export default function App() {
               <PageBody>
                 <SettingsPanel
                   settings={engine.settings}
+                  focusVoiceSetup={settingsFocus === "voice"}
                   connected={connected && !sessionChanging}
                   engineError={engine.errors[engine.errors.length - 1] ?? null}
                   themeChoice={theme.choice}

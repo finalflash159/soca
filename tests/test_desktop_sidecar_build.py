@@ -51,6 +51,14 @@ def test_build_sidecar_uses_one_directory_runtime_and_explicit_dependency_closur
     assert ["--collect-binaries", "llama_cpp"] == pyinstaller[
         pyinstaller.index("--collect-binaries") : pyinstaller.index("--collect-binaries") + 2
     ]
+    binary_collections = [
+        pyinstaller[index : index + 2]
+        for index, value in enumerate(pyinstaller)
+        if value == "--collect-binaries"
+    ]
+    assert ["--collect-binaries", "torch"] in binary_collections
+    assert ["--collect-binaries", "torchaudio"] in binary_collections
+    assert ["--collect-binaries", "nvidia.cuda_runtime"] in binary_collections
     assert ["--copy-metadata", "torchcodec"] == pyinstaller[
         pyinstaller.index("--copy-metadata") : pyinstaller.index("--copy-metadata") + 2
     ]

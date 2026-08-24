@@ -19,7 +19,6 @@ interface ComposerProps {
   connected: boolean;
   /** The selected LLM can accept a turn, independently of sidecar transport. */
   runtimeReady?: boolean;
-  runtimeReason?: string | null;
   /** Voice additionally needs its local ASR/TTS profile to be ready. */
   voiceReady?: boolean;
   voiceReason?: string | null;
@@ -39,7 +38,6 @@ interface ComposerProps {
 export function Composer({
   connected,
   runtimeReady = true,
-  runtimeReason = null,
   voiceReady = true,
   voiceReason = null,
   starting = false,
@@ -84,7 +82,7 @@ export function Composer({
     : !connected
       ? "Engine chưa chạy"
       : !runtimeReady
-        ? runtimeReason ?? "Thiết lập model để bắt đầu"
+        ? "Thiết lập model chat trong Cài đặt"
         : connected
       ? "Mình giúp được gì?"
       : "Engine chưa chạy";

@@ -159,7 +159,9 @@ describe("SettingsPanel remote configuration", () => {
       },
     });
 
-    expect(screen.getByText("Voice availability")).toBeTruthy();
-    expect(screen.getByText("Voice ASR").parentElement?.textContent).toContain("qwen-asr");
+    expect(screen.getByText("Trạng thái thoại")).toBeTruthy();
+    expect(
+      screen.getByText("Speech recognition is not installed for the selected voice profile."),
+    ).toBeTruthy();
   });
 });

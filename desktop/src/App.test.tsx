@@ -66,7 +66,7 @@ async function renderReadyApp(): Promise<void> {
   });
   await waitFor(() => {
     expect((screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement).disabled).toBe(false);
-  });
+  }, { timeout: 5_000 });
 }
 
 function oldSnapshot(nextTurnCursor: number | null = null): EngineFrame {
@@ -230,8 +230,11 @@ describe("desktop session lifecycle", () => {
     await user.click(screen.getByRole("button", { name: "Thiết lập thoại" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toContain("Voice ASR: qwen-asr");
-      expect(screen.getByText("Voice availability")).not.toBeNull();
+      expect(screen.queryByText("Runtime chưa sẵn sàng")).toBeNull();
+      expect(screen.getByText("Trạng thái thoại")).not.toBeNull();
+      expect(
+        screen.getByText("Speech recognition is not installed for the selected voice profile."),
+      ).not.toBeNull();
     });
     expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
   });

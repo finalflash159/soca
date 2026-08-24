@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { UpdaterPanel } from "@/components/UpdaterPanel";
-import type { LlmConfig, SettingsState } from "@/engine/settings";
+import type { LlmConfig, RuntimeComponent, SettingsState } from "@/engine/settings";
 import type { SessionHistoryState } from "@/engine/session-history";
 import { modelPrice } from "@/engine/settings";
 import type { ThemeChoice } from "@/theme";
@@ -40,6 +40,8 @@ interface SettingsPanelProps {
   persistenceChangePending: boolean;
   onRequestSessionPersistence: (enabled: boolean) => void;
   onSetAutoOpenLast: (enabled: boolean) => void;
+  /** Set only when navigation redirected an unavailable microphone here. */
+  focusVoiceSetup?: boolean;
 }
 
 const INPUT =
@@ -56,14 +58,52 @@ function reasoningHint(config: LlmConfig): string {
 function profileName(profileKey: string): string {
   switch (profileKey) {
     case "baseline":
-      return "Standard (PhoWhisper)";
+      return "Standard voice";
     case "qwen-release":
-      return "Qwen ASR · release";
+      return "Qwen ASR — Release";
     case "qwen-reference":
-      return "Qwen ASR · reference";
+      return "Qwen ASR — Reference";
     default:
       return profileKey;
   }
+}
+
+function profileStatus(status: string): string {
+  if (status === "ok") return "Ready";
+  if (status === "missing" || status === "blocked") return "Needs setup";
+  return status;
+}
+
+function voiceSetupMessage(component: RuntimeComponent | undefined): string {
+  if (component === undefined) return "Đang kiểm tra các thành phần thoại…";
+  switch (component.id) {
+    case "voice_asr":
+      return "Speech recognition is not installed for the selected voice profile.";
+    case "voice_llm":
+      return "The response model for voice needs setup.";
+    case "tts":
+      return "Speech output needs setup.";
+    default:
+      return "A required voice component needs setup.";
+  }
+}
+
+function chatSetupMessage(config: LlmConfig): string {
+  return config.backend === "remote"
+    ? "The selected remote chat route needs setup."
+    : "An on-device chat model needs setup.";
+}
+
+function profileSummary(profile: SettingsState["profiles"][number]): string {
+  const summary =
+    profile.key === "baseline"
+      ? "Default on-device Vietnamese voice profile."
+      : profile.key === "qwen-release"
+        ? "Qwen ASR release profile for local speech recognition."
+        : profile.key === "qwen-reference"
+          ? "Qwen ASR reference profile for local speech recognition."
+          : "Voice profile.";
+  return profile.status === "ok" ? summary : `${summary} Required model files need setup.`;
 }
 
 /** A row of mutually exclusive choices, styled as one control. */
@@ -119,6 +159,7 @@ export function SettingsPanel({
   onRequestSessionPersistence,
   onSetAutoOpenLast,
   engineError,
+  focusVoiceSetup = false,
 }: SettingsPanelProps) {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [remoteSetup, setRemoteSetup] = useState(false);
@@ -132,6 +173,7 @@ export function SettingsPanel({
   const [modelRootPending, setModelRootPending] = useState(false);
   const [modelRootError, setModelRootError] = useState<string | null>(null);
   const lastEngineError = useRef<string | null>(engineError);
+  const voiceSetupRef = useRef<HTMLDivElement>(null);
 
   const config = settings.config;
   const provider =
@@ -212,6 +254,12 @@ export function SettingsPanel({
       setProfilePending(null);
     }
   }, [profilePending, settings.activeProfile]);
+
+  useEffect(() => {
+    if (focusVoiceSetup) {
+      voiceSetupRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    }
+  }, [focusVoiceSetup]);
 
   const runGeneration = async (operation: () => Promise<boolean>) => {
     setGenerationPending(true);
@@ -324,32 +372,35 @@ export function SettingsPanel({
                 {generationError}
               </p>
             )}
-            {config.settingsError !== null && (
-              <p className="text-destructive text-sm" role="alert">
-                {config.settingsError}
-              </p>
-            )}
-
             <Field
-              label="Chat availability"
-              hint="This checks the selected chat route only. Voice prerequisites are shown separately below."
+              label="Trạng thái chat"
+              hint="Kiểm tra riêng route chat đang chọn. Thiết lập thoại ở phần bên dưới không chặn chat từ xa."
             >
-              <div className="border-border flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm">
+              <div className="border-border bg-muted/30 flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm">
                 <Badge variant={config.runtimeReady ? "secondary" : "outline"}>
                   {config.runtimeReady ? "Ready" : "Needs setup"}
                 </Badge>
-                <span className="min-w-0 flex-1 text-xs leading-5">
+                <div className="min-w-0 flex-1 text-xs leading-5">
                   {config.runtimeReady
                     ? isRemote
                       ? "Remote chat is configured."
                       : "On-device chat model is available."
-                    : config.runtimeReason ?? chatComponent?.detail ?? "Waiting for engine status…"}
-                </span>
+                    : chatSetupMessage(config)}
+                  {!config.runtimeReady &&
+                    (config.runtimeReason ?? config.settingsError ?? chatComponent?.detail) !== undefined && (
+                      <details className="text-muted-foreground mt-2 text-xs">
+                        <summary className="cursor-pointer select-none">Thông tin kỹ thuật</summary>
+                        <p className="mt-1 break-words font-mono leading-5">
+                          {config.runtimeReason ?? config.settingsError ?? chatComponent?.detail}
+                        </p>
+                      </details>
+                    )}
+                </div>
               </div>
             </Field>
 
             <Field
-              label="Runtime"
+              label="Nơi xử lý"
               hint={
                 isRemote
                   ? "Remote API. Requests leave this device."
@@ -377,12 +428,12 @@ export function SettingsPanel({
             </Field>
 
             <Field
-              label="Active model"
+              label="Model đang dùng"
               hint={
                 isRemote
                   ? `Context window: ${config.contextLength ?? "—"}`
                   : config.localModelPath === null
-                    ? "Model local được chọn bởi profile đang hoạt động."
+                    ? "Model On-device được chọn bởi profile đang hoạt động."
                     : `Tệp đang được kiểm tra: ${config.localModelPath}`
               }
             >
@@ -395,7 +446,7 @@ export function SettingsPanel({
 
             {!showRemoteSettings && (
               <Field
-                label="Thư mục model local"
+                label="Thư mục model On-device"
                 hint={
                   modelRoot?.source === "external"
                     ? "Đang dùng thư mục bạn đã chọn. Lưu thay đổi sẽ khởi động lại engine; dữ liệu không bị sao chép."
@@ -643,50 +694,65 @@ export function SettingsPanel({
         </Section>
       )}
 
-      <Section
-        icon={AudioLines}
-        title="Thoại"
-        description="Voice is independent from chat: it requires local ASR and TTS even when chat uses a remote model."
-      >
+      <div ref={voiceSetupRef}>
+        <Section
+          icon={AudioLines}
+          title="Thoại"
+          description="Chat và voice được thiết lập riêng. Remote chat vẫn dùng được khi ASR hoặc TTS chưa cài."
+        >
         <Field
-          label="Voice availability"
-          hint="Audio is captured and played locally. A missing voice dependency never blocks remote chat."
+          label="Trạng thái thoại"
+          hint="Âm thanh luôn được thu và phát trên máy này."
         >
           {voiceComponents.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Checking voice dependencies…</p>
+            <p className="text-muted-foreground text-sm">Đang kiểm tra các thành phần thoại…</p>
           ) : (
-            <div className="border-border flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm">
+            <div className="border-border bg-muted/30 flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm">
               <Badge variant={voiceReady ? "secondary" : "outline"}>
                 {voiceReady ? "Ready" : "Needs setup"}
               </Badge>
               <div className="min-w-0 flex-1 leading-5">
                 {voiceReady
-                  ? "ASR, voice model, and TTS are ready."
+                  ? "Speech recognition, response model, and speech output are ready."
                   : voiceBlocker === undefined
-                    ? "Waiting for the complete voice status…"
-                    : <><span className="font-medium">{voiceBlocker.label}</span>{": "}{voiceBlocker.detail ?? voiceBlocker.status}</>}
+                    ? "Đang chờ trạng thái thoại hoàn chỉnh…"
+                    : voiceSetupMessage(voiceBlocker)}
+                {!voiceReady && voiceBlocker?.detail !== null && voiceBlocker?.detail !== undefined && (
+                  <details className="text-muted-foreground mt-2 text-xs">
+                    <summary className="cursor-pointer select-none">Thông tin kỹ thuật</summary>
+                    <p className="mt-1 break-words font-mono leading-5">{voiceBlocker.detail}</p>
+                  </details>
+                )}
               </div>
             </div>
           )}
         </Field>
         <Field
           label="Voice profile"
-          hint="The selected profile applies to the next voice session; changing it never interrupts an active call."
+          hint="Profile chỉ áp dụng cho phiên thoại kế tiếp; chuyển profile không ngắt cuộc gọi đang diễn ra."
         >
           {settings.profiles.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Refresh settings to load voice profiles.</p>
+            <p className="text-muted-foreground text-sm">Tải lại cài đặt để xem voice profile.</p>
           ) : (
             <ul className="border-border divide-border flex flex-col divide-y rounded-lg border">
               {settings.profiles.map((profile) => (
                 <li key={profile.key} className="flex items-center gap-3 px-3 py-2.5 text-sm">
                   <Badge variant={settings.activeProfile === profile.key ? "secondary" : "outline"}>
-                    {settings.activeProfile === profile.key ? "Active" : profile.status}
+                    {settings.activeProfile === profile.key
+                      ? profile.status === "ok"
+                        ? "Active"
+                        : "Active · Needs setup"
+                      : profileStatus(profile.status)}
                   </Badge>
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-sm font-medium">{profileName(profile.key)}</span>
-                    <span className="text-muted-foreground truncate font-mono text-[10px]">
-                      {[profile.asr, profile.tts, profile.voice].filter(Boolean).join(" · ")}
-                    </span>
+                    <span className="text-muted-foreground text-xs leading-5">{profileSummary(profile)}</span>
+                    <details className="text-muted-foreground mt-1 text-[10px]">
+                      <summary className="cursor-pointer select-none">Thông tin kỹ thuật</summary>
+                      <p className="mt-1 break-words font-mono leading-5">
+                        {[profile.asr, profile.tts, profile.voice].filter(Boolean).join(" · ")}
+                      </p>
+                    </details>
                   </div>
                   {settings.activeProfile !== profile.key && (
                     <Button
@@ -698,7 +764,7 @@ export function SettingsPanel({
                         if (!(await onSelectProfile(profile.key))) setProfilePending(null);
                       }}
                     >
-                      {profilePending === profile.key ? "Applying…" : "Use"}
+                      {profilePending === profile.key ? "Applying…" : "Select"}
                     </Button>
                   )}
                 </li>
@@ -706,7 +772,8 @@ export function SettingsPanel({
             </ul>
           )}
         </Field>
-      </Section>
+        </Section>
+      </div>
     </div>
   );
 }
