@@ -233,8 +233,11 @@ export interface StatusFrame {
   knowledge_vault?: unknown;
   knowledge_index?: unknown | null;
   runtime_components?: Array<{
+    id?: string;
+    label?: string;
     name?: string;
     status?: string;
+    detail?: string;
     [key: string]: unknown;
   }>;
 }

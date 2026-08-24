@@ -10,10 +10,10 @@
 
 import { Moon, PanelLeft, Sun } from "lucide-react";
 
-import { ActivityOrb } from "@/components/ActivityOrb";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { orbLabel, type OrbState } from "@/engine/orb";
+import { ThinkingOrb } from "thinking-orbs";
 
 interface TopBarProps {
   orbState: OrbState;
@@ -42,7 +42,7 @@ export function TopBar({ orbState, sidebarOpen, onOpenSidebar, onToggleTheme }: 
       <BrandMark className="text-[15px] font-medium" iconClassName="text-base" />
 
       <div className="text-muted-foreground ml-1 flex items-center gap-1.5 text-xs" role="status" aria-atomic="true">
-        <ActivityOrb state={orbState} size={18} />
+        <ThinkingOrb state={orbState} size={20} aria-hidden />
         <span>{orbLabel(orbState)}</span>
       </div>
 

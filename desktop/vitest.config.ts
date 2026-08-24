@@ -17,5 +17,6 @@ export default defineConfig({
   test: {
     root: here,
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    setupFiles: ["./src/test/setup.ts"],
   },
 });

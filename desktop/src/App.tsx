@@ -78,6 +78,7 @@ export default function App() {
   const [persistenceChangePending, setPersistenceChangePending] = useState(false);
   const [pendingNewAfterVoiceStop, setPendingNewAfterVoiceStop] = useState(false);
   const [sessionAlert, setSessionAlert] = useState<string | null>(null);
+  const [runtimeAlert, setRuntimeAlert] = useState<string | null>(null);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [sessionTransition, setSessionTransition] = useState<string | null>(null);
   const [modelRoot, setModelRoot] = useState<ModelRoot | null>(null);
@@ -98,8 +99,29 @@ export default function App() {
     (turn) => turn.finalText === null && turn.error === null,
   );
   const sessionBusy = activeTurn || voiceRunning || engine.sessionHistory.busy || sessionChanging;
-  const displayedSessionAlert = sessionAlert ?? engine.sessionHistory.snapshotError;
+  const displayedSessionAlert = runtimeAlert ?? sessionAlert ?? engine.sessionHistory.snapshotError;
   const canLoadOlderTurns = connected && !sessionChanging && !engine.sessionHistory.busy;
+  const llmConfig = engine.settings.config;
+  const runtimeReady = llmConfig?.runtimeReady === true;
+  const runtimeReason =
+    llmConfig?.runtimeReason ??
+    llmConfig?.settingsError ??
+    (llmConfig === null ? "Đang kiểm tra cấu hình model…" : "Model hiện tại chưa sẵn sàng.");
+  const voiceComponentIds = new Set(["voice_asr", "voice_llm", "tts"]);
+  const voiceComponents = engine.settings.runtimeComponents.filter((component) =>
+    voiceComponentIds.has(component.id),
+  );
+  const voiceBlocker = voiceComponents.find(
+    (component) => !["ready", "loaded", "configured"].includes(component.status),
+  );
+  const voiceReady = runtimeReady && voiceComponents.length === voiceComponentIds.size && voiceBlocker === undefined;
+  const voiceReason = !runtimeReady
+    ? runtimeReason
+    : voiceBlocker !== undefined
+      ? `${voiceBlocker.label}: ${voiceBlocker.detail ?? voiceBlocker.status}`
+      : voiceComponents.length !== voiceComponentIds.size
+        ? "Đang kiểm tra ASR và TTS…"
+        : null;
 
   const startWithPersistence = async (
     persistence: LaunchSessionPersistence,
@@ -166,6 +188,7 @@ export default function App() {
     void engine.requestSessions();
     void engine.send({ cmd: "session_status" });
     void engine.send({ cmd: "session_preferences_get" });
+    void engine.send({ cmd: "llm_config" });
   }, [connected, engine]);
 
   useEffect(() => {
@@ -297,21 +320,27 @@ export default function App() {
   }
 
   const openPage = (next: PageId) => {
-    setPage(next);
+    const destination = next === "voice" && !voiceReady ? "settings" : next;
+    if (destination !== next) {
+      setRuntimeAlert(voiceReason ?? "Thiết lập thoại trước khi bật mic.");
+    } else {
+      setRuntimeAlert(null);
+    }
+    setPage(destination);
     if (!connected) return;
-    if (next === "session") {
+    if (destination === "session") {
       for (const cmd of ["status", "context", "usage"] as const) void engine.send({ cmd });
       void engine.send({ cmd: "session_status" });
     }
-    if (next === "knowledge") {
+    if (destination === "knowledge") {
       for (const cmd of ["memory", "memory_proposals", "status"] as const) void engine.send({ cmd });
     }
-    if (next === "settings") {
+    if (destination === "settings") {
       for (const cmd of ["llm_providers", "llm_config", "status", "session_preferences_get"] as const) {
         void engine.send({ cmd });
       }
     }
-    if (next === "voice" && !sessionChanging && engine.voice.phase === "off") {
+    if (destination === "voice" && !sessionChanging && engine.voice.phase === "off") {
       void engine.send({ cmd: "voice_start" });
     }
   };
@@ -478,7 +507,7 @@ export default function App() {
           {sessionNotice !== null && <p className="sr-only" role="status">{sessionNotice}</p>}
           {displayedSessionAlert !== null && (
             <Alert variant="destructive" className="mx-6 mt-4 w-auto" role="alert">
-              <AlertTitle>Không thể cập nhật phiên</AlertTitle>
+              <AlertTitle>{runtimeAlert !== null ? "Runtime chưa sẵn sàng" : "Không thể cập nhật phiên"}</AlertTitle>
               <AlertDescription>{displayedSessionAlert}</AlertDescription>
             </Alert>
           )}
@@ -502,6 +531,10 @@ export default function App() {
                 citationPreviews={engine.citationPreviews}
                 model={engine.settings.config?.model ?? null}
                 connected={connected && !sessionChanging}
+                runtimeReady={runtimeReady}
+                runtimeReason={runtimeReason}
+                voiceReady={voiceReady}
+                voiceReason={voiceReason}
                 starting={starting}
                 onSend={(text) => void engine.send({ cmd: "chat", text })}
                 onCommand={(command) => {

@@ -62,6 +62,13 @@ export interface RuntimeProfile {
   voice: string | null;
 }
 
+export interface RuntimeComponent {
+  id: string;
+  label: string;
+  status: string;
+  detail: string | null;
+}
+
 export interface SettingsState {
   providers: Provider[];
   /** Keyed by provider; an empty array can be a valid empty catalog. */
@@ -72,6 +79,7 @@ export interface SettingsState {
   keyStatus: Record<string, KeyStatus>;
   config: LlmConfig | null;
   profiles: RuntimeProfile[];
+  runtimeComponents: RuntimeComponent[];
   activeProfile: string | null;
 }
 
@@ -83,6 +91,7 @@ export const initialSettings: SettingsState = {
   keyStatus: {},
   config: null,
   profiles: [],
+  runtimeComponents: [],
   activeProfile: null,
 };
 
@@ -169,6 +178,7 @@ export function reduceSettings(state: SettingsState, frame: EngineFrame): Settin
 
     case "status": {
       const raw = Array.isArray(frame.profiles) ? frame.profiles : [];
+      const rawComponents = Array.isArray(frame.runtime_components) ? frame.runtime_components : [];
       return {
         ...state,
         activeProfile: typeof frame.active_profile === "string" ? frame.active_profile : state.activeProfile,
@@ -181,6 +191,15 @@ export function reduceSettings(state: SettingsState, frame: EngineFrame): Settin
             llm: typeof profile.llm === "string" ? profile.llm : null,
             tts: typeof profile.tts === "string" ? profile.tts : null,
             voice: typeof profile.voice === "string" ? profile.voice : null,
+          };
+        }),
+        runtimeComponents: rawComponents.map((item) => {
+          const component = item as Record<string, unknown>;
+          return {
+            id: str(component.id),
+            label: str(component.label, str(component.name, "Runtime")),
+            status: str(component.status, "unknown"),
+            detail: typeof component.detail === "string" ? component.detail : null,
           };
         }),
       };

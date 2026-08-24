@@ -142,87 +142,20 @@
   --sidebar-ring: #e6c07b;
 }
 
-/* Fixed activity spheres: their colour is a secondary visual cue only. Every
-   use is paired with real status copy, so a reduced-motion or colour-blind
-   experience retains the same engine information. The independent triangle
-   intentionally avoids orbit lines, rings, halos and progress animation. */
+/* The voice orb reacts only to the engine-provided RMS level.  It never draws
+   a halo, ring, countdown or synthetic progress; reduced-motion users retain
+   the same textual state without movement. */
 @layer components {
-  .activity-orb {
-    --activity-orb-core: #b88325;
-    --activity-orb-highlight: #fff1bd;
-    --activity-orb-shadow: #5f4210;
-    --activity-orb-satellite: #6b5fa8;
-    position: relative;
-    display: inline-block;
-    width: var(--activity-orb-size);
-    height: var(--activity-orb-size);
-    flex: 0 0 var(--activity-orb-size);
-    vertical-align: middle;
+  .voice-orb-response {
+    transform: scale(calc(0.96 + var(--voice-level, 0) * 0.08));
+    transition: transform 100ms ease-out;
   }
 
-  .activity-orb[data-state="listening"] {
-    --activity-orb-core: #2f9c68;
-    --activity-orb-highlight: #b8f0cf;
-    --activity-orb-shadow: #125238;
-    --activity-orb-satellite: #e6c07b;
-  }
-
-  .activity-orb[data-state="searching"],
-  .activity-orb[data-state="working"] {
-    --activity-orb-core: #3f88a9;
-    --activity-orb-highlight: #c4eafd;
-    --activity-orb-shadow: #16475f;
-    --activity-orb-satellite: #8ac79a;
-  }
-
-  .activity-orb[data-state="connecting"],
-  .activity-orb[data-state="composing"] {
-    --activity-orb-core: #9a6bb9;
-    --activity-orb-highlight: #ead9ff;
-    --activity-orb-shadow: #492461;
-    --activity-orb-satellite: #e6c07b;
-  }
-
-  .activity-orb[data-state="shaping"],
-  .activity-orb[data-state="weaving"] {
-    --activity-orb-core: #bf7540;
-    --activity-orb-highlight: #ffddb2;
-    --activity-orb-shadow: #653316;
-    --activity-orb-satellite: #7fb3e8;
-  }
-
-  .activity-orb__sphere {
-    position: absolute;
-    display: block;
-    border-radius: 9999px;
-    background: var(--activity-orb-core);
-    box-shadow:
-      inset calc(var(--activity-orb-size) * -0.055) calc(var(--activity-orb-size) * -0.065) calc(var(--activity-orb-size) * 0.09) var(--activity-orb-highlight),
-      inset calc(var(--activity-orb-size) * 0.055) calc(var(--activity-orb-size) * 0.075) calc(var(--activity-orb-size) * 0.12) var(--activity-orb-shadow),
-      0 calc(var(--activity-orb-size) * 0.05) calc(var(--activity-orb-size) * 0.09) rgb(0 0 0 / 18%);
-  }
-
-  .activity-orb__sphere--primary {
-    bottom: 4%;
-    left: 4%;
-    width: 56%;
-    height: 56%;
-  }
-
-  .activity-orb__sphere--companion {
-    top: 4%;
-    right: 4%;
-    width: 42%;
-    height: 42%;
-    background: var(--activity-orb-satellite);
-  }
-
-  .activity-orb__sphere--accent {
-    right: 2%;
-    bottom: 2%;
-    width: 31%;
-    height: 31%;
-    background: color-mix(in srgb, var(--activity-orb-satellite) 72%, var(--activity-orb-highlight));
+  @media (prefers-reduced-motion: reduce) {
+    .voice-orb-response {
+      transform: none;
+      transition: none;
+    }
   }
 }
 

@@ -5,6 +5,10 @@ import path from "node:path";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
+const devEngineProgram =
+  process.platform === "win32"
+    ? path.resolve(__dirname, "..", ".venv", "Scripts", "soca.exe")
+    : path.resolve(__dirname, "..", ".venv", "bin", "soca");
 
 // https://vite.dev/config/
 export default defineConfig(async ({ command }) => ({
@@ -22,6 +26,10 @@ export default defineConfig(async ({ command }) => ({
     __SOCA_CHECKOUT_ROOT__: JSON.stringify(
       command === "serve" ? path.resolve(__dirname, "..") : "",
     ),
+    // Development must invoke the virtual environment belonging to this
+    // checkout. `soca` is not guaranteed to be on the GUI process PATH, and a
+    // global editable install can point at a different worktree.
+    __SOCA_DEV_ENGINE_PROGRAM__: JSON.stringify(command === "serve" ? devEngineProgram : ""),
   },
 
   build: {

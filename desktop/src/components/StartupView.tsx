@@ -13,10 +13,10 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { ActivityOrb } from "@/components/ActivityOrb";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { ThinkingOrb } from "thinking-orbs";
 
 interface StartupViewProps {
   /** Set while a launch is in flight. */
@@ -37,7 +37,7 @@ export function StartupView({ starting, problem, onStart }: StartupViewProps) {
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-6 px-6">
-      <ActivityOrb state={starting ? "connecting" : "breathing"} size={96} />
+      <ThinkingOrb state={starting ? "connecting" : "breathing"} size={64} aria-hidden />
 
       <div className="flex flex-col items-center gap-1 text-center">
         <h1 className="text-lg font-medium tracking-tight">

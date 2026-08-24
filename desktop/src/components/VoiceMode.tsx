@@ -1,9 +1,8 @@
 /** Voice capture with the same durable transcript as chat. */
 
 import { Activity, Mic, MicOff, MessageSquareText, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
-import { ActivityOrb } from "@/components/ActivityOrb";
 import { Button } from "@/components/ui/button";
 import { VoiceHud } from "@/components/VoiceHud";
 import { VoiceTranscript } from "@/components/VoiceTranscript";
@@ -11,8 +10,9 @@ import type { Citation, ConversationState, Turn } from "@/engine/conversation";
 import type { CitationPreviewIndex } from "@/engine/citation-preview";
 import { orbLabel, type OrbState } from "@/engine/orb";
 import type { VoiceState } from "@/engine/voice";
-import { partialText } from "@/engine/voice";
+import { partialText, peakLevel } from "@/engine/voice";
 import { cn } from "@/lib/utils";
+import { ThinkingOrb } from "thinking-orbs";
 
 interface VoiceModeProps {
   orbState: OrbState;
@@ -27,6 +27,11 @@ interface VoiceModeProps {
   onLeave: () => void;
   onLoadOlder: () => void;
   canLoadOlder: boolean;
+}
+
+/** Smooth the engine's real microphone RMS frames without fabricating progress. */
+function recentLevel(levels: number[]): number {
+  return peakLevel(levels.slice(-6));
 }
 
 /**
@@ -62,7 +67,7 @@ function LiveTurn({ voice, turn }: { voice: VoiceState; turn: Turn | null }) {
     return (
       <p className="max-w-2xl text-pretty text-center text-[17px] leading-8">
         {answer}
-        <span className="bg-primary ml-1 inline-block h-4 w-[2px] align-text-bottom" aria-hidden="true" />
+        <span className="bg-primary ml-1 inline-block h-4 w-[2px] animate-pulse align-text-bottom" aria-hidden="true" />
       </p>
     );
   }
@@ -121,6 +126,7 @@ export function VoiceMode({
   }, []);
 
   const running = voice.phase !== "off";
+  const level = running ? recentLevel(voice.levels) : 0;
 
   // The turn in progress stays centre stage; the transcript below shows only
   // what has finished. One turn, one place on screen at a time.
@@ -155,8 +161,15 @@ export function VoiceMode({
           historyVisible || detailsOpen ? "shrink-0 py-7" : "flex-1",
         )}
       >
-        <div className="relative flex size-36 shrink-0 items-center justify-center">
-          <ActivityOrb state={orbState} size={128} />
+        <div
+          className={cn(
+            "voice-orb-response relative flex shrink-0 items-center justify-center",
+            historyVisible || detailsOpen ? "size-32" : "size-48",
+          )}
+          style={{ "--voice-level": level } as CSSProperties}
+          data-testid="voice-activity"
+        >
+          <ThinkingOrb state={orbState} size={64} aria-hidden />
         </div>
 
         {/* Always rendered, transcript open or not. This is the live turn, and

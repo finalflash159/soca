@@ -144,4 +144,25 @@ describe("SettingsPanel remote configuration", () => {
     expect(screen.getByRole("alert").textContent).toMatch(/đang tải danh mục model/i);
     expect(screen.queryByText(/chưa tìm thấy model local/i)).toBeNull();
   });
+
+  it("shows each voice dependency instead of presenting an unavailable microphone as ready", () => {
+    renderPanel({
+      settings: {
+        ...initialSettings,
+        config: localConfig,
+        runtimeComponents: [
+          { id: "chat_llm", label: "Chat LLM", status: "ready", detail: "local · chat.gguf" },
+          { id: "voice_asr", label: "Voice ASR", status: "missing", detail: "qwen-asr" },
+          { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote · openrouter:gpt" },
+          { id: "tts", label: "TTS", status: "missing", detail: "valtec" },
+        ],
+      },
+    });
+
+    expect(screen.getByText("Sẵn sàng thoại")).toBeTruthy();
+    expect(screen.getByText("Voice ASR")).toBeTruthy();
+    expect(screen.getByText("qwen-asr")).toBeTruthy();
+    expect(screen.getByText("TTS")).toBeTruthy();
+    expect(screen.getByText("valtec")).toBeTruthy();
+  });
 });

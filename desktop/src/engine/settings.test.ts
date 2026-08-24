@@ -226,6 +226,27 @@ describe("runtime profiles", () => {
   });
 });
 
+describe("runtime components", () => {
+  it("preserves typed readiness details for the settings and voice entry gates", () => {
+    const state = fold([
+      {
+        event: "status",
+        runtime_components: [
+          { id: "chat_llm", label: "Chat LLM", status: "ready", detail: "remote · openrouter:gpt" },
+          { id: "voice_asr", label: "Voice ASR", status: "missing", detail: "qwen-asr" },
+          { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+        ],
+      } as EngineFrame,
+    ]);
+
+    expect(state.runtimeComponents).toEqual([
+      { id: "chat_llm", label: "Chat LLM", status: "ready", detail: "remote · openrouter:gpt" },
+      { id: "voice_asr", label: "Voice ASR", status: "missing", detail: "qwen-asr" },
+      { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+    ]);
+  });
+});
+
 describe("unknown frames", () => {
   it("are ignored", () => {
     expect(fold([{ event: "memory" } as EngineFrame])).toEqual(initialSettings);

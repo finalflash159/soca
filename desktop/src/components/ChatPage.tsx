@@ -7,7 +7,6 @@
  * component in both, so nothing about it can drift between the two.
  */
 
-import { ActivityOrb } from "@/components/ActivityOrb";
 import { ChatView } from "@/components/ChatView";
 import { Composer } from "@/components/Composer";
 import type { ConversationState } from "@/engine/conversation";
@@ -15,6 +14,7 @@ import type { Citation } from "@/engine/conversation";
 import type { CitationPreviewIndex } from "@/engine/citation-preview";
 import type { SlashCommand, VaultDocument } from "@/engine/documents";
 import { orbLabel, type OrbState } from "@/engine/orb";
+import { ThinkingOrb } from "thinking-orbs";
 
 interface ChatPageProps {
   orbState: OrbState;
@@ -22,6 +22,10 @@ interface ChatPageProps {
   documents: VaultDocument[];
   model: string | null;
   connected: boolean;
+  runtimeReady: boolean;
+  runtimeReason: string | null;
+  voiceReady: boolean;
+  voiceReason: string | null;
   starting: boolean;
   onSend: (text: string) => void;
   onCommand: (command: SlashCommand) => void;
@@ -54,6 +58,10 @@ export function ChatPage({
   documents,
   model,
   connected,
+  runtimeReady,
+  runtimeReason,
+  voiceReady,
+  voiceReason,
   starting,
   onSend,
   onCommand,
@@ -75,6 +83,10 @@ export function ChatPage({
   const composer = (
     <Composer
       connected={connected}
+      runtimeReady={runtimeReady}
+      runtimeReason={runtimeReason}
+      voiceReady={voiceReady}
+      voiceReason={voiceReason}
       starting={starting}
       documents={documents}
       model={model}
@@ -91,12 +103,17 @@ export function ChatPage({
       <div className="flex min-h-0 flex-1 flex-col items-center px-6 pt-[16vh]">
         <div className="flex w-full max-w-2xl flex-col gap-7">
           <h1 className="flex items-center justify-center gap-3 text-center text-3xl font-normal tracking-tight">
-            <ActivityOrb state={orbState} size={28} />
+            <ThinkingOrb state={orbState} size={20} aria-hidden />
             {greeting()}
           </h1>
           {composer}
           {busyOutsideTurn && (
             <p className="text-muted-foreground text-center text-xs">{orbLabel(orbState)}</p>
+          )}
+          {!runtimeReady && (
+            <p className="text-destructive text-center text-sm" role="alert">
+              {runtimeReason ?? "Chọn model trong Cài đặt để bắt đầu trò chuyện."}
+            </p>
           )}
         </div>
       </div>
@@ -124,7 +141,7 @@ export function ChatPage({
             here. A live turn shows its own orb in the transcript. */}
         {busyOutsideTurn && (
           <div className="text-muted-foreground mx-auto flex w-full max-w-2xl items-center gap-2 text-xs">
-            <ActivityOrb state={orbState} size={22} />
+            <ThinkingOrb state={orbState} size={20} aria-hidden />
             {orbLabel(orbState)}
           </div>
         )}

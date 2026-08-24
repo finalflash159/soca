@@ -55,6 +55,15 @@ async function renderReadyApp(): Promise<void> {
     no_model: true,
     stack: {},
   });
+  emit(EVENT_CHANNEL, {
+    event: "llm_config",
+    backend: "remote",
+    provider: "openrouter",
+    model: "openai/gpt-5",
+    runtime_ready: true,
+    runtime_reason: null,
+    settings_error: null,
+  });
   await waitFor(() => {
     expect((screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement).disabled).toBe(false);
   });
@@ -204,6 +213,27 @@ describe("desktop session lifecycle", () => {
         tauri.invoke.mock.calls.filter(([command]) => command === "engine_start"),
       ).toHaveLength(2);
     });
+  });
+
+  it("routes an unavailable voice runtime to its actionable settings instead of opening a dead microphone", async () => {
+    const user = userEvent.setup();
+    await renderReadyApp();
+    emit(EVENT_CHANNEL, {
+      event: "status",
+      runtime_components: [
+        { id: "voice_asr", label: "Voice ASR", status: "missing", detail: "qwen-asr" },
+        { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote · openrouter:gpt" },
+        { id: "tts", label: "TTS", status: "missing", detail: "valtec" },
+      ],
+    });
+
+    await user.click(screen.getByRole("button", { name: "Thiết lập thoại" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("Voice ASR: qwen-asr");
+      expect(screen.getByText("Sẵn sàng thoại")).not.toBeNull();
+    });
+    expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
   });
 
   it("loads older transcript pages with the engine's exclusive sequence boundary", async () => {

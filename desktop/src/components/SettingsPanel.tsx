@@ -129,6 +129,10 @@ export function SettingsPanel({
   // committing the backend so the selection cannot inherit a local GGUF id.
   const isRemote = config?.backend === "remote";
   const showRemoteSettings = isRemote || remoteSetup;
+  const chatComponent = settings.runtimeComponents.find((component) => component.id === "chat_llm");
+  const voiceComponents = settings.runtimeComponents.filter((component) =>
+    ["voice_asr", "voice_llm", "tts"].includes(component.id),
+  );
 
   // The callbacks arrive as fresh closures on every render. Depending on their
   // identity would re-run these effects each time, each run sending a command,
@@ -308,6 +312,22 @@ export function SettingsPanel({
                 {config.runtimeReason ?? config.settingsError ?? "Runtime chưa sẵn sàng."}
               </p>
             )}
+
+            <Field
+              label="Trạng thái runtime"
+              hint="Engine chỉ kiểm tra điều kiện khởi động ở đây; model được nạp khi bạn gửi lượt hoặc bật mic."
+            >
+              {chatComponent === undefined ? (
+                <p className="text-muted-foreground text-sm">Đang kiểm tra runtime…</p>
+              ) : (
+                <div className="border-border flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm">
+                  <Badge variant={["ready", "loaded"].includes(chatComponent.status) ? "secondary" : "outline"}>
+                    {chatComponent.status}
+                  </Badge>
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs">{chatComponent.detail ?? chatComponent.label}</span>
+                </div>
+              )}
+            </Field>
 
             <Field
               label="Nguồn"
@@ -609,6 +629,30 @@ export function SettingsPanel({
         title="Thoại"
         description="Mỗi profile là một bộ ASR, TTS và giọng đọc đi liền nhau."
       >
+        <Field
+          label="Sẵn sàng thoại"
+          hint="ASR nhận tiếng nói trên máy; LLM theo đúng model đang chọn; TTS đọc câu trả lời."
+        >
+          {voiceComponents.length === 0 ? (
+            <p className="text-muted-foreground text-sm">Đang kiểm tra ASR, LLM và TTS…</p>
+          ) : (
+            <ul className="border-border divide-border flex flex-col divide-y rounded-lg border">
+              {voiceComponents.map((component) => (
+                <li key={component.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+                  <Badge variant={["ready", "loaded", "configured"].includes(component.status) ? "secondary" : "outline"}>
+                    {component.status}
+                  </Badge>
+                  <div className="min-w-0 flex-1">
+                    <p>{component.label}</p>
+                    {component.detail !== null && (
+                      <p className="text-muted-foreground truncate font-mono text-[10px]">{component.detail}</p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Field>
         <Field
           label="Profile"
           hint="Đổi profile áp dụng cho lượt thoại tiếp theo, không cắt lượt đang chạy."

@@ -244,12 +244,14 @@ Non-knowledge citations are `unavailable` with
 
 ```json
 {"event":"status","active_profile":"baseline","profiles":[…],"knowledge_vault":…,"knowledge_index":…,
- "runtime_components":[{"name":…,"status":…}]}
+ "runtime_components":[{"id":…,"label":…,"status":…, "detail":…}]}
 ```
 
 `runtime_components` describes configured dependencies **without loading them** —
-readiness is inspected, not proven by instantiation. `knowledge_index` is `null`
-when no index exists (see [11 — index lifecycle](11-index-lifecycle.md)).
+readiness is inspected, not proven by instantiation. `id` is the stable machine
+identifier, while `label` and `detail` are user-facing diagnostic text; clients
+must keep the detail rather than infer readiness from a profile name.
+`knowledge_index` is `null` when no index exists (see [11 — index lifecycle](11-index-lifecycle.md)).
 `active_profile` is the profile that will handle the next voice turn.
 
 ### `context`
