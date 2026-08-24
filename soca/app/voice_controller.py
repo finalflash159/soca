@@ -561,15 +561,15 @@ class VoiceMonitorController:
                         tts_audio[chunk_index] = (event.audio, event.sample_rate)
                 elif event.type == "playback_started":
                     chunk_index = metadata.get("chunk_index")
-                    playback_audio = (
-                        tts_audio.pop(chunk_index, None) if isinstance(chunk_index, int) else None
-                    )
-                    if playback_audio is not None:
-                        playback_level_input = (
-                            playback_audio[0],
-                            playback_audio[1],
-                            chunk_index,
-                        )
+                    playback_chunk_index = int(chunk_index) if isinstance(chunk_index, int) else None
+                    if playback_chunk_index is not None:
+                        playback_audio = tts_audio.pop(playback_chunk_index, None)
+                        if playback_audio is not None:
+                            playback_level_input = (
+                                playback_audio[0],
+                                playback_audio[1],
+                                playback_chunk_index,
+                            )
                 elif event.type == "done":
                     if metadata.get("interrupted") and self._supports_barge_in:
                         queue.put(
