@@ -235,6 +235,7 @@ describe("desktop session lifecycle", () => {
         screen.getByText("Speech recognition needs setup."),
       ).not.toBeNull();
     });
+    expect(screen.getByTestId("voice-orb").getAttribute("data-orb-state")).toBe("solving");
     expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
 
     await user.click(screen.getByRole("button", { name: "Open Voice setup" }));

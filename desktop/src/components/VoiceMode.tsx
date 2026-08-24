@@ -135,6 +135,10 @@ export function VoiceMode({
 
   const running = voice.phase !== "off";
   const level = running ? recentLevel(voice.levels) : 0;
+  // `breathing` is intentionally a face-on ring. It reads as a generic
+  // spinner in the setup state, so use the product's established three-
+  // dimensional thinking treatment until Voice can be started.
+  const displayOrbState: OrbState = ready ? orbState : "solving";
 
   // The turn in progress stays centre stage; the transcript below shows only
   // what has finished. One turn, one place on screen at a time.
@@ -177,7 +181,13 @@ export function VoiceMode({
           style={{ "--voice-level": level } as CSSProperties}
           data-testid="voice-activity"
         >
-          <ThinkingOrb state={orbState} size={64} aria-hidden />
+          <ThinkingOrb
+            state={displayOrbState}
+            size={64}
+            aria-hidden
+            data-testid="voice-orb"
+            data-orb-state={displayOrbState}
+          />
         </div>
 
         {/* Always rendered, transcript open or not. This is the live turn, and
