@@ -146,6 +146,22 @@
    a halo, ring, countdown or synthetic progress; reduced-motion users retain
    the same textual state without movement. */
 @layer components {
+  .soca-scrollbar {
+    scrollbar-color: var(--border) transparent;
+    scrollbar-width: thin;
+  }
+
+  .soca-scrollbar::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .soca-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+  }
+
   .voice-orb-response {
     transform: scale(calc(0.96 + var(--voice-level, 0) * 0.08));
     transition: transform 100ms ease-out;

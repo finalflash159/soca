@@ -45,11 +45,9 @@ describe("compact Sidebar", () => {
         onNewConversation={vi.fn()}
         sessions={sessions}
         connected
-        starting={false}
         voiceRunning={false}
         sessionBusy={false}
         newConversationDisabled={false}
-        onRestartEngine={vi.fn()}
         onCollapse={onCollapse}
         onOpenSession={vi.fn()}
         onRenameSession={vi.fn()}

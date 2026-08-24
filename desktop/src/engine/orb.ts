@@ -255,22 +255,22 @@ export function orbStateFor(activity: OrbActivity): OrbState {
 export function orbLabel(state: OrbState): string {
   switch (state) {
     case "listening":
-      return "Đang nghe";
+      return "Listening";
     case "solving":
-      return "Đang tính";
+      return "Thinking";
     case "searching":
-      return "Đang tra cứu";
+      return "Searching";
     case "working":
-      return "Đang chạy công cụ";
+      return "Processing";
     case "connecting":
-      return "Đang gọi nhà cung cấp";
+      return "Connecting";
     case "composing":
-      return "Đang trả lời";
+      return "Responding";
     case "weaving":
-      return "Đang nén bộ nhớ";
+      return "Compacting memory";
     case "shaping":
-      return "Đang dựng chỉ mục";
+      return "Indexing";
     case "breathing":
-      return "Đang rảnh";
+      return "Idle";
   }
 }

@@ -231,7 +231,7 @@ describe("desktop session lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toContain("Voice ASR: qwen-asr");
-      expect(screen.getByText("Sẵn sàng thoại")).not.toBeNull();
+      expect(screen.getByText("Voice availability")).not.toBeNull();
     });
     expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
   });

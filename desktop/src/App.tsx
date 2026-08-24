@@ -469,12 +469,10 @@ export default function App() {
             }}
             onNewConversation={createSession}
             sessions={engine.sessionHistory}
-            connected={connected}
-            starting={starting}
             voiceRunning={voiceRunning}
+            connected={connected}
             sessionBusy={sessionBusy}
             newConversationDisabled={!connected || activeTurn || sessionChanging}
-            onRestartEngine={() => void restartEngine()}
             onCollapse={() => {
               setSidebarOpen(false);
               requestAnimationFrame(() => document.getElementById("open-sidebar")?.focus());
@@ -497,7 +495,6 @@ export default function App() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar
-          orbState={engine.orbState}
           sidebarOpen={sidebarOpen}
           onOpenSidebar={() => setSidebarOpen(true)}
           onToggleTheme={theme.toggle}
@@ -575,7 +572,7 @@ export default function App() {
           {page === "knowledge" && (
             <div className="min-h-0 flex-1 overflow-auto">
               <PageBody wide>
-                <PageHeader title="Kiến thức" description="Vault, chỉ mục truy xuất và bộ nhớ phiên." />
+                <PageHeader title="Kiến thức" description="Nguồn tài liệu, chỉ mục truy xuất và bộ nhớ phiên." />
                 <KnowledgePanel
                   knowledge={engine.knowledge}
                   connected={connected && !sessionChanging}

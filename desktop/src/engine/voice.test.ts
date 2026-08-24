@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import type { EngineFrame } from "./protocol";
-import { initialVoice, LEVEL_HISTORY, partialText, peakLevel, reduceVoice } from "./voice";
+import {
+  initialVoice,
+  LEVEL_HISTORY,
+  partialText,
+  peakLevel,
+  reduceVoice,
+  voicePhaseLabel,
+  type VoicePhase,
+} from "./voice";
 
 const voice = (type: string, extra: Record<string, unknown> = {}): EngineFrame =>
   ({ event: "voice", type, ...extra }) as EngineFrame;
@@ -39,6 +47,24 @@ describe("loop lifecycle", () => {
     const state = fold([voice("error", { text: "device gone" })]);
     expect(state.phase).toBe("off");
     expect(state.error).toBe("device gone");
+  });
+});
+
+describe("visible labels", () => {
+  it("uses consistent English names for every voice state", () => {
+    const labels: Record<VoicePhase, string> = {
+      off: "Off",
+      starting: "Starting",
+      idle: "Ready",
+      listening: "Listening",
+      transcribing: "Transcribing",
+      thinking: "Thinking",
+      speaking: "Speaking",
+    };
+
+    for (const [phase, label] of Object.entries(labels) as [VoicePhase, string][]) {
+      expect(voicePhaseLabel(phase)).toBe(label);
+    }
   });
 });
 

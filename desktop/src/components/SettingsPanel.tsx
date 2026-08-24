@@ -53,6 +53,19 @@ function reasoningHint(config: LlmConfig): string {
     : "Suy luận đang tắt cho các lượt mới.";
 }
 
+function profileName(profileKey: string): string {
+  switch (profileKey) {
+    case "baseline":
+      return "Standard (PhoWhisper)";
+    case "qwen-release":
+      return "Qwen ASR · release";
+    case "qwen-reference":
+      return "Qwen ASR · reference";
+    default:
+      return profileKey;
+  }
+}
+
 /** A row of mutually exclusive choices, styled as one control. */
 function Segmented<T extends string>({
   value,
@@ -133,6 +146,10 @@ export function SettingsPanel({
   const voiceComponents = settings.runtimeComponents.filter((component) =>
     ["voice_asr", "voice_llm", "tts"].includes(component.id),
   );
+  const voiceBlocker = voiceComponents.find(
+    (component) => !["ready", "loaded", "configured"].includes(component.status),
+  );
+  const voiceReady = voiceComponents.length === 3 && voiceBlocker === undefined;
 
   // The callbacks arrive as fresh closures on every render. Depending on their
   // identity would re-run these effects each time, each run sending a command,
@@ -307,34 +324,36 @@ export function SettingsPanel({
                 {generationError}
               </p>
             )}
-            {!config.runtimeReady && (
+            {config.settingsError !== null && (
               <p className="text-destructive text-sm" role="alert">
-                {config.runtimeReason ?? config.settingsError ?? "Runtime chưa sẵn sàng."}
+                {config.settingsError}
               </p>
             )}
 
             <Field
-              label="Trạng thái runtime"
-              hint="Engine chỉ kiểm tra điều kiện khởi động ở đây; model được nạp khi bạn gửi lượt hoặc bật mic."
+              label="Chat availability"
+              hint="This checks the selected chat route only. Voice prerequisites are shown separately below."
             >
-              {chatComponent === undefined ? (
-                <p className="text-muted-foreground text-sm">Đang kiểm tra runtime…</p>
-              ) : (
-                <div className="border-border flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm">
-                  <Badge variant={["ready", "loaded"].includes(chatComponent.status) ? "secondary" : "outline"}>
-                    {chatComponent.status}
-                  </Badge>
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs">{chatComponent.detail ?? chatComponent.label}</span>
-                </div>
-              )}
+              <div className="border-border flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm">
+                <Badge variant={config.runtimeReady ? "secondary" : "outline"}>
+                  {config.runtimeReady ? "Ready" : "Needs setup"}
+                </Badge>
+                <span className="min-w-0 flex-1 text-xs leading-5">
+                  {config.runtimeReady
+                    ? isRemote
+                      ? "Remote chat is configured."
+                      : "On-device chat model is available."
+                    : config.runtimeReason ?? chatComponent?.detail ?? "Waiting for engine status…"}
+                </span>
+              </div>
             </Field>
 
             <Field
-              label="Nguồn"
+              label="Runtime"
               hint={
                 isRemote
-                  ? "Gọi API bên ngoài. Câu hỏi rời khỏi máy này."
-                  : "Chạy trên máy này. Model chỉ nạp khi dùng lần đầu, không nạp lúc khởi động."
+                  ? "Remote API. Requests leave this device."
+                  : "On-device. The model loads only when you use it."
               }
             >
               <Segmented
@@ -351,17 +370,17 @@ export function SettingsPanel({
                   void runGeneration(() => onApplyGeneration({ backend: "local" }));
                 }}
                 options={[
-                  { value: "remote", label: "Từ xa" },
-                  { value: "local", label: "Máy này" },
+                  { value: "remote", label: "Remote" },
+                  { value: "local", label: "On-device" },
                 ]}
               />
             </Field>
 
             <Field
-              label="Model đang dùng"
+              label="Active model"
               hint={
                 isRemote
-                  ? `Qua ${config.provider} · cửa sổ ngữ cảnh ${config.contextLength ?? "—"}`
+                  ? `Context window: ${config.contextLength ?? "—"}`
                   : config.localModelPath === null
                     ? "Model local được chọn bởi profile đang hoạt động."
                     : `Tệp đang được kiểm tra: ${config.localModelPath}`
@@ -627,47 +646,44 @@ export function SettingsPanel({
       <Section
         icon={AudioLines}
         title="Thoại"
-        description="Mỗi profile là một bộ ASR, TTS và giọng đọc đi liền nhau."
+        description="Voice is independent from chat: it requires local ASR and TTS even when chat uses a remote model."
       >
         <Field
-          label="Sẵn sàng thoại"
-          hint="ASR nhận tiếng nói trên máy; LLM theo đúng model đang chọn; TTS đọc câu trả lời."
+          label="Voice availability"
+          hint="Audio is captured and played locally. A missing voice dependency never blocks remote chat."
         >
           {voiceComponents.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Đang kiểm tra ASR, LLM và TTS…</p>
+            <p className="text-muted-foreground text-sm">Checking voice dependencies…</p>
           ) : (
-            <ul className="border-border divide-border flex flex-col divide-y rounded-lg border">
-              {voiceComponents.map((component) => (
-                <li key={component.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
-                  <Badge variant={["ready", "loaded", "configured"].includes(component.status) ? "secondary" : "outline"}>
-                    {component.status}
-                  </Badge>
-                  <div className="min-w-0 flex-1">
-                    <p>{component.label}</p>
-                    {component.detail !== null && (
-                      <p className="text-muted-foreground truncate font-mono text-[10px]">{component.detail}</p>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <div className="border-border flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm">
+              <Badge variant={voiceReady ? "secondary" : "outline"}>
+                {voiceReady ? "Ready" : "Needs setup"}
+              </Badge>
+              <div className="min-w-0 flex-1 leading-5">
+                {voiceReady
+                  ? "ASR, voice model, and TTS are ready."
+                  : voiceBlocker === undefined
+                    ? "Waiting for the complete voice status…"
+                    : <><span className="font-medium">{voiceBlocker.label}</span>{": "}{voiceBlocker.detail ?? voiceBlocker.status}</>}
+              </div>
+            </div>
           )}
         </Field>
         <Field
-          label="Profile"
-          hint="Đổi profile áp dụng cho lượt thoại tiếp theo, không cắt lượt đang chạy."
+          label="Voice profile"
+          hint="The selected profile applies to the next voice session; changing it never interrupts an active call."
         >
           {settings.profiles.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Bấm “Tải lại” ở trên để nạp profile.</p>
+            <p className="text-muted-foreground text-sm">Refresh settings to load voice profiles.</p>
           ) : (
             <ul className="border-border divide-border flex flex-col divide-y rounded-lg border">
               {settings.profiles.map((profile) => (
                 <li key={profile.key} className="flex items-center gap-3 px-3 py-2.5 text-sm">
                   <Badge variant={settings.activeProfile === profile.key ? "secondary" : "outline"}>
-                    {settings.activeProfile === profile.key ? "đang dùng" : profile.status}
+                    {settings.activeProfile === profile.key ? "Active" : profile.status}
                   </Badge>
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate font-mono text-xs">{profile.key}</span>
+                    <span className="truncate text-sm font-medium">{profileName(profile.key)}</span>
                     <span className="text-muted-foreground truncate font-mono text-[10px]">
                       {[profile.asr, profile.tts, profile.voice].filter(Boolean).join(" · ")}
                     </span>
@@ -682,7 +698,7 @@ export function SettingsPanel({
                         if (!(await onSelectProfile(profile.key))) setProfilePending(null);
                       }}
                     >
-                      {profilePending === profile.key ? "Đang áp dụng…" : "Dùng"}
+                      {profilePending === profile.key ? "Applying…" : "Use"}
                     </Button>
                   )}
                 </li>

@@ -74,6 +74,10 @@ jobs:
       - name: Run desktop unit suite
         run: npm test --prefix desktop
       - name: Build native installer with its bundled Python runtime
+        env:
+          # `linuxdeploy` is itself an AppImage.  Explicit extraction keeps
+          # packaging independent of the runner's FUSE setup.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
         run: npm run tauri:build --prefix desktop -- --bundles ${{ matrix.bundles }}
       - name: Prove frozen sidecar migration and persistence outside the checkout
         shell: bash

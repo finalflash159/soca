@@ -220,19 +220,19 @@ export function reduceVoice(state: VoiceState, frame: EngineFrame): VoiceState {
 export function voicePhaseLabel(phase: VoicePhase): string {
   switch (phase) {
     case "off":
-      return "Đã tắt";
+      return "Off";
     case "starting":
-      return "Đang nạp mô hình";
+      return "Starting";
     case "idle":
-      return "Đang chờ";
+      return "Ready";
     case "listening":
-      return "Đang nghe";
+      return "Listening";
     case "transcribing":
-      return "Đang nhận dạng";
+      return "Transcribing";
     case "thinking":
-      return "Đang nghĩ";
+      return "Thinking";
     case "speaking":
-      return "Đang nói";
+      return "Speaking";
   }
 }
 

@@ -137,11 +137,9 @@ export function VoiceMode({
   const historyVisible = transcriptOpen && !detailsOpen;
 
   const status = !running
-    ? "Đang tắt mic"
+    ? "Microphone off"
     : voice.phase === "starting"
-      ? // Measured at 9.2 s on this machine. Saying so beats a resting orb
-        // that reads as "ready" while the microphone is not open yet.
-        "Đang nạp mô hình giọng nói…"
+      ? "Preparing voice runtime…"
       : orbLabel(orbState);
 
   return (

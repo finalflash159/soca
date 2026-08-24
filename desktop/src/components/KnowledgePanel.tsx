@@ -1,24 +1,4 @@
-/**
- * Knowledge: the vault, its index, session memory, and the last retrieval.
- *
- * Rebuilt after four defects that all had the same shape — the engine reported
- * something and the client threw it away, so the screen showed less than was
- * known and offered actions that made no sense:
- *
- * 1. `status.knowledge_vault` is an object, and the reducer tested it with
- *    `typeof … === "string"`. The path never matched, so the panel claimed
- *    there was no vault while the engine was naming one.
- * 2. `initialized` was never read, so **Init was offered on an already
- *    initialised vault** — a button that recreates a scaffold that exists.
- * 3. `documents`, `chunks`, `sparse_state` and `dense_state` were reduced to
- *    one boolean, so a built index could only ever say "present".
- * 4. Build progress — phase and per-chunk counters, emitted on every step — was
- *    dropped, so an index build looked frozen for its whole duration.
- *
- * Ordering follows what a person asks, not how the engine is built: where are
- * my documents, are they searchable, what does the assistant remember, and only
- * then what did the last turn actually retrieve.
- */
+/** Knowledge source, retrieval index, session memory, and last retrieval. */
 
 import { BookOpen, Database, FolderOpen, Search } from "lucide-react";
 
@@ -108,14 +88,14 @@ function VaultSection({
   return (
     <Section
       icon={FolderOpen}
-      title="Vault"
-      description="Thư mục markdown mà trợ lý được phép đọc."
+      title="Knowledge source"
+      description="Markdown files SoCa may retrieve from."
       actions={
         // Init only when there is something to initialise. Offering it on a
         // ready vault is what made the button unexplainable.
         !initialized ? (
           <Button size="sm" disabled={!connected || running} onClick={onInit}>
-            Tạo vault
+            Create structure
           </Button>
         ) : null
       }
@@ -124,16 +104,14 @@ function VaultSection({
         <p className="text-muted-foreground text-sm">Chưa nhận được trạng thái vault từ engine.</p>
       ) : (
         <div className="flex flex-col gap-3">
-          <Field label="Đường dẫn">
+          <Field label="Source folder">
             <div className="border-border bg-muted/40 flex h-10 items-center rounded-lg border px-3">
               <span className="truncate font-mono text-xs">{vault.path}</span>
             </div>
           </Field>
           {!initialized && (
             <p className="text-muted-foreground text-sm leading-6">
-              Thư mục này chưa có cấu trúc vault. “Tạo vault” dựng thư mục{" "}
-              <code className="bg-secondary rounded px-1 py-0.5 font-mono text-xs">wiki/</code> và
-              các file mẫu; nó không xoá gì sẵn có. Phải làm bước này trước khi dựng chỉ mục.
+              Create the folder structure before indexing. Existing files are kept.
             </p>
           )}
         </div>

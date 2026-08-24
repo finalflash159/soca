@@ -286,7 +286,7 @@ export function SessionList({
         empty
       ) : (
         <>
-          <ul className="flex max-h-64 flex-col gap-0.5 overflow-y-auto" aria-label="Danh sách phiên đã lưu">
+          <ul className="soca-scrollbar flex max-h-64 flex-col gap-0.5 overflow-y-auto" aria-label="Danh sách phiên đã lưu">
             {history.sessions.map((session) => (
               <SessionRow
                 key={session.sessionId}
