@@ -972,7 +972,12 @@ class IndexCatalog:
         finally:
             connection.close()
 
-    def inspect(self, spec: CorpusSpec) -> dict[str, object]:
+    def inspect(
+        self,
+        spec: CorpusSpec,
+        *,
+        embedding_fingerprint: EmbeddingFingerprint | None = None,
+    ) -> dict[str, object]:
         identity = spec.corpus_identity
         connection = self._connect()
         try:
@@ -1017,7 +1022,9 @@ class IndexCatalog:
                 )
             ]
             return {
-                "status": self.status(spec).as_dict(),
+                "status": self.status(
+                    spec, embedding_fingerprint=embedding_fingerprint
+                ).as_dict(),
                 "pointers": pointers,
                 "generations": generations,
                 "jobs": jobs,

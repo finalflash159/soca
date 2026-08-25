@@ -51,15 +51,83 @@
       }
     }
   },
+  "operational_asr_studies": {
+    "raw_artifact_root": "eval/results/qwen_asr_operational/20260825T080000Z (local, gitignored)",
+    "qwen3_asr_0_6b": {
+      "status": "pass",
+      "start_stop_cycles": 20,
+      "start_stop_failures": 0,
+      "startup_ms_median": 3786.1866,
+      "startup_ms_p95": 4358.5631,
+      "cold_inference_wall_ms_p95": 693.2801,
+      "partial_wall_ms_p95": 1030.265,
+      "partial_repeat_consistency_rate": 1.0,
+      "orphan_process_count": 0,
+      "fallback_attempt_count": 0,
+      "typed_crash_failure": "QwenServiceCrashed"
+    },
+    "qwen3_asr_1_7b": {
+      "status": "pass",
+      "start_stop_cycles": 20,
+      "start_stop_failures": 0,
+      "startup_ms_median": 4329.6502,
+      "startup_ms_p95": 4892.7587,
+      "cold_inference_wall_ms_p95": 1045.1901,
+      "partial_wall_ms_p95": 1690.1112,
+      "partial_repeat_consistency_rate": 1.0,
+      "orphan_process_count": 0,
+      "fallback_attempt_count": 0,
+      "typed_crash_failure": "QwenServiceCrashed"
+    }
+  },
+  "packaged_desktop": {
+    "macos_bundle": "desktop/src-tauri/target/release/bundle/macos/SoCa.app",
+    "sidecar_storage_verifier": "pass",
+    "codesign_verify_deep_strict": "pass",
+    "frozen_runtime_flow": {
+      "status": "pass",
+      "recorded_at": "2026-08-26",
+      "scope": "sanitized local artifact verification",
+      "runtime_components": {
+        "qwen_asr_release": "provisioned",
+        "voice_asr": "ok",
+        "tts": "ready",
+        "embedding": "ready"
+      },
+      "vault": {
+        "documents": 51,
+        "chunks": 335,
+        "dense_state": "ready"
+      },
+      "session": {
+        "persistence": "local_resumable",
+        "create_receipt": "completed",
+        "list_receipt": "completed"
+      },
+      "sidecar_exit_code": 0,
+      "orphan_process_count_after_shutdown": 0,
+      "transcripts_or_private_vault_content_recorded": false
+    },
+    "remote_route_observation": {
+      "status": "blocked_by_explicit_data_policy",
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash-vision-exp",
+      "data_collection": "deny",
+      "fallback_attempted": false,
+      "prompt_or_transcript_recorded": false
+    }
+  },
   "decision": {
     "confidence_calibration": "qualified_for_the_exact_runtime_identity",
     "desktop_voice_readiness": "unblocked_for_qwen_calibration",
-    "release_operational_studies": "incomplete",
+    "quality_gates": "pass",
+    "operational_asr_studies": "pass",
+    "automated_quality_gates": "pass",
+    "release_operational_studies": "pending_full_remote_voice_trajectory",
+    "release_qualification": "not_qualified",
     "remaining_evidence": [
-      "partial_stability_and_latency",
-      "cold_start_and_resource_repetitions",
-      "real_failure_and_start_stop_stress",
-      "full_voice_remote_llm_tts_trajectory"
+      "operator-approved remote data-collection policy selection for the configured provider/model",
+      "full microphone-to-ASR-to-remote-LLM-to-TTS trajectory after that explicit selection"
     ],
     "no_silent_fallback": true
   }

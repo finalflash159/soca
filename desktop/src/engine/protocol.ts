@@ -33,6 +33,7 @@ export type EngineCommand =
   | { cmd: "voice_stop" }
   | { cmd: "voice_profile_select"; [key: string]: unknown }
   | { cmd: "knowledge_init" }
+  | { cmd: "knowledge_model_install" }
   | { cmd: "knowledge_index" }
   | {
       cmd: "citation_preview";
@@ -263,7 +264,7 @@ export interface KnowledgeSetupFrame {
    * These were missing from this type, so the client had no way to render a
    * build and showed a single unchanging line for its whole duration.
    */
-  phase?: "scanning" | "chunking" | "embedding" | "persisting" | "verifying" | "complete";
+  phase?: "downloading" | "scanning" | "chunking" | "embedding" | "persisting" | "verifying" | "complete" | "failed";
   completed_chunks?: number;
   total_chunks?: number;
   reused_chunks?: number;
@@ -282,6 +283,7 @@ export interface LlmConfigFrame {
   effective_max_tokens: number;
   effective_reasoning_enabled: boolean;
   reasoning_mandatory: boolean;
+  remote_data_collection?: "deny" | "allow";
   runtime_ready: boolean;
   /** Whether the engine is still resolving a route, has a usable route, or is blocked. */
   runtime_state?: "checking" | "ready" | "blocked";

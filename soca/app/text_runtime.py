@@ -433,6 +433,7 @@ def build_text_runtime(
         mode=cast(ToolRouterMode, config.tool_router_mode),
         response_mode=cast(RouterResponseMode, config.tool_router_response_mode),
         max_tokens=selected_settings.effective_max_tokens,
+        zero_data_retention=selected_settings.remote_data_collection == "deny",
         semantic=SemanticRouterConfig(
             enabled=config.semantic_router_enabled,
             threshold=config.semantic_router_threshold,

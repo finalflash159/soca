@@ -46,6 +46,8 @@ export interface LlmConfig {
   effectiveReasoningEnabled: boolean;
   reasoningSupported: boolean;
   reasoningMandatory: boolean;
+  /** Absent only in a frame from an older engine; strict is the safe default. */
+  remoteDataCollection?: "deny" | "allow";
   contextLength: number | null;
   runtimeReady: boolean;
   /** Typed engine lifecycle state; never infer control flow from diagnostic copy. */
@@ -199,6 +201,8 @@ export function reduceSettings(state: SettingsState, frame: EngineFrame): Settin
           effectiveReasoningEnabled: frame.effective_reasoning_enabled === true,
           reasoningSupported: frame.reasoning_supported === true,
           reasoningMandatory: frame.reasoning_mandatory === true,
+          remoteDataCollection:
+            frame.remote_data_collection === "allow" ? "allow" : "deny",
           contextLength: numOrNull(frame.context_length),
           runtimeReady,
           runtimeState,

@@ -72,7 +72,7 @@ from soca.knowledge.citation_preview import preview_vault_citation
 from soca.knowledge.index.persistence import default_index_home
 from soca.knowledge.indexing.coordinator import IndexBuildProgress, IndexCoordinator
 from soca.knowledge.indexing.identity import CorpusSpec
-from soca.knowledge.indexing.models import load_model
+from soca.knowledge.indexing.models import install_model, load_model
 from soca.knowledge.markdown_vault import MarkdownVaultKnowledgeSource
 from soca.knowledge.vault import init_knowledge_vault
 from soca.llm.factory import DEFAULT_LLM_ENGINE_FACTORY, EngineBuilder
@@ -382,6 +382,10 @@ class SocaEngine:
         self._catalog_failures: dict[str, tuple[str, str]] = {}
         self._catalog_inflight: set[tuple[str, str]] = set()
         self._catalog_threads: set[threading.Thread] = set()
+        # A model catalog cannot prove that the provider can satisfy the
+        # selected per-request data policy.  Remember a typed observed failure
+        # for this engine lifetime so a failed route is never rendered as ready.
+        self._remote_route_failures: dict[tuple[str, str, str], str] = {}
         self._key_validation_tokens: dict[str, str] = {}
         self._knowledge_job_lock = threading.Lock()
         self._knowledge_job_thread: threading.Thread | None = None
@@ -507,6 +511,8 @@ class SocaEngine:
             self._cmd_voice_profile_select(command)
         elif cmd == "knowledge_init":
             self._cmd_knowledge_init()
+        elif cmd == "knowledge_model_install":
+            self._cmd_knowledge_model_install()
         elif cmd == "knowledge_index":
             self._cmd_knowledge_index()
         elif cmd == "citation_preview":
@@ -957,6 +963,84 @@ class SocaEngine:
             **extra,
         )
         self._cmd_status()
+
+    def _cmd_knowledge_model_install(self) -> None:
+        """Provision the pinned retrieval model without blocking the protocol loop.
+
+        The public model is intentionally not hidden inside the desktop bundle.
+        This command is the explicit, observable setup step that replaces an
+        unusable terminal instruction in the desktop-only flow.
+        """
+        if not self._knowledge_job_lock.acquire(blocking=False):
+            self._emit_knowledge_setup(
+                "model",
+                "busy",
+                "Một tác vụ Vault khác đang chạy.",
+                error_code="knowledge_setup_busy",
+            )
+            return
+
+        lock_guard = threading.Lock()
+        lock_released = False
+
+        def release_job_lock() -> None:
+            nonlocal lock_released
+            with lock_guard:
+                if lock_released:
+                    return
+                lock_released = True
+                self._knowledge_job_lock.release()
+
+        def run() -> None:
+            try:
+                self._emit_knowledge_setup(
+                    "model",
+                    "running",
+                    "Đang tải retrieval model. Thời lượng phụ thuộc đường truyền và upstream.",
+                    phase="downloading",
+                )
+                install_model("aiteamvn-v2")
+                self._emit_knowledge_setup(
+                    "model",
+                    "ready",
+                    "Retrieval model đã sẵn sàng. Bây giờ có thể dựng chỉ mục.",
+                    phase="complete",
+                )
+                self._cmd_status()
+            except ImportError as exc:
+                self._emit_knowledge_setup(
+                    "model",
+                    "failed",
+                    str(exc),
+                    error_code="embedding_dependency_missing",
+                    phase="failed",
+                )
+            except (OSError, RuntimeError, ValueError) as exc:
+                self._emit_knowledge_setup(
+                    "model",
+                    "failed",
+                    str(exc),
+                    error_code="knowledge_model_install_failed",
+                    phase="failed",
+                )
+            finally:
+                release_job_lock()
+                self._knowledge_job_thread = None
+
+        thread = threading.Thread(target=run, daemon=True, name="soca-knowledge-model-install")
+        self._knowledge_job_thread = thread
+        try:
+            thread.start()
+        except Exception as exc:  # noqa: BLE001 - release the acquired job lock
+            self._knowledge_job_thread = None
+            release_job_lock()
+            self._emit_knowledge_setup(
+                "model",
+                "failed",
+                f"Không thể khởi động worker tải model: {exc}",
+                error_code="knowledge_model_install_start_failed",
+                phase="failed",
+            )
 
     def _cmd_knowledge_index(self) -> None:
         vault = self.text_config.vault
@@ -1521,11 +1605,17 @@ class SocaEngine:
             return
         max_tokens = command.get("max_tokens", self.llm_settings.max_tokens)
         reasoning_enabled = command.get("reasoning_enabled", self.llm_settings.reasoning_enabled)
+        remote_data_collection = command.get(
+            "remote_data_collection", self.llm_settings.remote_data_collection
+        )
         if isinstance(max_tokens, bool) or not isinstance(max_tokens, int):
             self._error("Max output tokens phải là số nguyên.")
             return
         if not isinstance(reasoning_enabled, bool):
             self._error("Reasoning phải là true hoặc false.")
+            return
+        if remote_data_collection not in {"deny", "allow"}:
+            self._error("Chính sách dữ liệu remote phải là deny hoặc allow.")
             return
         model_info = None
         if backend == "remote":
@@ -1568,6 +1658,7 @@ class SocaEngine:
                 model_reasoning_parameter=(
                     model_info.reasoning_parameter if model_info is not None else None
                 ),
+                remote_data_collection=remote_data_collection,
             )
         except ValueError as exc:
             self._error(str(exc))
@@ -1584,6 +1675,10 @@ class SocaEngine:
             self._error(str(exc))
             return
         self.llm_settings = settings
+        self._remote_route_failures.pop(
+            (settings.provider_key, settings.model_id, settings.remote_data_collection),
+            None,
+        )
         self._settings_error = None
         self._invalidate_voice_runtime()
         self._last_prompt_manifest = None
@@ -1621,6 +1716,7 @@ class SocaEngine:
             "reasoning_mandatory": settings.model_reasoning_mandatory,
             "temperature": settings.temperature,
             "top_p": settings.top_p,
+            "remote_data_collection": settings.remote_data_collection,
             "pricing_as_of": PRICING_TABLE_AS_OF,
             "pricing": active_model,
             "context_length": self._model_context_length(),
@@ -1668,6 +1764,11 @@ class SocaEngine:
                     f"Model '{settings.model_id}' không có trong danh mục hiện tại của {provider.label}.",
                     None,
                 )
+            observed_failure = self._remote_route_failures.get(
+                (settings.provider_key, settings.model_id, settings.remote_data_collection)
+            )
+            if observed_failure is not None:
+                return False, observed_failure, None
             return True, None, None
         if self.no_model:
             return False, "Engine đang chạy với --no-model.", None
@@ -1692,6 +1793,37 @@ class SocaEngine:
         if catalog is None:
             return None
         return next((model for model in catalog if model.id == settings.model_id), None)
+
+    def _record_remote_route_failure(self, result: Any) -> None:
+        """Remember an observed policy-specific remote route failure.
+
+        The model catalog can prove an id exists, not that an endpoint can
+        serve the selected request constraints.  Only cache the exact typed
+        404 emitted under the strict data policy; all other failures remain
+        per-turn outcomes so a transient provider incident does not lock the
+        user out of a healthy route.
+        """
+
+        settings = self.llm_settings
+        if settings.backend != "remote" or settings.remote_data_collection != "deny":
+            return
+        trace = getattr(result, "trace", None)
+        error = getattr(trace, "llm_error", None)
+        if not isinstance(error, dict) or error.get("category") != "model":
+            return
+        provider = error.get("provider")
+        model = error.get("model")
+        message = error.get("message")
+        if (
+            provider != settings.provider_key
+            or model != settings.model_id
+            or not isinstance(message, str)
+            or not message.strip()
+        ):
+            return
+        self._remote_route_failures[
+            (settings.provider_key, settings.model_id, settings.remote_data_collection)
+        ] = message
 
     def _remote_model_info(
         self,
@@ -2519,6 +2651,7 @@ class SocaEngine:
                 if callable(progress_setter):
                     progress_setter(None)
             usage = TurnUsage.from_runtime_result(result)
+            self._record_remote_route_failure(result)
             self._track_usage(usage)
             settled_text = answer_text_without_citation_labels(
                 result.response_text,
@@ -2554,6 +2687,7 @@ class SocaEngine:
                     "llm_error": (dict(result.trace.llm_error) if result.trace is not None else {}),
                 }
             )
+            self._emit_llm_config()
             terminal_emitted = True
             self._emit_turn_progress(
                 "chat",

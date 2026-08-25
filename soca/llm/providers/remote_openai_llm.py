@@ -69,6 +69,7 @@ class RemoteOpenAILLM:
         reasoning_enabled: bool | None = None,
         reasoning_parameter: ReasoningParameter | None = None,
         max_output_tokens: int | None = None,
+        zero_data_retention: bool = True,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -80,12 +81,15 @@ class RemoteOpenAILLM:
             raise ValueError("max_retries must be non-negative")
         if max_output_tokens is not None and max_output_tokens <= 0:
             raise ValueError("max_output_tokens must be positive")
+        if not isinstance(zero_data_retention, bool):
+            raise ValueError("zero_data_retention must be a boolean")
 
         self.provider = provider
         self.model = model
         self.reasoning_enabled: bool | None = reasoning_enabled
         self.reasoning_parameter: ReasoningParameter | None = reasoning_parameter
         self.max_output_tokens = max_output_tokens
+        self.zero_data_retention = zero_data_retention
         self._adapter = ProviderRequestAdapter(provider)
         self._policy = RetryPolicy(max_attempts=max_retries + 1, deadline_s=timeout)
         self._sleep = sleep
@@ -328,7 +332,7 @@ class RemoteOpenAILLM:
         temperature: float = 0.0,
         top_p: float = 1.0,
         inject_persona: bool = False,
-        zero_data_retention: bool = True,
+        zero_data_retention: bool | None = None,
     ) -> LLMResult:
         self._validate_generation_args(user_msg, max_tokens, temperature, top_p)
         if not schema_name.strip():
@@ -337,9 +341,16 @@ class RemoteOpenAILLM:
             raise ValueError("structured output schema is invalid")
         effective = self._effective_max_tokens(max_tokens)
         messages = build_remote_messages(user_msg, inject_persona)
+        effective_zero_data_retention = (
+            self.zero_data_retention
+            if zero_data_retention is None
+            else zero_data_retention
+        )
         options = self._adapter.merge_options(
             self._request_options(effective),
-            self._adapter.structured_options(zero_data_retention=zero_data_retention),
+            self._adapter.structured_options(
+                zero_data_retention=effective_zero_data_retention
+            ),
         )
         request = {
             "model": self.model,
@@ -357,13 +368,35 @@ class RemoteOpenAILLM:
             },
             **options,
         }
-        return self._create_non_streaming_result(
-            messages,
-            request,
-            requested_max_tokens=max_tokens,
-            effective_max_tokens=effective,
-            operation="generate_structured",
-        )
+        try:
+            return self._create_non_streaming_result(
+                messages,
+                request,
+                requested_max_tokens=max_tokens,
+                effective_max_tokens=effective,
+                operation="generate_structured",
+            )
+        except RemoteLLMError as error:
+            # A catalog entry only establishes that a model exists.  OpenRouter
+            # can still reject a structured request when no endpoint satisfies
+            # the explicit no-data-collection route.  Keep the original typed
+            # failure and model/provider provenance, but give the caller an
+            # actionable explanation instead of incorrectly calling the model
+            # missing.
+            if (
+                effective_zero_data_retention
+                and error.category == RemoteFailureKind.MODEL
+                and self.provider.supports_zero_data_retention_routing
+            ):
+                raise replace_remote_error(
+                    error,
+                    message=(
+                        f"{self.provider.label} không có endpoint phù hợp với chính sách "
+                        "không cho nhà cung cấp thu thập dữ liệu của model đã chọn."
+                    ),
+                    retryable=False,
+                ) from error
+            raise
 
     def generate_stream(
         self,

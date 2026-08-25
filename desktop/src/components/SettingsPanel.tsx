@@ -38,6 +38,7 @@ interface SettingsPanelProps {
     model?: string;
     maxTokens?: number;
     reasoningEnabled?: boolean;
+    remoteDataCollection?: "deny" | "allow";
   }) => Promise<boolean>;
   modelRoot: { path: string; source: "managed" | "external" } | null;
   /** Returns an error message instead of hiding a failed native configuration change. */
@@ -216,6 +217,7 @@ export function SettingsPanel({
   // backend. During an explicit Local → Remote setup, show the controls before
   // committing the backend so the selection cannot inherit a local GGUF id.
   const isRemote = config?.backend === "remote";
+  const remoteDataCollection = config?.remoteDataCollection ?? "deny";
   const showRemoteSettings = isRemote || remoteSetup;
   const chatComponent = settings.runtimeComponents.find((component) => component.id === "chat_llm");
   const voiceComponents = settings.runtimeComponents.filter((component) =>
@@ -489,7 +491,7 @@ export function SettingsPanel({
                     ? "Đang xác minh model chat đã chọn."
                     : config.runtimeReady
                     ? isRemote
-                      ? "Remote chat is configured."
+                      ? "Remote chat đã được cấu hình. Route sẽ được xác nhận trong lượt chạy đầu tiên."
                       : "On-device chat model is available."
                     : chatSetupMessage(config)}
                   {!config.runtimeReady && runtimeState !== "checking" &&
@@ -549,6 +551,29 @@ export function SettingsPanel({
                 </span>
               </div>
             </Field>
+
+            {isRemote && (
+              <Field
+                label="Dữ liệu gửi tới provider"
+                hint={
+                  remoteDataCollection === "deny"
+                    ? "Chỉ dùng endpoint không thu thập dữ liệu. Nếu model không có endpoint phù hợp, SoCa dừng rõ ràng thay vì tự đổi route."
+                    : "Provider có thể xử lý dữ liệu theo chính sách riêng. Chỉ chọn khi bạn đồng ý với chính sách đó."
+                }
+              >
+                <Segmented
+                  value={remoteDataCollection}
+                  disabled={!connected || generationPending}
+                  onChange={(remoteDataCollection) =>
+                    void runGeneration(() => onApplyGeneration({ remoteDataCollection }))
+                  }
+                  options={[
+                    { value: "deny", label: "Không thu thập" },
+                    { value: "allow", label: "Theo provider" },
+                  ]}
+                />
+              </Field>
+            )}
 
             <Field
               label="Thư mục model Voice và On-device"

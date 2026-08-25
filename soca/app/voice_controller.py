@@ -151,6 +151,7 @@ class VoiceMonitorController:
         warmup: bool = True,
         session_memory: SessionMemory | None = None,
         repair_timings: RepairTimings | None = None,
+        clock: Callable[[], float] = time.perf_counter,
     ) -> None:
         self.config = config
         self.runtime_builder = runtime_builder
@@ -159,6 +160,10 @@ class VoiceMonitorController:
         self.warmup = warmup
         self.session_memory = session_memory
         self.repair_timings = repair_timings or RepairTimings()
+        # The silence policy needs a controllable monotonic clock for deterministic
+        # scheduling tests. Playback envelopes deliberately keep using the real
+        # clock above: a simulated policy clock must never stall their thread.
+        self._clock = clock
         self.repair_catalog = default_repair_catalog()
         self.bundle: VoiceRuntimeBundle | None = None
         self._warmed_up = False
@@ -630,7 +635,7 @@ class VoiceMonitorController:
 
     def _ensure_idle_clock(self) -> None:
         if self._idle_started_at is None:
-            self._idle_started_at = time.perf_counter()
+            self._idle_started_at = self._clock()
 
     def _mark_user_spoke(self) -> None:
         # A real turn clears the silence clock and the call-out counter.
@@ -639,7 +644,7 @@ class VoiceMonitorController:
 
     def _mark_idle_from_done_event(self, event: StreamingEvent) -> None:
         # SoCa finished talking — start counting silence from now.
-        self._idle_started_at = time.perf_counter()
+        self._idle_started_at = self._clock()
 
     def _handle_passive_silence(
         self,
@@ -649,8 +654,8 @@ class VoiceMonitorController:
         stop_event: Event | None,
     ) -> None:
         if self._idle_started_at is None:
-            self._idle_started_at = time.perf_counter()
-        silence_ms = (time.perf_counter() - self._idle_started_at) * 1000
+            self._idle_started_at = self._clock()
+        silence_ms = (self._clock() - self._idle_started_at) * 1000
 
         max_callouts = self.repair_timings.max_followups
         if self._silence_callouts_done >= max_callouts:

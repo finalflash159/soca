@@ -666,6 +666,7 @@ export default function App() {
                     knowledge={engine.knowledge}
                     connected={connected && !sessionChanging}
                     onInit={() => void engine.send({ cmd: "knowledge_init" })}
+                    onInstallModel={() => void engine.send({ cmd: "knowledge_model_install" })}
                     onIndex={() => void engine.send({ cmd: "knowledge_index" })}
                     onRefreshMemory={() => {
                       void engine.send({ cmd: "memory" });
@@ -739,6 +740,7 @@ export default function App() {
                         model: modelId,
                         max_tokens: engine.settings.config?.maxTokens ?? 4096,
                         reasoning_enabled: engine.settings.config?.reasoningEnabled ?? false,
+                        remote_data_collection: engine.settings.config?.remoteDataCollection ?? "deny",
                       })
                     }
                     onSelectProfile={(profileKey) => engine.send({ cmd: "voice_profile_select", profile: profileKey })}
@@ -754,6 +756,8 @@ export default function App() {
                         ...(model === undefined ? {} : { model }),
                         max_tokens: change.maxTokens ?? config?.maxTokens ?? 4096,
                         reasoning_enabled: change.reasoningEnabled ?? config?.reasoningEnabled ?? false,
+                        remote_data_collection:
+                          change.remoteDataCollection ?? config?.remoteDataCollection ?? "deny",
                       });
                     }}
                     modelRoot={modelRoot}

@@ -90,9 +90,12 @@ def test_build_sidecar_uses_one_directory_runtime_and_explicit_dependency_closur
     ]
     assert ["--collect-binaries", "torch"] in binary_collections
     assert ["--collect-binaries", "torchaudio"] in binary_collections
-    assert ["--copy-metadata", "torchcodec"] == pyinstaller[
-        pyinstaller.index("--copy-metadata") : pyinstaller.index("--copy-metadata") + 2
+    excluded_modules = [
+        pyinstaller[index : index + 2]
+        for index, value in enumerate(pyinstaller)
+        if value == "--exclude-module"
     ]
+    assert ["--exclude-module", "torchcodec"] in excluded_modules
     assert str(entry) == pyinstaller[-1]
 
 

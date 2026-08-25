@@ -25,6 +25,13 @@ DESKTOP_EXCLUDED_MODULES = (
     "librosa",
     "numba",
     "llvmlite",
+    # The desktop engine handles live PCM directly; it never decodes media
+    # through torchcodec.  Its wheel requires a host FFmpeg closure, and merely
+    # advertising the optional package makes Transformers attempt to load it
+    # while constructing the text embedding model.  Excluding it keeps the
+    # frozen retrieval path self-contained rather than shipping a partial,
+    # unusable decoder runtime.
+    "torchcodec",
 )
 # `DuplexAecSink` imports Silero's packaged TorchScript model only when Voice
 # starts.  It is not reachable from import analysis alone, so collect its
@@ -163,11 +170,6 @@ def pyinstaller_command(*, dist: Path, work: Path, spec: Path) -> list[str]:
         "torch",
         "--collect-binaries",
         "torchaudio",
-        # transformers checks this distribution's version during ASR imports.
-        # Do not collect torchcodec's bundled libpython: it is a separate
-        # runtime and would conflict with the interpreter frozen by PyInstaller.
-        "--copy-metadata",
-        "torchcodec",
         "--distpath",
         str(dist),
         "--workpath",

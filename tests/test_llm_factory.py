@@ -58,6 +58,7 @@ def test_remote_backend_builds_engine_with_resolved_key() -> None:
             "reasoning_enabled": None,
             "reasoning_parameter": None,
             "max_output_tokens": 4_096,
+            "zero_data_retention": True,
         },
     }
 
@@ -92,6 +93,7 @@ def test_remote_factory_receives_reconciled_model_limits_and_reasoning() -> None
         "reasoning_enabled": True,
         "reasoning_parameter": "reasoning",
         "max_output_tokens": 16_384,
+        "zero_data_retention": True,
     }
 
 

@@ -14,6 +14,7 @@ from soca.llm.providers import get_provider
 
 Backend = Literal["local", "remote"]
 ReasoningParameter = Literal["reasoning", "reasoning_effort"]
+RemoteDataCollection = Literal["deny", "allow"]
 DEFAULT_CONFIG_DIR = Path.home() / ".config" / "soca"
 DEFAULT_SETTINGS_PATH = DEFAULT_CONFIG_DIR / "llm.json"
 DEFAULT_LOCAL_MODEL_ID = "arcee_vylinh_3b_q4_k_m"
@@ -39,6 +40,10 @@ class LlmSettings:
     model_reasoning_supported: bool | None = None
     model_reasoning_mandatory: bool = False
     model_reasoning_parameter: ReasoningParameter | None = None
+    # This is an explicit routing policy, not a model capability.  Preserve
+    # the historical private-by-default behaviour on upgrade and never relax
+    # it after a failed request.
+    remote_data_collection: RemoteDataCollection = "deny"
 
     def __post_init__(self) -> None:
         if self.backend not in ("local", "remote"):
@@ -76,6 +81,8 @@ class LlmSettings:
             raise ValueError("model_reasoning_mandatory must be a boolean")
         if self.model_reasoning_parameter not in ("reasoning", "reasoning_effort", None):
             raise ValueError("model_reasoning_parameter is invalid")
+        if self.remote_data_collection not in ("deny", "allow"):
+            raise ValueError("remote_data_collection must be either 'deny' or 'allow'")
         if (
             isinstance(self.temperature, bool)
             or not isinstance(self.temperature, (int, float))
@@ -97,6 +104,11 @@ class LlmSettings:
 
     def with_model(self, model_id: str) -> LlmSettings:
         return replace(self, model_id=model_id)
+
+    def with_remote_data_collection(
+        self, policy: RemoteDataCollection
+    ) -> LlmSettings:
+        return replace(self, remote_data_collection=policy)
 
     def with_generation(
         self,
@@ -243,6 +255,7 @@ __all__ = [
     "DEFAULT_SETTINGS_PATH",
     "default_settings_path",
     "LlmSettings",
+    "RemoteDataCollection",
     "load_settings",
     "save_settings",
 ]

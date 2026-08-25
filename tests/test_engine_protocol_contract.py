@@ -175,6 +175,7 @@ def test_command_set_is_pinned() -> None:
         "voice_stop",
         "voice_profile_select",
         "knowledge_init",
+        "knowledge_model_install",
         "knowledge_index",
         "citation_preview",
         "sessions_list",

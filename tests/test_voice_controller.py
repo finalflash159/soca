@@ -15,7 +15,6 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from soca.app import voice_controller as voice_controller_module
 from soca.app.voice_controller import VoiceMonitorController
 from soca.asr.selection import ASRSelection
 from soca.core import ResolvedVoiceRuntimeConfig, StreamingEvent, VoiceRuntimeBundle
@@ -347,7 +346,6 @@ def test_voice_monitor_passive_silence_waits_before_calling_out() -> None:
 
 
 def test_voice_monitor_passive_silence_waits_five_minutes_and_stops_after_three_callouts(
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = make_config()
     fake_tts = FakeTTS()
@@ -358,14 +356,14 @@ def test_voice_monitor_passive_silence_waits_five_minutes_and_stops_after_three_
         detector=FakeDetector(has_speech=False),
         tts=fake_tts,
     )
+    now = [0.0]
     controller = VoiceMonitorController(
         config,
         runtime_builder=lambda _config, *, session_memory=None: bundle,
         player=fake_player,  # type: ignore[arg-type]
         warmup=False,
+        clock=lambda: now[0],
     )
-    now = [0.0]
-    monkeypatch.setattr(voice_controller_module.time, "perf_counter", lambda: now[0])
     controller._idle_started_at = 0.0
     queue: Queue = Queue()
     stop_event = Event()

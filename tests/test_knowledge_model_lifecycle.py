@@ -13,6 +13,7 @@ from soca.knowledge.indexing.models import (
     model_spec,
 )
 from soca.knowledge.retrievers.dense import (
+    AITEAMVN_V2_MODEL,
     AITEAMVN_V2_MODEL_SHA256,
     AITEAMVN_V2_TOKENIZER_SHA256,
 )
@@ -45,6 +46,19 @@ def test_model_readiness_and_fingerprint_do_not_load_or_hash_weights(tmp_path: P
 
     assert model_is_provisioned("aiteamvn-v2", model_home=tmp_path) is True
     assert model_fingerprint("aiteamvn-v2").dimension == 1024
+
+
+def test_active_retrieval_lock_matches_runtime_production_identity() -> None:
+    lock_path = Path(__file__).resolve().parents[1] / "eval" / "retrieval_models.lock.json"
+    payload = json.loads(lock_path.read_text(encoding="utf-8"))
+    locked = payload["models"]["aiteamvn_v2"]
+
+    assert locked["repo_id"] == AITEAMVN_V2_MODEL
+    assert locked["revision"] == model_spec("aiteamvn-v2").revision
+    assert locked["required_file_sha256"] == {
+        "model.safetensors": AITEAMVN_V2_MODEL_SHA256,
+        "tokenizer.json": AITEAMVN_V2_TOKENIZER_SHA256,
+    }
 
 
 def test_private_permission_walk_rejects_symlinks_without_touching_target(

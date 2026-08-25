@@ -9,7 +9,7 @@
       "trust_remote_code": false,
       "required_file_sha256": {
         "model.safetensors": "2fa082ead5ade68225327b913339bbd5aa1e14bcd7888ff9b09d69752a8d1cee",
-        "tokenizer.json": "5df1f55d60c9705a501ab9a75550728625740741fe4be308dac4806c16b7d51d"
+        "tokenizer.json": "b74659c780d49afad7a7b9799868f75cbd3014fb6c34956e85a793028d38094a"
       }
     },
     "gte_multilingual": {

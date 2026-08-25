@@ -35,7 +35,14 @@ def test_index_operator_commands_emit_machine_readable_state(
     monkeypatch,
 ) -> None:
     coordinator = FakeIndexCoordinator()
-    monkeypatch.setattr(cli, "_index_context", lambda *args, **kwargs: coordinator)
+    calls: list[dict[str, object]] = []
+
+    def index_context(*args, **kwargs):
+        del args
+        calls.append(kwargs)
+        return coordinator
+
+    monkeypatch.setattr(cli, "_index_context", index_context)
     runner = CliRunner()
 
     inspected = runner.invoke(
@@ -53,6 +60,7 @@ def test_index_operator_commands_emit_machine_readable_state(
 
     assert inspected.exit_code == 0
     assert json.loads(inspected.output)["status"]["dense_state"] == "ready"
+    assert calls[0]["model_key"] == "aiteamvn-v2"
     assert migrated.exit_code == 0
     assert json.loads(migrated.output) == {
         "changed": True,

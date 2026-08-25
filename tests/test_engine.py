@@ -1266,6 +1266,47 @@ def test_knowledge_index_start_failure_releases_lock_and_reports_error(
     assert failure["error_code"] == "knowledge_index_start_failed"
 
 
+def test_knowledge_model_install_emits_explicit_receipts_and_releases_lock(
+    monkeypatch, tmp_path: Path
+) -> None:
+    class Writer:
+        def __init__(self) -> None:
+            self.events: list[dict] = []
+
+        def emit(self, event: dict) -> None:
+            self.events.append(event)
+
+    class Config:
+        vault = tmp_path
+
+    class ImmediateThread:
+        def __init__(self, *, target, **kwargs) -> None:
+            del kwargs
+            self._target = target
+
+        def start(self) -> None:
+            self._target()
+
+    engine = object.__new__(SocaEngine)
+    engine.text_config = Config()
+    engine.writer = Writer()
+    engine._knowledge_job_lock = threading.Lock()
+    engine._knowledge_job_thread = None
+    engine._cmd_status = lambda: None
+    monkeypatch.setattr("soca.app.engine.install_model", lambda key: tmp_path / key)
+    monkeypatch.setattr("soca.app.engine.threading.Thread", ImmediateThread)
+
+    engine._cmd_knowledge_model_install()
+
+    assert engine._knowledge_job_thread is None
+    assert engine._knowledge_job_lock.acquire(blocking=False)
+    receipts = [event for event in engine.writer.events if event["event"] == "knowledge_setup"]
+    assert [(event["action"], event["status"], event.get("phase")) for event in receipts] == [
+        ("model", "running", "downloading"),
+        ("model", "ready", "complete"),
+    ]
+
+
 def test_shutdown_emits_bye_after_worker_cleanup_timeout() -> None:
     class Writer:
         def __init__(self) -> None:

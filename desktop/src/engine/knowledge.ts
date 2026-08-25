@@ -175,11 +175,19 @@ function str(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
-/** Index builds are the only `knowledge_setup` action that has a running state. */
-const TERMINAL_SETUP_STATUS = new Set(["ok", "failed"]);
+const TERMINAL_SETUP_STATUS = new Set(["ok", "failed", "ready"]);
 
 export function indexJobRunning(job: IndexJob | null): boolean {
   return job !== null && job.action === "index" && !TERMINAL_SETUP_STATUS.has(job.status);
+}
+
+/** A model download and an index build share the same exclusive engine worker. */
+export function knowledgeSetupRunning(job: IndexJob | null): boolean {
+  return (
+    job !== null &&
+    (job.action === "model" || job.action === "index") &&
+    !TERMINAL_SETUP_STATUS.has(job.status)
+  );
 }
 
 export function reduceKnowledge(state: KnowledgeState, frame: EngineFrame): KnowledgeState {

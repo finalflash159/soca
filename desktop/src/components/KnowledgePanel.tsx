@@ -7,13 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { IndexJob, KnowledgeState } from "@/engine/knowledge";
-import { evidenceSummary, indexJobRunning, memoryModeSummary } from "@/engine/knowledge";
+import { evidenceSummary, knowledgeSetupRunning, memoryModeSummary } from "@/engine/knowledge";
 import { cn } from "@/lib/utils";
 
 interface KnowledgePanelProps {
   knowledge: KnowledgeState;
   connected: boolean;
   onInit: () => void;
+  onInstallModel: () => void;
   onIndex: () => void;
   onRefreshMemory: () => void;
   onCompact: () => void;
@@ -26,6 +27,7 @@ function score(value: number | null | undefined): string {
 }
 
 const PHASE_LABEL: Record<string, string> = {
+  downloading: "Đang tải retrieval model",
   scanning: "Đang quét tài liệu",
   chunking: "Đang chia chunk",
   embedding: "Đang tạo embedding",
@@ -81,7 +83,7 @@ function VaultSection({
   connected,
   onInit,
 }: Pick<KnowledgePanelProps, "knowledge" | "connected" | "onInit">) {
-  const running = indexJobRunning(knowledge.indexJob);
+  const running = knowledgeSetupRunning(knowledge.indexJob);
   const vault = knowledge.vault;
   const initialized = vault?.initialized === true;
 
@@ -123,31 +125,45 @@ function VaultSection({
 function IndexSection({
   knowledge,
   connected,
+  onInstallModel,
   onIndex,
-}: Pick<KnowledgePanelProps, "knowledge" | "connected" | "onIndex">) {
-  const running = indexJobRunning(knowledge.indexJob);
+}: Pick<KnowledgePanelProps, "knowledge" | "connected" | "onInstallModel" | "onIndex">) {
+  const running = knowledgeSetupRunning(knowledge.indexJob);
   const index = knowledge.index;
   const job = knowledge.indexJob;
   const initialized = knowledge.vault?.initialized === true;
+  const modelMissing = initialized && index?.denseState === "model_missing";
+  const modelDownloadRunning = job?.action === "model" && running;
 
   return (
     <Section
       icon={Database}
       title="Chỉ mục truy xuất"
-      description="Không có chỉ mục thì trợ lý không tìm được gì trong vault."
+      description="Dữ liệu ở lại trên máy; chỉ mục dùng để tìm đúng đoạn tài liệu khi trả lời."
       actions={
-        <Button
-          size="sm"
-          variant={index === null ? "default" : "outline"}
-          disabled={!connected || running || !initialized}
-          onClick={onIndex}
-        >
-          {running ? "Đang dựng…" : index === null ? "Dựng chỉ mục" : "Dựng lại"}
-        </Button>
+        modelMissing ? (
+          <Button size="sm" disabled={!connected || running} onClick={onInstallModel}>
+            {modelDownloadRunning ? "Đang tải…" : "Tải retrieval model"}
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant={index === null ? "default" : "outline"}
+            disabled={!connected || running || !initialized}
+            onClick={onIndex}
+          >
+            {running ? "Đang xử lý…" : index === null ? "Dựng chỉ mục" : "Dựng lại"}
+          </Button>
+        )
       }
     >
       {running && job !== null ? (
         <IndexProgress job={job} />
+      ) : modelMissing ? (
+        <p className="text-muted-foreground text-sm leading-6">
+          Tải retrieval model một lần trước khi dựng chỉ mục. SoCa sẽ kiểm tra artifact đã tải
+          trước khi dùng; không tự đổi sang model khác nếu tải thất bại.
+        </p>
       ) : index === null ? (
         <p className="text-muted-foreground text-sm leading-6">
           {initialized

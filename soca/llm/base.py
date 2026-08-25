@@ -54,6 +54,6 @@ class StructuredLLMEngine(Protocol):
         temperature: float = 0.0,
         top_p: float = 1.0,
         inject_persona: bool = False,
-        zero_data_retention: bool = True,
+        zero_data_retention: bool | None = None,
     ) -> LLMResult:
         ...

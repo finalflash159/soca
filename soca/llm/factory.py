@@ -30,6 +30,7 @@ class RemoteFactory(Protocol):
         reasoning_enabled: bool | None,
         reasoning_parameter: ReasoningParameter | None,
         max_output_tokens: int,
+        zero_data_retention: bool,
     ) -> LLMEngine: ...
 
 
@@ -121,6 +122,7 @@ def _build_llm_engine(
         reasoning_enabled=settings.effective_reasoning_enabled,
         reasoning_parameter=settings.model_reasoning_parameter,
         max_output_tokens=settings.effective_max_tokens,
+        zero_data_retention=settings.remote_data_collection == "deny",
     )
 
 
