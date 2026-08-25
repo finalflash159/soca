@@ -115,6 +115,19 @@
       "data_collection": "deny",
       "fallback_attempted": false,
       "prompt_or_transcript_recorded": false
+    },
+    "strict_remote_route_study": {
+      "status": "pass",
+      "recorded_at": "2026-08-26",
+      "provider": "openrouter",
+      "model": "openai/gpt-5.6-luna",
+      "data_collection": "deny",
+      "fallback_attempted": false,
+      "attempts": 1,
+      "latency_ms": 1851.75,
+      "prompt_tokens": 11,
+      "completion_tokens": 5,
+      "prompt_or_response_content_recorded": false
     }
   },
   "decision": {
@@ -126,8 +139,8 @@
     "release_operational_studies": "pending_full_remote_voice_trajectory",
     "release_qualification": "not_qualified",
     "remaining_evidence": [
-      "operator-approved remote data-collection policy selection for the configured provider/model",
-      "full microphone-to-ASR-to-remote-LLM-to-TTS trajectory after that explicit selection"
+      "select openai/gpt-5.6-luna in the app without relaxing strict data policy",
+      "full microphone-to-ASR-to-remote-LLM-to-TTS trajectory using that selected route"
     ],
     "no_silent_fallback": true
   }
