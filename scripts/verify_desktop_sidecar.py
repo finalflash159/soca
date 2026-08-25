@@ -61,6 +61,32 @@ def _verify_asr_calibration(sidecar: Path) -> None:
         raise RuntimeError("frozen sidecar ASR confidence calibration has an invalid schema")
 
 
+def _verify_qwen_calibration(sidecar: Path) -> None:
+    """Ensure the bundle carries the exact Qwen confidence records from source."""
+    bundled = sidecar.parent / "_internal" / "data" / "asr" / "qwen_confidence_calibration.json"
+    source = Path(__file__).resolve().parents[1] / "data" / "asr" / "qwen_confidence_calibration.json"
+    try:
+        bundled_bytes = bundled.read_bytes()
+        source_bytes = source.read_bytes()
+        payload = json.loads(bundled_bytes)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            "frozen sidecar is missing readable Qwen confidence calibration"
+        ) from exc
+    if bundled_bytes != source_bytes:
+        raise RuntimeError("frozen sidecar Qwen confidence calibration differs from source")
+    calibrations = payload.get("calibrations") if isinstance(payload, dict) else None
+    if not isinstance(calibrations, dict):
+        raise RuntimeError("frozen sidecar Qwen confidence calibration has an invalid schema")
+    model_keys = {
+        record.get("identity", {}).get("model_key")
+        for record in calibrations.values()
+        if isinstance(record, dict)
+    }
+    if model_keys != {"qwen3_asr_0_6b", "qwen3_asr_1_7b"}:
+        raise RuntimeError("frozen sidecar lacks the current Qwen calibration records")
+
+
 def _verify_voice_aec_resources(sidecar: Path) -> None:
     """Ensure the first Voice click can load Silero's packaged VAD model."""
     data = sidecar.parent / "_internal" / "silero_vad" / "data"
@@ -78,6 +104,7 @@ def verify(sidecar: Path) -> None:
     if not sidecar.is_file():
         raise RuntimeError(f"sidecar does not exist: {sidecar}")
     _verify_asr_calibration(sidecar)
+    _verify_qwen_calibration(sidecar)
     _verify_voice_aec_resources(sidecar)
     _verify_smart_turn_resource(sidecar)
 

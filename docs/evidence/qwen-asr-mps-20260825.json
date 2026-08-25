@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "kind": "qwen_asr_runtime_requalification",
+  "recorded_at": "2026-08-25",
+  "source": {
+    "raw_run_id": "20260824T215144Z-8e494eb8",
+    "raw_artifact_root": "eval/results/qwen_asr_release/20260824T215144Z-8e494eb8 (local, gitignored)",
+    "benchmark_config_sha256": "d2d38686c8afc7b4ba4bf42af6d1a21f6340ea7e25313b07ce93f9bd205049a5",
+    "manual_context_echo_labels": "eval/labels/qwen_context_echo_release_mps_20260825.json",
+    "manual_label_sha256": "6ffbd3981e8fa05091801e43c157866fd37719afbbf00575c06a870c611779f0",
+    "dataset_manifests": {
+      "private_codeswitch": "aed1ccd96ed9d994412285f4dcff68ba119155be0effd7fa0d089fa635dde70d",
+      "fleurs_vi": "81de44e064d2925ca31ea5e911d560157e3b8e83319bdee66a750e3bab00978c",
+      "non_speech": "48b01f480e0020e2041a0f845011b90af4af035da1517c83664e1848882543b6"
+    }
+  },
+  "runtime": {
+    "worker_lock_sha256": "f08654248f6e50512d98fd247829cc4ae2fb6d2a5272f1e6b9981be0fb46b1b3",
+    "python": "3.11.14",
+    "device": "mps",
+    "dtype": "float16"
+  },
+  "quality_gates": {
+    "private_codeswitch_absolute_cs_wer_improvement": 0.43089430894308944,
+    "private_codeswitch_absolute_wer_regression": -0.4383561643835617,
+    "public_vi_absolute_wer_regression": -0.02146760343481656,
+    "public_vi_speech_false_reject_rate": 0.0,
+    "hard_negative_false_accept_rate": 0.017543859649122806,
+    "final_rtf_p95": 0.1257660833075679,
+    "context_echo_false_accept_rate": 0.0,
+    "context_echo_false_reject_rate": 0.0,
+    "status": "pass"
+  },
+  "calibrations": {
+    "qwen3_asr_0_6b": {
+      "identity_digest": "1669d78d76f49de3fa52b5334416ffeaf367048389640c862822d96663401414",
+      "artifact_digest": "4eb4ebbc1bc8f994734fd29bdeb2517df7a516a394726d116fff778e9a5ac45c",
+      "thresholds": {
+        "min_avg_logprob": -0.31461821755668096,
+        "max_compression_ratio": 2.4,
+        "context_echo_min_contiguous_tokens": 4
+      }
+    },
+    "qwen3_asr_1_7b": {
+      "identity_digest": "fbf4517c4dcf977c5a845702481fee036c1bef919c96c76834d9e8f5b256381b",
+      "artifact_digest": "d6aed7eff17a950705ff35c99ec41c09cb5c945147d902996ca4fc5b36fd1fb4",
+      "thresholds": {
+        "min_avg_logprob": -0.2037214076780951,
+        "max_compression_ratio": 2.4,
+        "context_echo_min_contiguous_tokens": 4
+      }
+    }
+  },
+  "decision": {
+    "confidence_calibration": "qualified_for_the_exact_runtime_identity",
+    "desktop_voice_readiness": "unblocked_for_qwen_calibration",
+    "release_operational_studies": "incomplete",
+    "remaining_evidence": [
+      "partial_stability_and_latency",
+      "cold_start_and_resource_repetitions",
+      "real_failure_and_start_stop_stress",
+      "full_voice_remote_llm_tts_trajectory"
+    ],
+    "no_silent_fallback": true
+  }
+}
