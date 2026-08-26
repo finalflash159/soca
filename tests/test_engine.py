@@ -1015,7 +1015,30 @@ def _fake_recorder(detector, **kwargs) -> np.ndarray:
     return np.ones(1600, dtype=np.float32)
 
 
-def test_engine_voice_start_streams_loop_events() -> None:
+def _stub_available_audio_input(monkeypatch) -> None:
+    """Keep controller tests independent from the CI runner's hardware."""
+    import soca.app.engine as engine_module
+
+    monkeypatch.setattr(
+        engine_module,
+        "audio_input_status",
+        lambda selected: {
+            "selected_id": selected,
+            "selected_label": "Test microphone",
+            "uses_system_default": selected is None,
+            "devices": [
+                {
+                    "id": "test-microphone",
+                    "label": "Test microphone",
+                    "is_system_default": True,
+                }
+            ],
+        },
+    )
+
+
+def test_engine_voice_start_streams_loop_events(monkeypatch) -> None:
+    _stub_available_audio_input(monkeypatch)
     capture = ProtocolCapture()
     code = run_engine(
         voice_config=make_voice_config(),
@@ -1079,6 +1102,8 @@ def test_engine_keeps_running_when_voice_controller_initialization_fails(monkeyp
     capture = ProtocolCapture()
 
     from soca.app.engine import SocaEngine
+
+    _stub_available_audio_input(monkeypatch)
 
     def fail_controller(_self):
         raise ModuleNotFoundError("silero_vad.data")
@@ -1537,13 +1562,14 @@ def _memory_token_voice_builder(
     )
 
 
-def test_voice_answer_delta_strips_citation_labels_like_the_chat_turn() -> None:
+def test_voice_answer_delta_strips_citation_labels_like_the_chat_turn(monkeypatch) -> None:
     """Both surfaces publish the same text; only the chat one used to be cleaned.
 
     The voice deltas come from raw `llm_token` events. A smalltalk turn still
     receives memory context, and MEMORY_GROUNDING_INSTRUCTIONS teaches the model
     to write [M1], so a label can reach a caption that `done` then strips.
     """
+    _stub_available_audio_input(monkeypatch)
     capture = ProtocolCapture()
     code = run_engine(
         voice_config=make_voice_config(),
