@@ -88,7 +88,7 @@ function SessionRow({
     return (
       <li className="px-1">
         <form
-          className="bg-sidebar-accent flex items-center gap-1 rounded-lg p-1"
+          className="bg-accent flex items-center gap-1 rounded-lg p-1"
           onSubmit={(event) => {
             event.preventDefault();
             const next = title.trim();
@@ -144,7 +144,7 @@ function SessionRow({
       <div
         className={cn(
           "flex items-center gap-1 rounded-lg",
-          active && "bg-sidebar-accent text-sidebar-accent-foreground",
+          active && "bg-accent text-accent-foreground",
         )}
       >
         <button
@@ -156,8 +156,8 @@ function SessionRow({
           className={cn(
             "flex h-11 min-w-0 flex-1 flex-col justify-center rounded-lg px-2 text-left transition-colors",
             active
-              ? "cursor-default focus-visible:ring-2 focus-visible:ring-sidebar-ring/70"
-              : "hover:bg-sidebar-accent/70 focus-visible:ring-2 focus-visible:ring-sidebar-ring/70",
+              ? "cursor-default focus-visible:ring-2 focus-visible:ring-ring/70"
+              : "hover:bg-accent/70 focus-visible:ring-2 focus-visible:ring-ring/70",
             "disabled:opacity-100",
           )}
         >
@@ -258,7 +258,7 @@ export function SessionList({
     );
 
   return (
-    <section className="border-sidebar-border mx-3 mt-4 border-t pt-3" aria-labelledby="saved-sessions">
+    <section className="border-border mt-2 border-t pt-3" aria-labelledby="saved-sessions">
       <div className="flex items-center justify-between px-1 pb-1.5">
         <h2 id="saved-sessions" className="text-muted-foreground text-[11px] font-medium tracking-wide uppercase">
           Phiên đã lưu
@@ -279,8 +279,8 @@ export function SessionList({
         </div>
       ) : history.listState === "loading" && history.sessions.length === 0 ? (
         <div className="flex flex-col gap-1 px-1 py-1" aria-busy="true" aria-label="Đang tải danh sách phiên">
-          <div className="bg-sidebar-accent h-10 animate-pulse rounded-lg" />
-          <div className="bg-sidebar-accent h-10 animate-pulse rounded-lg" />
+          <div className="bg-muted h-10 animate-pulse rounded-lg" />
+          <div className="bg-muted h-10 animate-pulse rounded-lg" />
         </div>
       ) : history.sessions.length === 0 ? (
         empty

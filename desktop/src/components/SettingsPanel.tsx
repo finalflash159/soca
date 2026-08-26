@@ -1,12 +1,29 @@
 /** User-controlled appearance, session privacy, model, key, and voice settings. */
 
-import { AudioLines, Cpu, FolderOpen, HardDrive, KeyRound, Palette } from "lucide-react";
+import {
+  AudioLines,
+  Check,
+  ChevronRight,
+  Cpu,
+  FolderOpen,
+  HardDrive,
+  KeyRound,
+  Palette,
+  Settings2,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import { Field, Section } from "@/components/Page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { UpdaterPanel } from "@/components/UpdaterPanel";
 import {
@@ -62,7 +79,8 @@ const INPUT =
 
 function reasoningHint(config: LlmConfig): string {
   if (!config.reasoningSupported) return "Model này không hỗ trợ suy luận.";
-  if (config.reasoningMandatory) return "Model này luôn dùng suy luận; bạn không thể tắt.";
+  if (config.reasoningMandatory)
+    return "Model này luôn dùng suy luận; bạn không thể tắt.";
   return config.effectiveReasoningEnabled
     ? "Suy luận đang có hiệu lực cho các lượt mới."
     : "Suy luận đang tắt cho các lượt mới.";
@@ -92,12 +110,18 @@ function profileStatus(profile: SettingsState["profiles"][number]): string {
 
 function voiceSetupMessage(component: RuntimeComponent | undefined): string {
   if (component === undefined) return "Đang kiểm tra các thành phần thoại…";
-  if (component.status === "checking" || component.detail?.startsWith("Đang tải") === true) {
+  if (
+    component.status === "checking" ||
+    component.detail?.startsWith("Đang tải") === true
+  ) {
     return `Đang xác minh ${component.label}…`;
   }
   switch (component.id) {
     case "voice_asr":
-      if (component.status === "not_ready" && component.detail?.startsWith("confidence calibration")) {
+      if (
+        component.status === "not_ready" &&
+        component.detail?.startsWith("confidence calibration")
+      ) {
         return "Qwen ASR và model đã được xác minh; Voice đang chờ calibration tương ứng với runtime này.";
       }
       return "Qwen ASR chưa sẵn sàng cho profile đang chọn.";
@@ -131,6 +155,45 @@ function profileSummary(profile: SettingsState["profiles"][number]): string {
     return `${summary} Its Qwen installation is verified, but the runtime still needs an approved calibration.`;
   }
   return `${summary} Required model files need setup.`;
+}
+
+// Published marks from the providers' or the selected route's public assets.
+// They remain ornamental: provider name and state stay as text when a remote
+// asset cannot load.
+const PROVIDER_LOGO: Record<string, string> = {
+  openrouter: "https://openrouter.ai/brand/v2/openrouter-glyph-light.svg",
+  openai: "https://openrouter.ai/images/icons/OpenAI.svg",
+  gemini: "https://openrouter.ai/images/icons/GoogleGemini.svg",
+  groq: "https://groq.com/favicon.svg",
+};
+
+function ProviderMark({
+  provider,
+  label,
+}: {
+  provider: string;
+  label: string;
+}) {
+  const source = PROVIDER_LOGO[provider.toLowerCase()];
+  const [imageFailed, setImageFailed] = useState(false);
+  if (source === undefined || imageFailed) {
+    return (
+      <span
+        aria-hidden="true"
+        className="bg-muted text-muted-foreground flex size-8 shrink-0 items-center justify-center rounded-lg text-xs font-semibold"
+      >
+        {label.slice(0, 1).toUpperCase()}
+      </span>
+    );
+  }
+  return (
+    <img
+      className="size-8 shrink-0 rounded-lg object-contain"
+      src={source}
+      alt=""
+      onError={() => setImageFailed(true)}
+    />
+  );
 }
 
 /** A row of mutually exclusive choices, styled as one control. */
@@ -195,6 +258,8 @@ export function SettingsPanel({
 }: SettingsPanelProps) {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [remoteSetup, setRemoteSetup] = useState(false);
+  const [providerDialogOpen, setProviderDialogOpen] = useState(false);
+  const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
   const [keyDraft, setKeyDraft] = useState("");
   const [query, setQuery] = useState("");
   const [maxTokensDraft, setMaxTokensDraft] = useState("");
@@ -206,7 +271,9 @@ export function SettingsPanel({
   const [modelRootError, setModelRootError] = useState<string | null>(null);
   const [qwenAsrModelRootDraft, setQwenAsrModelRootDraft] = useState("");
   const [qwenRuntimeRootDraft, setQwenRuntimeRootDraft] = useState("");
-  const [qwenSetupPending, setQwenSetupPending] = useState<"model" | "runtime" | null>(null);
+  const [qwenSetupPending, setQwenSetupPending] = useState<
+    "model" | "runtime" | null
+  >(null);
   const [qwenSetupError, setQwenSetupError] = useState<string | null>(null);
   const lastEngineError = useRef<string | null>(engineError);
   const voiceSetupRef = useRef<HTMLDivElement>(null);
@@ -220,8 +287,10 @@ export function SettingsPanel({
   // committing the backend so the selection cannot inherit a local GGUF id.
   const isRemote = config?.backend === "remote";
   const remoteDataCollection = config?.remoteDataCollection ?? "deny";
-  const showRemoteSettings = isRemote || remoteSetup;
-  const chatComponent = settings.runtimeComponents.find((component) => component.id === "chat_llm");
+  const showRemoteSettings = isRemote || remoteSetup || providerDialogOpen;
+  const chatComponent = settings.runtimeComponents.find(
+    (component) => component.id === "chat_llm",
+  );
   const voiceComponents = settings.runtimeComponents.filter((component) =>
     ["voice_asr", "voice_llm", "tts", "smart_turn"].includes(component.id),
   );
@@ -229,15 +298,22 @@ export function SettingsPanel({
   const voiceBlocker = voiceComponents.find(
     (component) => !isVoiceComponentReady(component, config),
   );
-  const voiceChecking = runtimeState === "checking" || voiceComponents.length !== 4;
-  const voiceReady = !voiceChecking && runtimeState === "ready" && voiceBlocker === undefined;
-  const qwenAsrComponent = voiceComponents.find((component) => component.id === "voice_asr");
+  const voiceChecking =
+    runtimeState === "checking" || voiceComponents.length !== 4;
+  const voiceReady =
+    !voiceChecking && runtimeState === "ready" && voiceBlocker === undefined;
+  const qwenAsrComponent = voiceComponents.find(
+    (component) => component.id === "voice_asr",
+  );
   const qwenCalibrationPending =
     qwenAsrComponent?.status === "not_ready" &&
     qwenAsrComponent.detail?.startsWith("confidence calibration") === true;
-  const qwenAsrVerified = qwenAsrComponent !== undefined && (
-    ["ok", "ready", "loaded", "configured"].includes(qwenAsrComponent.status) || qwenCalibrationPending
-  );
+  const qwenAsrVerified =
+    qwenAsrComponent !== undefined &&
+    (["ok", "ready", "loaded", "configured"].includes(
+      qwenAsrComponent.status,
+    ) ||
+      qwenCalibrationPending);
 
   // The callbacks arrive as fresh closures on every render. Depending on their
   // identity would re-run these effects each time, each run sending a command,
@@ -261,13 +337,18 @@ export function SettingsPanel({
     if (!connected || provider === null || !showRemoteSettings) {
       return;
     }
-    const timer = window.setTimeout(() => loadModelsRef.current(provider, query), 300);
+    const timer = window.setTimeout(
+      () => loadModelsRef.current(provider, query),
+      300,
+    );
     return () => window.clearTimeout(timer);
   }, [connected, provider, query, showRemoteSettings]);
 
   const models = provider !== null ? (settings.catalog[provider] ?? []) : [];
-  const loading = provider !== null && settings.catalogLoading[provider] === true;
-  const keyStatus = provider !== null ? settings.keyStatus[provider] : undefined;
+  const loading =
+    provider !== null && settings.catalogLoading[provider] === true;
+  const keyStatus =
+    provider !== null ? settings.keyStatus[provider] : undefined;
 
   useEffect(() => {
     if (isRemote) setRemoteSetup(false);
@@ -277,7 +358,13 @@ export function SettingsPanel({
     setMaxTokensDraft(config?.maxTokens?.toString() ?? "");
     setGenerationPending(false);
     setGenerationError(config?.settingsError ?? null);
-  }, [config?.backend, config?.provider, config?.model, config?.maxTokens, config?.settingsError]);
+  }, [
+    config?.backend,
+    config?.provider,
+    config?.model,
+    config?.maxTokens,
+    config?.settingsError,
+  ]);
 
   useEffect(() => {
     setModelRootDraft(modelRoot?.path ?? "");
@@ -322,7 +409,9 @@ export function SettingsPanel({
   ) => {
     setQwenSetupPending(kind);
     setQwenSetupError(null);
-    const error = await (kind === "model" ? onSetQwenAsrModelRoot(path) : onSetQwenRuntimeRoot(path));
+    const error = await (kind === "model"
+      ? onSetQwenAsrModelRoot(path)
+      : onSetQwenRuntimeRoot(path));
     setQwenSetupPending(null);
     setQwenSetupError(error);
   };
@@ -331,10 +420,14 @@ export function SettingsPanel({
     setQwenSetupError(null);
     try {
       const selected = await open({
-        title: kind === "model" ? "Choose the Qwen model store" : "Choose the Qwen worker runtime",
+        title:
+          kind === "model"
+            ? "Choose the Qwen model store"
+            : "Choose the Qwen worker runtime",
         directory: true,
         multiple: false,
-        defaultPath: kind === "model" ? qwenAsrModelRootDraft : qwenRuntimeRootDraft,
+        defaultPath:
+          kind === "model" ? qwenAsrModelRootDraft : qwenRuntimeRootDraft,
       });
       if (typeof selected !== "string") return;
       if (kind === "model") setQwenAsrModelRootDraft(selected);
@@ -365,7 +458,11 @@ export function SettingsPanel({
 
   useEffect(() => {
     if (focusVoiceSetup) {
-      voiceSetupRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+      voiceSetupRef.current?.scrollIntoView?.({
+        behavior: "smooth",
+        block: "start",
+      });
+      setVoiceDialogOpen(true);
     }
   }, [focusVoiceSetup]);
 
@@ -375,7 +472,9 @@ export function SettingsPanel({
     const accepted = await operation();
     if (!accepted) {
       setGenerationPending(false);
-      setGenerationError("Không thể gửi thay đổi tới engine. Giá trị có hiệu lực không đổi.");
+      setGenerationError(
+        "Không thể gửi thay đổi tới engine. Giá trị có hiệu lực không đổi.",
+      );
     }
   };
 
@@ -386,7 +485,10 @@ export function SettingsPanel({
         title="Giao diện"
         description="Áp dụng ngay, và được nhớ cho lần mở sau."
       >
-        <Field label="Chế độ màu" hint="“Theo hệ thống” đổi theo cài đặt sáng/tối của máy.">
+        <Field
+          label="Chế độ màu"
+          hint="“Theo hệ thống” đổi theo cài đặt sáng/tối của máy."
+        >
           <Segmented
             value={themeChoice}
             onChange={onSetTheme}
@@ -414,13 +516,27 @@ export function SettingsPanel({
         >
           <div className="border-border flex items-center justify-between gap-4 rounded-lg border p-3">
             <span className="text-sm font-medium">
-              {sessionHistory.persistence === "local_resumable" ? "Đang bật" : "Đang tắt"}
+              {sessionHistory.persistence === "local_resumable"
+                ? "Đang bật"
+                : "Đang tắt"}
             </span>
             <Button
               size="sm"
-              variant={sessionHistory.persistence === "local_resumable" ? "outline" : "default"}
-              disabled={!connected || sessionHistory.persistence === null || persistenceChangePending}
-              onClick={() => onRequestSessionPersistence(sessionHistory.persistence !== "local_resumable")}
+              variant={
+                sessionHistory.persistence === "local_resumable"
+                  ? "outline"
+                  : "default"
+              }
+              disabled={
+                !connected ||
+                sessionHistory.persistence === null ||
+                persistenceChangePending
+              }
+              onClick={() =>
+                onRequestSessionPersistence(
+                  sessionHistory.persistence !== "local_resumable",
+                )
+              }
             >
               {persistenceChangePending
                 ? "Đang khởi động lại…"
@@ -440,7 +556,10 @@ export function SettingsPanel({
           }
           htmlFor="auto-open-last-session"
         >
-          <label className="border-border flex cursor-pointer items-center justify-between gap-4 rounded-lg border p-3" htmlFor="auto-open-last-session">
+          <label
+            className="border-border flex cursor-pointer items-center justify-between gap-4 rounded-lg border p-3"
+            htmlFor="auto-open-last-session"
+          >
             <span className="text-sm">Tự mở phiên gần nhất</span>
             <input
               id="auto-open-last-session"
@@ -449,8 +568,8 @@ export function SettingsPanel({
               disabled={
                 !connected ||
                 sessionHistory.persistence !== "local_resumable" ||
-                sessionHistory.operation?.action === "preferences_set" &&
-                  sessionHistory.operation.status === "started"
+                (sessionHistory.operation?.action === "preferences_set" &&
+                  sessionHistory.operation.status === "started")
               }
               onChange={(event) => onSetAutoOpenLast(event.target.checked)}
               className="accent-primary size-4"
@@ -466,7 +585,12 @@ export function SettingsPanel({
         title="Mô hình"
         description="Mọi thay đổi ở đây đi qua cùng một lệnh llm_select của engine."
         actions={
-          <Button size="sm" variant="outline" disabled={!connected} onClick={onLoadProviders}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!connected}
+            onClick={onLoadProviders}
+          >
             Tải lại
           </Button>
         }
@@ -476,7 +600,11 @@ export function SettingsPanel({
         ) : (
           <>
             {generationError !== null && (
-              <p id="generation-error" className="text-destructive text-sm" role="alert">
+              <p
+                id="generation-error"
+                className="text-destructive text-sm"
+                role="alert"
+              >
                 {generationError}
               </p>
             )}
@@ -486,22 +614,33 @@ export function SettingsPanel({
             >
               <div className="border-border bg-muted/30 flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm">
                 <Badge variant={config.runtimeReady ? "secondary" : "outline"}>
-                  {runtimeState === "checking" ? "Checking" : config.runtimeReady ? "Ready" : "Needs setup"}
+                  {runtimeState === "checking"
+                    ? "Checking"
+                    : config.runtimeReady
+                      ? "Ready"
+                      : "Needs setup"}
                 </Badge>
                 <div className="min-w-0 flex-1 text-xs leading-5">
                   {runtimeState === "checking"
                     ? "Đang xác minh model chat đã chọn."
                     : config.runtimeReady
-                    ? isRemote
-                      ? "Remote chat đã được cấu hình. Route sẽ được xác nhận trong lượt chạy đầu tiên."
-                      : "On-device chat model is available."
-                    : chatSetupMessage(config)}
-                  {!config.runtimeReady && runtimeState !== "checking" &&
-                    (config.runtimeReason ?? config.settingsError ?? chatComponent?.detail) !== undefined && (
+                      ? isRemote
+                        ? "Remote chat đã được cấu hình. Route sẽ được xác nhận trong lượt chạy đầu tiên."
+                        : "On-device chat model is available."
+                      : chatSetupMessage(config)}
+                  {!config.runtimeReady &&
+                    runtimeState !== "checking" &&
+                    (config.runtimeReason ??
+                      config.settingsError ??
+                      chatComponent?.detail) !== undefined && (
                       <details className="text-muted-foreground mt-2 text-xs">
-                        <summary className="cursor-pointer select-none">Thông tin kỹ thuật</summary>
+                        <summary className="cursor-pointer select-none">
+                          Thông tin kỹ thuật
+                        </summary>
                         <p className="mt-1 break-words font-mono leading-5">
-                          {config.runtimeReason ?? config.settingsError ?? chatComponent?.detail}
+                          {config.runtimeReason ??
+                            config.settingsError ??
+                            chatComponent?.detail}
                         </p>
                       </details>
                     )}
@@ -528,7 +667,9 @@ export function SettingsPanel({
                     return;
                   }
                   setRemoteSetup(false);
-                  void runGeneration(() => onApplyGeneration({ backend: "local" }));
+                  void runGeneration(() =>
+                    onApplyGeneration({ backend: "local" }),
+                  );
                 }}
                 options={[
                   { value: "remote", label: "Remote" },
@@ -549,189 +690,202 @@ export function SettingsPanel({
             >
               <div className="border-border bg-muted/40 flex h-10 items-center rounded-lg border px-3">
                 <span className="truncate font-mono text-sm">
-                  {remoteSetup && !isRemote ? "Chưa áp dụng — hãy chọn model remote bên dưới" : config.model}
+                  {remoteSetup && !isRemote
+                    ? "Chưa áp dụng — hãy chọn model remote bên dưới"
+                    : config.model}
                 </span>
               </div>
             </Field>
 
-            {isRemote && (
+            {!isRemote && !remoteSetup && (
               <Field
-                label="Dữ liệu gửi tới provider"
+                label="Giới hạn token đầu ra"
+                // §7 obligation 8: the effective value, not the request.
                 hint={
-                  remoteDataCollection === "deny"
-                    ? "Chỉ dùng endpoint không thu thập dữ liệu. Nếu model không có endpoint phù hợp, SoCa dừng rõ ràng thay vì tự đổi route."
-                    : "Provider có thể xử lý dữ liệu theo chính sách riêng. Chỉ chọn khi bạn đồng ý với chính sách đó."
+                  config.maxTokens !== null &&
+                  config.maxTokens !== config.effectiveMaxTokens
+                    ? `Model chặn ở ${config.effectiveMaxTokens ?? "—"}, nên đó mới là con số có hiệu lực.`
+                    : "Số token tối đa cho một câu trả lời."
                 }
+                htmlFor="max-tokens"
               >
-                <Segmented
-                  value={remoteDataCollection}
+                <input
+                  id="max-tokens"
+                  type="number"
+                  min={1}
+                  className={INPUT}
+                  value={maxTokensDraft}
                   disabled={!connected || generationPending}
-                  onChange={(remoteDataCollection) =>
-                    void runGeneration(() => onApplyGeneration({ remoteDataCollection }))
+                  aria-invalid={generationError !== null}
+                  aria-describedby={
+                    generationError !== null ? "generation-error" : undefined
                   }
-                  options={[
-                    { value: "deny", label: "Không thu thập" },
-                    { value: "allow", label: "Theo provider" },
-                  ]}
+                  onChange={(event) => setMaxTokensDraft(event.target.value)}
+                  onBlur={(event) => {
+                    const value = Number.parseInt(event.target.value, 10);
+                    if (
+                      event.target.value.trim() === "" ||
+                      !Number.isInteger(value) ||
+                      value < 1
+                    ) {
+                      setGenerationError(
+                        "Nhập số nguyên dương cho giới hạn token.",
+                      );
+                      return;
+                    }
+                    if (value !== config.maxTokens) {
+                      void runGeneration(() =>
+                        onApplyGeneration({ maxTokens: value }),
+                      );
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                  }}
                 />
               </Field>
             )}
 
-            <Field
-              label="Thư mục model Voice và On-device"
-              hint={
-                modelRoot?.source === "external"
-                  ? "Đang dùng thư mục bạn đã chọn cho Voice và model On-device. Lưu thay đổi sẽ khởi động lại engine; dữ liệu không bị sao chép."
-                  : "Kho riêng của SoCa hiện đang được dùng. Voice vẫn cần ASR và TTS ở đây, kể cả khi câu trả lời dùng Remote."
-              }
-              htmlFor="local-model-root"
-            >
-              <div className="flex flex-wrap gap-2">
-                <input
-                  id="local-model-root"
-                  className={`${INPUT} font-mono text-xs`}
-                  value={modelRootDraft}
-                  disabled={!connected || modelRootPending}
-                  placeholder="/đường/dẫn/tới/models"
-                  onChange={(event) => setModelRootDraft(event.target.value)}
+            {!isRemote && !remoteSetup && (
+              <Field label="Suy luận" hint={reasoningHint(config)}>
+                <Segmented
+                  value={config.effectiveReasoningEnabled ? "on" : "off"}
+                  // A model can force reasoning on or not support it at all; in
+                  // both cases the toggle is not the user's to flip (§7 obl. 8).
+                  disabled={
+                    !connected ||
+                    generationPending ||
+                    !config.reasoningSupported ||
+                    config.reasoningMandatory
+                  }
+                  onChange={(next) =>
+                    void runGeneration(() =>
+                      onApplyGeneration({ reasoningEnabled: next === "on" }),
+                    )
+                  }
+                  options={[
+                    { value: "off", label: "Tắt" },
+                    { value: "on", label: "Bật" },
+                  ]}
                 />
-                <Button
-                  className="h-10 shrink-0"
-                  disabled={!connected || modelRootPending}
-                  variant="outline"
-                  onClick={() => void chooseModelRoot()}
-                >
-                  <FolderOpen className="size-4" />
-                  Chọn thư mục model…
-                </Button>
-                <Button
-                  className="h-10 shrink-0"
-                  disabled={!connected || modelRootPending || modelRootDraft.trim() === ""}
-                  onClick={() => void applyModelRoot(modelRootDraft.trim())}
-                >
-                  {modelRootPending ? "Đang áp dụng…" : "Dùng đường dẫn"}
-                </Button>
-              </div>
-              {modelRoot?.source === "external" && (
-                <Button
-                  className="mt-2"
-                  size="sm"
-                  variant="outline"
-                  disabled={!connected || modelRootPending}
-                  onClick={() => void applyModelRoot(null)}
-                >
-                  Trở về kho SoCa
-                </Button>
-              )}
-              {modelRootError !== null && (
-                <p className="text-destructive mt-2 text-sm" role="alert">{modelRootError}</p>
-              )}
-            </Field>
-
-            <Field
-              label="Giới hạn token đầu ra"
-              // §7 obligation 8: the effective value, not the request.
-              hint={
-                config.maxTokens !== null && config.maxTokens !== config.effectiveMaxTokens
-                  ? `Model chặn ở ${config.effectiveMaxTokens ?? "—"}, nên đó mới là con số có hiệu lực.`
-                  : "Số token tối đa cho một câu trả lời."
-              }
-              htmlFor="max-tokens"
-            >
-              <input
-                id="max-tokens"
-                type="number"
-                min={1}
-                className={INPUT}
-                value={maxTokensDraft}
-                disabled={!connected || generationPending}
-                aria-invalid={generationError !== null}
-                aria-describedby={generationError !== null ? "generation-error" : undefined}
-                onChange={(event) => setMaxTokensDraft(event.target.value)}
-                onBlur={(event) => {
-                  const value = Number.parseInt(event.target.value, 10);
-                  if (event.target.value.trim() === "" || !Number.isInteger(value) || value < 1) {
-                    setGenerationError("Nhập số nguyên dương cho giới hạn token.");
-                    return;
-                  }
-                  if (value !== config.maxTokens) {
-                    void runGeneration(() => onApplyGeneration({ maxTokens: value }));
-                  }
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") event.currentTarget.blur();
-                }}
-              />
-            </Field>
-
-            <Field label="Suy luận" hint={reasoningHint(config)}>
-              <Segmented
-                value={config.effectiveReasoningEnabled ? "on" : "off"}
-                // A model can force reasoning on or not support it at all; in
-                // both cases the toggle is not the user's to flip (§7 obl. 8).
-                disabled={!connected || generationPending || !config.reasoningSupported || config.reasoningMandatory}
-                onChange={(next) =>
-                  void runGeneration(() => onApplyGeneration({ reasoningEnabled: next === "on" }))
-                }
-                options={[
-                  { value: "off", label: "Tắt" },
-                  { value: "on", label: "Bật" },
-                ]}
-              />
-            </Field>
+              </Field>
+            )}
           </>
         )}
       </Section>
 
-      {showRemoteSettings && (
-        <Section
-          icon={KeyRound}
-          title="Nhà cung cấp"
-          description="Key nằm trong keyring của engine, không bao giờ lưu ở giao diện."
-        >
-          {remoteSetup && !isRemote && (
-            <p className="bg-muted/40 text-muted-foreground rounded-lg border p-3 text-sm">
-              Chọn provider, xác thực API key và chọn model. SoCa chỉ chuyển sang remote sau khi
-              bạn chọn một model hợp lệ từ danh mục.
-            </p>
-          )}
-          <Field label="Chọn nhà cung cấp" hint="Chấm tròn đánh dấu nơi đang chạy thật.">
-            <div className="flex flex-wrap gap-2">
-              {settings.providers.length === 0 ? (
-                <p className="text-muted-foreground text-sm">Chưa nạp nhà cung cấp nào.</p>
-              ) : (
-                settings.providers.map((item) => {
-                  const active = isRemote && config?.provider === item.key;
-                  return (
-                    <Button
-                      key={item.key}
-                      size="sm"
-                      variant={provider === item.key ? "default" : "outline"}
-                      className={active ? "ring-primary/60 ring-1" : undefined}
-                      onClick={() => setSelectedProvider(item.key)}
-                    >
+      <Section
+        icon={KeyRound}
+        title="Nhà cung cấp"
+        description="Chọn nơi cung cấp model. Key và cấu hình chỉ mở khi bạn cần chỉnh."
+        actions={
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!connected}
+            onClick={onLoadProviders}
+          >
+            Tải lại
+          </Button>
+        }
+      >
+        {settings.providers.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            Đang nạp danh sách nhà cung cấp…
+          </p>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {settings.providers.map((item) => {
+              const active = isRemote && config?.provider === item.key;
+              const status = active
+                ? `Đang dùng · ${config?.model ?? "chưa chọn model"}`
+                : item.hasKey
+                  ? "Đã lưu key"
+                  : "Chưa có key";
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={cn(
+                    "border-border bg-card hover:bg-muted/50 focus-visible:ring-ring flex min-h-16 items-center gap-3 rounded-xl border p-3 text-left outline-none transition-colors focus-visible:ring-2",
+                    active && "border-primary/60 bg-primary/5",
+                  )}
+                  onClick={() => {
+                    setSelectedProvider(item.key);
+                    setRemoteSetup(true);
+                    setProviderDialogOpen(true);
+                  }}
+                >
+                  <ProviderMark provider={item.key} label={item.label} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">
                       {item.label}
-                      {active && <span className="ml-1.5 text-[10px]">●</span>}
-                      {!item.hasKey && (
-                        <span className="ml-1.5 text-[10px] opacity-70">chưa có key</span>
-                      )}
-                    </Button>
-                  );
-                })
-              )}
-            </div>
-          </Field>
+                    </span>
+                    <span className="text-muted-foreground block truncate text-xs">
+                      {status}
+                    </span>
+                  </span>
+                  {active ? (
+                    <Check
+                      className="text-primary size-4"
+                      aria-label="Đang dùng"
+                    />
+                  ) : (
+                    <ChevronRight
+                      className="text-muted-foreground size-4"
+                      aria-hidden="true"
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Section>
 
+      <Dialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen}>
+        <DialogContent className="max-h-[min(44rem,calc(100vh-2rem))] gap-5 overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Thiết lập nhà cung cấp</DialogTitle>
+            <DialogDescription>
+              API key được gửi thẳng vào keyring của engine và không được lưu
+              trong giao diện.
+            </DialogDescription>
+          </DialogHeader>
           {provider !== null && (
-            <>
+            <div className="flex flex-col gap-5">
+              <div className="border-border bg-muted/30 flex items-center gap-3 rounded-xl border p-3">
+                <ProviderMark
+                  provider={provider}
+                  label={
+                    settings.providers.find((item) => item.key === provider)
+                      ?.label ?? provider
+                  }
+                />
+                <div className="min-w-0">
+                  <p className="font-medium">
+                    {settings.providers.find((item) => item.key === provider)
+                      ?.label ?? provider}
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    {isRemote && config?.provider === provider
+                      ? "Đang là route chat hiện tại"
+                      : "Chọn model để dùng nhà cung cấp này"}
+                  </p>
+                </div>
+              </div>
+
               <Field
-                label={`API key cho ${provider}`}
+                label="API key"
                 hint={
                   keyStatus === undefined
-                    ? "Dán key vào rồi bấm Lưu; giao diện xoá nó ngay sau khi gửi."
+                    ? "Dán key rồi lưu; ô nhập sẽ được xoá ngay sau khi gửi."
                     : keyStatus.pending
-                      ? "Đang kiểm tra…"
-                      : (keyStatus.message ?? (keyStatus.ok ? "Key hợp lệ." : "Chưa kiểm tra."))
+                      ? "Đang xác minh…"
+                      : (keyStatus.message ??
+                        (keyStatus.ok
+                          ? "Key đã được xác minh."
+                          : "Chưa kiểm tra key."))
                 }
                 htmlFor="api-key"
               >
@@ -743,20 +897,42 @@ export function SettingsPanel({
                     className={INPUT}
                     value={keyDraft}
                     onChange={(event) => setKeyDraft(event.target.value)}
-                    placeholder={keyStatus?.masked ?? "dán key vào đây"}
+                    placeholder={keyStatus?.masked ?? "Dán API key"}
                   />
                   <Button
                     className="h-10 shrink-0"
                     disabled={!connected || keyDraft.trim() === ""}
                     onClick={() => {
                       onSetKey(provider, keyDraft.trim());
-                      // Cleared immediately — the engine's keyring owns it now.
                       setKeyDraft("");
                     }}
                   >
-                    Lưu
+                    Lưu key
                   </Button>
                 </div>
+              </Field>
+
+              <Field
+                label="Quyền xử lý dữ liệu"
+                hint={
+                  remoteDataCollection === "deny"
+                    ? "Chỉ chọn endpoint không thu thập dữ liệu. Không có endpoint phù hợp thì SoCa báo rõ, không tự đổi route."
+                    : "Provider có thể xử lý dữ liệu theo chính sách riêng của họ."
+                }
+              >
+                <Segmented
+                  value={remoteDataCollection}
+                  disabled={!connected || generationPending}
+                  onChange={(next) =>
+                    void runGeneration(() =>
+                      onApplyGeneration({ remoteDataCollection: next }),
+                    )
+                  }
+                  options={[
+                    { value: "deny", label: "Không thu thập" },
+                    { value: "allow", label: "Theo provider" },
+                  ]}
+                />
               </Field>
 
               <Field
@@ -764,7 +940,7 @@ export function SettingsPanel({
                 hint={
                   settings.pricingAsOf !== null
                     ? `Bảng giá tính đến ${settings.pricingAsOf}.`
-                    : "Gõ để lọc theo tên."
+                    : "Gõ để lọc theo tên model."
                 }
                 htmlFor="model-filter"
               >
@@ -772,41 +948,54 @@ export function SettingsPanel({
                   id="model-filter"
                   className={INPUT}
                   value={query}
-                  placeholder="lọc model"
+                  placeholder="Lọc model"
                   onChange={(event) => setQuery(event.target.value)}
                 />
-                <ScrollArea className="border-border mt-2 h-64 rounded-lg border">
+                <ScrollArea className="border-border mt-2 h-56 rounded-lg border">
                   {loading ? (
-                    /* docs/18 §4: the first frame is empty while the fetch runs. */
-                    <p className="text-muted-foreground p-3 text-sm">Đang tải danh mục…</p>
+                    <p className="text-muted-foreground p-3 text-sm">
+                      Đang tải danh mục…
+                    </p>
                   ) : models.length === 0 ? (
-                    <p className="text-muted-foreground p-3 text-sm">Không có model nào khớp.</p>
+                    <p className="text-muted-foreground p-3 text-sm">
+                      Không có model nào khớp.
+                    </p>
                   ) : (
                     <ul className="flex flex-col p-1">
                       {models.map((model) => (
                         <li
                           key={model.id}
                           className={cn(
-                            "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm",
-                            model.id === activeModel ? "bg-accent" : "hover:bg-muted",
+                            "flex items-center gap-2 rounded-md px-2 py-2 text-sm",
+                            model.id === activeModel
+                              ? "bg-accent"
+                              : "hover:bg-muted",
                           )}
                         >
                           <div className="flex min-w-0 flex-1 flex-col">
-                            <span className="truncate font-mono text-xs">{model.id}</span>
+                            <span className="truncate font-mono text-xs">
+                              {model.id}
+                            </span>
                             <span className="text-muted-foreground text-[10px]">
                               {model.context_length ?? "—"} ctx
-                              {modelPrice(model) !== null && ` · ${modelPrice(model)}`}
-                              {model.reasoning_mandatory && " · bắt buộc suy luận"}
+                              {modelPrice(model) !== null &&
+                                ` · ${modelPrice(model)}`}
+                              {model.reasoning_mandatory &&
+                                " · bắt buộc suy luận"}
                             </span>
                           </div>
                           {model.id === activeModel ? (
-                            <Badge variant="secondary">đang dùng</Badge>
+                            <Badge variant="secondary">Đang dùng</Badge>
                           ) : (
                             <Button
                               size="sm"
                               variant="ghost"
                               disabled={!connected || generationPending}
-                              onClick={() => void runGeneration(() => onSelectModel(provider, model.id))}
+                              onClick={() =>
+                                void runGeneration(() =>
+                                  onSelectModel(provider, model.id),
+                                )
+                              }
                             >
                               Chọn
                             </Button>
@@ -817,210 +1006,521 @@ export function SettingsPanel({
                   )}
                 </ScrollArea>
               </Field>
-            </>
+
+              <Field
+                label="Giới hạn token đầu ra"
+                hint={
+                  config !== null &&
+                  config.maxTokens !== null &&
+                  config.maxTokens !== config.effectiveMaxTokens
+                    ? `Model chặn ở ${config.effectiveMaxTokens ?? "—"}; đây là giới hạn có hiệu lực.`
+                    : "Số token tối đa cho một câu trả lời."
+                }
+                htmlFor="remote-max-tokens"
+              >
+                <input
+                  id="remote-max-tokens"
+                  type="number"
+                  min={1}
+                  className={INPUT}
+                  value={maxTokensDraft}
+                  disabled={!connected || generationPending}
+                  aria-invalid={generationError !== null}
+                  onChange={(event) => setMaxTokensDraft(event.target.value)}
+                  onBlur={(event) => {
+                    const value = Number.parseInt(event.target.value, 10);
+                    if (
+                      event.target.value.trim() === "" ||
+                      !Number.isInteger(value) ||
+                      value < 1
+                    ) {
+                      setGenerationError(
+                        "Nhập số nguyên dương cho giới hạn token.",
+                      );
+                    } else if (value !== config?.maxTokens) {
+                      void runGeneration(() =>
+                        onApplyGeneration({ maxTokens: value }),
+                      );
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                  }}
+                />
+              </Field>
+
+              {config !== null && (
+                <Field label="Suy luận" hint={reasoningHint(config)}>
+                  <Segmented
+                    value={config.effectiveReasoningEnabled ? "on" : "off"}
+                    disabled={
+                      !connected ||
+                      generationPending ||
+                      !config.reasoningSupported ||
+                      config.reasoningMandatory
+                    }
+                    onChange={(next) =>
+                      void runGeneration(() =>
+                        onApplyGeneration({ reasoningEnabled: next === "on" }),
+                      )
+                    }
+                    options={[
+                      { value: "off", label: "Tắt" },
+                      { value: "on", label: "Bật" },
+                    ]}
+                  />
+                </Field>
+              )}
+            </div>
           )}
-        </Section>
-      )}
+        </DialogContent>
+      </Dialog>
 
       <div ref={voiceSetupRef}>
         <Section
           icon={AudioLines}
           title="Thoại"
-          description="Chat và Voice được thiết lập riêng. Mở Voice để xem trạng thái; dùng phần này để hoàn tất các thành phần còn thiếu."
+          description="Qwen ASR, microphone và giọng đọc được quản lý cùng một nơi."
+          actions={
+            <Button
+              size="sm"
+              variant={voiceReady ? "outline" : "default"}
+              onClick={() => setVoiceDialogOpen(true)}
+            >
+              <Settings2 className="size-4" />
+              {voiceReady ? "Quản lý" : "Thiết lập"}
+            </Button>
+          }
         >
-        <Field
-          label="Trạng thái thoại"
-          hint="Âm thanh luôn được thu và phát trên máy này."
-        >
-          {voiceComponents.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Đang kiểm tra các thành phần thoại…</p>
-          ) : (
-            <div className="border-border bg-muted/30 flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm">
-              <Badge variant={voiceReady ? "secondary" : "outline"}>
-                {voiceReady ? "Ready" : voiceChecking ? "Checking" : "Needs setup"}
-              </Badge>
-              <div className="min-w-0 flex-1 leading-5">
-                {voiceReady
-                  ? "Qwen ASR, model trả lời và giọng đọc đã sẵn sàng."
+          <button
+            type="button"
+            className="border-border bg-card hover:bg-muted/50 focus-visible:ring-ring flex w-full items-center gap-3 rounded-xl border p-3 text-left outline-none transition-colors focus-visible:ring-2"
+            onClick={() => setVoiceDialogOpen(true)}
+          >
+            <span
+              className={cn(
+                "size-2 shrink-0 rounded-full",
+                voiceReady
+                  ? "bg-emerald-400"
                   : voiceChecking
-                    ? "Đang xác minh Voice. Bạn không cần chọn lại thư mục model."
+                    ? "bg-amber-400 animate-pulse"
+                    : "bg-rose-400",
+              )}
+              aria-hidden="true"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">
+                {voiceReady
+                  ? "Sẵn sàng sử dụng"
+                  : voiceChecking
+                    ? "Đang kiểm tra"
+                    : "Cần hoàn tất thiết lập"}
+              </span>
+              <span className="text-muted-foreground block truncate text-xs">
+                {voiceReady
+                  ? "Qwen ASR, microphone và giọng đọc đã sẵn sàng."
+                  : voiceChecking
+                    ? "Đang xác minh thành phần thoại; không cần chọn lại thư mục."
                     : voiceBlocker === undefined
-                    ? "Đang chờ trạng thái thoại hoàn chỉnh…"
-                    : voiceSetupMessage(voiceBlocker)}
-                {!voiceReady && !voiceChecking && voiceBlocker?.detail !== null && voiceBlocker?.detail !== undefined && (
-                  <details className="text-muted-foreground mt-2 text-xs">
-                    <summary className="cursor-pointer select-none">Thông tin kỹ thuật</summary>
-                    <p className="mt-1 break-words font-mono leading-5">{voiceBlocker.detail}</p>
-                  </details>
+                      ? "Đang chờ trạng thái thoại đầy đủ…"
+                      : voiceSetupMessage(voiceBlocker)}
+              </span>
+            </span>
+            <ChevronRight
+              className="text-muted-foreground size-4"
+              aria-hidden="true"
+            />
+          </button>
+        </Section>
+
+        <Dialog open={voiceDialogOpen} onOpenChange={setVoiceDialogOpen}>
+          <DialogContent className="max-h-[min(46rem,calc(100vh-2rem))] gap-5 overflow-y-auto sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Thiết lập Voice</DialogTitle>
+              <DialogDescription>
+                Chọn microphone và quản lý bản cài Qwen ASR. Engine luôn xác
+                minh thay đổi đường dẫn trước khi áp dụng.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-5">
+              <Field
+                label="Trạng thái thoại"
+                hint="Âm thanh luôn được thu và phát trên máy này."
+              >
+                {voiceComponents.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">
+                    Đang kiểm tra các thành phần thoại…
+                  </p>
+                ) : (
+                  <div className="border-border bg-muted/30 flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm">
+                    <Badge variant={voiceReady ? "secondary" : "outline"}>
+                      {voiceReady
+                        ? "Ready"
+                        : voiceChecking
+                          ? "Checking"
+                          : "Needs setup"}
+                    </Badge>
+                    <div className="min-w-0 flex-1 leading-5">
+                      {voiceReady
+                        ? "Qwen ASR, model trả lời và giọng đọc đã sẵn sàng."
+                        : voiceChecking
+                          ? "Đang xác minh Voice. Bạn không cần chọn lại thư mục model."
+                          : voiceBlocker === undefined
+                            ? "Đang chờ trạng thái thoại hoàn chỉnh…"
+                            : voiceSetupMessage(voiceBlocker)}
+                      {!voiceReady &&
+                        !voiceChecking &&
+                        voiceBlocker?.detail !== null &&
+                        voiceBlocker?.detail !== undefined && (
+                          <details className="text-muted-foreground mt-2 text-xs">
+                            <summary className="cursor-pointer select-none">
+                              Thông tin kỹ thuật
+                            </summary>
+                            <p className="mt-1 break-words font-mono leading-5">
+                              {voiceBlocker.detail}
+                            </p>
+                          </details>
+                        )}
+                      {!voiceReady &&
+                        !voiceChecking &&
+                        voiceBlocker?.id === "voice_asr" &&
+                        !qwenCalibrationPending && (
+                          <Button
+                            className="mt-3"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const input = document.getElementById(
+                                "qwen-asr-model-root",
+                              );
+                              input?.scrollIntoView({
+                                behavior: "smooth",
+                                block: "center",
+                              });
+                              window.setTimeout(
+                                () =>
+                                  (input as HTMLInputElement | null)?.focus(),
+                                250,
+                              );
+                            }}
+                          >
+                            Thiết lập Qwen ASR
+                          </Button>
+                        )}
+                    </div>
+                  </div>
                 )}
-                {!voiceReady && !voiceChecking && voiceBlocker?.id === "voice_asr" && !qwenCalibrationPending && (
+              </Field>
+              <Field
+                label="Kho model Voice và On-device"
+                hint={
+                  modelRoot?.source === "external"
+                    ? "Đang dùng thư mục bạn đã chọn. Lưu thay đổi sẽ khởi động lại engine; dữ liệu không bị sao chép."
+                    : "Đang dùng kho riêng của SoCa. Voice vẫn cần ASR và TTS ở đây, kể cả khi chat dùng Remote."
+                }
+                htmlFor="local-model-root"
+              >
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    id="local-model-root"
+                    className={`${INPUT} min-w-0 flex-1 font-mono text-xs`}
+                    value={modelRootDraft}
+                    disabled={!connected || modelRootPending}
+                    placeholder="/đường/dẫn/tới/models"
+                    onChange={(event) => setModelRootDraft(event.target.value)}
+                  />
                   <Button
-                    className="mt-3"
+                    className="h-10 shrink-0"
+                    disabled={!connected || modelRootPending}
+                    variant="outline"
+                    onClick={() => void chooseModelRoot()}
+                  >
+                    <FolderOpen className="size-4" /> Chọn thư mục model…
+                  </Button>
+                  <Button
+                    className="h-10 shrink-0"
+                    disabled={
+                      !connected ||
+                      modelRootPending ||
+                      modelRootDraft.trim() === ""
+                    }
+                    onClick={() => void applyModelRoot(modelRootDraft.trim())}
+                  >
+                    {modelRootPending ? "Đang áp dụng…" : "Dùng đường dẫn"}
+                  </Button>
+                </div>
+                {modelRoot?.source === "external" && (
+                  <Button
+                    className="mt-2"
                     size="sm"
                     variant="outline"
-                    onClick={() => {
-                      const input = document.getElementById("qwen-asr-model-root");
-                      input?.scrollIntoView({ behavior: "smooth", block: "center" });
-                      window.setTimeout(() => (input as HTMLInputElement | null)?.focus(), 250);
-                    }}
+                    disabled={!connected || modelRootPending}
+                    onClick={() => void applyModelRoot(null)}
                   >
-                    Thiết lập Qwen ASR
+                    Trở về kho SoCa
                   </Button>
                 )}
-              </div>
-            </div>
-          )}
-        </Field>
-        <Field
-          label="Microphone"
-          hint="Voice chỉ thu từ thiết bị này. Chọn “Theo hệ thống” để dùng microphone mặc định của macOS."
-          htmlFor="voice-audio-input"
-        >
-          <select
-            id="voice-audio-input"
-            className={INPUT}
-            disabled={!connected || settings.audioInput === null}
-            value={settings.audioInput?.selectedId ?? ""}
-            onChange={(event) => void onSelectAudioInput(event.target.value || null)}
-          >
-            <option value="">
-              Theo hệ thống{settings.audioInput?.selectedLabel ? ` — ${settings.audioInput.selectedLabel}` : ""}
-            </option>
-            {settings.audioInput?.devices.map((device) => (
-              <option key={device.id} value={device.id}>
-                {device.label}{device.isSystemDefault ? " — mặc định hệ thống" : ""}
-              </option>
-            ))}
-          </select>
-          {settings.audioInput === null && (
-            <p className="text-muted-foreground mt-2 text-xs">Đang kiểm tra microphone khả dụng…</p>
-          )}
-        </Field>
-        <Field
-          label="Qwen ASR"
-          hint="Qwen Release là bộ nhận diện bắt buộc. “Dùng thư mục” chỉ xác minh một bản Qwen đã có và khởi động lại engine; nó không tải, sao chép hoặc cài model."
-        >
-          <div className="border-border flex flex-col gap-3 rounded-lg border p-3">
-            {qwenAsrVerified && (
-              <div className="flex items-center gap-2 text-sm">
-                <Badge variant={qwenCalibrationPending ? "outline" : "secondary"}>
-                  {qwenCalibrationPending ? "Verification required" : "Sẵn sàng"}
-                </Badge>
-                <span>
-                  {qwenCalibrationPending
-                    ? "Qwen model và runtime đã được xác minh. Đừng chọn lại thư mục; microphone mở sau khi calibration được xác nhận."
-                    : "Qwen ASR đã được xác minh; không có tác vụ tải xuống đang chạy."}
-                </span>
-              </div>
-            )}
-            <details open={!qwenAsrVerified} className="group">
-              <summary className="cursor-pointer list-none text-sm font-medium marker:hidden">
-                {qwenAsrVerified ? "Thay đổi bản cài Qwen hiện có" : "Dùng bản cài Qwen hiện có"}
-              </summary>
-              <p className="text-muted-foreground mt-2 text-xs leading-5">
-                Màn hình này chưa tải model. Hai nút dưới đây chỉ lưu đường dẫn, kiểm tra chữ ký/receipt và khởi động lại engine. Vì vậy không có thanh tiến trình tải xuống.
-              </p>
-              <div className="mt-4 flex flex-col gap-4">
-            <div>
-              <p className="text-sm font-medium">Môi trường chạy Qwen</p>
-              <p className="text-muted-foreground mt-1 text-xs leading-5">
-                Chỉ dùng khi bạn đã cài Qwen trước đó: chọn thư mục <code>runtime/qwen-asr</code> có <code>uv.lock</code>, <code>.runtime-receipt.json</code> và <code>.venv</code>.
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <input
-                  id="qwen-runtime-root"
-                  aria-label="Môi trường chạy Qwen"
-                  className={`${INPUT} min-w-0 flex-1 font-mono text-xs`}
-                  value={qwenRuntimeRootDraft}
-                  disabled={!connected || qwenSetupPending !== null}
-                  placeholder="/absolute/path/to/runtime/qwen-asr"
-                  onChange={(event) => setQwenRuntimeRootDraft(event.target.value)}
-                />
-                <Button type="button" variant="outline" disabled={!connected || qwenSetupPending !== null} onClick={() => void chooseQwenRoot("runtime")}>
-                  <FolderOpen className="size-4" /> Chọn runtime…
-                </Button>
-                <Button type="button" disabled={!connected || qwenSetupPending !== null || qwenRuntimeRootDraft.trim() === ""} onClick={() => void applyQwenRoot("runtime", qwenRuntimeRootDraft.trim())}>
-                  {qwenSetupPending === "runtime" ? "Đang kiểm tra…" : "Dùng thư mục này"}
-                </Button>
-              </div>
-            </div>
-            <div>
-              <p className="text-sm font-medium">Kho model Qwen</p>
-              <p className="text-muted-foreground mt-1 text-xs leading-5">
-                Chỉ dùng khi model đã có: chọn thư mục chứa <code>asr/receipts/qwen3_asr_0_6b.json</code>. SoCa không thay model ASR khi khởi động Voice.
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <input
-                  id="qwen-asr-model-root"
-                  aria-label="Kho model Qwen"
-                  className={`${INPUT} min-w-0 flex-1 font-mono text-xs`}
-                  value={qwenAsrModelRootDraft}
-                  disabled={!connected || qwenSetupPending !== null}
-                  placeholder="/absolute/path/to/soca/models"
-                  onChange={(event) => setQwenAsrModelRootDraft(event.target.value)}
-                />
-                <Button type="button" variant="outline" disabled={!connected || qwenSetupPending !== null} onClick={() => void chooseQwenRoot("model")}>
-                  <FolderOpen className="size-4" /> Chọn kho model…
-                </Button>
-                <Button type="button" disabled={!connected || qwenSetupPending !== null || qwenAsrModelRootDraft.trim() === ""} onClick={() => void applyQwenRoot("model", qwenAsrModelRootDraft.trim())}>
-                  {qwenSetupPending === "model" ? "Đang kiểm tra…" : "Dùng thư mục này"}
-                </Button>
-              </div>
-            </div>
-            {qwenSetupError !== null && <p className="text-destructive text-xs" role="alert">{qwenSetupError}</p>}
-              </div>
-            </details>
-          </div>
-        </Field>
-        <Field
-          label="Cấu hình thoại"
-          hint="Profile chỉ áp dụng cho phiên thoại kế tiếp; chuyển profile không ngắt cuộc gọi đang diễn ra."
-        >
-          {settings.profiles.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Tải lại cài đặt để xem voice profile.</p>
-          ) : (
-            <ul className="border-border divide-border flex flex-col divide-y rounded-lg border">
-              {settings.profiles.map((profile) => (
-                <li key={profile.key} className="flex items-center gap-3 px-3 py-2.5 text-sm">
-                  <Badge variant={settings.activeProfile === profile.key ? "secondary" : "outline"}>
-                    {settings.activeProfile === profile.key
-                      ? profile.status === "ok"
-                        ? "Active"
-                        : "Active · Needs setup"
-                      : profileStatus(profile)}
-                  </Badge>
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium">{profileName(profile.key)}</span>
-                    <span className="text-muted-foreground text-xs leading-5">{profileSummary(profile)}</span>
-                    <details className="text-muted-foreground mt-1 text-[10px]">
-                      <summary className="cursor-pointer select-none">Thông tin kỹ thuật</summary>
-                      {profile.note !== null && profile.note !== undefined && (
-                        <p className="mt-1 break-words leading-5">{profile.note}</p>
-                      )}
-                      <p className="mt-1 break-words font-mono leading-5">
-                        {[profile.asr, profile.tts, profile.voice].filter(Boolean).join(" · ")}
-                      </p>
-                    </details>
-                  </div>
-                  {settings.activeProfile !== profile.key && profile.status === "ok" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={!connected || profile.status !== "ok" || profilePending !== null}
-                      onClick={async () => {
-                        setProfilePending(profile.key);
-                        if (!(await onSelectProfile(profile.key))) setProfilePending(null);
-                      }}
-                    >
-                      {profilePending === profile.key ? "Đang áp dụng…" : "Chọn"}
-                    </Button>
+                {modelRootError !== null && (
+                  <p className="text-destructive mt-2 text-sm" role="alert">
+                    {modelRootError}
+                  </p>
+                )}
+              </Field>
+              <Field
+                label="Microphone"
+                hint="Voice chỉ thu từ thiết bị này. Chọn “Theo hệ thống” để dùng microphone mặc định của macOS."
+                htmlFor="voice-audio-input"
+              >
+                <select
+                  id="voice-audio-input"
+                  className={INPUT}
+                  disabled={!connected || settings.audioInput === null}
+                  value={settings.audioInput?.selectedId ?? ""}
+                  onChange={(event) =>
+                    void onSelectAudioInput(event.target.value || null)
+                  }
+                >
+                  <option value="">
+                    Theo hệ thống
+                    {settings.audioInput?.selectedLabel
+                      ? ` — ${settings.audioInput.selectedLabel}`
+                      : ""}
+                  </option>
+                  {settings.audioInput?.devices.map((device) => (
+                    <option key={device.id} value={device.id}>
+                      {device.label}
+                      {device.isSystemDefault ? " — mặc định hệ thống" : ""}
+                    </option>
+                  ))}
+                </select>
+                {settings.audioInput === null && (
+                  <p className="text-muted-foreground mt-2 text-xs">
+                    Đang kiểm tra microphone khả dụng…
+                  </p>
+                )}
+              </Field>
+              <Field
+                label="Qwen ASR"
+                hint="Qwen Release là bộ nhận diện bắt buộc. “Dùng thư mục” chỉ xác minh một bản Qwen đã có và khởi động lại engine; nó không tải, sao chép hoặc cài model."
+              >
+                <div className="border-border flex flex-col gap-3 rounded-lg border p-3">
+                  {qwenAsrVerified && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Badge
+                        variant={
+                          qwenCalibrationPending ? "outline" : "secondary"
+                        }
+                      >
+                        {qwenCalibrationPending
+                          ? "Verification required"
+                          : "Sẵn sàng"}
+                      </Badge>
+                      <span>
+                        {qwenCalibrationPending
+                          ? "Qwen model và runtime đã được xác minh. Đừng chọn lại thư mục; microphone mở sau khi calibration được xác nhận."
+                          : "Qwen ASR đã được xác minh; không có tác vụ tải xuống đang chạy."}
+                      </span>
+                    </div>
                   )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Field>
-        </Section>
+                  <details open={!qwenAsrVerified} className="group">
+                    <summary className="cursor-pointer list-none text-sm font-medium marker:hidden">
+                      {qwenAsrVerified
+                        ? "Thay đổi bản cài Qwen hiện có"
+                        : "Dùng bản cài Qwen hiện có"}
+                    </summary>
+                    <p className="text-muted-foreground mt-2 text-xs leading-5">
+                      Màn hình này chưa tải model. Hai nút dưới đây chỉ lưu
+                      đường dẫn, kiểm tra chữ ký/receipt và khởi động lại
+                      engine. Vì vậy không có thanh tiến trình tải xuống.
+                    </p>
+                    <div className="mt-4 flex flex-col gap-4">
+                      <div>
+                        <p className="text-sm font-medium">
+                          Môi trường chạy Qwen
+                        </p>
+                        <p className="text-muted-foreground mt-1 text-xs leading-5">
+                          Chỉ dùng khi bạn đã cài Qwen trước đó: chọn thư mục{" "}
+                          <code>runtime/qwen-asr</code> có <code>uv.lock</code>,{" "}
+                          <code>.runtime-receipt.json</code> và{" "}
+                          <code>.venv</code>.
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <input
+                            id="qwen-runtime-root"
+                            aria-label="Môi trường chạy Qwen"
+                            className={`${INPUT} min-w-0 flex-1 font-mono text-xs`}
+                            value={qwenRuntimeRootDraft}
+                            disabled={!connected || qwenSetupPending !== null}
+                            placeholder="/absolute/path/to/runtime/qwen-asr"
+                            onChange={(event) =>
+                              setQwenRuntimeRootDraft(event.target.value)
+                            }
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={!connected || qwenSetupPending !== null}
+                            onClick={() => void chooseQwenRoot("runtime")}
+                          >
+                            <FolderOpen className="size-4" /> Chọn runtime…
+                          </Button>
+                          <Button
+                            type="button"
+                            disabled={
+                              !connected ||
+                              qwenSetupPending !== null ||
+                              qwenRuntimeRootDraft.trim() === ""
+                            }
+                            onClick={() =>
+                              void applyQwenRoot(
+                                "runtime",
+                                qwenRuntimeRootDraft.trim(),
+                              )
+                            }
+                          >
+                            {qwenSetupPending === "runtime"
+                              ? "Đang kiểm tra…"
+                              : "Dùng thư mục này"}
+                          </Button>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Kho model Qwen</p>
+                        <p className="text-muted-foreground mt-1 text-xs leading-5">
+                          Chỉ dùng khi model đã có: chọn thư mục chứa{" "}
+                          <code>asr/receipts/qwen3_asr_0_6b.json</code>. SoCa
+                          không thay model ASR khi khởi động Voice.
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <input
+                            id="qwen-asr-model-root"
+                            aria-label="Kho model Qwen"
+                            className={`${INPUT} min-w-0 flex-1 font-mono text-xs`}
+                            value={qwenAsrModelRootDraft}
+                            disabled={!connected || qwenSetupPending !== null}
+                            placeholder="/absolute/path/to/soca/models"
+                            onChange={(event) =>
+                              setQwenAsrModelRootDraft(event.target.value)
+                            }
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={!connected || qwenSetupPending !== null}
+                            onClick={() => void chooseQwenRoot("model")}
+                          >
+                            <FolderOpen className="size-4" /> Chọn kho model…
+                          </Button>
+                          <Button
+                            type="button"
+                            disabled={
+                              !connected ||
+                              qwenSetupPending !== null ||
+                              qwenAsrModelRootDraft.trim() === ""
+                            }
+                            onClick={() =>
+                              void applyQwenRoot(
+                                "model",
+                                qwenAsrModelRootDraft.trim(),
+                              )
+                            }
+                          >
+                            {qwenSetupPending === "model"
+                              ? "Đang kiểm tra…"
+                              : "Dùng thư mục này"}
+                          </Button>
+                        </div>
+                      </div>
+                      {qwenSetupError !== null && (
+                        <p className="text-destructive text-xs" role="alert">
+                          {qwenSetupError}
+                        </p>
+                      )}
+                    </div>
+                  </details>
+                </div>
+              </Field>
+              <Field
+                label="Cấu hình thoại"
+                hint="Profile chỉ áp dụng cho phiên thoại kế tiếp; chuyển profile không ngắt cuộc gọi đang diễn ra."
+              >
+                {settings.profiles.length === 0 ? (
+                  <p className="text-muted-foreground text-sm">
+                    Tải lại cài đặt để xem voice profile.
+                  </p>
+                ) : (
+                  <ul className="border-border divide-border flex flex-col divide-y rounded-lg border">
+                    {settings.profiles.map((profile) => (
+                      <li
+                        key={profile.key}
+                        className="flex items-center gap-3 px-3 py-2.5 text-sm"
+                      >
+                        <Badge
+                          variant={
+                            settings.activeProfile === profile.key
+                              ? "secondary"
+                              : "outline"
+                          }
+                        >
+                          {settings.activeProfile === profile.key
+                            ? profile.status === "ok"
+                              ? "Active"
+                              : "Active · Needs setup"
+                            : profileStatus(profile)}
+                        </Badge>
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate text-sm font-medium">
+                            {profileName(profile.key)}
+                          </span>
+                          <span className="text-muted-foreground text-xs leading-5">
+                            {profileSummary(profile)}
+                          </span>
+                          <details className="text-muted-foreground mt-1 text-[10px]">
+                            <summary className="cursor-pointer select-none">
+                              Thông tin kỹ thuật
+                            </summary>
+                            {profile.note !== null &&
+                              profile.note !== undefined && (
+                                <p className="mt-1 break-words leading-5">
+                                  {profile.note}
+                                </p>
+                              )}
+                            <p className="mt-1 break-words font-mono leading-5">
+                              {[profile.asr, profile.tts, profile.voice]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </p>
+                          </details>
+                        </div>
+                        {settings.activeProfile !== profile.key &&
+                          profile.status === "ok" && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={
+                                !connected ||
+                                profile.status !== "ok" ||
+                                profilePending !== null
+                              }
+                              onClick={async () => {
+                                setProfilePending(profile.key);
+                                if (!(await onSelectProfile(profile.key)))
+                                  setProfilePending(null);
+                              }}
+                            >
+                              {profilePending === profile.key
+                                ? "Đang áp dụng…"
+                                : "Chọn"}
+                            </Button>
+                          )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Field>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
