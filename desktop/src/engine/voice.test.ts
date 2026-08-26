@@ -115,6 +115,19 @@ describe("levels", () => {
     expect(state.levels).toEqual([]);
   });
 
+  it("keeps a truthful no-speech outcome visible after capture ends", () => {
+    const state = fold([voice("recorded", { metadata: { speech_detected: false } })]);
+    expect(state.noSpeechDetected).toBe(true);
+  });
+
+  it("clears a no-speech outcome once ASR begins producing text", () => {
+    const state = fold([
+      voice("recorded", { metadata: { speech_detected: false } }),
+      voice("asr_partial", { metadata: { committed: "xin", tentative: " chào" } }),
+    ]);
+    expect(state.noSpeechDetected).toBe(false);
+  });
+
   it("reports peak rather than mean", () => {
     // A mean over a window containing silence makes a working mic look dead.
     expect(peakLevel([0, 0, 0.8, 0])).toBe(0.8);

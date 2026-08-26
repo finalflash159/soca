@@ -204,6 +204,8 @@ def test_voice_monitor_passive_silence_skips_asr_pipeline() -> None:
     # No speech -> the ASR/LLM pipeline is skipped entirely (efficiency)...
     assert pipeline.audio_inputs == []
     assert "asr" not in event_types
+    recorded = next(event for event in events if event.type == "recorded")
+    assert recorded.metadata["speech_detected"] is False
 
 
 def test_voice_monitor_reports_microphone_level_for_nonempty_audio() -> None:

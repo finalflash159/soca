@@ -203,7 +203,12 @@ def test_record_until_silence_stops_after_speech_then_endpoint_silence(monkeypat
 
     assert stream.entered is True
     assert stream.exited is True
-    assert stream.kwargs == {"samplerate": 1000, "channels": 1, "dtype": "float32"}
+    assert stream.kwargs == {
+        "samplerate": 1000,
+        "channels": 1,
+        "dtype": "float32",
+        "device": None,
+    }
     assert stream.read_sizes == [100, 100, 100, 100]
     assert detector.calls == [100, 200, 300, 400]
     assert audio.dtype == np.float32
@@ -233,6 +238,25 @@ def test_record_until_silence_reports_rms_for_each_captured_block(monkeypatch):
     )
 
     assert levels == pytest.approx([0.1, 0.2, 0.3, 0.4])
+
+
+def test_record_until_silence_opens_the_explicit_selected_microphone(monkeypatch):
+    config = EndpointConfig(
+        sample_rate=1000,
+        block_ms=100,
+        endpoint_silence_ms=100,
+        max_record_ms=200,
+        min_audio_ms=100,
+        adaptive=False,
+        input_device="USB Headset",
+    )
+    stream = FakeInputStream([np.ones((100, 1), dtype=np.float32)] * 2)
+    install_fake_input_stream(monkeypatch, stream)
+    monkeypatch.setattr(endpoint_module, "resolve_audio_input_device", lambda selected: selected)
+
+    record_until_silence(FakeDetector(first_detection_samples=100, speech_end_samples=0), config=config)
+
+    assert stream.kwargs["device"] == "USB Headset"
 
 
 def test_record_until_silence_prepends_barge_in_prefix(monkeypatch):

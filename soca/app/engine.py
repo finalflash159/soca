@@ -32,11 +32,13 @@ from soca.config import (
     DEFAULT_SETTINGS,
     LlmSettings,
     SecretStore,
+    load_audio_input_device,
     load_settings,
+    save_audio_input_device,
     save_settings,
     save_voice_profile,
 )
-from soca.core import AudioSink, ResolvedVoiceRuntimeConfig
+from soca.core import AudioInputDeviceError, AudioSink, ResolvedVoiceRuntimeConfig, audio_input_status
 from soca.core.answer_validation import (
     answer_chunk_without_citation_labels,
     answer_text_without_citation_labels,
@@ -358,6 +360,14 @@ class SocaEngine:
         self.llm_settings_saver = llm_settings_saver
         self.voice_profile_saver = voice_profile_saver
         self._settings_error: str | None = None
+        self._audio_input_settings_error: str | None = None
+        try:
+            self.audio_input_device = load_audio_input_device()
+        except ValueError as exc:
+            # A broken device preference must never become an implicit switch
+            # to a different microphone. Make it a typed blocked state.
+            self.audio_input_device = None
+            self._audio_input_settings_error = str(exc)
         try:
             self.llm_settings = llm_settings_loader()
         except ValueError:
@@ -507,6 +517,10 @@ class SocaEngine:
             self._cmd_voice_start(int(max_turns) if isinstance(max_turns, int) else None)
         elif cmd == "voice_stop":
             self._cmd_voice_stop()
+        elif cmd == "audio_input_get":
+            self._cmd_audio_input_get()
+        elif cmd == "audio_input_select":
+            self._cmd_audio_input_select(command)
         elif cmd == "voice_profile_select":
             self._cmd_voice_profile_select(command)
         elif cmd == "knowledge_init":
@@ -2979,6 +2993,14 @@ class SocaEngine:
         if self.voice_config is None:
             self._error("voice unavailable: no voice runtime config")
             return
+        if self._audio_input_settings_error is not None:
+            self._error(self._audio_input_settings_error, code="audio_input_invalid")
+            return
+        try:
+            audio_input_status(self.audio_input_device)
+        except AudioInputDeviceError as exc:
+            self._error(str(exc), code="audio_input_unavailable")
+            return
         if self.voice_stop_event is not None and not self.voice_stop_event.is_set():
             self._error("voice already running")
             return
@@ -3030,6 +3052,44 @@ class SocaEngine:
         self._voice_threads = [pump, worker]
         pump.start()
         worker.start()
+
+    def _cmd_audio_input_get(self) -> None:
+        """Expose input endpoints without opening a microphone stream."""
+        if self._audio_input_settings_error is not None:
+            self._error(self._audio_input_settings_error, code="audio_input_invalid")
+            return
+        try:
+            payload = audio_input_status(self.audio_input_device)
+        except AudioInputDeviceError as exc:
+            self._error(str(exc), code="audio_input_unavailable")
+            return
+        self.writer.emit({"event": "audio_input", **payload})
+
+    def _cmd_audio_input_select(self, command: dict[str, Any]) -> None:
+        """Persist an explicit microphone choice for subsequent Voice turns."""
+        if self._voice_is_active():
+            self._error(
+                "Dừng Voice trước khi đổi microphone.",
+                code="audio_input_change_while_active",
+            )
+            return
+        requested = command.get("device")
+        if requested is not None and (not isinstance(requested, str) or not requested.strip()):
+            self._error("Microphone không hợp lệ.", code="audio_input_invalid")
+            return
+        selected = requested if isinstance(requested, str) else None
+        try:
+            # Validate before saving. Selecting a missing device must not make
+            # a later voice_start silently capture from some other endpoint.
+            payload = audio_input_status(selected)
+            save_audio_input_device(selected)
+        except (AudioInputDeviceError, ValueError) as exc:
+            self._error(str(exc), code="audio_input_invalid")
+            return
+        self.audio_input_device = selected
+        self._audio_input_settings_error = None
+        self.writer.emit({"event": "audio_input", **payload})
+        self._cmd_status()
 
     def _voice_pump(self, queue: Queue[VoiceMonitorEvent | None]) -> None:
         while True:
@@ -3391,6 +3451,7 @@ class SocaEngine:
             self.voice_config,
             warmup=self.warmup_voice,
             session_memory=self.session_memory,
+            input_device=self.audio_input_device,
             **kwargs,
         )
         return self.voice_controller

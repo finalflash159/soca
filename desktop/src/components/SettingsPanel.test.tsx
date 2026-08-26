@@ -85,6 +85,7 @@ function renderPanel(
     onLoadModels: vi.fn(),
     onSelectModel: vi.fn(async () => true),
     onSelectProfile: vi.fn(async () => true),
+    onSelectAudioInput: vi.fn(async () => true),
     onApplyGeneration: vi.fn(async () => true),
     modelRoot: { path: "/models", source: "managed" },
     onSetModelRoot: vi.fn(async () => null),

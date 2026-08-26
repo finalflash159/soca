@@ -49,6 +49,20 @@ function recentLevel(levels: number[]): number {
   return peakLevel(levels.slice(-6));
 }
 
+/**
+ * Convert the recorder's physical RMS envelope into a perceptual UI range.
+ *
+ * Speech captured by a close laptop microphone commonly measures in the
+ * 0.001–0.02 RMS range, so using it as a CSS percentage made a functioning
+ * input appear frozen. This is a monotonic logarithmic display transform of
+ * the actual PCM measurement — not an invented idle animation.
+ */
+export function perceptualVoiceLevel(rms: number): number {
+  if (!Number.isFinite(rms) || rms <= 0.00035) return 0;
+  const normalized = Math.min(1, Math.max(0, (rms - 0.00035) / (0.05 - 0.00035)));
+  return Math.log1p(normalized * 9) / Math.log(10);
+}
+
 interface VoiceOrbProps {
   voice: VoiceState;
   ready: boolean;
@@ -58,12 +72,13 @@ interface VoiceOrbProps {
 
 export function VoiceOrb({ voice, ready, checking = false, presentation }: VoiceOrbProps) {
   const mode = voiceOrbModeFor(voice, ready, checking);
-  const level =
+  const rawLevel =
     mode === "listening"
       ? recentLevel(voice.levels)
       : mode === "speaking"
         ? recentLevel(voice.assistantLevels)
         : 0;
+  const level = perceptualVoiceLevel(rawLevel);
   const status = voiceOrbStatusFor(mode);
 
   return (

@@ -31,6 +31,8 @@ export type EngineCommand =
   | { cmd: "chat"; text: string }
   | { cmd: "voice_start"; max_turns?: number }
   | { cmd: "voice_stop" }
+  | { cmd: "audio_input_get" }
+  | { cmd: "audio_input_select"; device: string | null }
   | { cmd: "voice_profile_select"; [key: string]: unknown }
   | { cmd: "knowledge_init" }
   | { cmd: "knowledge_model_install" }
@@ -227,6 +229,14 @@ export interface VoiceFrame {
   usage?: Record<string, unknown>;
 }
 
+export interface AudioInputFrame {
+  event: "audio_input";
+  selected_id: string | null;
+  selected_label: string | null;
+  uses_system_default: boolean;
+  devices: Array<{ id: string; label: string; is_system_default: boolean }>;
+}
+
 export interface StatusFrame {
   event: "status";
   active_profile?: string;
@@ -302,6 +312,7 @@ export type EngineFrame =
   | HelloFrame
   | ChatFrame
   | VoiceFrame
+  | AudioInputFrame
   | StatusFrame
   | EngineErrorFrame
   | KnowledgeSetupFrame

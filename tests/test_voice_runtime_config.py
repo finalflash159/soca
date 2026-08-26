@@ -105,15 +105,17 @@ def test_voice_runtime_uses_shared_knowledge_setup(
             watcher_enabled=False,
         ),
     )
-    setup_calls: list[tuple[Path, int]] = []
+    setup_calls: list[tuple[Path, int, bool]] = []
 
     def fake_knowledge_setup(
         vault: Path,
         *,
         knowledge_limit: int,
         retrieval_config=None,
+        defer_dense_model: bool = False,
     ) -> KnowledgeRuntimeSetup:
-        setup_calls.append((vault, knowledge_limit))
+        del retrieval_config
+        setup_calls.append((vault, knowledge_limit, defer_dense_model))
         return shared_setup
 
     monkeypatch.setattr(
@@ -140,7 +142,7 @@ def test_voice_runtime_uses_shared_knowledge_setup(
     bundle = build_voice_runtime(config, engine_factory=fake_engine_factory)
 
     assert setup_calls == [
-        (config.vault, RuntimeOptions().knowledge_limit),
+        (config.vault, RuntimeOptions().knowledge_limit, True),
     ]
     assert bundle.knowledge_status == "enabled:chunk_sparse"
     assert bundle.assistant_runtime.knowledge_builder is shared_setup.builder

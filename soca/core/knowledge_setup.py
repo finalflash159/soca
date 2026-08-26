@@ -32,12 +32,14 @@ def build_knowledge_runtime_setup(
     knowledge_limit: int,
     retrieval_config: RetrievalConfig | None = None,
     index_home: Path | None = None,
+    defer_dense_model: bool = False,
 ) -> KnowledgeRuntimeSetup:
     resolved_config = retrieval_config or RetrievalConfig()
     source = build_knowledge_source(
         vault,
         config=resolved_config,
         index_home=index_home,
+        defer_dense_model=defer_dense_model,
     )
     try:
         effective_mode = str(getattr(source, "retrieval_mode", resolved_config.mode))

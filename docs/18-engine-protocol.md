@@ -83,6 +83,8 @@ Every command is an object with a `cmd` key. Unlisted keys are ignored.
 | `chat`                 | `text` (string)                                                 | `chat` stream + traces (§4)                               |
 | `voice_start`          | `max_turns` (int, optional)                                     | `voice` stream (§5)                                       |
 | `voice_stop`           | —                                                               | `voice` `loop_stopped`                                    |
+| `audio_input_get`      | —                                                               | `audio_input`                                             |
+| `audio_input_select`   | `device` (string or `null` for system default)                  | `audio_input`, `status`                                   |
 | `voice_profile_select` | profile selection                                               | `status`                                                  |
 | `knowledge_init`       | —                                                               | `knowledge_setup`, `status`                               |
 | `knowledge_model_install` | —                                                            | `knowledge_setup`, `status`                               |
@@ -560,6 +562,16 @@ frame from the recorder's PCM block, or `assistant` for a timed RMS frame from
 generated PCM after the matching `playback_started` event. The event contains
 only scalar telemetry, never raw audio. Clients must keep the two sources
 separate: microphone telemetry is not a proxy for speaker output.
+
+### `audio_input`
+
+The engine emits the selected capture device separately from Voice lifecycle
+events so a client can correct an input-route mistake before opening the
+stream. `selected_id` is a stable device name or `null` when the person
+explicitly chose the operating-system default. `selected_label` is the device
+currently used, and `devices` contains `{id, label, is_system_default}` for
+each input-capable endpoint. If a named device disappears, SoCa emits
+`audio_input_unavailable`; it never substitutes another microphone.
 
 ## 6. Workflow events
 

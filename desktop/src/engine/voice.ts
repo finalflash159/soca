@@ -60,6 +60,8 @@ export interface VoiceState {
   repairPrompt: string | null;
   lastTurn: LastTurn | null;
   turnCount: number;
+  /** The last completed capture reached VAD but did not contain speech. */
+  noSpeechDetected: boolean;
   error: string | null;
 }
 
@@ -75,6 +77,7 @@ export const initialVoice: VoiceState = {
   repairPrompt: null,
   lastTurn: null,
   turnCount: 0,
+  noSpeechDetected: false,
   error: null,
 };
 
@@ -160,6 +163,7 @@ function reduceVoiceFrame(state: VoiceState, frame: VoiceFrame): VoiceState {
     case "asr_partial":
       return {
         ...state,
+        noSpeechDetected: false,
         partial: {
           committed: typeof metadata.committed === "string" ? metadata.committed : "",
           tentative: typeof metadata.tentative === "string" ? metadata.tentative : "",
@@ -167,10 +171,18 @@ function reduceVoiceFrame(state: VoiceState, frame: VoiceFrame): VoiceState {
       };
 
     case "recorded":
-      return { ...state, phase: "transcribing", levels: [] };
+      return {
+        ...state,
+        phase: "transcribing",
+        levels: [],
+        noSpeechDetected: metadata.speech_detected === false,
+      };
 
     case "transcribing":
       return { ...state, phase: "transcribing" };
+
+    case "asr":
+      return { ...state, noSpeechDetected: false };
 
     case "repair":
       // docs/18 §5: rejected speech becomes a repair prompt, rendered as a turn

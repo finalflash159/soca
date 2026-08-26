@@ -173,6 +173,8 @@ def test_command_set_is_pinned() -> None:
         "chat",
         "voice_start",
         "voice_stop",
+        "audio_input_get",
+        "audio_input_select",
         "voice_profile_select",
         "knowledge_init",
         "knowledge_model_install",

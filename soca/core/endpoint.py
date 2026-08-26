@@ -10,6 +10,7 @@ from threading import Event
 import numpy as np
 import sounddevice as sd
 
+from soca.core.audio_input import resolve_audio_input_device
 from soca.core.turn_taking import (
     PARTIAL_EWMA_DOWN,
     PARTIAL_EWMA_UP,
@@ -107,6 +108,10 @@ class EndpointConfig:
     ceil_silence_ms: int = 3000
     use_incremental_vad: bool = True
     partial_interval_ms: int = 900
+    # ``None`` is an intentional request for the operating-system default
+    # microphone. A named device is validated before the stream opens; it is
+    # never silently replaced by another capture endpoint.
+    input_device: str | None = None
 
 
 def _apply_env_overrides(config: EndpointConfig) -> EndpointConfig:
@@ -236,7 +241,19 @@ def record_until_silence(
         chunks, config, on_partial=on_partial, transcriber=partial_transcriber
     )
     try:
-        with stream_factory(samplerate=config.sample_rate, channels=1, dtype="float32") as stream:
+        # ``None`` is the deliberate system-default choice. A named device is
+        # validated immediately before opening it so it cannot silently drift.
+        input_device = (
+            resolve_audio_input_device(config.input_device)
+            if config.input_device is not None
+            else None
+        )
+        with stream_factory(
+            samplerate=config.sample_rate,
+            channels=1,
+            dtype="float32",
+            device=input_device,
+        ) as stream:
             while total_samples < max_samples:
                 if stop_event is not None and stop_event.is_set():
                     break

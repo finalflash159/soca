@@ -215,6 +215,16 @@ export function VoiceMode({
                     Thử lại
                   </Button>
                 </div>
+              ) : voice.noSpeechDetected ? (
+                <div className="border-border bg-muted/30 w-full max-w-md rounded-xl border p-4 text-left" role="status">
+                  <h2 className="text-sm font-medium">Chưa nhận được lời nói</h2>
+                  <p className="text-muted-foreground mt-1 text-sm leading-6">
+                    Lượt thu gần nhất đã đến VAD nhưng không có speech. Kiểm tra quyền microphone và thiết bị đầu vào, rồi nói lại gần microphone.
+                  </p>
+                  <Button className="mt-4" size="sm" variant="outline" onClick={onOpenSetup}>
+                    Kiểm tra microphone
+                  </Button>
+                </div>
               ) : (
                 <LiveTurn voice={voice} turn={liveTurn} />
               )}

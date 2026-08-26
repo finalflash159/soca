@@ -31,6 +31,7 @@ interface SettingsPanelProps {
   onLoadModels: (provider: string, query: string) => void;
   onSelectModel: (provider: string, modelId: string) => Promise<boolean>;
   onSelectProfile: (profileKey: string) => Promise<boolean>;
+  onSelectAudioInput: (device: string | null) => Promise<boolean>;
   /** Backend, output cap and reasoning all travel on the same `llm_select`. */
   onApplyGeneration: (change: {
     backend?: string;
@@ -177,6 +178,7 @@ export function SettingsPanel({
   onLoadModels,
   onSelectModel,
   onSelectProfile,
+  onSelectAudioInput,
   onApplyGeneration,
   modelRoot,
   onSetModelRoot,
@@ -867,6 +869,31 @@ export function SettingsPanel({
                 )}
               </div>
             </div>
+          )}
+        </Field>
+        <Field
+          label="Microphone"
+          hint="Voice chỉ thu từ thiết bị này. Chọn “Theo hệ thống” để dùng microphone mặc định của macOS."
+          htmlFor="voice-audio-input"
+        >
+          <select
+            id="voice-audio-input"
+            className={INPUT}
+            disabled={!connected || settings.audioInput === null}
+            value={settings.audioInput?.selectedId ?? ""}
+            onChange={(event) => void onSelectAudioInput(event.target.value || null)}
+          >
+            <option value="">
+              Theo hệ thống{settings.audioInput?.selectedLabel ? ` — ${settings.audioInput.selectedLabel}` : ""}
+            </option>
+            {settings.audioInput?.devices.map((device) => (
+              <option key={device.id} value={device.id}>
+                {device.label}{device.isSystemDefault ? " — mặc định hệ thống" : ""}
+              </option>
+            ))}
+          </select>
+          {settings.audioInput === null && (
+            <p className="text-muted-foreground mt-2 text-xs">Đang kiểm tra microphone khả dụng…</p>
           )}
         </Field>
         <Field

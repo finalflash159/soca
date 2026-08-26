@@ -1043,6 +1043,38 @@ def test_engine_voice_start_streams_loop_events() -> None:
     assert router_trace["memory_access_plan"]["archive_mode"] == "semantic"
 
 
+def test_engine_reports_and_persists_the_explicit_audio_input(monkeypatch) -> None:
+    import soca.app.engine as engine_module
+
+    capture = ProtocolCapture()
+    saved: list[str | None] = []
+    payload = {
+        "selected_id": "USB Headset",
+        "selected_label": "USB Headset",
+        "uses_system_default": False,
+        "devices": [{"id": "USB Headset", "label": "USB Headset", "is_system_default": False}],
+    }
+    monkeypatch.setattr(engine_module, "load_audio_input_device", lambda: None)
+    monkeypatch.setattr(engine_module, "audio_input_status", lambda selected: {**payload, "selected_id": selected, "uses_system_default": selected is None})
+    monkeypatch.setattr(engine_module, "save_audio_input_device", saved.append)
+
+    code = run_engine(
+        voice_config=make_voice_config(),
+        text_config=make_text_config(),
+        profile="qwen-release",
+        stdin=_commands(capture, {"cmd": "audio_input_select", "device": "USB Headset"}, "audio_input"),
+        stdout=capture,
+        warmup_voice=False,
+    )
+
+    assert code == 0
+    assert saved == ["USB Headset"]
+    assert any(
+        event.get("event") == "audio_input" and event.get("selected_id") == "USB Headset"
+        for event in capture.events()
+    )
+
+
 def test_engine_keeps_running_when_voice_controller_initialization_fails(monkeypatch) -> None:
     capture = ProtocolCapture()
 

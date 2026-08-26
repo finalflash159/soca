@@ -151,6 +151,7 @@ class VoiceMonitorController:
         warmup: bool = True,
         session_memory: SessionMemory | None = None,
         repair_timings: RepairTimings | None = None,
+        input_device: str | None = None,
         clock: Callable[[], float] = time.perf_counter,
     ) -> None:
         self.config = config
@@ -160,6 +161,7 @@ class VoiceMonitorController:
         self.warmup = warmup
         self.session_memory = session_memory
         self.repair_timings = repair_timings or RepairTimings()
+        self.input_device = input_device
         # The silence policy needs a controllable monotonic clock for deterministic
         # scheduling tests. Playback envelopes deliberately keep using the real
         # clock above: a simulated policy clock must never stall their thread.
@@ -392,6 +394,7 @@ class VoiceMonitorController:
                 max_record_ms=self.config.max_record_ms,
                 partial_interval_ms=bundle.partial_interval_ms,
                 adaptive=self.config.adaptive_endpoint,
+                input_device=self.input_device,
             )
         )
 
@@ -413,6 +416,7 @@ class VoiceMonitorController:
                     "adaptive_endpoint": endpoint_config.adaptive,
                     "endpoint_floor_ms": endpoint_config.floor_silence_ms,
                     "endpoint_ceil_ms": endpoint_config.ceil_silence_ms,
+                    "input_device": self.input_device,
                 },
             )
         )
@@ -464,6 +468,7 @@ class VoiceMonitorController:
         latency_ms = (time.perf_counter() - t0) * 1000
         if stop_event is not None and stop_event.is_set():
             return
+        has_speech = self._audio_has_speech(bundle, audio)
         queue.put(
             VoiceMonitorEvent(
                 "recorded",
@@ -472,6 +477,7 @@ class VoiceMonitorController:
                 metadata={
                     "samples": int(len(audio)),
                     "duration_s": len(audio) / 16000 if len(audio) else 0.0,
+                    "speech_detected": has_speech,
                 },
             )
         )
@@ -487,7 +493,7 @@ class VoiceMonitorController:
                     metadata={"rms": min(1.0, rms), "source": "microphone"},
                 )
             )
-        if not self._audio_has_speech(bundle, audio):
+        if not has_speech:
             self._handle_passive_silence(bundle, queue, stop_event=stop_event)
             return
 

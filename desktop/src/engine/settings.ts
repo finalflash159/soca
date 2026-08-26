@@ -75,6 +75,13 @@ export interface RuntimeComponent {
   detail: string | null;
 }
 
+export interface AudioInputState {
+  selectedId: string | null;
+  selectedLabel: string | null;
+  usesSystemDefault: boolean;
+  devices: Array<{ id: string; label: string; isSystemDefault: boolean }>;
+}
+
 const READY_COMPONENT_STATUSES = new Set(["ok", "ready", "loaded", "configured"]);
 
 export function runtimeStateFor(config: LlmConfig | null): LlmConfig["runtimeState"] {
@@ -106,6 +113,7 @@ export interface SettingsState {
   profiles: RuntimeProfile[];
   runtimeComponents: RuntimeComponent[];
   activeProfile: string | null;
+  audioInput: AudioInputState | null;
 }
 
 export const initialSettings: SettingsState = {
@@ -118,6 +126,7 @@ export const initialSettings: SettingsState = {
   profiles: [],
   runtimeComponents: [],
   activeProfile: null,
+  audioInput: null,
 };
 
 function str(value: unknown, fallback = ""): string {
@@ -130,6 +139,27 @@ function numOrNull(value: unknown): number | null {
 
 export function reduceSettings(state: SettingsState, frame: EngineFrame): SettingsState {
   switch (frame.event) {
+    case "audio_input": {
+      const rawDevices = Array.isArray(frame.devices) ? frame.devices : [];
+      return {
+        ...state,
+        audioInput: {
+          selectedId: typeof frame.selected_id === "string" ? frame.selected_id : null,
+          selectedLabel: typeof frame.selected_label === "string" ? frame.selected_label : null,
+          usesSystemDefault: frame.uses_system_default === true,
+          devices: rawDevices.flatMap((item) => {
+            if (typeof item !== "object" || item === null) return [];
+            const device = item as Record<string, unknown>;
+            if (typeof device.id !== "string" || typeof device.label !== "string") return [];
+            return [{
+              id: device.id,
+              label: device.label,
+              isSystemDefault: device.is_system_default === true,
+            }];
+          }),
+        },
+      };
+    }
     case "llm_providers": {
       const raw = Array.isArray(frame.providers) ? frame.providers : [];
       return {

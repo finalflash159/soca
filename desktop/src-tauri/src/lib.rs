@@ -1,4 +1,5 @@
 mod engine;
+mod microphone;
 
 use tauri::{Manager, RunEvent};
 
@@ -21,6 +22,7 @@ pub fn run() {
             engine::engine_set_qwen_asr_model_root,
             engine::engine_qwen_runtime_root,
             engine::engine_set_qwen_runtime_root,
+            microphone::microphone_request_access,
         ]);
 
     // Unsigned package proofs deliberately have no updater public key or

@@ -117,7 +117,9 @@ beforeEach(() => {
   tauri.listeners.clear();
   tauri.invoke.mockReset();
   tauri.listen.mockReset();
-  tauri.invoke.mockResolvedValue(undefined);
+  tauri.invoke.mockImplementation(async (command: string) =>
+    command === "microphone_request_access" ? "authorized" : undefined,
+  );
   tauri.listen.mockImplementation(async (channel: string, callback: (event: { payload: unknown }) => void) => {
     tauri.listeners.set(channel, callback);
     return () => tauri.listeners.delete(channel);
@@ -384,6 +386,31 @@ describe("desktop session lifecycle", () => {
 
     await user.click(screen.getByRole("button", { name: "Thử lại" }));
     expect(engineSendCommands().filter((command) => command.cmd === "voice_start")).toHaveLength(2);
+  });
+
+  it("does not start the sidecar when macOS denies microphone access", async () => {
+    const user = userEvent.setup();
+    await renderReadyApp();
+    emit(EVENT_CHANNEL, {
+      event: "status",
+      runtime_components: [
+        { id: "voice_asr", label: "Voice ASR", status: "ready", detail: "qwen" },
+        { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote" },
+        { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+      ],
+    });
+    tauri.invoke.mockImplementation(async (command: string) =>
+      command === "microphone_request_access" ? "denied" : undefined,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Thoại" }));
+    await user.click(screen.getByRole("button", { name: "Bật mic" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/SoCa cần quyền microphone/)).not.toBeNull();
+    });
+    expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
   });
 
   it("loads older transcript pages with the engine's exclusive sequence boundary", async () => {

@@ -4,6 +4,8 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Callable
+from threading import Lock
 from typing import Protocol
 
 import numpy as np
@@ -61,6 +63,49 @@ class EmbeddingModel(Protocol):
     def embed_documents(self, texts: tuple[str, ...]) -> np.ndarray: ...
 
     def embed_query(self, text: str) -> np.ndarray: ...
+
+
+class DeferredEmbeddingModel:
+    """Expose a pinned embedding identity without loading its weights eagerly.
+
+    Index metadata needs the identity at startup, while inference is needed only
+    for a dense query or a dense index build. Keeping those responsibilities
+    separate prevents unrelated surfaces (notably microphone startup) from
+    loading a multi-gigabyte retrieval model before the user asks for search.
+    """
+
+    def __init__(
+        self,
+        *,
+        model_id: str,
+        embedding_fingerprint: EmbeddingFingerprint,
+        loader: Callable[[], EmbeddingModel],
+    ) -> None:
+        self._model_id = model_id
+        self._embedding_fingerprint = embedding_fingerprint
+        self._loader = loader
+        self._loaded: EmbeddingModel | None = None
+        self._lock = Lock()
+
+    @property
+    def model_id(self) -> str:
+        return self._model_id
+
+    @property
+    def embedding_fingerprint(self) -> EmbeddingFingerprint:
+        return self._embedding_fingerprint
+
+    def _model(self) -> EmbeddingModel:
+        with self._lock:
+            if self._loaded is None:
+                self._loaded = self._loader()
+            return self._loaded
+
+    def embed_documents(self, texts: tuple[str, ...]) -> np.ndarray:
+        return self._model().embed_documents(texts)
+
+    def embed_query(self, text: str) -> np.ndarray:
+        return self._model().embed_query(text)
 
 
 def production_embedding_fingerprint() -> EmbeddingFingerprint:

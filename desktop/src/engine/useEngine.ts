@@ -56,6 +56,15 @@ export type SidecarStatus =
   | { state: "stopped"; code: number | null; graceful: boolean }
   | { state: "failed"; message: string };
 
+type MicrophonePermission = "authorized" | "denied" | "restricted";
+
+function microphonePermissionMessage(permission: MicrophonePermission): string {
+  if (permission === "denied") {
+    return "SoCa cần quyền microphone. Cho phép SoCa trong System Settings > Privacy & Security > Microphone, rồi thử lại.";
+  }
+  return "Microphone đang bị giới hạn bởi macOS. Kiểm tra giới hạn quyền riêng tư của máy, rồi thử lại.";
+}
+
 export interface EngineSnapshot {
   status: SidecarStatus;
   hello: HelloFrame | null;
@@ -285,6 +294,16 @@ export function useEngine() {
       return false;
     }
     try {
+      // macOS permission must originate from the signed GUI bundle. The engine
+      // sidecar is intentionally not started until this one user action has an
+      // explicit authorization result.
+      if (command.cmd === "voice_start") {
+        const permission = await invoke<MicrophonePermission>("microphone_request_access");
+        if (permission !== "authorized") {
+          setErrors((previous) => [...previous.slice(-19), microphonePermissionMessage(permission)]);
+          return false;
+        }
+      }
       await invoke("engine_send", { command });
       return true;
     } catch (error) {

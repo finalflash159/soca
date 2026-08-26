@@ -416,12 +416,12 @@ export default function App() {
       for (const cmd of ["memory", "memory_proposals", "status"] as const) void engine.send({ cmd });
     }
     if (destination === "settings") {
-      for (const cmd of ["llm_providers", "llm_config", "status", "session_preferences_get"] as const) {
+      for (const cmd of ["llm_providers", "llm_config", "status", "session_preferences_get", "audio_input_get"] as const) {
         void engine.send({ cmd });
       }
     }
     if (destination === "voice" && !sessionChanging && engine.voice.phase === "off") {
-      for (const cmd of ["status", "llm_config"] as const) void engine.send({ cmd });
+      for (const cmd of ["status", "llm_config", "audio_input_get"] as const) void engine.send({ cmd });
     }
   };
 
@@ -744,6 +744,7 @@ export default function App() {
                       })
                     }
                     onSelectProfile={(profileKey) => engine.send({ cmd: "voice_profile_select", profile: profileKey })}
+                    onSelectAudioInput={(device) => engine.send({ cmd: "audio_input_select", device })}
                     onApplyGeneration={(change) => {
                       const config = engine.settings.config;
                       const backend = change.backend ?? config?.backend ?? "local";

@@ -554,6 +554,9 @@ def _build_voice_runtime_components(
                 mode=cast(RetrievalMode, config.knowledge_retrieval_mode),
                 dense_backend=cast(DenseBackend, config.knowledge_dense_backend),
             ),
+            # Voice must be ready to capture speech before an optional dense
+            # retrieval query has paid to load its large embedding model.
+            defer_dense_model=True,
         )
         knowledge_builder = knowledge.builder
         knowledge_catalog = knowledge.catalog
