@@ -41,6 +41,7 @@ def test_release_config_uses_signed_github_updates_and_platform_signing() -> Non
     )
 
     assert macos["bundle"]["createUpdaterArtifacts"] is True
+    assert macos["bundle"]["macOS"]["entitlements"] == module.MACOS_ENTITLEMENTS
     assert macos["plugins"]["updater"]["endpoints"] == [module.UPDATE_ENDPOINT]
     assert windows["bundle"]["windows"]["certificateThumbprint"] == "ABCD"
     assert windows["plugins"]["updater"]["windows"] == {"installMode": "passive"}
