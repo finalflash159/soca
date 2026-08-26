@@ -4,11 +4,14 @@ import json
 from types import SimpleNamespace
 
 import numpy as np
-
 import pytest
 
 from soca.config.audio_settings import load_audio_input_device, save_audio_input_device
-from soca.core.audio_input import AudioInputDeviceError, audio_input_status, resolve_audio_input_device
+from soca.core.audio_input import (
+    AudioInputDeviceError,
+    audio_input_status,
+    resolve_audio_input_device,
+)
 
 
 def _devices():

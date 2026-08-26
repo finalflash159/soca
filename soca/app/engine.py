@@ -38,7 +38,12 @@ from soca.config import (
     save_settings,
     save_voice_profile,
 )
-from soca.core import AudioInputDeviceError, AudioSink, ResolvedVoiceRuntimeConfig, audio_input_status
+from soca.core import (
+    AudioInputDeviceError,
+    AudioSink,
+    ResolvedVoiceRuntimeConfig,
+    audio_input_status,
+)
 from soca.core.answer_validation import (
     answer_chunk_without_citation_labels,
     answer_text_without_citation_labels,

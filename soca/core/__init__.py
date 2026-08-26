@@ -2,6 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .audio_input import (
+    AudioInputDevice,
+    AudioInputDeviceError,
+    audio_input_status,
+    list_audio_input_devices,
+    resolve_audio_input_device,
+)
 from .context_budget import (
     DEFAULT_CONTEXT_SAFETY_MARGIN_TOKENS,
     EngineTokenCounter,
@@ -22,13 +29,6 @@ from .endpoint import (
     effective_endpoint_config,
     record_until_silence,
     should_stop_recording,
-)
-from .audio_input import (
-    AudioInputDevice,
-    AudioInputDeviceError,
-    audio_input_status,
-    list_audio_input_devices,
-    resolve_audio_input_device,
 )
 from .guardrails import (
     GuardrailAction,

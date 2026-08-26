@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Callable
 from threading import Lock
 from typing import Protocol
 
