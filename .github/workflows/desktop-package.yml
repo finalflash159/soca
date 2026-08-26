@@ -74,6 +74,7 @@ jobs:
           tests/test_desktop_sidecar_build.py
           tests/test_engine_packaged_storage_flow.py
           tests/test_tauri_release_config.py
+          tests/test_desktop_macos_microphone_plist.py
       - name: Run desktop unit suite
         run: npm test --prefix desktop
       - name: Install linuxdeploy with host-driver exclusion support
@@ -121,6 +122,9 @@ jobs:
             bundled_sidecar=desktop/src-tauri/target/release/bundle/macos/SoCa.app/Contents/Resources/resources/soca-engine/soca-engine
             test -f "$bundled_sidecar"
             test "$(shasum -a 256 "$sidecar_path" | awk '{print $1}')" = "$(shasum -a 256 "$bundled_sidecar" | awk '{print $1}')"
+            codesign -d --entitlements :- desktop/src-tauri/target/release/bundle/macos/SoCa.app/Contents/MacOS/soca-desktop 2>/dev/null \
+              | plutil -extract com.apple.security.device.audio-input raw - \
+              | grep -qx true
             sidecar_path="$bundled_sidecar"
           fi
           uv run python scripts/verify_desktop_sidecar.py --sidecar "$sidecar_path"
