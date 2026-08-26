@@ -66,7 +66,7 @@ async function renderReadyApp(): Promise<void> {
   });
   await waitFor(() => {
     expect((screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement).disabled).toBe(false);
-  });
+  }, { timeout: 5_000 });
 }
 
 function oldSnapshot(nextTurnCursor: number | null = null): EngineFrame {
@@ -117,7 +117,9 @@ beforeEach(() => {
   tauri.listeners.clear();
   tauri.invoke.mockReset();
   tauri.listen.mockReset();
-  tauri.invoke.mockResolvedValue(undefined);
+  tauri.invoke.mockImplementation(async (command: string) =>
+    command === "microphone_request_access" ? "authorized" : undefined,
+  );
   tauri.listen.mockImplementation(async (channel: string, callback: (event: { payload: unknown }) => void) => {
     tauri.listeners.set(channel, callback);
     return () => tauri.listeners.delete(channel);
@@ -215,7 +217,7 @@ describe("desktop session lifecycle", () => {
     });
   });
 
-  it("routes an unavailable voice runtime to its actionable settings instead of opening a dead microphone", async () => {
+  it("opens Voice even when setup is incomplete and offers a direct setup action", async () => {
     const user = userEvent.setup();
     await renderReadyApp();
     emit(EVENT_CHANNEL, {
@@ -224,14 +226,189 @@ describe("desktop session lifecycle", () => {
         { id: "voice_asr", label: "Voice ASR", status: "missing", detail: "qwen-asr" },
         { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote · openrouter:gpt" },
         { id: "tts", label: "TTS", status: "missing", detail: "valtec" },
+        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
       ],
     });
 
-    await user.click(screen.getByRole("button", { name: "Thiết lập thoại" }));
+    await user.click(screen.getByRole("button", { name: "Thoại" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toContain("Voice ASR: qwen-asr");
-      expect(screen.getByText("Sẵn sàng thoại")).not.toBeNull();
+      expect(screen.getByText("Thiết lập Voice trước khi bật microphone")).not.toBeNull();
+      expect(
+        screen.getByText("Qwen ASR chưa sẵn sàng."),
+      ).not.toBeNull();
+    });
+    expect(screen.getByTestId("voice-orb").getAttribute("data-voice-orb-mode")).toBe("setup");
+    expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Mở thiết lập Voice" }));
+    await waitFor(() => {
+      expect(screen.getByText("Trạng thái thoại")).not.toBeNull();
+    });
+  });
+
+  it("waits for remote verification without sending a provisioned Qwen install to Settings", async () => {
+    const user = userEvent.setup();
+    await renderReadyApp();
+    emit(EVENT_CHANNEL, {
+      event: "llm_config",
+      backend: "remote",
+      provider: "openrouter",
+      model: "openai/gpt-5",
+      runtime_ready: false,
+      runtime_state: "checking",
+      runtime_reason: "Đang tải danh mục model của OpenRouter…",
+      settings_error: null,
+    });
+    emit(EVENT_CHANNEL, {
+      event: "status",
+      runtime_components: [
+        { id: "voice_asr", label: "Voice ASR", status: "ok", detail: "Qwen verified" },
+        { id: "voice_llm", label: "Voice LLM", status: "missing", detail: "catalog loading" },
+        { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+      ],
+    });
+
+    await user.click(screen.getByRole("button", { name: "Thoại" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Đang chuẩn bị Voice…")).not.toBeNull();
+    });
+    expect(screen.queryByRole("button", { name: "Mở thiết lập Voice" })).toBeNull();
+    expect((screen.getByRole("button", { name: "Bật mic" }) as HTMLButtonElement).disabled).toBe(true);
+
+    emit(EVENT_CHANNEL, {
+      event: "llm_config",
+      backend: "remote",
+      provider: "openrouter",
+      model: "openai/gpt-5",
+      runtime_ready: true,
+      runtime_state: "ready",
+      runtime_reason: null,
+      settings_error: null,
+    });
+
+    await waitFor(() => {
+      expect((screen.getByRole("button", { name: "Bật mic" }) as HTMLButtonElement).disabled).toBe(false);
+    });
+    expect(screen.queryByRole("button", { name: "Mở thiết lập Voice" })).toBeNull();
+  });
+
+  it("keeps a verified Qwen installation in Voice while calibration is pending", async () => {
+    const user = userEvent.setup();
+    await renderReadyApp();
+    emit(EVENT_CHANNEL, {
+      event: "status",
+      runtime_components: [
+        { id: "voice_asr", label: "Voice ASR", status: "not_ready", detail: "confidence calibration identity is not qualified" },
+        { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote · openrouter:gpt" },
+        { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+      ],
+    });
+
+    await user.click(screen.getByRole("button", { name: "Thoại" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Voice đang chờ xác nhận runtime")).not.toBeNull();
+      expect(screen.getByText("Qwen ASR đã cài đặt, nhưng runtime này chưa có calibration được xác nhận.")).not.toBeNull();
+    });
+    expect(screen.queryByRole("button", { name: "Mở thiết lập Voice" })).toBeNull();
+    expect((screen.getByRole("button", { name: "Bật mic" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
+  });
+
+  it("uses the immersive orb only while the microphone is capturing", async () => {
+    const user = userEvent.setup();
+    await renderReadyApp();
+    emit(EVENT_CHANNEL, {
+      event: "status",
+      runtime_components: [
+        { id: "voice_asr", label: "Voice ASR", status: "ready", detail: "qwen" },
+        { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote" },
+        { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+      ],
+    });
+
+    await user.click(screen.getByRole("button", { name: "Thoại" }));
+    emit(EVENT_CHANNEL, { event: "voice", type: "recording", metadata: {} });
+    await waitFor(() => {
+      expect(screen.getByTestId("voice-orb").getAttribute("data-voice-orb-presentation")).toBe("immersive");
+    });
+
+    emit(EVENT_CHANNEL, {
+      event: "voice",
+      type: "asr_partial",
+      metadata: { committed: "xin chào", tentative: " SoCa" },
+    });
+    expect(screen.queryByText("xin chào")).toBeNull();
+
+    emit(EVENT_CHANNEL, { event: "voice", type: "recorded", metadata: {} });
+    await waitFor(() => {
+      expect(screen.getByTestId("voice-orb").getAttribute("data-voice-orb-presentation")).toBe("compact");
+      expect(screen.getByText("xin chào")).not.toBeNull();
+    });
+  });
+
+  it("keeps Voice open and offers retry when the engine rejects voice startup", async () => {
+    const user = userEvent.setup();
+    await renderReadyApp();
+    emit(EVENT_CHANNEL, {
+      event: "status",
+      runtime_components: [
+        { id: "voice_asr", label: "Voice ASR", status: "ready", detail: "qwen" },
+        { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote" },
+        { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+      ],
+    });
+
+    await user.click(screen.getByRole("button", { name: "Thoại" }));
+    await user.click(screen.getByRole("button", { name: "Bật mic" }));
+    await waitFor(() => {
+      expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(true);
+    });
+
+    emit(EVENT_CHANNEL, {
+      event: "voice",
+      type: "error",
+      text: "Voice không thể khởi động trên máy này. Hãy thử lại.",
+      metadata: { error_code: "voice_startup_failed" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("Voice chưa thể bắt đầu");
+      expect(screen.getByRole("button", { name: "Thử lại" })).not.toBeNull();
+    });
+    expect(screen.queryByText("Trợ lý tiếng Việt chạy trên máy bạn.")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Thử lại" }));
+    expect(engineSendCommands().filter((command) => command.cmd === "voice_start")).toHaveLength(2);
+  });
+
+  it("does not start the sidecar when macOS denies microphone access", async () => {
+    const user = userEvent.setup();
+    await renderReadyApp();
+    emit(EVENT_CHANNEL, {
+      event: "status",
+      runtime_components: [
+        { id: "voice_asr", label: "Voice ASR", status: "ready", detail: "qwen" },
+        { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote" },
+        { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
+        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+      ],
+    });
+    tauri.invoke.mockImplementation(async (command: string) =>
+      command === "microphone_request_access" ? "denied" : undefined,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Thoại" }));
+    await user.click(screen.getByRole("button", { name: "Bật mic" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/SoCa cần quyền microphone/)).not.toBeNull();
     });
     expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
   });

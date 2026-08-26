@@ -9,6 +9,11 @@ from soca.knowledge.cached_source import CachedMarkdownVaultKnowledgeSource
 from soca.knowledge.hybrid_source import HybridConfig, HybridKnowledgeSource
 from soca.knowledge.index.persistence import default_index_home
 from soca.knowledge.indexing.models import load_model
+from soca.knowledge.retrievers.dense import (
+    AITEAMVN_V2_MODEL,
+    DeferredEmbeddingModel,
+    production_embedding_fingerprint,
+)
 
 RetrievalMode = Literal["cached_sparse", "chunk_sparse", "hybrid"]
 DenseBackend = Literal["aiteamvn_v2"]
@@ -74,6 +79,7 @@ def build_retrieval_source(
     include_globs: tuple[str, ...],
     config: RetrievalConfig | None = None,
     index_home: Path | None = None,
+    defer_dense_model: bool = False,
 ) -> KnowledgeSource:
     resolved = config or RetrievalConfig()
     corpus_kind = "memory" if include_globs == ("memory/**/*.md",) else "knowledge"
@@ -101,7 +107,16 @@ def build_retrieval_source(
             **common,
         )
 
-    model = _build_model(resolved.dense_backend)
+    if defer_dense_model:
+        if resolved.dense_backend != "aiteamvn_v2":
+            raise ValueError("unknown production dense backend")
+        model = DeferredEmbeddingModel(
+            model_id=f"sentence_transformers:{AITEAMVN_V2_MODEL}",
+            embedding_fingerprint=production_embedding_fingerprint(),
+            loader=lambda: _build_model(resolved.dense_backend),
+        )
+    else:
+        model = _build_model(resolved.dense_backend)
 
     source = HybridKnowledgeSource(
         vault,
@@ -115,7 +130,11 @@ def build_retrieval_source(
         ),
         **common,
     )
-    if resolved.watcher_enabled:
+    # A deferred model cannot safely start a dense rebuild in the background:
+    # that would immediately materialize the weights we intentionally deferred.
+    # Snapshots still reconcile sparse content synchronously, and an explicit
+    # retrieval/index operation loads the same pinned dense model on demand.
+    if resolved.watcher_enabled and not defer_dense_model:
         try:
             source.activate_watcher(interval_seconds=resolved.watcher_interval_seconds)
         except Exception:
@@ -132,10 +151,12 @@ def build_knowledge_source(
     *,
     config: RetrievalConfig | None = None,
     index_home: Path | None = None,
+    defer_dense_model: bool = False,
 ) -> KnowledgeSource:
     return build_retrieval_source(
         vault,
         include_globs=("wiki/**/*.md",),
         config=config,
         index_home=index_home,
+        defer_dense_model=defer_dense_model,
     )

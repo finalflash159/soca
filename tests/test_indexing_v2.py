@@ -218,6 +218,7 @@ def test_publishing_new_embedding_profile_retires_old_active_pointer(
     current.build_blocking(dense=True)
 
     assert current.verify() == ()
+    assert current.inspect()["status"]["dense_state"] == DenseState.READY.value
     pointers = current.inspect()["pointers"]
     assert isinstance(pointers, list)
     assert [pointer["embedding_fingerprint"] for pointer in pointers] == [

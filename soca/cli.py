@@ -296,9 +296,21 @@ def knowledge_index_gc(vault: Path, corpus: str, index_home: Path | None, apply:
     "--corpus", type=click.Choice(["knowledge", "memory"]), default="knowledge", show_default=True
 )
 @click.option("--index-home", type=click.Path(path_type=Path), default=None)
-def knowledge_index_inspect(vault: Path, corpus: str, index_home: Path | None) -> None:
+@click.option(
+    "--model",
+    "model_key",
+    type=click.Choice([item.key for item in MODEL_REGISTRY]),
+    default="aiteamvn-v2",
+    show_default=True,
+)
+def knowledge_index_inspect(
+    vault: Path, corpus: str, index_home: Path | None, model_key: str
+) -> None:
     """Print generations, pointers and jobs for operator inspection."""
-    coordinator = _index_context(vault, corpus, index_home=index_home)
+    try:
+        coordinator = _index_context(vault, corpus, index_home=index_home, model_key=model_key)
+    except click.ClickException:
+        coordinator = _index_context(vault, corpus, index_home=index_home)
     click.echo(json.dumps(coordinator.inspect(), ensure_ascii=False, sort_keys=True))
 
 
@@ -799,7 +811,7 @@ def chat(
         "\b\nQuick examples:\n"
         "  uv run soca ui              # mở main UI\n"
         "  uv run soca ui chat\n"
-        "  uv run soca ui voice baseline"
+        "  uv run soca ui voice qwen-release"
     ),
 )
 @click.argument(
@@ -1088,7 +1100,7 @@ def engine(
     )
 
 
-@main.command(epilog=("\b\nQuick examples:\n  uv run soca voice\n  uv run soca voice baseline"))
+@main.command(epilog=("\b\nQuick examples:\n  uv run soca voice\n  uv run soca voice qwen-release"))
 @click.argument(
     "quick_profile",
     required=False,

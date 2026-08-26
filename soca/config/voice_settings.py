@@ -7,7 +7,8 @@ import os
 import tempfile
 from pathlib import Path
 
-DEFAULT_VOICE_PROFILE = "baseline"
+DEFAULT_VOICE_PROFILE = "qwen-release"
+_LEGACY_PROFILE_MIGRATIONS = {"baseline": DEFAULT_VOICE_PROFILE}
 
 
 def default_voice_settings_path() -> Path:
@@ -18,7 +19,7 @@ def default_voice_settings_path() -> Path:
 
 
 def load_voice_profile(path: Path | None = None) -> str:
-    """Load the last selected voice profile, or the initial baseline selection."""
+    """Load the last selected voice profile and migrate the retired baseline."""
     path = path or default_voice_settings_path()
     try:
         raw = path.read_text(encoding="utf-8")
@@ -35,7 +36,10 @@ def load_voice_profile(path: Path | None = None) -> str:
     profile = payload["profile"]
     if not isinstance(profile, str) or not profile.strip():
         raise ValueError(f"Voice settings tại {path} có profile không hợp lệ.")
-    return profile
+    migrated = _LEGACY_PROFILE_MIGRATIONS.get(profile, profile)
+    if migrated != profile:
+        save_voice_profile(migrated, path)
+    return migrated
 
 
 def save_voice_profile(profile: str, path: Path | None = None) -> None:

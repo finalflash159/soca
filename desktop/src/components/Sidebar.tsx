@@ -7,13 +7,11 @@ import {
   MessageSquare,
   PanelLeft,
   Plus,
-  RotateCcw,
   Settings,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/button";
 import { SessionList } from "@/components/SessionList";
 import type { SessionHistoryState, SessionSummary } from "@/engine/session-history";
@@ -40,12 +38,10 @@ interface SidebarProps {
   onNavigate: (page: PageId) => void;
   onNewConversation: () => void;
   sessions: SessionHistoryState;
-  connected: boolean;
-  starting: boolean;
   voiceRunning: boolean;
+  connected: boolean;
   sessionBusy: boolean;
   newConversationDisabled: boolean;
-  onRestartEngine: () => void;
   onCollapse: () => void;
   onOpenSession: (session: SessionSummary) => void;
   onRenameSession: (session: SessionSummary, title: string) => void;
@@ -59,12 +55,10 @@ export function Sidebar({
   onNavigate,
   onNewConversation,
   sessions,
-  connected,
-  starting,
   voiceRunning,
+  connected,
   sessionBusy,
   newConversationDisabled,
-  onRestartEngine,
   onCollapse,
   onOpenSession,
   onRenameSession,
@@ -127,7 +121,7 @@ export function Sidebar({
       aria-label={compact ? "Thanh điều hướng" : undefined}
       className="bg-sidebar border-sidebar-border flex w-64 shrink-0 flex-col border-r max-[760px]:fixed max-[760px]:inset-y-0 max-[760px]:left-0 max-[760px]:z-50 max-[760px]:shadow-xl"
     >
-      <div className="flex items-center gap-1 px-3 pt-3">
+      <div className="flex items-center px-3 pt-3">
         <Button
           size="sm"
           variant="ghost"
@@ -138,7 +132,6 @@ export function Sidebar({
         >
           <PanelLeft className="size-4" />
         </Button>
-        <BrandMark className="text-sm font-medium" iconClassName="text-base" />
       </div>
 
       <div className="px-3 pt-3">
@@ -197,30 +190,6 @@ export function Sidebar({
         onOpenSettings={onOpenSessionSettings}
       />
 
-      {/* Engine health, where the reference app puts the signed-in user. There
-          is no account here; what a local engine has is a pulse. */}
-      <div className="border-sidebar-border mt-auto flex items-center gap-2.5 border-t px-4 py-3">
-        <span
-          className={cn(
-            "size-2 shrink-0 rounded-full",
-            connected ? "bg-chart-3" : starting ? "bg-chart-4" : "bg-muted-foreground/40",
-          )}
-          aria-hidden
-        />
-        <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
-          {connected ? "Engine đang chạy" : starting ? "Đang khởi động…" : "Engine đã dừng"}
-        </span>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="text-muted-foreground hover:text-foreground size-7 shrink-0 rounded-md p-0"
-          title="Khởi động lại engine"
-          aria-label="Khởi động lại engine"
-          onClick={onRestartEngine}
-        >
-          <RotateCcw className="size-3.5" />
-        </Button>
-      </div>
     </aside>
   );
 }

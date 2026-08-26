@@ -70,6 +70,38 @@ def test_setup_can_build_hybrid_source_from_validated_factory_config(
     assert setup.read_tool.source is setup.source
 
 
+def test_deferred_hybrid_setup_keeps_dense_weights_off_voice_startup(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    (wiki / "runtime.md").write_text("# Runtime\nDeferred dense note.", encoding="utf-8")
+
+    import soca.knowledge.factory as factory
+
+    calls = 0
+
+    def load_after_explicit_query(backend: str) -> FakeEmbeddingModel:
+        nonlocal calls
+        assert backend == "aiteamvn_v2"
+        calls += 1
+        return FakeEmbeddingModel()
+
+    monkeypatch.setattr(factory, "_build_model", load_after_explicit_query)
+    setup = build_knowledge_runtime_setup(
+        tmp_path,
+        knowledge_limit=3,
+        retrieval_config=RetrievalConfig(mode="hybrid"),
+        defer_dense_model=True,
+    )
+
+    assert isinstance(setup.source, HybridKnowledgeSource)
+    assert calls == 0
+    setup.source._model.embed_query("runtime")  # type: ignore[union-attr]
+    assert calls == 1
+
+
 def test_hybrid_factory_failure_is_explicit_and_does_not_fallback(
     tmp_path: Path,
     monkeypatch,

@@ -17,9 +17,16 @@ from soca.core.endpoint import (
 
 class ScriptedStream:
     """Fake stream: yields scripted blocks + context-manager protocol."""
-    def __init__(self, blocks): self.blocks = list(blocks)
-    def __enter__(self): return self
-    def __exit__(self, *a): return False
+
+    def __init__(self, blocks):
+        self.blocks = list(blocks)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
     def read(self, n):
         if not self.blocks:
             raise AssertionError("read past the scripted blocks")
@@ -27,19 +34,30 @@ class ScriptedStream:
 
 
 class ScriptedModel:
-    def __init__(self, probs): self.probs = list(probs)
+    def __init__(self, probs):
+        self.probs = list(probs)
+
     def __call__(self, tensor, sr):
         class _O:
-            def __init__(self, v): self._v = v
-            def item(self): return self._v
+            def __init__(self, v):
+                self._v = v
+
+            def item(self):
+                return self._v
+
         return _O(self.probs.pop(0) if self.probs else 0.0)
-    def reset_states(self): pass
+
+    def reset_states(self):
+        pass
+
 
 class StreamingDetector:
     def __init__(self, probs):
         self.model = ScriptedModel(probs)
         self.threshold = 0.5
-    def speech_timestamps(self, audio): raise AssertionError("batch path must not be called")
+
+    def speech_timestamps(self, audio):
+        raise AssertionError("batch path must not be called")
 
 
 class FakeTurnDetector:
@@ -60,6 +78,7 @@ def test_effective_endpoint_config_reports_environment_overrides(monkeypatch):
 
     assert config.floor_silence_ms == 2100
     assert config.ceil_silence_ms == 3600
+
 
 class FakeInputStream:
     def __init__(self, blocks: list[np.ndarray]):
@@ -114,12 +133,15 @@ def test_block_samples_uses_config_sample_rate_and_block_ms():
 
 
 def test_should_not_stop_before_any_speech():
-    assert should_stop_recording(
-        speech_timestamps=[],
-        total_samples=16000,
-        sample_rate=16000,
-        endpoint_silence_ms=700,
-    ) is False
+    assert (
+        should_stop_recording(
+            speech_timestamps=[],
+            total_samples=16000,
+            sample_rate=16000,
+            endpoint_silence_ms=700,
+        )
+        is False
+    )
 
 
 def test_should_not_stop_when_silence_is_short():
@@ -171,8 +193,7 @@ def test_record_until_silence_stops_after_speech_then_endpoint_silence(monkeypat
         adaptive=False,  # regression guard: legacy fixed-threshold behavior
     )
     blocks = [
-        np.full((100, 1), fill_value=value, dtype=np.float32)
-        for value in (0.1, 0.2, 0.3, 0.4, 0.5)
+        np.full((100, 1), fill_value=value, dtype=np.float32) for value in (0.1, 0.2, 0.3, 0.4, 0.5)
     ]
     stream = FakeInputStream(blocks)
     install_fake_input_stream(monkeypatch, stream)
@@ -182,12 +203,60 @@ def test_record_until_silence_stops_after_speech_then_endpoint_silence(monkeypat
 
     assert stream.entered is True
     assert stream.exited is True
-    assert stream.kwargs == {"samplerate": 1000, "channels": 1, "dtype": "float32"}
+    assert stream.kwargs == {
+        "samplerate": 1000,
+        "channels": 1,
+        "dtype": "float32",
+        "device": None,
+    }
     assert stream.read_sizes == [100, 100, 100, 100]
     assert detector.calls == [100, 200, 300, 400]
     assert audio.dtype == np.float32
     assert audio.shape == (400,)
     assert audio[-1] == np.float32(0.4)
+
+
+def test_record_until_silence_reports_rms_for_each_captured_block(monkeypatch):
+    config = EndpointConfig(
+        sample_rate=1000,
+        block_ms=100,
+        endpoint_silence_ms=200,
+        max_record_ms=1000,
+        min_audio_ms=100,
+        adaptive=False,
+    )
+    stream = FakeInputStream(
+        [np.full((100, 1), fill_value=value, dtype=np.float32) for value in (0.1, 0.2, 0.3, 0.4)]
+    )
+    install_fake_input_stream(monkeypatch, stream)
+    levels: list[float] = []
+
+    record_until_silence(
+        FakeDetector(first_detection_samples=200, speech_end_samples=150),
+        config=config,
+        on_level=levels.append,
+    )
+
+    assert levels == pytest.approx([0.1, 0.2, 0.3, 0.4])
+
+
+def test_record_until_silence_opens_the_explicit_selected_microphone(monkeypatch):
+    config = EndpointConfig(
+        sample_rate=1000,
+        block_ms=100,
+        endpoint_silence_ms=100,
+        max_record_ms=200,
+        min_audio_ms=100,
+        adaptive=False,
+        input_device="USB Headset",
+    )
+    stream = FakeInputStream([np.ones((100, 1), dtype=np.float32)] * 2)
+    install_fake_input_stream(monkeypatch, stream)
+    monkeypatch.setattr(endpoint_module, "resolve_audio_input_device", lambda selected: selected)
+
+    record_until_silence(FakeDetector(first_detection_samples=100, speech_end_samples=0), config=config)
+
+    assert stream.kwargs["device"] == "USB Headset"
 
 
 def test_record_until_silence_prepends_barge_in_prefix(monkeypatch):
@@ -311,7 +380,8 @@ def test_partial_worker_transcribes_and_reports():
     chunks = [np.zeros(16000, dtype=np.float32)]
     config = EndpointConfig(partial_interval_ms=30)
     worker = _start_partial_worker(
-        chunks, config,
+        chunks,
+        config,
         on_partial=lambda c, t: calls.append((c, t)),
         transcriber=lambda audio: "xin chào",
     )
@@ -324,21 +394,26 @@ def test_partial_worker_transcribes_and_reports():
 def test_partial_worker_never_runs_without_speech():
     calls = []
     worker = _start_partial_worker(
-        [np.zeros(16000, dtype=np.float32)], EndpointConfig(partial_interval_ms=30),
+        [np.zeros(16000, dtype=np.float32)],
+        EndpointConfig(partial_interval_ms=30),
         on_partial=lambda c, t: calls.append((c, t)),
         transcriber=lambda audio: "x",
     )
     time.sleep(0.15)
-    worker.stop()      # no notify_speech -> never transcribes
+    worker.stop()  # no notify_speech -> never transcribes
     assert calls == []
 
 
 def test_partial_worker_survives_transcriber_crash():
-    def boom(audio): raise RuntimeError("ASR boom")
+    def boom(audio):
+        raise RuntimeError("ASR boom")
+
     worker = _start_partial_worker(
-        [np.zeros(16000, dtype=np.float32)], EndpointConfig(partial_interval_ms=30),
-        on_partial=lambda c, t: None, transcriber=boom,
+        [np.zeros(16000, dtype=np.float32)],
+        EndpointConfig(partial_interval_ms=30),
+        on_partial=lambda c, t: None,
+        transcriber=boom,
     )
     worker.notify_speech()
     time.sleep(0.15)
-    worker.stop()                        # must not raise -> passing = quiet
+    worker.stop()  # must not raise -> passing = quiet

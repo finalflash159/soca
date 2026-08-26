@@ -190,6 +190,13 @@ def test_unknown_reasoning_capability_uses_model_default() -> None:
     assert settings.effective_reasoning_enabled is None
 
 
+def test_remote_data_collection_must_be_an_explicit_supported_policy() -> None:
+    with pytest.raises(ValueError, match="remote_data_collection"):
+        LlmSettings(remote_data_collection="unknown")  # type: ignore[arg-type]
+
+    assert LlmSettings(remote_data_collection="allow").remote_data_collection == "allow"
+
+
 def test_saved_file_is_owner_only_readable(tmp_path) -> None:
     path = tmp_path / "llm.json"
     save_settings(LlmSettings(), path)

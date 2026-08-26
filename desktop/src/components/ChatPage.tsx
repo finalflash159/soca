@@ -8,6 +8,7 @@
  */
 
 import { ChatView } from "@/components/ChatView";
+import { BrandMark } from "@/components/BrandMark";
 import { Composer } from "@/components/Composer";
 import type { ConversationState } from "@/engine/conversation";
 import type { Citation } from "@/engine/conversation";
@@ -23,7 +24,6 @@ interface ChatPageProps {
   model: string | null;
   connected: boolean;
   runtimeReady: boolean;
-  runtimeReason: string | null;
   voiceReady: boolean;
   voiceReason: string | null;
   starting: boolean;
@@ -59,7 +59,6 @@ export function ChatPage({
   model,
   connected,
   runtimeReady,
-  runtimeReason,
   voiceReady,
   voiceReason,
   starting,
@@ -84,7 +83,6 @@ export function ChatPage({
     <Composer
       connected={connected}
       runtimeReady={runtimeReady}
-      runtimeReason={runtimeReason}
       voiceReady={voiceReady}
       voiceReason={voiceReason}
       starting={starting}
@@ -103,16 +101,26 @@ export function ChatPage({
       <div className="flex min-h-0 flex-1 flex-col items-center px-6 pt-[16vh]">
         <div className="flex w-full max-w-2xl flex-col gap-7">
           <h1 className="flex items-center justify-center gap-3 text-center text-3xl font-normal tracking-tight">
-            <ThinkingOrb state={orbState} size={20} aria-hidden />
+            <BrandMark iconClassName="text-2xl" nameClassName="sr-only" />
             {greeting()}
           </h1>
           {composer}
           {busyOutsideTurn && (
-            <p className="text-muted-foreground text-center text-xs">{orbLabel(orbState)}</p>
+            <p className="text-muted-foreground flex items-center justify-center gap-2 text-center text-xs" role="status">
+              <ThinkingOrb state={orbState} size={20} aria-hidden />
+              {orbLabel(orbState)}
+            </p>
           )}
           {!runtimeReady && (
-            <p className="text-destructive text-center text-sm" role="alert">
-              {runtimeReason ?? "Chọn model trong Cài đặt để bắt đầu trò chuyện."}
+            <p className="text-muted-foreground text-center text-sm" role="status">
+              Chat needs setup. {" "}
+              <button
+                type="button"
+                className="text-foreground font-medium underline-offset-4 hover:underline"
+                onClick={onOpenSettings}
+              >
+                Mở Cài đặt
+              </button>
             </p>
           )}
         </div>

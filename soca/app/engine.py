@@ -32,11 +32,18 @@ from soca.config import (
     DEFAULT_SETTINGS,
     LlmSettings,
     SecretStore,
+    load_audio_input_device,
     load_settings,
+    save_audio_input_device,
     save_settings,
     save_voice_profile,
 )
-from soca.core import AudioSink, ResolvedVoiceRuntimeConfig
+from soca.core import (
+    AudioInputDeviceError,
+    AudioSink,
+    ResolvedVoiceRuntimeConfig,
+    audio_input_status,
+)
 from soca.core.answer_validation import (
     answer_chunk_without_citation_labels,
     answer_text_without_citation_labels,
@@ -72,7 +79,7 @@ from soca.knowledge.citation_preview import preview_vault_citation
 from soca.knowledge.index.persistence import default_index_home
 from soca.knowledge.indexing.coordinator import IndexBuildProgress, IndexCoordinator
 from soca.knowledge.indexing.identity import CorpusSpec
-from soca.knowledge.indexing.models import load_model
+from soca.knowledge.indexing.models import install_model, load_model
 from soca.knowledge.markdown_vault import MarkdownVaultKnowledgeSource
 from soca.knowledge.vault import init_knowledge_vault
 from soca.llm.factory import DEFAULT_LLM_ENGINE_FACTORY, EngineBuilder
@@ -358,6 +365,14 @@ class SocaEngine:
         self.llm_settings_saver = llm_settings_saver
         self.voice_profile_saver = voice_profile_saver
         self._settings_error: str | None = None
+        self._audio_input_settings_error: str | None = None
+        try:
+            self.audio_input_device = load_audio_input_device()
+        except ValueError as exc:
+            # A broken device preference must never become an implicit switch
+            # to a different microphone. Make it a typed blocked state.
+            self.audio_input_device = None
+            self._audio_input_settings_error = str(exc)
         try:
             self.llm_settings = llm_settings_loader()
         except ValueError:
@@ -374,8 +389,18 @@ class SocaEngine:
         # submit, startup, or model picker look frozen.
         self._catalog_lock = threading.Lock()
         self._catalog_cache: dict[str, tuple[str, list[RemoteModelInfo]]] = {}
+        # A failed catalog request is a terminal readiness result for the
+        # current credential fingerprint.  Remembering it prevents the UI
+        # from presenting an endless "checking" state or silently retrying on
+        # every config refresh.  A new key has a new fingerprint and can be
+        # tried explicitly.
+        self._catalog_failures: dict[str, tuple[str, str]] = {}
         self._catalog_inflight: set[tuple[str, str]] = set()
         self._catalog_threads: set[threading.Thread] = set()
+        # A model catalog cannot prove that the provider can satisfy the
+        # selected per-request data policy.  Remember a typed observed failure
+        # for this engine lifetime so a failed route is never rendered as ready.
+        self._remote_route_failures: dict[tuple[str, str, str], str] = {}
         self._key_validation_tokens: dict[str, str] = {}
         self._knowledge_job_lock = threading.Lock()
         self._knowledge_job_thread: threading.Thread | None = None
@@ -497,10 +522,16 @@ class SocaEngine:
             self._cmd_voice_start(int(max_turns) if isinstance(max_turns, int) else None)
         elif cmd == "voice_stop":
             self._cmd_voice_stop()
+        elif cmd == "audio_input_get":
+            self._cmd_audio_input_get()
+        elif cmd == "audio_input_select":
+            self._cmd_audio_input_select(command)
         elif cmd == "voice_profile_select":
             self._cmd_voice_profile_select(command)
         elif cmd == "knowledge_init":
             self._cmd_knowledge_init()
+        elif cmd == "knowledge_model_install":
+            self._cmd_knowledge_model_install()
         elif cmd == "knowledge_index":
             self._cmd_knowledge_index()
         elif cmd == "citation_preview":
@@ -952,6 +983,84 @@ class SocaEngine:
         )
         self._cmd_status()
 
+    def _cmd_knowledge_model_install(self) -> None:
+        """Provision the pinned retrieval model without blocking the protocol loop.
+
+        The public model is intentionally not hidden inside the desktop bundle.
+        This command is the explicit, observable setup step that replaces an
+        unusable terminal instruction in the desktop-only flow.
+        """
+        if not self._knowledge_job_lock.acquire(blocking=False):
+            self._emit_knowledge_setup(
+                "model",
+                "busy",
+                "Một tác vụ Vault khác đang chạy.",
+                error_code="knowledge_setup_busy",
+            )
+            return
+
+        lock_guard = threading.Lock()
+        lock_released = False
+
+        def release_job_lock() -> None:
+            nonlocal lock_released
+            with lock_guard:
+                if lock_released:
+                    return
+                lock_released = True
+                self._knowledge_job_lock.release()
+
+        def run() -> None:
+            try:
+                self._emit_knowledge_setup(
+                    "model",
+                    "running",
+                    "Đang tải retrieval model. Thời lượng phụ thuộc đường truyền và upstream.",
+                    phase="downloading",
+                )
+                install_model("aiteamvn-v2")
+                self._emit_knowledge_setup(
+                    "model",
+                    "ready",
+                    "Retrieval model đã sẵn sàng. Bây giờ có thể dựng chỉ mục.",
+                    phase="complete",
+                )
+                self._cmd_status()
+            except ImportError as exc:
+                self._emit_knowledge_setup(
+                    "model",
+                    "failed",
+                    str(exc),
+                    error_code="embedding_dependency_missing",
+                    phase="failed",
+                )
+            except (OSError, RuntimeError, ValueError) as exc:
+                self._emit_knowledge_setup(
+                    "model",
+                    "failed",
+                    str(exc),
+                    error_code="knowledge_model_install_failed",
+                    phase="failed",
+                )
+            finally:
+                release_job_lock()
+                self._knowledge_job_thread = None
+
+        thread = threading.Thread(target=run, daemon=True, name="soca-knowledge-model-install")
+        self._knowledge_job_thread = thread
+        try:
+            thread.start()
+        except Exception as exc:  # noqa: BLE001 - release the acquired job lock
+            self._knowledge_job_thread = None
+            release_job_lock()
+            self._emit_knowledge_setup(
+                "model",
+                "failed",
+                f"Không thể khởi động worker tải model: {exc}",
+                error_code="knowledge_model_install_start_failed",
+                phase="failed",
+            )
+
     def _cmd_knowledge_index(self) -> None:
         vault = self.text_config.vault
         if not (vault / "wiki").is_dir():
@@ -1162,6 +1271,11 @@ class SocaEngine:
                 "llm": item.llm_model,
                 "tts": item.tts_engine,
                 "voice": item.tts_voice,
+                # A profile-level validation failure is different from an
+                # absent ASR artifact. Preserve its diagnostic so clients can
+                # distinguish an unavailable profile from one that needs a
+                # download, without inferring it from a status token.
+                "note": item.notes,
             }
             for item in collect_runtime_profile_readiness()
         ]
@@ -1309,9 +1423,9 @@ class SocaEngine:
                 tts_state = "missing"
             add("tts", "TTS", tts_state, f"{VALTEC_TTS_CONFIG.key}/{self.voice_config.tts_voice}")
 
-            from soca.model_paths import default_model_root
+            from soca.core.voice_runtime import _smart_turn_model_dir
 
-            smart_turn_path = default_model_root() / "smart-turn-v3-onnx" / SMART_TURN_MODEL_FILE
+            smart_turn_path = _smart_turn_model_dir() / SMART_TURN_MODEL_FILE
             if not self.voice_config.adaptive_endpoint:
                 smart_state = "disabled"
             elif voice_bundle is not None and voice_bundle.turn_detector is not None:
@@ -1510,11 +1624,17 @@ class SocaEngine:
             return
         max_tokens = command.get("max_tokens", self.llm_settings.max_tokens)
         reasoning_enabled = command.get("reasoning_enabled", self.llm_settings.reasoning_enabled)
+        remote_data_collection = command.get(
+            "remote_data_collection", self.llm_settings.remote_data_collection
+        )
         if isinstance(max_tokens, bool) or not isinstance(max_tokens, int):
             self._error("Max output tokens phải là số nguyên.")
             return
         if not isinstance(reasoning_enabled, bool):
             self._error("Reasoning phải là true hoặc false.")
+            return
+        if remote_data_collection not in {"deny", "allow"}:
+            self._error("Chính sách dữ liệu remote phải là deny hoặc allow.")
             return
         model_info = None
         if backend == "remote":
@@ -1557,6 +1677,7 @@ class SocaEngine:
                 model_reasoning_parameter=(
                     model_info.reasoning_parameter if model_info is not None else None
                 ),
+                remote_data_collection=remote_data_collection,
             )
         except ValueError as exc:
             self._error(str(exc))
@@ -1573,6 +1694,10 @@ class SocaEngine:
             self._error(str(exc))
             return
         self.llm_settings = settings
+        self._remote_route_failures.pop(
+            (settings.provider_key, settings.model_id, settings.remote_data_collection),
+            None,
+        )
         self._settings_error = None
         self._invalidate_voice_runtime()
         self._last_prompt_manifest = None
@@ -1590,8 +1715,13 @@ class SocaEngine:
                 catalog = self._cached_catalog(provider, api_key)
             else:
                 catalog = None
-            if api_key and catalog is None:
+            if api_key and catalog is None and self._catalog_failure(provider, api_key) is None:
                 catalog_fetch = (provider, api_key)
+        runtime_state = (
+            "ready"
+            if runtime_ready
+            else ("checking" if catalog_fetch is not None else "blocked")
+        )
         payload: dict[str, Any] = {
             "event": "llm_config",
             "backend": settings.backend,
@@ -1605,10 +1735,12 @@ class SocaEngine:
             "reasoning_mandatory": settings.model_reasoning_mandatory,
             "temperature": settings.temperature,
             "top_p": settings.top_p,
+            "remote_data_collection": settings.remote_data_collection,
             "pricing_as_of": PRICING_TABLE_AS_OF,
             "pricing": active_model,
             "context_length": self._model_context_length(),
             "runtime_ready": runtime_ready,
+            "runtime_state": runtime_state,
             "runtime_reason": runtime_reason,
             "local_model_path": local_model_path,
             "settings_error": self._settings_error,
@@ -1641,6 +1773,9 @@ class SocaEngine:
                 return False, f"Chưa có API key cho {provider.label}.", None
             catalog = self._cached_catalog(provider, api_key)
             if catalog is None:
+                failure = self._catalog_failure(provider, api_key)
+                if failure is not None:
+                    return False, failure, None
                 return False, f"Đang tải danh mục model của {provider.label}…", None
             if not any(model.id == settings.model_id for model in catalog):
                 return (
@@ -1648,6 +1783,11 @@ class SocaEngine:
                     f"Model '{settings.model_id}' không có trong danh mục hiện tại của {provider.label}.",
                     None,
                 )
+            observed_failure = self._remote_route_failures.get(
+                (settings.provider_key, settings.model_id, settings.remote_data_collection)
+            )
+            if observed_failure is not None:
+                return False, observed_failure, None
             return True, None, None
         if self.no_model:
             return False, "Engine đang chạy với --no-model.", None
@@ -1672,6 +1812,37 @@ class SocaEngine:
         if catalog is None:
             return None
         return next((model for model in catalog if model.id == settings.model_id), None)
+
+    def _record_remote_route_failure(self, result: Any) -> None:
+        """Remember an observed policy-specific remote route failure.
+
+        The model catalog can prove an id exists, not that an endpoint can
+        serve the selected request constraints.  Only cache the exact typed
+        404 emitted under the strict data policy; all other failures remain
+        per-turn outcomes so a transient provider incident does not lock the
+        user out of a healthy route.
+        """
+
+        settings = self.llm_settings
+        if settings.backend != "remote" or settings.remote_data_collection != "deny":
+            return
+        trace = getattr(result, "trace", None)
+        error = getattr(trace, "llm_error", None)
+        if not isinstance(error, dict) or error.get("category") != "model":
+            return
+        provider = error.get("provider")
+        model = error.get("model")
+        message = error.get("message")
+        if (
+            provider != settings.provider_key
+            or model != settings.model_id
+            or not isinstance(message, str)
+            or not message.strip()
+        ):
+            return
+        self._remote_route_failures[
+            (settings.provider_key, settings.model_id, settings.remote_data_collection)
+        ] = message
 
     def _remote_model_info(
         self,
@@ -1702,6 +1873,23 @@ class SocaEngine:
             if cached is None or cached[0] != fingerprint:
                 return None
             return list(cached[1])
+
+    def _catalog_failure(self, provider: LLMProvider, api_key: str) -> str | None:
+        fingerprint = self._catalog_fingerprint(api_key)
+        with self._catalog_lock:
+            failure = self._catalog_failures.get(provider.key)
+        if failure is None or failure[0] != fingerprint:
+            return None
+        return failure[1]
+
+    def _remember_catalog_failure(
+        self,
+        provider: LLMProvider,
+        fingerprint: str,
+        detail: str,
+    ) -> None:
+        with self._catalog_lock:
+            self._catalog_failures[provider.key] = (fingerprint, detail)
 
     def _emit_catalog(
         self,
@@ -1771,7 +1959,15 @@ class SocaEngine:
                 if self._key_validation_is_current(provider.key, fingerprint):
                     self._emit_key_status(provider.key, ok=False, message=str(exc))
             else:
-                self._error(str(exc), provider=provider.key)
+                detail = str(exc)
+                self._remember_catalog_failure(provider, fingerprint, detail)
+                self._error(detail, provider=provider.key)
+                if (
+                    self.llm_settings.backend == "remote"
+                    and self.llm_settings.provider_key == provider.key
+                ):
+                    self._emit_llm_config()
+                    self._cmd_status()
             return
         except Exception as exc:  # noqa: BLE001 - external catalog adapters are untrusted
             LOGGER.warning(
@@ -1787,10 +1983,15 @@ class SocaEngine:
                         message="Không thể xác thực API key. Hãy thử lại sau.",
                     )
             else:
-                self._error(
-                    f"Không thể lấy danh sách model của {provider.label}.",
-                    provider=provider.key,
-                )
+                detail = f"Không thể lấy danh sách model của {provider.label}."
+                self._remember_catalog_failure(provider, fingerprint, detail)
+                self._error(detail, provider=provider.key)
+                if (
+                    self.llm_settings.backend == "remote"
+                    and self.llm_settings.provider_key == provider.key
+                ):
+                    self._emit_llm_config()
+                    self._cmd_status()
             return
         finally:
             request_key = (provider.key, fingerprint)
@@ -1800,6 +2001,7 @@ class SocaEngine:
 
         with self._catalog_lock:
             self._catalog_cache[provider.key] = (fingerprint, list(catalog))
+            self._catalog_failures.pop(provider.key, None)
 
         self._refresh_active_model_capabilities(provider, catalog)
 
@@ -1814,6 +2016,13 @@ class SocaEngine:
             self.llm_settings.backend == "remote" and self.llm_settings.provider_key == provider.key
         ):
             self._emit_llm_config()
+            # `status` owns Voice dependency readiness.  Without a fresh
+            # snapshot, a client can retain the pre-catalog `voice_llm`
+            # "missing" state even after `llm_config` says the remote route is
+            # ready, which incorrectly routes a fully provisioned user into
+            # Voice setup.
+            if purpose == "config":
+                self._cmd_status()
 
     def _refresh_active_model_capabilities(
         self,
@@ -2461,6 +2670,7 @@ class SocaEngine:
                 if callable(progress_setter):
                     progress_setter(None)
             usage = TurnUsage.from_runtime_result(result)
+            self._record_remote_route_failure(result)
             self._track_usage(usage)
             settled_text = answer_text_without_citation_labels(
                 result.response_text,
@@ -2496,6 +2706,7 @@ class SocaEngine:
                     "llm_error": (dict(result.trace.llm_error) if result.trace is not None else {}),
                 }
             )
+            self._emit_llm_config()
             terminal_emitted = True
             self._emit_turn_progress(
                 "chat",
@@ -2787,11 +2998,48 @@ class SocaEngine:
         if self.voice_config is None:
             self._error("voice unavailable: no voice runtime config")
             return
+        if self._audio_input_settings_error is not None:
+            self._error(self._audio_input_settings_error, code="audio_input_invalid")
+            return
+        try:
+            audio_input_status(self.audio_input_device)
+        except AudioInputDeviceError as exc:
+            self._error(str(exc), code="audio_input_unavailable")
+            return
         if self.voice_stop_event is not None and not self.voice_stop_event.is_set():
             self._error("voice already running")
             return
 
-        controller = self._ensure_voice_controller()
+        # Constructing the duplex audio path loads native AEC/VAD resources.
+        # That boundary used to run on the stdin command thread without an
+        # exception boundary: one missing bundled resource ended the whole
+        # sidecar and made desktop fall back to its startup screen.  Starting
+        # Voice may fail, but it must never turn a healthy chat engine into a
+        # dead process.
+        try:
+            controller = self._ensure_voice_controller()
+        except Exception as exc:  # noqa: BLE001 - native audio dependency boundary
+            LOGGER.exception("voice controller initialization failed")
+            detail = type(exc).__name__
+            self.writer.emit(
+                {
+                    "event": "voice",
+                    "type": "error",
+                    "text": "Voice không thể khởi động trên máy này. Hãy thử lại.",
+                    "metadata": {
+                        "error_code": "voice_startup_failed",
+                        "component": "audio_pipeline",
+                        "detail": detail,
+                    },
+                }
+            )
+            self._error(
+                "voice controller initialization failed",
+                code="voice_startup_failed",
+                component="audio_pipeline",
+                detail=detail,
+            )
+            return
         stop_event = threading.Event()
         self.voice_stop_event = stop_event
         queue: Queue[VoiceMonitorEvent | None] = Queue()
@@ -2809,6 +3057,44 @@ class SocaEngine:
         self._voice_threads = [pump, worker]
         pump.start()
         worker.start()
+
+    def _cmd_audio_input_get(self) -> None:
+        """Expose input endpoints without opening a microphone stream."""
+        if self._audio_input_settings_error is not None:
+            self._error(self._audio_input_settings_error, code="audio_input_invalid")
+            return
+        try:
+            payload = audio_input_status(self.audio_input_device)
+        except AudioInputDeviceError as exc:
+            self._error(str(exc), code="audio_input_unavailable")
+            return
+        self.writer.emit({"event": "audio_input", **payload})
+
+    def _cmd_audio_input_select(self, command: dict[str, Any]) -> None:
+        """Persist an explicit microphone choice for subsequent Voice turns."""
+        if self._voice_is_active():
+            self._error(
+                "Dừng Voice trước khi đổi microphone.",
+                code="audio_input_change_while_active",
+            )
+            return
+        requested = command.get("device")
+        if requested is not None and (not isinstance(requested, str) or not requested.strip()):
+            self._error("Microphone không hợp lệ.", code="audio_input_invalid")
+            return
+        selected = requested if isinstance(requested, str) else None
+        try:
+            # Validate before saving. Selecting a missing device must not make
+            # a later voice_start silently capture from some other endpoint.
+            payload = audio_input_status(selected)
+            save_audio_input_device(selected)
+        except (AudioInputDeviceError, ValueError) as exc:
+            self._error(str(exc), code="audio_input_invalid")
+            return
+        self.audio_input_device = selected
+        self._audio_input_settings_error = None
+        self.writer.emit({"event": "audio_input", **payload})
+        self._cmd_status()
 
     def _voice_pump(self, queue: Queue[VoiceMonitorEvent | None]) -> None:
         while True:
@@ -3170,6 +3456,7 @@ class SocaEngine:
             self.voice_config,
             warmup=self.warmup_voice,
             session_memory=self.session_memory,
+            input_device=self.audio_input_device,
             **kwargs,
         )
         return self.voice_controller
@@ -3256,7 +3543,21 @@ def run_engine(
                 if not isinstance(command, dict):
                     engine._error("command must be a JSON object", line=line[:200])
                     continue
-                if not engine.dispatch(command):
+                try:
+                    should_continue = engine.dispatch(command)
+                except Exception as exc:  # noqa: BLE001 - protocol command boundary
+                    # A command bug must be visible and recoverable.  Letting it
+                    # escape closes stdout, which native desktop can only report
+                    # as a generic sidecar crash.
+                    LOGGER.exception("engine command failed", extra={"command": command.get("cmd")})
+                    engine._error(
+                        "engine command failed",
+                        code="engine_command_failed",
+                        command=str(command.get("cmd") or ""),
+                        detail=type(exc).__name__,
+                    )
+                    continue
+                if not should_continue:
                     break
         finally:
             engine.shutdown()

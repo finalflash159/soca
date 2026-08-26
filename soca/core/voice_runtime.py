@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -553,6 +554,9 @@ def _build_voice_runtime_components(
                 mode=cast(RetrievalMode, config.knowledge_retrieval_mode),
                 dense_backend=cast(DenseBackend, config.knowledge_dense_backend),
             ),
+            # Voice must be ready to capture speech before an optional dense
+            # retrieval query has paid to load its large embedding model.
+            defer_dense_model=True,
         )
         knowledge_builder = knowledge.builder
         knowledge_catalog = knowledge.catalog
@@ -648,6 +652,7 @@ def _build_voice_runtime_components(
             mode=cast(ToolRouterMode, config.tool_router_mode),
             response_mode=cast(RouterResponseMode, config.tool_router_response_mode),
             max_tokens=effective_max_tokens,
+            zero_data_retention=selected_settings.remote_data_collection == "deny",
             semantic=SemanticRouterConfig(
                 enabled=config.semantic_router_enabled,
                 threshold=config.semantic_router_threshold,
@@ -742,6 +747,13 @@ def warm_up_voice_runtime(
 
 
 def _smart_turn_model_dir() -> Path:
+    # The desktop sidecar owns this immutable endpointing artifact.  It is
+    # shipped beside the frozen interpreter, while source workflows retain the
+    # explicit model-root convention for reproducible local development.
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if isinstance(frozen_root, str) and frozen_root:
+        return Path(frozen_root) / "data" / "smart-turn-v3-onnx"
+
     from soca.model_paths import default_model_root
 
     return default_model_root() / "smart-turn-v3-onnx"

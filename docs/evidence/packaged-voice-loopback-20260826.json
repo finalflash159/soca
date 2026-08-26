@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "kind": "packaged_voice_synthetic_loopback",
+  "recorded_at": "2026-08-26",
+  "scope": "frozen macOS app-bundle sidecar; sanitized local verification",
+  "bundle": "desktop/src-tauri/target/release/bundle/macos/SoCa.app",
+  "route": {
+    "asr": "qwen3_asr_0_6b",
+    "llm_provider": "openrouter",
+    "llm_model": "openai/gpt-5.6-luna",
+    "tts": "valtec_multispeaker"
+  },
+  "fixture": {
+    "kind": "existing Valtec Vietnamese speech fixture injected through an installed BlackHole loopback device",
+    "fixture_content_recorded": false,
+    "user_configured_input_restored": true,
+    "physical_microphone_or_speaker_claimed": false
+  },
+  "observations": {
+    "qwen_final_transcript_nonempty": true,
+    "asr_transcript_sha256": "fedc566ac06a68bb9e07a76f5cfe9198de8c1633f879b71c12d53333ebb70a01",
+    "remote_completion_tokens": 69,
+    "tts_chunks": 2,
+    "playback_chunks": 2,
+    "terminal_event": "done",
+    "engine_error_codes": [],
+    "orphan_process_count_after_shutdown": 0,
+    "latency_ms": 55280
+  },
+  "event_contract": [
+    "recording",
+    "asr_partial",
+    "recorded",
+    "transcribing",
+    "asr",
+    "tts",
+    "playback_started",
+    "done",
+    "loop_stopped"
+  ],
+  "decision": {
+    "packaged_qwen_to_remote_llm_to_tts_wiring": "pass",
+    "quality_gate": "pass_for_the_synthetic_bundle-wiring probe",
+    "release_operational_study": "pending",
+    "remaining_boundary": "A TTS-generated loopback fixture is not evidence of a physical microphone, human speech, or a full release-operational trajectory matrix. Those claims remain intentionally unqualified.",
+    "no_silent_fallback_observed": true
+  }
+}

@@ -46,7 +46,10 @@ also compete with AEC3 for the device, and barge-in depends entirely on AEC.
 
 The engine already publishes what a meter needs: `voice_level.metadata.rms`,
 measured on the same buffer the recogniser sees. The hand-written meter renders
-that array.
+only `metadata.source: "microphone"`; the dedicated Voice orb separately uses
+the matching generated-PCM telemetry published as `metadata.source:
+"assistant"` after playback starts. Neither surface opens a second audio
+stream in the WebView.
 
 It is drawn as discrete bars rather than a smoothed waveform on purpose: rms is
 one magnitude per frame, not a sample buffer, and a smooth curve would imply a

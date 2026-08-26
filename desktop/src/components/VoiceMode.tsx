@@ -1,18 +1,23 @@
 /** Voice capture with the same durable transcript as chat. */
 
-import { Activity, Mic, MicOff, MessageSquareText, X } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { Activity, Mic, MicOff, MessageSquareText, Settings2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { VoiceHud } from "@/components/VoiceHud";
+import {
+  VoiceOrb,
+  voiceOrbModeFor,
+  voiceOrbStatusFor,
+  voicePresentationFor,
+} from "@/components/VoiceOrb";
 import { VoiceTranscript } from "@/components/VoiceTranscript";
 import type { Citation, ConversationState, Turn } from "@/engine/conversation";
 import type { CitationPreviewIndex } from "@/engine/citation-preview";
-import { orbLabel, type OrbState } from "@/engine/orb";
+import type { OrbState } from "@/engine/orb";
 import type { VoiceState } from "@/engine/voice";
-import { partialText, peakLevel } from "@/engine/voice";
+import { partialText } from "@/engine/voice";
 import { cn } from "@/lib/utils";
-import { ThinkingOrb } from "thinking-orbs";
 
 interface VoiceModeProps {
   orbState: OrbState;
@@ -21,26 +26,26 @@ interface VoiceModeProps {
   citationPreviews: CitationPreviewIndex;
   onRequestCitationPreview: (citation: Citation) => Promise<boolean>;
   connected: boolean;
+  ready: boolean;
+  checking: boolean;
+  setupSummary: string | null;
+  setupDetail: string | null;
+  setupActionAvailable: boolean;
   transcriptOpen: boolean;
   onToggleTranscript: () => void;
   onToggleMic: () => void;
+  onOpenSetup: () => void;
   onLeave: () => void;
   onLoadOlder: () => void;
   canLoadOlder: boolean;
 }
 
-/** Smooth the engine's real microphone RMS frames without fabricating progress. */
-function recentLevel(levels: number[]): number {
-  return peakLevel(levels.slice(-6));
-}
-
 /**
  * The live turn, centre stage.
  *
- * This is where a spoken turn happens, and it stays here for the whole of it —
- * the partial transcript growing word by word as you speak, then the answer
- * arriving sentence by sentence as it is spoken. Only when the turn closes does
- * it leave and become a pair of bubbles in the transcript below.
+ * While the microphone is live, the immersive Voice orb owns the whole stage
+ * and intentionally hides words. Once capture ends, the compact surface shows
+ * the partial transcript and streamed answer without duplicating them below.
  *
  * The layer split is Pipecat's `TranscriptOverlay`: what is happening now is
  * large, centred and ephemeral; the record is small, aligned and permanent.
@@ -94,9 +99,15 @@ export function VoiceMode({
   citationPreviews,
   onRequestCitationPreview,
   connected,
+  ready,
+  checking,
+  setupSummary,
+  setupDetail,
+  setupActionAvailable,
   transcriptOpen,
   onToggleTranscript,
   onToggleMic,
+  onOpenSetup,
   onLeave,
   onLoadOlder,
   canLoadOlder,
@@ -126,7 +137,8 @@ export function VoiceMode({
   }, []);
 
   const running = voice.phase !== "off";
-  const level = running ? recentLevel(voice.levels) : 0;
+  const presentation = voicePresentationFor(voice, ready);
+  const immersive = presentation === "immersive";
 
   // The turn in progress stays centre stage; the transcript below shows only
   // what has finished. One turn, one place on screen at a time.
@@ -134,53 +146,90 @@ export function VoiceMode({
   const liveTurn =
     newest !== undefined && newest.surface === "voice" && newest.finalText === null ? newest : null;
   const settled = liveTurn === null ? conversation.turns : conversation.turns.slice(0, -1);
-  const historyVisible = transcriptOpen && !detailsOpen;
-
-  const status = !running
-    ? "Đang tắt mic"
-    : voice.phase === "starting"
-      ? // Measured at 9.2 s on this machine. Saying so beats a resting orb
-        // that reads as "ready" while the microphone is not open yet.
-        "Đang nạp mô hình giọng nói…"
-      : orbLabel(orbState);
+  const historyVisible = transcriptOpen && !detailsOpen && !immersive;
+  const status = voiceOrbStatusFor(voiceOrbModeFor(voice, ready, checking));
 
   return (
-    <div
-      // Fills the page area. The sidebar and top bar are outside it, so
-      // settings, the engine health dot and the restart button stay one click
-      // away mid-call — this screen used to cover the window and hide them.
+      <div
+        // Fills the page area. The sidebar and top bar are outside it, so
+        // settings, the engine health dot and the restart button stay one click
+        // away mid-call — this screen used to cover the window and hide them.
       className="bg-background flex h-full w-full flex-col"
       role="region"
       aria-label="Chế độ thoại"
     >
       <div
         className={cn(
-          "relative flex min-h-0 flex-col items-center justify-center gap-6 px-6",
-          // Keep the visual anchor fixed. Opening history changes only the
-          // surrounding layout, never the sphere cluster's size or shape.
-          historyVisible || detailsOpen ? "shrink-0 py-7" : "flex-1",
+          "relative flex min-h-0 flex-col items-center justify-center px-6",
+          immersive ? "flex-1 gap-8 py-10" : "shrink-0 gap-4 py-7",
         )}
+        data-voice-presentation={presentation}
       >
-        <div
-          className={cn(
-            "voice-orb-response relative flex shrink-0 items-center justify-center",
-            historyVisible || detailsOpen ? "size-32" : "size-48",
-          )}
-          style={{ "--voice-level": level } as CSSProperties}
-          data-testid="voice-activity"
-        >
-          <ThinkingOrb state={orbState} size={64} aria-hidden />
-        </div>
+        <VoiceOrb voice={voice} ready={ready} checking={checking} presentation={presentation} />
 
-        {/* Always rendered, transcript open or not. This is the live turn, and
-            hiding it behind the transcript toggle removed the one thing a voice
-            screen exists to show. */}
-        <div className="flex min-h-24 max-w-2xl flex-col items-center justify-start gap-3">
+        <div className={cn("flex max-w-2xl flex-col items-center justify-start gap-3", immersive ? "min-h-0" : "min-h-20")}>
           <p className="text-muted-foreground text-pretty text-center text-sm" role="status" aria-atomic="true">
             {status}
           </p>
-          <LiveTurn voice={voice} turn={liveTurn} />
-          {voice.error !== null && <p className="text-destructive text-sm">{voice.error}</p>}
+          {!ready && checking ? (
+            <p className="text-muted-foreground max-w-md text-center text-sm leading-6" role="status">
+              {setupSummary ?? "Đang xác minh Voice trên máy này…"}
+            </p>
+          ) : !ready ? (
+            <div className="border-border bg-card w-full max-w-md rounded-xl border p-4 text-left shadow-sm">
+              <h2 className="text-sm font-medium">
+                {setupActionAvailable
+                  ? "Thiết lập Voice trước khi bật microphone"
+                  : "Voice đang chờ xác nhận runtime"}
+              </h2>
+              <p className="text-muted-foreground mt-1 text-sm leading-6">
+                {setupSummary ?? "Voice đang kiểm tra các thành phần trên máy này."}
+              </p>
+              {setupDetail !== null && (
+                <details className="text-muted-foreground mt-3 text-xs">
+                  <summary className="cursor-pointer select-none">Thông tin kỹ thuật</summary>
+                  <p className="mt-2 break-words font-mono leading-5">{setupDetail}</p>
+                </details>
+              )}
+              {setupActionAvailable ? (
+                <Button className="mt-4" size="sm" onClick={onOpenSetup}>
+                  <Settings2 className="size-4" />
+                  Mở thiết lập Voice
+                </Button>
+              ) : (
+                <p className="text-muted-foreground mt-4 text-xs leading-5" role="status">
+                  Không cần chọn lại model hoặc runtime. Microphone sẽ được mở khi runtime đã được xác nhận.
+                </p>
+              )}
+            </div>
+          ) : !immersive ? (
+            <>
+              {voice.error !== null ? (
+                <div
+                  className="border-destructive/35 bg-destructive/5 w-full max-w-md rounded-xl border p-4 text-left"
+                  role="alert"
+                >
+                  <h2 className="text-sm font-medium">Voice chưa thể bắt đầu</h2>
+                  <p className="text-muted-foreground mt-1 text-sm leading-6">{voice.error}</p>
+                  <Button className="mt-4" size="sm" onClick={onToggleMic}>
+                    Thử lại
+                  </Button>
+                </div>
+              ) : voice.noSpeechDetected ? (
+                <div className="border-border bg-muted/30 w-full max-w-md rounded-xl border p-4 text-left" role="status">
+                  <h2 className="text-sm font-medium">Chưa nhận được lời nói</h2>
+                  <p className="text-muted-foreground mt-1 text-sm leading-6">
+                    Lượt thu gần nhất đã đến VAD nhưng không có speech. Kiểm tra quyền microphone và thiết bị đầu vào, rồi nói lại gần microphone.
+                  </p>
+                  <Button className="mt-4" size="sm" variant="outline" onClick={onOpenSetup}>
+                    Kiểm tra microphone
+                  </Button>
+                </div>
+              ) : (
+                <LiveTurn voice={voice} turn={liveTurn} />
+              )}
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -198,7 +247,7 @@ export function VoiceMode({
       {/* Diagnostics live here rather than in settings, because every reading
           on them is live: navigating away from this page stops the loop, so a
           level meter on another page would only ever show a dead mic. */}
-      {detailsOpen && (
+      {detailsOpen && !immersive && (
         <div className="min-h-0 flex-1 overflow-auto px-6 pb-2">
           <VoiceHud voice={voice} />
         </div>
@@ -216,7 +265,7 @@ export function VoiceMode({
             title={running ? "Tắt mic" : "Bật mic"}
             aria-label={running ? "Tắt mic" : "Bật mic"}
             aria-pressed={running}
-            disabled={!connected}
+            disabled={!connected || !ready}
             onClick={onToggleMic}
           >
             {running ? <Mic className="size-5" /> : <MicOff className="size-5" />}

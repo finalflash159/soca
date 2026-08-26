@@ -50,14 +50,18 @@ export interface VoiceState {
   profile: string | null;
   asrModel: string | null;
   endpoint: EndpointConfig | null;
-  /** Newest last, capped at LEVEL_HISTORY. */
+  /** Newest microphone RMS readings last, capped at LEVEL_HISTORY. */
   levels: number[];
+  /** Newest assistant-output RMS readings last, capped at LEVEL_HISTORY. */
+  assistantLevels: number[];
   partial: PartialTranscript | null;
   bargeIn: BargeInState;
   /** A rejected transcript became a Vietnamese repair prompt — not an error. */
   repairPrompt: string | null;
   lastTurn: LastTurn | null;
   turnCount: number;
+  /** The last completed capture reached VAD but did not contain speech. */
+  noSpeechDetected: boolean;
   error: string | null;
 }
 
@@ -67,11 +71,13 @@ export const initialVoice: VoiceState = {
   asrModel: null,
   endpoint: null,
   levels: [],
+  assistantLevels: [],
   partial: null,
   bargeIn: "idle",
   repairPrompt: null,
   lastTurn: null,
   turnCount: 0,
+  noSpeechDetected: false,
   error: null,
 };
 
@@ -119,6 +125,7 @@ function reduceVoiceFrame(state: VoiceState, frame: VoiceFrame): VoiceState {
         ...state,
         phase: "off",
         levels: [],
+        assistantLevels: [],
         partial: null,
         bargeIn: "idle",
       };
@@ -141,12 +148,22 @@ function reduceVoiceFrame(state: VoiceState, frame: VoiceFrame): VoiceState {
 
     case "voice_level": {
       const rms = numberOrNull(metadata.rms);
-      return rms === null ? state : { ...state, levels: pushLevel(state.levels, rms) };
+      if (rms === null) {
+        return state;
+      }
+      // Older engines did not publish a source. Treat those readings as
+      // microphone telemetry so a new desktop UI remains compatible with a
+      // running older sidecar, while a current engine can keep both signals
+      // distinct for the Voice orb.
+      return metadata.source === "assistant"
+        ? { ...state, assistantLevels: pushLevel(state.assistantLevels, rms) }
+        : { ...state, levels: pushLevel(state.levels, rms) };
     }
 
     case "asr_partial":
       return {
         ...state,
+        noSpeechDetected: false,
         partial: {
           committed: typeof metadata.committed === "string" ? metadata.committed : "",
           tentative: typeof metadata.tentative === "string" ? metadata.tentative : "",
@@ -154,10 +171,18 @@ function reduceVoiceFrame(state: VoiceState, frame: VoiceFrame): VoiceState {
       };
 
     case "recorded":
-      return { ...state, phase: "transcribing", levels: [] };
+      return {
+        ...state,
+        phase: "transcribing",
+        levels: [],
+        noSpeechDetected: metadata.speech_detected === false,
+      };
 
     case "transcribing":
       return { ...state, phase: "transcribing" };
+
+    case "asr":
+      return { ...state, noSpeechDetected: false };
 
     case "repair":
       // docs/18 §5: rejected speech becomes a repair prompt, rendered as a turn
@@ -220,19 +245,19 @@ export function reduceVoice(state: VoiceState, frame: EngineFrame): VoiceState {
 export function voicePhaseLabel(phase: VoicePhase): string {
   switch (phase) {
     case "off":
-      return "Đã tắt";
+      return "Off";
     case "starting":
-      return "Đang nạp mô hình";
+      return "Starting";
     case "idle":
-      return "Đang chờ";
+      return "Ready";
     case "listening":
-      return "Đang nghe";
+      return "Listening";
     case "transcribing":
-      return "Đang nhận dạng";
+      return "Transcribing";
     case "thinking":
-      return "Đang nghĩ";
+      return "Thinking";
     case "speaking":
-      return "Đang nói";
+      return "Speaking";
   }
 }
 

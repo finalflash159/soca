@@ -443,12 +443,42 @@ def test_engine_status_does_not_load_embedding_runtime(monkeypatch, tmp_path: Pa
 
     assert code == 0
     event = next(item for item in capture.events() if item["event"] == "status")
+    profile = next(item for item in event["profiles"] if item["key"] == "qwen-release")
     embedding = next(item for item in event["runtime_components"] if item["id"] == "embedding")
     qwen = next(item for item in event["runtime_components"] if item["id"] == "qwen_asr_release")
     assert embedding["status"] == "missing"
     assert qwen["status"] in {"missing", "invalid", "provisioned", "unsupported"}
     assert "fallback" in qwen["detail"] or qwen["status"] != "unsupported"
+    assert isinstance(profile["note"], str) and profile["note"]
     assert event["knowledge_index"]["dense_state"] == "model_missing"
+
+
+def test_remote_catalog_completion_refreshes_voice_readiness_status() -> None:
+    """A checked remote model must replace the provisional Voice snapshot."""
+    from types import SimpleNamespace
+
+    from soca.llm.providers import get_provider
+
+    provider = get_provider("openrouter")
+    api_key = "test-key"
+    fingerprint = SocaEngine._catalog_fingerprint(api_key)
+    engine = object.__new__(SocaEngine)
+    engine.catalog_fetcher = lambda _provider, _key: []
+    engine._catalog_lock = threading.Lock()
+    engine._catalog_cache = {}
+    engine._catalog_failures = {}
+    engine._catalog_inflight = {(provider.key, fingerprint)}
+    engine._catalog_threads = set()
+    engine.llm_settings = SimpleNamespace(backend="remote", provider_key=provider.key)
+    events: list[str] = []
+    engine._refresh_active_model_capabilities = lambda *_args: None
+    engine._emit_catalog = lambda *_args: events.append("catalog")
+    engine._emit_llm_config = lambda: events.append("llm_config")
+    engine._cmd_status = lambda: events.append("status")
+
+    engine._catalog_worker(provider, api_key, fingerprint, "config", "")
+
+    assert events == ["catalog", "llm_config", "status"]
 
 
 def test_engine_blocks_runtime_when_saved_llm_settings_are_invalid() -> None:
@@ -1013,6 +1043,80 @@ def test_engine_voice_start_streams_loop_events() -> None:
     assert router_trace["memory_access_plan"]["archive_mode"] == "semantic"
 
 
+def test_engine_reports_and_persists_the_explicit_audio_input(monkeypatch) -> None:
+    import soca.app.engine as engine_module
+
+    capture = ProtocolCapture()
+    saved: list[str | None] = []
+    payload = {
+        "selected_id": "USB Headset",
+        "selected_label": "USB Headset",
+        "uses_system_default": False,
+        "devices": [{"id": "USB Headset", "label": "USB Headset", "is_system_default": False}],
+    }
+    monkeypatch.setattr(engine_module, "load_audio_input_device", lambda: None)
+    monkeypatch.setattr(engine_module, "audio_input_status", lambda selected: {**payload, "selected_id": selected, "uses_system_default": selected is None})
+    monkeypatch.setattr(engine_module, "save_audio_input_device", saved.append)
+
+    code = run_engine(
+        voice_config=make_voice_config(),
+        text_config=make_text_config(),
+        profile="qwen-release",
+        stdin=_commands(capture, {"cmd": "audio_input_select", "device": "USB Headset"}, "audio_input"),
+        stdout=capture,
+        warmup_voice=False,
+    )
+
+    assert code == 0
+    assert saved == ["USB Headset"]
+    assert any(
+        event.get("event") == "audio_input" and event.get("selected_id") == "USB Headset"
+        for event in capture.events()
+    )
+
+
+def test_engine_keeps_running_when_voice_controller_initialization_fails(monkeypatch) -> None:
+    capture = ProtocolCapture()
+
+    from soca.app.engine import SocaEngine
+
+    def fail_controller(_self):
+        raise ModuleNotFoundError("silero_vad.data")
+
+    monkeypatch.setattr(SocaEngine, "_ensure_voice_controller", fail_controller)
+
+    def stdin():
+        yield '{"cmd": "voice_start"}\n'
+        capture.wait_for('"voice_startup_failed"')
+        yield '{"cmd": "status"}\n'
+        capture.wait_for('"event": "status"')
+        yield '{"cmd": "quit"}\n'
+
+    code = run_engine(
+        voice_config=make_voice_config(),
+        text_config=make_text_config(),
+        profile="baseline",
+        stdin=stdin(),
+        stdout=capture,
+        warmup_voice=False,
+    )
+
+    assert code == 0
+    voice_error = next(
+        event
+        for event in capture.events()
+        if event["event"] == "voice" and event["type"] == "error"
+    )
+    assert voice_error["metadata"]["error_code"] == "voice_startup_failed"
+    assert voice_error["metadata"]["detail"] == "ModuleNotFoundError"
+    assert any(
+        event.get("code") == "voice_startup_failed"
+        for event in capture.events()
+        if event["event"] == "engine_error"
+    )
+    assert any(event["event"] == "status" for event in capture.events())
+
+
 def test_engine_passes_one_selected_settings_and_goal_store_to_voice_builder(
     monkeypatch,
 ) -> None:
@@ -1192,6 +1296,47 @@ def test_knowledge_index_start_failure_releases_lock_and_reports_error(
     )
     assert failure["status"] == "failed"
     assert failure["error_code"] == "knowledge_index_start_failed"
+
+
+def test_knowledge_model_install_emits_explicit_receipts_and_releases_lock(
+    monkeypatch, tmp_path: Path
+) -> None:
+    class Writer:
+        def __init__(self) -> None:
+            self.events: list[dict] = []
+
+        def emit(self, event: dict) -> None:
+            self.events.append(event)
+
+    class Config:
+        vault = tmp_path
+
+    class ImmediateThread:
+        def __init__(self, *, target, **kwargs) -> None:
+            del kwargs
+            self._target = target
+
+        def start(self) -> None:
+            self._target()
+
+    engine = object.__new__(SocaEngine)
+    engine.text_config = Config()
+    engine.writer = Writer()
+    engine._knowledge_job_lock = threading.Lock()
+    engine._knowledge_job_thread = None
+    engine._cmd_status = lambda: None
+    monkeypatch.setattr("soca.app.engine.install_model", lambda key: tmp_path / key)
+    monkeypatch.setattr("soca.app.engine.threading.Thread", ImmediateThread)
+
+    engine._cmd_knowledge_model_install()
+
+    assert engine._knowledge_job_thread is None
+    assert engine._knowledge_job_lock.acquire(blocking=False)
+    receipts = [event for event in engine.writer.events if event["event"] == "knowledge_setup"]
+    assert [(event["action"], event["status"], event.get("phase")) for event in receipts] == [
+        ("model", "running", "downloading"),
+        ("model", "ready", "complete"),
+    ]
 
 
 def test_shutdown_emits_bye_after_worker_cleanup_timeout() -> None:

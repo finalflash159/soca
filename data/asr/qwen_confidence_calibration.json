@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "calibrations": {
-    "50d7f8f028eed690fa90a33fa00d8ed89d661cad8795242849a9e62d81ded0e6": {
+    "1669d78d76f49de3fa52b5334416ffeaf367048389640c862822d96663401414": {
       "identity": {
-        "artifact_digest": "6b414993f01314a2466d5f0910de7dd34f1ef4814118b130dc800f0ed812f53e",
+        "artifact_digest": "4eb4ebbc1bc8f994734fd29bdeb2517df7a516a394726d116fff778e9a5ac45c",
         "context_policy_digest": "4d8ca61b530b8f935fd8bc806370f8404db7720dbc293361b533e3823eb392bd",
         "context_echo_policy_digest": "dde5597078b164bcbfe64dbba4794eb2f7eb83fdc1fd0404a6bc24e28ef6acd8",
         "decode_strategy": "llm_decoder",
@@ -13,11 +13,11 @@
         "language": "Vietnamese",
         "max_new_tokens": 128,
         "model_key": "qwen3_asr_0_6b",
-        "runtime_lock_digest": "bbf96f7b16c241afee13734ae8bfa2525420675f6db536934d9a746b94ec7f9f",
+        "runtime_lock_digest": "f08654248f6e50512d98fd247829cc4ae2fb6d2a5272f1e6b9981be0fb46b1b3",
         "vad_policy_digest": "96c256c5003d2fa0e390782bfecfdf10fc27ce3b2918ad9c12ab962d25bb9ec0"
       },
       "recommended_thresholds": {
-        "min_avg_logprob": -0.31295127843385934,
+        "min_avg_logprob": -0.31461821755668096,
         "max_compression_ratio": 2.4,
         "context_echo_min_contiguous_tokens": 4
       },
@@ -36,12 +36,12 @@
         "non_speech": 1202
       },
       "benchmark_config_digest": "d2d38686c8afc7b4ba4bf42af6d1a21f6340ea7e25313b07ce93f9bd205049a5",
-      "run_id": "20260803T004036Z-ac9c7c26",
-      "created_at_utc": "2026-08-03T02:40:38.367657+00:00"
+      "run_id": "20260824T215144Z-8e494eb8",
+      "created_at_utc": "2026-08-25T07:19:20.921457+00:00"
     },
-    "6cc1519ad801c1e8a8adb8c2ea79410be8d27a73569926735b944593f7a878b2": {
+    "fbf4517c4dcf977c5a845702481fee036c1bef919c96c76834d9e8f5b256381b": {
       "identity": {
-        "artifact_digest": "f407d3c4c532eb3927abd088bd456ef3b6f92ae7a80baeca27657e552607ed22",
+        "artifact_digest": "d6aed7eff17a950705ff35c99ec41c09cb5c945147d902996ca4fc5b36fd1fb4",
         "context_policy_digest": "4d8ca61b530b8f935fd8bc806370f8404db7720dbc293361b533e3823eb392bd",
         "context_echo_policy_digest": "dde5597078b164bcbfe64dbba4794eb2f7eb83fdc1fd0404a6bc24e28ef6acd8",
         "decode_strategy": "llm_decoder",
@@ -51,7 +51,7 @@
         "language": "Vietnamese",
         "max_new_tokens": 128,
         "model_key": "qwen3_asr_1_7b",
-        "runtime_lock_digest": "bbf96f7b16c241afee13734ae8bfa2525420675f6db536934d9a746b94ec7f9f",
+        "runtime_lock_digest": "f08654248f6e50512d98fd247829cc4ae2fb6d2a5272f1e6b9981be0fb46b1b3",
         "vad_policy_digest": "96c256c5003d2fa0e390782bfecfdf10fc27ce3b2918ad9c12ab962d25bb9ec0"
       },
       "recommended_thresholds": {
@@ -74,8 +74,8 @@
         "non_speech": 1202
       },
       "benchmark_config_digest": "d2d38686c8afc7b4ba4bf42af6d1a21f6340ea7e25313b07ce93f9bd205049a5",
-      "run_id": "20260803T004036Z-ac9c7c26",
-      "created_at_utc": "2026-08-03T02:40:38.410419+00:00"
+      "run_id": "20260824T215144Z-8e494eb8",
+      "created_at_utc": "2026-08-25T07:19:20.966396+00:00"
     }
   }
 }

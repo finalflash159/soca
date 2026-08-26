@@ -46,8 +46,12 @@ export interface LlmConfig {
   effectiveReasoningEnabled: boolean;
   reasoningSupported: boolean;
   reasoningMandatory: boolean;
+  /** Absent only in a frame from an older engine; strict is the safe default. */
+  remoteDataCollection?: "deny" | "allow";
   contextLength: number | null;
   runtimeReady: boolean;
+  /** Typed engine lifecycle state; never infer control flow from diagnostic copy. */
+  runtimeState: "checking" | "ready" | "blocked";
   runtimeReason: string | null;
   localModelPath: string | null;
   settingsError: string | null;
@@ -60,6 +64,8 @@ export interface RuntimeProfile {
   llm: string | null;
   tts: string | null;
   voice: string | null;
+  /** Engine-authored profile diagnostic; never a secret. */
+  note?: string | null;
 }
 
 export interface RuntimeComponent {
@@ -67,6 +73,32 @@ export interface RuntimeComponent {
   label: string;
   status: string;
   detail: string | null;
+}
+
+export interface AudioInputState {
+  selectedId: string | null;
+  selectedLabel: string | null;
+  usesSystemDefault: boolean;
+  devices: Array<{ id: string; label: string; isSystemDefault: boolean }>;
+}
+
+const READY_COMPONENT_STATUSES = new Set(["ok", "ready", "loaded", "configured"]);
+
+export function runtimeStateFor(config: LlmConfig | null): LlmConfig["runtimeState"] {
+  if (config === null) return "checking";
+  // v3 frames from an earlier desktop build did not include runtime_state.
+  // Their boolean remains an explicit compatibility signal, not copy parsing.
+  return config.runtimeState ?? (config.runtimeReady ? "ready" : "blocked");
+}
+
+export function isVoiceComponentReady(
+  component: RuntimeComponent,
+  config: LlmConfig | null,
+): boolean {
+  if (component.id === "voice_llm") {
+    return runtimeStateFor(config) === "ready";
+  }
+  return READY_COMPONENT_STATUSES.has(component.status);
 }
 
 export interface SettingsState {
@@ -81,6 +113,7 @@ export interface SettingsState {
   profiles: RuntimeProfile[];
   runtimeComponents: RuntimeComponent[];
   activeProfile: string | null;
+  audioInput: AudioInputState | null;
 }
 
 export const initialSettings: SettingsState = {
@@ -93,6 +126,7 @@ export const initialSettings: SettingsState = {
   profiles: [],
   runtimeComponents: [],
   activeProfile: null,
+  audioInput: null,
 };
 
 function str(value: unknown, fallback = ""): string {
@@ -105,6 +139,27 @@ function numOrNull(value: unknown): number | null {
 
 export function reduceSettings(state: SettingsState, frame: EngineFrame): SettingsState {
   switch (frame.event) {
+    case "audio_input": {
+      const rawDevices = Array.isArray(frame.devices) ? frame.devices : [];
+      return {
+        ...state,
+        audioInput: {
+          selectedId: typeof frame.selected_id === "string" ? frame.selected_id : null,
+          selectedLabel: typeof frame.selected_label === "string" ? frame.selected_label : null,
+          usesSystemDefault: frame.uses_system_default === true,
+          devices: rawDevices.flatMap((item) => {
+            if (typeof item !== "object" || item === null) return [];
+            const device = item as Record<string, unknown>;
+            if (typeof device.id !== "string" || typeof device.label !== "string") return [];
+            return [{
+              id: device.id,
+              label: device.label,
+              isSystemDefault: device.is_system_default === true,
+            }];
+          }),
+        },
+      };
+    }
     case "llm_providers": {
       const raw = Array.isArray(frame.providers) ? frame.providers : [];
       return {
@@ -155,7 +210,15 @@ export function reduceSettings(state: SettingsState, frame: EngineFrame): Settin
       };
     }
 
-    case "llm_config":
+    case "llm_config": {
+      const runtimeReady = frame.runtime_ready === true;
+      const rawRuntimeState = frame.runtime_state;
+      const runtimeState =
+        rawRuntimeState === "checking" || rawRuntimeState === "ready" || rawRuntimeState === "blocked"
+          ? rawRuntimeState
+          : runtimeReady
+            ? "ready"
+            : "blocked";
       return {
         ...state,
         config: {
@@ -168,13 +231,17 @@ export function reduceSettings(state: SettingsState, frame: EngineFrame): Settin
           effectiveReasoningEnabled: frame.effective_reasoning_enabled === true,
           reasoningSupported: frame.reasoning_supported === true,
           reasoningMandatory: frame.reasoning_mandatory === true,
+          remoteDataCollection:
+            frame.remote_data_collection === "allow" ? "allow" : "deny",
           contextLength: numOrNull(frame.context_length),
-          runtimeReady: frame.runtime_ready === true,
+          runtimeReady,
+          runtimeState,
           runtimeReason: typeof frame.runtime_reason === "string" ? frame.runtime_reason : null,
           localModelPath: typeof frame.local_model_path === "string" ? frame.local_model_path : null,
           settingsError: typeof frame.settings_error === "string" ? frame.settings_error : null,
         },
       };
+    }
 
     case "status": {
       const raw = Array.isArray(frame.profiles) ? frame.profiles : [];
@@ -191,6 +258,7 @@ export function reduceSettings(state: SettingsState, frame: EngineFrame): Settin
             llm: typeof profile.llm === "string" ? profile.llm : null,
             tts: typeof profile.tts === "string" ? profile.tts : null,
             voice: typeof profile.voice === "string" ? profile.voice : null,
+            note: typeof profile.note === "string" ? profile.note : null,
           };
         }),
         runtimeComponents: rawComponents.map((item) => {

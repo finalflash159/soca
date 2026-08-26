@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "kind": "qwen_asr_runtime_requalification",
+  "recorded_at": "2026-08-25",
+  "source": {
+    "raw_run_id": "20260824T215144Z-8e494eb8",
+    "raw_artifact_root": "eval/results/qwen_asr_release/20260824T215144Z-8e494eb8 (local, gitignored)",
+    "benchmark_config_sha256": "d2d38686c8afc7b4ba4bf42af6d1a21f6340ea7e25313b07ce93f9bd205049a5",
+    "manual_context_echo_labels": "eval/labels/qwen_context_echo_release_mps_20260825.json",
+    "manual_label_sha256": "6ffbd3981e8fa05091801e43c157866fd37719afbbf00575c06a870c611779f0",
+    "dataset_manifests": {
+      "private_codeswitch": "aed1ccd96ed9d994412285f4dcff68ba119155be0effd7fa0d089fa635dde70d",
+      "fleurs_vi": "81de44e064d2925ca31ea5e911d560157e3b8e83319bdee66a750e3bab00978c",
+      "non_speech": "48b01f480e0020e2041a0f845011b90af4af035da1517c83664e1848882543b6"
+    }
+  },
+  "runtime": {
+    "worker_lock_sha256": "f08654248f6e50512d98fd247829cc4ae2fb6d2a5272f1e6b9981be0fb46b1b3",
+    "python": "3.11.14",
+    "device": "mps",
+    "dtype": "float16"
+  },
+  "quality_gates": {
+    "private_codeswitch_absolute_cs_wer_improvement": 0.43089430894308944,
+    "private_codeswitch_absolute_wer_regression": -0.4383561643835617,
+    "public_vi_absolute_wer_regression": -0.02146760343481656,
+    "public_vi_speech_false_reject_rate": 0.0,
+    "hard_negative_false_accept_rate": 0.017543859649122806,
+    "final_rtf_p95": 0.1257660833075679,
+    "context_echo_false_accept_rate": 0.0,
+    "context_echo_false_reject_rate": 0.0,
+    "status": "pass"
+  },
+  "calibrations": {
+    "qwen3_asr_0_6b": {
+      "identity_digest": "1669d78d76f49de3fa52b5334416ffeaf367048389640c862822d96663401414",
+      "artifact_digest": "4eb4ebbc1bc8f994734fd29bdeb2517df7a516a394726d116fff778e9a5ac45c",
+      "thresholds": {
+        "min_avg_logprob": -0.31461821755668096,
+        "max_compression_ratio": 2.4,
+        "context_echo_min_contiguous_tokens": 4
+      }
+    },
+    "qwen3_asr_1_7b": {
+      "identity_digest": "fbf4517c4dcf977c5a845702481fee036c1bef919c96c76834d9e8f5b256381b",
+      "artifact_digest": "d6aed7eff17a950705ff35c99ec41c09cb5c945147d902996ca4fc5b36fd1fb4",
+      "thresholds": {
+        "min_avg_logprob": -0.2037214076780951,
+        "max_compression_ratio": 2.4,
+        "context_echo_min_contiguous_tokens": 4
+      }
+    }
+  },
+  "operational_asr_studies": {
+    "raw_artifact_root": "eval/results/qwen_asr_operational/20260825T080000Z (local, gitignored)",
+    "qwen3_asr_0_6b": {
+      "status": "pass",
+      "start_stop_cycles": 20,
+      "start_stop_failures": 0,
+      "startup_ms_median": 3786.1866,
+      "startup_ms_p95": 4358.5631,
+      "cold_inference_wall_ms_p95": 693.2801,
+      "partial_wall_ms_p95": 1030.265,
+      "partial_repeat_consistency_rate": 1.0,
+      "orphan_process_count": 0,
+      "fallback_attempt_count": 0,
+      "typed_crash_failure": "QwenServiceCrashed"
+    },
+    "qwen3_asr_1_7b": {
+      "status": "pass",
+      "start_stop_cycles": 20,
+      "start_stop_failures": 0,
+      "startup_ms_median": 4329.6502,
+      "startup_ms_p95": 4892.7587,
+      "cold_inference_wall_ms_p95": 1045.1901,
+      "partial_wall_ms_p95": 1690.1112,
+      "partial_repeat_consistency_rate": 1.0,
+      "orphan_process_count": 0,
+      "fallback_attempt_count": 0,
+      "typed_crash_failure": "QwenServiceCrashed"
+    }
+  },
+  "packaged_desktop": {
+    "macos_bundle": "desktop/src-tauri/target/release/bundle/macos/SoCa.app",
+    "sidecar_storage_verifier": "pass",
+    "codesign_verify_deep_strict": "pass",
+    "frozen_runtime_flow": {
+      "status": "pass",
+      "recorded_at": "2026-08-26",
+      "scope": "sanitized local artifact verification",
+      "runtime_components": {
+        "qwen_asr_release": "provisioned",
+        "voice_asr": "ok",
+        "tts": "ready",
+        "embedding": "ready"
+      },
+      "vault": {
+        "documents": 51,
+        "chunks": 335,
+        "dense_state": "ready"
+      },
+      "session": {
+        "persistence": "local_resumable",
+        "create_receipt": "completed",
+        "list_receipt": "completed"
+      },
+      "sidecar_exit_code": 0,
+      "orphan_process_count_after_shutdown": 0,
+      "transcripts_or_private_vault_content_recorded": false
+    },
+    "remote_route_observation": {
+      "status": "blocked_by_explicit_data_policy",
+      "provider": "openrouter",
+      "model": "deepseek/deepseek-v4-flash-vision-exp",
+      "data_collection": "deny",
+      "fallback_attempted": false,
+      "prompt_or_transcript_recorded": false
+    },
+    "strict_remote_route_study": {
+      "status": "pass",
+      "recorded_at": "2026-08-26",
+      "provider": "openrouter",
+      "model": "openai/gpt-5.6-luna",
+      "data_collection": "deny",
+      "fallback_attempted": false,
+      "attempts": 1,
+      "latency_ms": 1851.75,
+      "prompt_tokens": 11,
+      "completion_tokens": 5,
+      "prompt_or_response_content_recorded": false
+    }
+  },
+  "decision": {
+    "confidence_calibration": "qualified_for_the_exact_runtime_identity",
+    "desktop_voice_readiness": "unblocked_for_qwen_calibration",
+    "quality_gates": "pass",
+    "operational_asr_studies": "pass",
+    "automated_quality_gates": "pass",
+    "release_operational_studies": "pending_full_remote_voice_trajectory",
+    "release_qualification": "not_qualified",
+    "remaining_evidence": [
+      "select openai/gpt-5.6-luna in the app without relaxing strict data policy",
+      "full microphone-to-ASR-to-remote-LLM-to-TTS trajectory using that selected route"
+    ],
+    "no_silent_fallback": true
+  }
+}

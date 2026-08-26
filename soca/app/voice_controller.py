@@ -51,8 +51,6 @@ class VoiceMonitorEvent:
     usage: TurnUsage | None = None
 
 
-
-
 class VoiceRuntimeBuilder(Protocol):
     def __call__(
         self,
@@ -64,6 +62,80 @@ class VoiceRuntimeBuilder(Protocol):
 
 VoiceRecorder = Callable[..., np.ndarray]
 VoiceEventQueue = Queue[VoiceMonitorEvent | None]
+_ASSISTANT_LEVEL_FRAME_MS = 48
+
+
+def _assistant_level_stream(
+    queue: VoiceEventQueue,
+    audio: np.ndarray,
+    sample_rate: int,
+    *,
+    chunk_index: int,
+    stop_event: Event | None,
+    interrupt_event: Event | None,
+) -> threading.Thread | None:
+    """Publish a timed RMS envelope for PCM that has entered playback.
+
+    The desktop never receives audio samples. It receives only the RMS values
+    for the same generated PCM whose playback has just been announced. Timing
+    the envelope to the sample rate keeps the visual in step with speech
+    instead of manufacturing a generic ``speaking`` animation.
+    """
+    if sample_rate <= 0:
+        return None
+
+    samples = np.asarray(audio, dtype=np.float32)
+    if samples.ndim == 2:
+        samples = samples.mean(axis=1)
+    samples = np.ascontiguousarray(np.squeeze(samples), dtype=np.float32)
+    if samples.ndim != 1 or samples.size == 0:
+        return None
+
+    frame_samples = max(1, round(sample_rate * _ASSISTANT_LEVEL_FRAME_MS / 1000))
+
+    def cancelled() -> bool:
+        return (stop_event is not None and stop_event.is_set()) or (
+            interrupt_event is not None and interrupt_event.is_set()
+        )
+
+    def run() -> None:
+        deadline = time.perf_counter()
+        for start in range(0, len(samples), frame_samples):
+            if cancelled():
+                return
+            frame = samples[start : start + frame_samples]
+            rms = float(np.sqrt(np.mean(np.square(frame))))
+            if not np.isfinite(rms):
+                rms = 0.0
+            queue.put(
+                VoiceMonitorEvent(
+                    "voice_level",
+                    "Assistant level",
+                    metadata={
+                        "rms": min(1.0, max(0.0, rms)),
+                        "source": "assistant",
+                        "chunk_index": chunk_index,
+                    },
+                )
+            )
+            deadline += len(frame) / sample_rate
+            while True:
+                if cancelled():
+                    return
+                remaining = deadline - time.perf_counter()
+                if remaining <= 0:
+                    break
+                # Keep cancellation responsive without busy-waiting for the
+                # next audio frame.
+                time.sleep(min(0.02, remaining))
+
+    thread = threading.Thread(
+        target=run,
+        daemon=True,
+        name=f"soca-assistant-level-{chunk_index}",
+    )
+    thread.start()
+    return thread
 
 
 class VoiceMonitorController:
@@ -79,6 +151,8 @@ class VoiceMonitorController:
         warmup: bool = True,
         session_memory: SessionMemory | None = None,
         repair_timings: RepairTimings | None = None,
+        input_device: str | None = None,
+        clock: Callable[[], float] = time.perf_counter,
     ) -> None:
         self.config = config
         self.runtime_builder = runtime_builder
@@ -87,6 +161,11 @@ class VoiceMonitorController:
         self.warmup = warmup
         self.session_memory = session_memory
         self.repair_timings = repair_timings or RepairTimings()
+        self.input_device = input_device
+        # The silence policy needs a controllable monotonic clock for deterministic
+        # scheduling tests. Playback envelopes deliberately keep using the real
+        # clock above: a simulated policy clock must never stall their thread.
+        self._clock = clock
         self.repair_catalog = default_repair_catalog()
         self.bundle: VoiceRuntimeBundle | None = None
         self._warmed_up = False
@@ -315,6 +394,7 @@ class VoiceMonitorController:
                 max_record_ms=self.config.max_record_ms,
                 partial_interval_ms=bundle.partial_interval_ms,
                 adaptive=self.config.adaptive_endpoint,
+                input_device=self.input_device,
             )
         )
 
@@ -336,6 +416,7 @@ class VoiceMonitorController:
                     "adaptive_endpoint": endpoint_config.adaptive,
                     "endpoint_floor_ms": endpoint_config.floor_silence_ms,
                     "endpoint_ceil_ms": endpoint_config.ceil_silence_ms,
+                    "input_device": self.input_device,
                 },
             )
         )
@@ -349,10 +430,28 @@ class VoiceMonitorController:
             "stop_event": stop_event,
             "turn_detector": bundle.turn_detector,
         }
+        live_level_received = False
+        if self._recorder_accepts("on_level"):
+
+            def on_level(rms: float) -> None:
+                nonlocal live_level_received
+                if not isinstance(rms, (int, float)) or not np.isfinite(rms):
+                    return
+                live_level_received = True
+                queue.put(
+                    VoiceMonitorEvent(
+                        "voice_level",
+                        "Voice level",
+                        metadata={"rms": min(1.0, max(0.0, float(rms))), "source": "microphone"},
+                    )
+                )
+
+            record_kwargs["on_level"] = on_level
         if self._pending_prefix is not None:
             record_kwargs["prefix"] = self._pending_prefix
             self._pending_prefix = None
         if bundle.partial_enabled and self._recorder_accepts("on_partial"):
+
             def on_partial(committed: str, tentative: str) -> None:
                 query = f"{committed} {tentative}".strip()
                 queue.put(
@@ -369,6 +468,7 @@ class VoiceMonitorController:
         latency_ms = (time.perf_counter() - t0) * 1000
         if stop_event is not None and stop_event.is_set():
             return
+        has_speech = self._audio_has_speech(bundle, audio)
         queue.put(
             VoiceMonitorEvent(
                 "recorded",
@@ -377,10 +477,14 @@ class VoiceMonitorController:
                 metadata={
                     "samples": int(len(audio)),
                     "duration_s": len(audio) / 16000 if len(audio) else 0.0,
+                    "speech_detected": has_speech,
                 },
             )
         )
-        if len(audio):
+        # Legacy/custom recorders that do not invoke `on_level` retain a single
+        # truthful reading once capture completes. The normal recorder emits a
+        # frame-level envelope above, so it does not duplicate the last block.
+        if len(audio) and not live_level_received:
             rms = float(np.sqrt(np.mean(np.square(audio.astype(np.float32, copy=False)))))
             queue.put(
                 VoiceMonitorEvent(
@@ -389,7 +493,7 @@ class VoiceMonitorController:
                     metadata={"rms": min(1.0, rms), "source": "microphone"},
                 )
             )
-        if not self._audio_has_speech(bundle, audio):
+        if not has_speech:
             self._handle_passive_silence(bundle, queue, stop_event=stop_event)
             return
 
@@ -426,6 +530,8 @@ class VoiceMonitorController:
         runtime_meta: dict[str, Any] = {}
         first_tts_meta: dict[str, Any] | None = None
         tts_chunks = 0
+        tts_audio: dict[int, tuple[np.ndarray, int]] = {}
+        assistant_level_threads: list[threading.Thread] = []
 
         # The DuplexAecSink player sets ``interrupt_event`` from inside ``play`` when
         # it hears sustained speech (no separate listener thread needed).
@@ -448,12 +554,33 @@ class VoiceMonitorController:
             for event in bundle.pipeline.turn_streaming(audio, **stream_kwargs):
                 metadata = dict(event.metadata or {})
                 usage: TurnUsage | None = None
+                playback_level_input: tuple[np.ndarray, int, int] | None = None
 
                 if event.type == "runtime":
                     runtime_meta = metadata
                 elif event.type == "tts":
                     tts_chunks += 1
                     first_tts_meta = first_tts_meta or metadata
+                    chunk_index = metadata.get("chunk_index")
+                    if (
+                        isinstance(chunk_index, int)
+                        and chunk_index >= 0
+                        and event.audio is not None
+                        and isinstance(event.sample_rate, int)
+                        and event.sample_rate > 0
+                    ):
+                        tts_audio[chunk_index] = (event.audio, event.sample_rate)
+                elif event.type == "playback_started":
+                    chunk_index = metadata.get("chunk_index")
+                    playback_chunk_index = int(chunk_index) if isinstance(chunk_index, int) else None
+                    if playback_chunk_index is not None:
+                        playback_audio = tts_audio.pop(playback_chunk_index, None)
+                        if playback_audio is not None:
+                            playback_level_input = (
+                                playback_audio[0],
+                                playback_audio[1],
+                                playback_chunk_index,
+                            )
                 elif event.type == "done":
                     if metadata.get("interrupted") and self._supports_barge_in:
                         queue.put(
@@ -474,11 +601,26 @@ class VoiceMonitorController:
                     self._mark_idle_from_done_event(event)
 
                 queue.put(_to_monitor_event(event, usage=usage))
+                # The Voice UI must observe playback itself before it observes
+                # the PCM envelope derived from that playback.
+                if playback_level_input is not None:
+                    level_thread = _assistant_level_stream(
+                        queue,
+                        playback_level_input[0],
+                        playback_level_input[1],
+                        chunk_index=playback_level_input[2],
+                        stop_event=stop_event,
+                        interrupt_event=interrupt_event,
+                    )
+                    if level_thread is not None:
+                        assistant_level_threads.append(level_thread)
         finally:
             if callable(progress_setter):
                 progress_setter(None)
             if self._supports_barge_in:
                 self.player.stop()  # close duplex stream so the recorder reclaims the mic
+            for level_thread in assistant_level_threads:
+                level_thread.join()
 
     def _audio_has_speech(self, bundle: VoiceRuntimeBundle, audio: np.ndarray) -> bool:
         if len(audio) == 0:
@@ -499,7 +641,7 @@ class VoiceMonitorController:
 
     def _ensure_idle_clock(self) -> None:
         if self._idle_started_at is None:
-            self._idle_started_at = time.perf_counter()
+            self._idle_started_at = self._clock()
 
     def _mark_user_spoke(self) -> None:
         # A real turn clears the silence clock and the call-out counter.
@@ -508,7 +650,7 @@ class VoiceMonitorController:
 
     def _mark_idle_from_done_event(self, event: StreamingEvent) -> None:
         # SoCa finished talking — start counting silence from now.
-        self._idle_started_at = time.perf_counter()
+        self._idle_started_at = self._clock()
 
     def _handle_passive_silence(
         self,
@@ -518,8 +660,8 @@ class VoiceMonitorController:
         stop_event: Event | None,
     ) -> None:
         if self._idle_started_at is None:
-            self._idle_started_at = time.perf_counter()
-        silence_ms = (time.perf_counter() - self._idle_started_at) * 1000
+            self._idle_started_at = self._clock()
+        silence_ms = (self._clock() - self._idle_started_at) * 1000
 
         max_callouts = self.repair_timings.max_followups
         if self._silence_callouts_done >= max_callouts:
@@ -529,7 +671,9 @@ class VoiceMonitorController:
             return
 
         # Not time for the next call-out yet → keep listening quietly.
-        next_callout_at_ms = (self._silence_callouts_done + 1) * self.repair_timings.followup_interval_ms
+        next_callout_at_ms = (
+            self._silence_callouts_done + 1
+        ) * self.repair_timings.followup_interval_ms
         if silence_ms < next_callout_at_ms:
             return
 
@@ -605,7 +749,17 @@ class VoiceMonitorController:
         if duration_ms is not None:
             playback_metadata["audio_duration_ms"] = duration_ms
         queue.put(VoiceMonitorEvent("playback_started", speech_text, metadata=playback_metadata))
+        level_thread = _assistant_level_stream(
+            queue,
+            tts_result.audio,
+            tts_result.sample_rate,
+            chunk_index=0,
+            stop_event=stop_event,
+            interrupt_event=None,
+        )
         playback = self.player.play(tts_result.audio, tts_result.sample_rate, blocking=True)
+        if level_thread is not None:
+            level_thread.join()
         queue.put(
             VoiceMonitorEvent(
                 "audio",

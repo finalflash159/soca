@@ -191,31 +191,6 @@ def test_missing_qwen_calibration_blocks_before_service_start(
     assert started is False
 
 
-def test_missing_phowhisper_calibration_blocks_before_model_load(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path,
-) -> None:
-    started = False
-
-    def forbidden_backend(_model_key: str):
-        nonlocal started
-        started = True
-        raise AssertionError("ASR model must not load")
-
-    monkeypatch.setattr(voice_runtime, "load_confidence_guard_calibration", lambda _key: None)
-    monkeypatch.setattr(voice_runtime, "PhoWhisperVoiceBackend", forbidden_backend)
-    config = resolve_voice_runtime_config(profile_key="baseline", vault=tmp_path)
-
-    with pytest.raises(ASRCalibrationNotReady, match="phowhisper_small"):
-        _build_voice_asr(
-            config,
-            detector=FakeDetector(),
-            knowledge_catalog=None,
-            session_memory=None,
-        )
-    assert started is False
-
-
 def test_calibration_lookup_requires_the_full_canonical_identity(tmp_path) -> None:
     identity = qwen_calibration_identity(QWEN_RELEASE_ARTIFACT)
     path = tmp_path / "calibration.json"

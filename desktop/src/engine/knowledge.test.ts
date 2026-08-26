@@ -4,6 +4,7 @@ import {
   evidenceSummary,
   indexJobRunning,
   initialKnowledge,
+  knowledgeSetupRunning,
   memoryModeSummary,
   reduceKnowledge,
 } from "./knowledge";
@@ -190,6 +191,33 @@ describe("index job", () => {
       } as EngineFrame,
     ]);
     expect(indexJobRunning(state.indexJob)).toBe(false);
+  });
+
+  it("keeps the model download active until the engine reaches a terminal receipt", () => {
+    const running = fold([
+      {
+        event: "knowledge_setup",
+        action: "model",
+        status: "running",
+        detail: "Downloading",
+        vault: "/v",
+        phase: "downloading",
+      } as EngineFrame,
+    ]);
+    expect(indexJobRunning(running.indexJob)).toBe(false);
+    expect(knowledgeSetupRunning(running.indexJob)).toBe(true);
+
+    const complete = fold([
+      {
+        event: "knowledge_setup",
+        action: "model",
+        status: "ready",
+        detail: "Ready",
+        vault: "/v",
+        phase: "complete",
+      } as EngineFrame,
+    ]);
+    expect(knowledgeSetupRunning(complete.indexJob)).toBe(false);
   });
 
   it("carries the error code through on failure", () => {

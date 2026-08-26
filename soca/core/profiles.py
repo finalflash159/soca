@@ -36,16 +36,9 @@ class VoiceRuntimeProfile:
         return self.asr.model_key
 
 
-DEFAULT_VOICE_RUNTIME_PROFILE_KEY = "baseline"
+DEFAULT_VOICE_RUNTIME_PROFILE_KEY = "qwen-release"
 
 VOICE_RUNTIME_PROFILES: dict[str, VoiceRuntimeProfile] = {
-    "baseline": VoiceRuntimeProfile(
-        key="baseline",
-        description="Default high-accuracy local voice runtime using Valtec TTS.",
-        asr=ASRSelection.phowhisper("phowhisper_small"),
-        llm_model="arcee_vylinh_3b_q4_k_m",
-        tts_voice=VALTEC_TTS_CONFIG.default_voice,
-    ),
     "qwen-release": VoiceRuntimeProfile(
         key="qwen-release",
         description="Explicit Qwen3-ASR 0.6B release candidate voice runtime.",

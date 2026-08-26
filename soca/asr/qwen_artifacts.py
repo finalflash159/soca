@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from types import MappingProxyType
 from typing import Any
 
 ARTIFACT_MANIFEST_SCHEMA_VERSION = 1
+QWEN_ASR_MODEL_ROOT_ENV = "SOCA_QWEN_ASR_MODEL_ROOT"
 _HEX_DIGITS = frozenset("0123456789abcdef")
 
 
@@ -199,6 +201,12 @@ def _absolute_path(path: Path) -> Path:
 def default_asr_model_root() -> Path:
     from soca.model_paths import default_model_root
 
+    configured = os.environ.get(QWEN_ASR_MODEL_ROOT_ENV, "").strip()
+    if configured:
+        try:
+            return _absolute_path(Path(configured))
+        except QwenArtifactManifestError:
+            raise
     try:
         return default_model_root() / "asr"
     except ValueError as exc:
@@ -404,6 +412,7 @@ __all__ = [
     "QwenArtifactPermissionError",
     "QwenArtifactPathError",
     "QwenArtifactRoleError",
+    "QWEN_ASR_MODEL_ROOT_ENV",
     "QwenArtifactSchemaError",
     "canonical_manifest_json",
     "decode_artifact_manifest",

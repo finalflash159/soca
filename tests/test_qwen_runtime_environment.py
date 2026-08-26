@@ -10,6 +10,11 @@ from pathlib import Path
 import pytest
 
 import scripts.provision_qwen_runtime as provisioner
+from soca.asr.qwen_runtime import (
+    QWEN_RUNTIME_ROOT_ENV,
+    default_qwen_runtime_root,
+    default_qwen_venv_python,
+)
 from soca.asr.qwen_service_client import QWEN_VENV_PYTHON
 
 RUNTIME_ROOT = Path("runtime/qwen-asr")
@@ -20,6 +25,7 @@ def test_worker_runtime_is_exact_and_excludes_demo_dependencies() -> None:
     uv = project["tool"]["uv"]
 
     assert project["project"]["requires-python"] == "==3.11.*"
+    assert "httpx==0.28.1" in project["project"]["dependencies"]
     assert uv["required-version"] == "==0.11.16"
     assert set(uv["exclude-dependencies"]) == {
         "flask",
@@ -32,11 +38,29 @@ def test_worker_runtime_is_exact_and_excludes_demo_dependencies() -> None:
     assert QWEN_VENV_PYTHON == RUNTIME_ROOT.resolve() / ".venv/bin/python"
 
 
+def test_worker_runtime_honors_an_explicit_absolute_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = tmp_path / "qwen-runtime"
+    monkeypatch.setenv(QWEN_RUNTIME_ROOT_ENV, str(runtime))
+
+    assert default_qwen_runtime_root() == runtime
+    assert default_qwen_venv_python() == runtime / ".venv" / "bin" / "python"
+
+
+def test_worker_runtime_rejects_relative_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(QWEN_RUNTIME_ROOT_ENV, "runtime/qwen-asr")
+
+    with pytest.raises(ValueError, match="absolute"):
+        default_qwen_runtime_root()
+
+
 def test_worker_sbom_matches_the_minimal_runtime() -> None:
     sbom = json.loads((RUNTIME_ROOT / "sbom.cdx.json").read_text(encoding="utf-8"))
     components = {component["name"] for component in sbom["components"]}
 
     assert "qwen-asr" in components
+    assert "httpx" in components
     assert not components.intersection({"flask", "gradio", "qwen-omni-utils", "sox"})
 
 

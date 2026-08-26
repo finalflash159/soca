@@ -36,7 +36,6 @@ describe("Composer", () => {
       <Composer
         connected
         runtimeReady={false}
-        runtimeReason="OpenRouter: chưa có API key"
         voiceReady={false}
         voiceReason="Voice ASR: model chưa được cài"
         documents={[]}
@@ -50,7 +49,7 @@ describe("Composer", () => {
 
     const input = screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement;
     expect(input.disabled).toBe(true);
-    expect(input.placeholder).toBe("OpenRouter: chưa có API key");
+    expect(input.placeholder).toBe("Thiết lập model chat trong Cài đặt");
     expect((screen.getByRole("button", { name: "Thiết lập thoại" }) as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByTitle("Đổi model") as HTMLButtonElement).disabled).toBe(false);
   });

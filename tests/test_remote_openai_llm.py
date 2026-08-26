@@ -206,6 +206,45 @@ def test_unknown_reasoning_capability_omits_control_for_mandatory_models():
     assert client.calls[0]["extra_body"] == {"provider": {"allow_fallbacks": False}}
 
 
+def test_structured_generation_uses_engine_data_policy_when_not_overridden():
+    client = FakeClient(completion=_make_completion('{"route":"smalltalk"}', 10, 2))
+    engine = RemoteOpenAILLM(
+        provider=get_provider("openrouter"),
+        model="openai/gpt-4o-mini",
+        api_key="sk-test-key",
+        client=client,
+        zero_data_retention=False,
+    )
+
+    engine.generate_structured(
+        "Return JSON",
+        schema_name="route",
+        schema={"type": "object"},
+        max_tokens=64,
+    )
+
+    assert client.calls[0]["extra_body"]["provider"] == {
+        "allow_fallbacks": False,
+        "data_collection": "allow",
+    }
+
+
+def test_strict_structured_404_explains_data_policy_without_changing_category():
+    client = FakeClient(raises=FakeStatusError(404))
+    engine = _engine(client, provider_key="openrouter")
+
+    with pytest.raises(RemoteLLMError) as exc:
+        engine.generate_structured(
+            "Return JSON",
+            schema_name="route",
+            schema={"type": "object"},
+            max_tokens=64,
+        )
+
+    assert exc.value.category == "model"
+    assert "không cho nhà cung cấp thu thập dữ liệu" in str(exc.value)
+
+
 def test_reasoning_capability_controls_any_unified_provider():
     client = FakeClient(completion=_make_completion("ok", 10, 1))
     engine = _engine(

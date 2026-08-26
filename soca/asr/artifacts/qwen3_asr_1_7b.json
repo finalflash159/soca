@@ -24,7 +24,7 @@
   "license": "apache-2.0",
   "device": "mps",
   "dtype": "float16",
-  "runtime_lock_digest": "bbf96f7b16c241afee13734ae8bfa2525420675f6db536934d9a746b94ec7f9f",
+  "runtime_lock_digest": "f08654248f6e50512d98fd247829cc4ae2fb6d2a5272f1e6b9981be0fb46b1b3",
   "context_policy_digest": null,
   "minimum_protocol_version": 1
 }

@@ -21,6 +21,7 @@ from .qwen_ipc_protocol import (
     recv_header,
     send_frame,
 )
+from .qwen_runtime import default_qwen_runtime_root, default_qwen_venv_python
 from .qwen_service_identity import (
     QwenServiceIdentity,
     QwenServiceIdentityError,
@@ -30,13 +31,28 @@ from .qwen_service_identity import (
 from .result import ASRResult
 
 LOGGER = logging.getLogger(__name__)
-REPO_ROOT = Path(__file__).resolve().parents[2]
-QWEN_VENV_PYTHON = REPO_ROOT / "runtime" / "qwen-asr" / ".venv" / "bin" / "python"
+# Kept as a source-runtime compatibility export. Runtime resolution in the
+# client remains dynamic so a desktop-selected worker is not frozen at import.
+QWEN_VENV_PYTHON = default_qwen_venv_python()
 DEFAULT_STARTUP_TIMEOUT_S = 60.0
 DEFAULT_REQUEST_TIMEOUT_S = 30.0
 DEFAULT_SHUTDOWN_TIMEOUT_S = 5.0
 MAX_UNIX_SOCKET_PATH_BYTES = 103
 SENSITIVE_MODEL_ENVIRONMENT = frozenset({"HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"})
+# The Qwen service owns a separately locked virtual environment.  A frozen
+# desktop parent can expose its bundled packages through Python startup
+# variables; inheriting those would mix incompatible transformer versions into
+# the worker.  The worker must resolve imports only from its selected runtime.
+ISOLATED_PYTHON_ENVIRONMENT = frozenset(
+    {
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "PYTHONUSERBASE",
+        "PYTHONEXECUTABLE",
+        "VIRTUAL_ENV",
+        "__PYVENV_LAUNCHER__",
+    }
+)
 
 
 class QwenServiceUnavailable(RuntimeError):
@@ -92,7 +108,7 @@ class QwenASRServiceClient:
         ):
             if value <= 0:
                 raise ValueError(f"{name} must be positive")
-        executable = python_executable or QWEN_VENV_PYTHON
+        executable = python_executable or default_qwen_venv_python()
         if not executable.is_file():
             raise QwenServiceUnavailable(
                 f"{executable} not found. Run scripts/provision_qwen_runtime.py "
@@ -125,6 +141,9 @@ class QwenASRServiceClient:
                 child_environment.update(process_environment)
             for name in SENSITIVE_MODEL_ENVIRONMENT:
                 child_environment.pop(name, None)
+            for name in ISOLATED_PYTHON_ENVIRONMENT:
+                child_environment.pop(name, None)
+            child_environment["PYTHONNOUSERSITE"] = "1"
             child_environment["HF_HUB_OFFLINE"] = "1"
             child_environment["TRANSFORMERS_OFFLINE"] = "1"
             if launch.spec.device == "mps":
@@ -147,7 +166,10 @@ class QwenASRServiceClient:
                     "--connection-timeout",
                     str(request_timeout_s),
                 ],
-                cwd=str(REPO_ROOT),
+                # The provisioned wheel, rather than source checkout or the
+                # parent sidecar's _internal directory, is the only SoCa code
+                # visible to the isolated Qwen worker.
+                cwd=str(default_qwen_runtime_root()),
                 stdin=subprocess.DEVNULL,
                 env=child_environment,
             )

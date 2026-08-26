@@ -37,6 +37,8 @@ const EXIT_POLL: Duration = Duration::from_millis(50);
 /// Basename of the one-directory runtime registered in `bundle.resources`.
 const SIDECAR_BASENAME: &str = "soca-engine";
 const MODEL_ROOT_OVERRIDE_FILE: &str = "model-root.txt";
+const QWEN_ASR_MODEL_ROOT_OVERRIDE_FILE: &str = "qwen-asr-model-root.txt";
+const QWEN_RUNTIME_ROOT_OVERRIDE_FILE: &str = "qwen-runtime-root.txt";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -240,6 +242,105 @@ fn configured_model_root(app_data_dir: &Path) -> Result<ModelRootStatus, String>
     Ok(selected)
 }
 
+/// Qwen owns a separate immutable store. It must not be inferred from the
+/// general TTS/on-device model directory, because an empty managed root would
+/// otherwise make a fully provisioned Qwen installation appear unavailable.
+fn configured_optional_external_root(
+    app_data_dir: &Path,
+    filename: &str,
+) -> Result<Option<ModelRootStatus>, String> {
+    let config = app_data_dir.join("config");
+    fs::create_dir_all(&config).map_err(|error| {
+        format!(
+            "Cannot create desktop configuration directory {}: {error}",
+            config.display()
+        )
+    })?;
+    let override_path = config.join(filename);
+    match fs::read_to_string(&override_path) {
+        Ok(value) => {
+            let value = value.trim();
+            if value.is_empty() {
+                return Err(format!(
+                    "Configured Qwen directory at {} is empty. Choose it again or clear the selection.",
+                    override_path.display()
+                ));
+            }
+            let selected = PathBuf::from(value);
+            let canonical = selected.canonicalize().map_err(|error| {
+                format!(
+                    "Configured Qwen directory is no longer available: {} ({error})",
+                    selected.display()
+                )
+            })?;
+            if !canonical.is_dir() {
+                return Err(format!(
+                    "Configured Qwen path is not a directory: {}",
+                    canonical.display()
+                ));
+            }
+            Ok(Some(ModelRootStatus {
+                path: canonical.display().to_string(),
+                source: "external".to_string(),
+            }))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!(
+            "Cannot read Qwen directory configuration {}: {error}",
+            override_path.display()
+        )),
+    }
+}
+
+fn set_optional_external_root(
+    app_data_dir: &Path,
+    filename: &str,
+    value: Option<String>,
+) -> Result<Option<ModelRootStatus>, String> {
+    let config = app_data_dir.join("config");
+    fs::create_dir_all(&config).map_err(|error| {
+        format!(
+            "Cannot create desktop configuration directory {}: {error}",
+            config.display()
+        )
+    })?;
+    let override_path = config.join(filename);
+    let selected_value = value.unwrap_or_default().trim().to_string();
+    if selected_value.is_empty() {
+        match fs::remove_file(&override_path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "Cannot clear Qwen directory configuration {}: {error}",
+                    override_path.display()
+                ));
+            }
+        }
+        return Ok(None);
+    }
+
+    let selected = PathBuf::from(&selected_value);
+    if !selected.is_absolute() {
+        return Err("Qwen directory must be an existing absolute path.".to_string());
+    }
+    let canonical = selected.canonicalize().map_err(|error| {
+        format!(
+            "Qwen directory is not available: {} ({error})",
+            selected.display()
+        )
+    })?;
+    if !canonical.is_dir() {
+        return Err("Qwen path must be a directory.".to_string());
+    }
+    let temporary = config.join(format!(".{filename}.tmp"));
+    fs::write(&temporary, format!("{}\n", canonical.display()))
+        .map_err(|error| format!("Cannot write Qwen directory configuration: {error}"))?;
+    fs::rename(&temporary, &override_path)
+        .map_err(|error| format!("Cannot activate Qwen directory configuration: {error}"))?;
+    configured_optional_external_root(app_data_dir, filename)
+}
+
 fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
@@ -268,6 +369,22 @@ fn bundled_runtime_env(app_data_dir: &Path) -> Result<HashMap<String, String>, S
     ]);
     let model_root = configured_model_root(app_data_dir)?;
     env.insert("SOCA_MODEL_ROOT".to_string(), model_root.path);
+    if let Some(qwen_model_root) =
+        configured_optional_external_root(app_data_dir, QWEN_ASR_MODEL_ROOT_OVERRIDE_FILE)?
+    {
+        env.insert(
+            "SOCA_QWEN_ASR_MODEL_ROOT".to_string(),
+            Path::new(&qwen_model_root.path)
+                .join("asr")
+                .display()
+                .to_string(),
+        );
+    }
+    if let Some(qwen_runtime_root) =
+        configured_optional_external_root(app_data_dir, QWEN_RUNTIME_ROOT_OVERRIDE_FILE)?
+    {
+        env.insert("SOCA_QWEN_RUNTIME_ROOT".to_string(), qwen_runtime_root.path);
+    }
 
     // Previous desktop builds delegated to a normal Python process, whose
     // historical default was this root on every OS. The engine validates and
@@ -332,6 +449,34 @@ pub fn engine_set_model_root(
     configured_model_root(&app_data_dir)
 }
 
+#[tauri::command]
+pub fn engine_qwen_asr_model_root(app: AppHandle) -> Result<Option<ModelRootStatus>, String> {
+    configured_optional_external_root(&app_data_dir(&app)?, QWEN_ASR_MODEL_ROOT_OVERRIDE_FILE)
+}
+
+#[tauri::command]
+pub fn engine_set_qwen_asr_model_root(
+    app: AppHandle,
+    model_root: Option<String>,
+) -> Result<Option<ModelRootStatus>, String> {
+    let root = app_data_dir(&app)?;
+    set_optional_external_root(&root, QWEN_ASR_MODEL_ROOT_OVERRIDE_FILE, model_root)
+}
+
+#[tauri::command]
+pub fn engine_qwen_runtime_root(app: AppHandle) -> Result<Option<ModelRootStatus>, String> {
+    configured_optional_external_root(&app_data_dir(&app)?, QWEN_RUNTIME_ROOT_OVERRIDE_FILE)
+}
+
+#[tauri::command]
+pub fn engine_set_qwen_runtime_root(
+    app: AppHandle,
+    runtime_root: Option<String>,
+) -> Result<Option<ModelRootStatus>, String> {
+    let root = app_data_dir(&app)?;
+    set_optional_external_root(&root, QWEN_RUNTIME_ROOT_OVERRIDE_FILE, runtime_root)
+}
+
 struct Running {
     child: Child,
     stdin: Option<ChildStdin>,
@@ -371,6 +516,7 @@ fn spawn_reader(
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
+        let mut received_bye = false;
         for line in reader.lines() {
             let line = match line {
                 Ok(line) => line,
@@ -402,6 +548,7 @@ fn spawn_reader(
                         eprintln!("[soca-desktop] event emit failed: {error}");
                     }
                     if is_bye {
+                        received_bye = true;
                         // Ignored on purpose: the receiver is dropped when a stop
                         // times out, and the thread must still drain to EOF.
                         let _ = bye_tx.send(());
@@ -415,12 +562,21 @@ fn spawn_reader(
             }
         }
         if !stopping.load(Ordering::SeqCst) {
-            emit_status(
-                &app,
+            // `bye` is the engine's normal EOF contract. The native stop path
+            // marks `stopping` first, but an engine may also receive stdin EOF
+            // while the WebView is being torn down. Reporting that clean exit
+            // as a crash was the source of the misleading startup alert.
+            let status = if received_bye {
+                EngineStatus::Stopped {
+                    code: None,
+                    graceful: true,
+                }
+            } else {
                 EngineStatus::Failed {
                     message: "engine stdout closed unexpectedly".to_string(),
-                },
-            );
+                }
+            };
+            emit_status(&app, status);
         }
     })
 }
@@ -697,6 +853,53 @@ mod tests {
         assert!(root.join("state").is_dir());
         assert!(root.join("vault").is_dir());
 
+        fs::remove_dir_all(root).expect("remove test runtime data");
+    }
+
+    #[test]
+    fn bundled_runtime_env_passes_only_explicit_qwen_locations() {
+        let root =
+            std::env::temp_dir().join(format!("soca-desktop-qwen-env-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let model_root = root.join("existing-qwen-models");
+        let runtime_root = root.join("existing-qwen-runtime");
+        fs::create_dir_all(&model_root).expect("model directory");
+        fs::create_dir_all(&runtime_root).expect("runtime directory");
+
+        let empty = bundled_runtime_env(&root).expect("empty runtime env");
+        assert!(!empty.contains_key("SOCA_QWEN_ASR_MODEL_ROOT"));
+        assert!(!empty.contains_key("SOCA_QWEN_RUNTIME_ROOT"));
+
+        set_optional_external_root(
+            &root,
+            QWEN_ASR_MODEL_ROOT_OVERRIDE_FILE,
+            Some(model_root.display().to_string()),
+        )
+        .expect("set model root");
+        set_optional_external_root(
+            &root,
+            QWEN_RUNTIME_ROOT_OVERRIDE_FILE,
+            Some(runtime_root.display().to_string()),
+        )
+        .expect("set runtime root");
+        let configured = bundled_runtime_env(&root).expect("configured runtime env");
+        assert_eq!(
+            configured["SOCA_QWEN_ASR_MODEL_ROOT"],
+            model_root
+                .canonicalize()
+                .expect("canonical model root")
+                .join("asr")
+                .display()
+                .to_string()
+        );
+        assert_eq!(
+            configured["SOCA_QWEN_RUNTIME_ROOT"],
+            runtime_root
+                .canonicalize()
+                .expect("canonical runtime root")
+                .display()
+                .to_string()
+        );
         fs::remove_dir_all(root).expect("remove test runtime data");
     }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { initialActivity, orbStateFor, reduceActivity } from "./orb";
+import { initialActivity, orbLabel, orbStateFor, reduceActivity, type OrbState } from "./orb";
 import type { EngineFrame } from "./protocol";
 import { helloIsCompatible, isWorkflowFrame, PROTOCOL_VERSION } from "./protocol";
 
@@ -54,6 +54,26 @@ describe("idle", () => {
         workflow("turn_terminal", { status: "completed" }),
       ]),
     ).toBe("breathing");
+  });
+});
+
+describe("visible labels", () => {
+  it("uses concise English activity labels without exposing provider names", () => {
+    const labels: Record<OrbState, string> = {
+      listening: "Listening",
+      solving: "Thinking",
+      searching: "Searching",
+      working: "Processing",
+      connecting: "Connecting",
+      composing: "Responding",
+      weaving: "Compacting memory",
+      shaping: "Indexing",
+      breathing: "Idle",
+    };
+
+    for (const [state, label] of Object.entries(labels) as [OrbState, string][]) {
+      expect(orbLabel(state)).toBe(label);
+    }
   });
 });
 
@@ -122,6 +142,19 @@ describe("voice", () => {
     expect(stateAfter([{ event: "voice", type: "playback_started" } as EngineFrame])).toBe(
       "composing",
     );
+  });
+
+  it("keeps speaking state when assistant playback telemetry arrives", () => {
+    expect(
+      stateAfter([
+        { event: "voice", type: "playback_started" } as EngineFrame,
+        {
+          event: "voice",
+          type: "voice_level",
+          metadata: { source: "assistant", rms: 0.4 },
+        } as EngineFrame,
+      ]),
+    ).toBe("composing");
   });
 
   it("stops listening once capture ends", () => {

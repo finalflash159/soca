@@ -83,8 +83,11 @@ Every command is an object with a `cmd` key. Unlisted keys are ignored.
 | `chat`                 | `text` (string)                                                 | `chat` stream + traces (§4)                               |
 | `voice_start`          | `max_turns` (int, optional)                                     | `voice` stream (§5)                                       |
 | `voice_stop`           | —                                                               | `voice` `loop_stopped`                                    |
+| `audio_input_get`      | —                                                               | `audio_input`                                             |
+| `audio_input_select`   | `device` (string or `null` for system default)                  | `audio_input`, `status`                                   |
 | `voice_profile_select` | profile selection                                               | `status`                                                  |
 | `knowledge_init`       | —                                                               | `knowledge_setup`, `status`                               |
+| `knowledge_model_install` | —                                                            | `knowledge_setup`, `status`                               |
 | `knowledge_index`      | —                                                               | `knowledge_setup` progress, `status`                      |
 | `citation_preview`     | `request_id`, `path`, `line_start`, `line_end`, `fingerprint`, `source` | `citation_preview`                                        |
 | `sessions_list`        | `cursor` (string, optional), `limit` (1–100, optional)          | `sessions_page`                                            |
@@ -349,15 +352,24 @@ means validation is in flight. Never carries the key.
 Active LLM configuration: `backend`, `provider`, `model`, `max_tokens`,
 `effective_max_tokens`, `reasoning_enabled`, `effective_reasoning_enabled`,
 `reasoning_supported`, `reasoning_mandatory`, `temperature`, `top_p`,
-`pricing_as_of`, `pricing`, `context_length`, `runtime_ready`, `runtime_reason`,
+`remote_data_collection`,
+`pricing_as_of`, `pricing`, `context_length`, `runtime_ready`, `runtime_state`, `runtime_reason`,
 `local_model_path`, `settings_error`.
 
 `runtime_ready` is backend-specific. Local readiness checks the selected GGUF
 file and local engine mode. Remote readiness checks the provider key, a
 successfully fetched catalog for that key, and the selected model's presence in
 that catalog; it never depends on the local GGUF or embedding/index state.
+`remote_data_collection` is the explicit provider-routing policy: `deny`
+keeps the historical no-data-collection route, while `allow` is an explicit
+user opt-in to the provider's own data policy. A catalog does not prove that an
+endpoint satisfies `deny`; after a typed observed route failure, the engine
+reports `blocked` with that failure rather than presenting the route as ready.
 While a remote catalog is being fetched, `runtime_ready` is false and
-`runtime_reason` explains that the catalog is loading. Provider/model selection
+`runtime_state` is `checking`; it becomes `ready` only once the configured
+provider, model, and credentials are verified, and `blocked` for a terminal
+configuration failure. `runtime_reason` explains the state for people, while
+clients use `runtime_state` for control flow. Provider/model selection
 must not silently fall back to another provider or model.
 
 The `effective_*` pair matters: a model may force reasoning on
@@ -369,9 +381,13 @@ Always followed by `context`.
 
 ### `knowledge_setup`
 
-`{action, status, vault, detail}` plus optional `error_code`. `action` is `init`
-or `index`; `status` is `ok`, `failed`, `busy`, `ready`, or `running`. This is
-the only event stream for vault creation and index builds.
+`{action, status, vault, detail}` plus optional `error_code`. `action` is `init`,
+`model`, or `index`; `status` is `ok`, `failed`, `busy`, `ready`, or `running`.
+This is the only event stream for vault creation, pinned model provisioning, and
+index builds. `model` is an explicit public-download action; it must not silently
+substitute a different embedding model. Its `downloading` phase is intentionally
+indeterminate because the upstream/Xet transport does not expose a stable byte
+total for every artifact.
 
 **An index build reports progress on every step**, and a client that renders
 only `detail` shows one unchanging line for the whole build — which is
@@ -541,7 +557,21 @@ rather than an invented transcript (see [04 — ASR robustness](04-asr-robustnes
 Render it as a turn, not as a failure.
 
 `voice_level` is high-frequency. A client must throttle or coalesce it; do not
-re-render the tree per frame.
+re-render the tree per frame. `metadata.source` is `microphone` for an RMS
+frame from the recorder's PCM block, or `assistant` for a timed RMS frame from
+generated PCM after the matching `playback_started` event. The event contains
+only scalar telemetry, never raw audio. Clients must keep the two sources
+separate: microphone telemetry is not a proxy for speaker output.
+
+### `audio_input`
+
+The engine emits the selected capture device separately from Voice lifecycle
+events so a client can correct an input-route mistake before opening the
+stream. `selected_id` is a stable device name or `null` when the person
+explicitly chose the operating-system default. `selected_label` is the device
+currently used, and `devices` contains `{id, label, is_system_default}` for
+each input-capable endpoint. If a named device disappears, SoCa emits
+`audio_input_unavailable`; it never substitutes another microphone.
 
 ## 6. Workflow events
 

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 from typing import Protocol
 
 import numpy as np
@@ -18,7 +20,7 @@ MODEL2VEC_MODEL = "minishlab/potion-multilingual-128M"
 AITEAMVN_V2_MODEL = "AITeamVN/Vietnamese_Embedding_v2"
 AITEAMVN_V2_REVISION = "18b44161e041bf1d3a333ab5144b5b7b93f914d2"
 AITEAMVN_V2_MODEL_SHA256 = "2fa082ead5ade68225327b913339bbd5aa1e14bcd7888ff9b09d69752a8d1cee"
-AITEAMVN_V2_TOKENIZER_SHA256 = "5df1f55d60c9705a501ab9a75550728625740741fe4be308dac4806c16b7d51d"
+AITEAMVN_V2_TOKENIZER_SHA256 = "b74659c780d49afad7a7b9799868f75cbd3014fb6c34956e85a793028d38094a"
 E5_QUERY_PREFIX = "query: "
 E5_PASSAGE_PREFIX = "passage: "
 _CUSTOM_E5_REGISTERED = False
@@ -61,6 +63,49 @@ class EmbeddingModel(Protocol):
     def embed_documents(self, texts: tuple[str, ...]) -> np.ndarray: ...
 
     def embed_query(self, text: str) -> np.ndarray: ...
+
+
+class DeferredEmbeddingModel:
+    """Expose a pinned embedding identity without loading its weights eagerly.
+
+    Index metadata needs the identity at startup, while inference is needed only
+    for a dense query or a dense index build. Keeping those responsibilities
+    separate prevents unrelated surfaces (notably microphone startup) from
+    loading a multi-gigabyte retrieval model before the user asks for search.
+    """
+
+    def __init__(
+        self,
+        *,
+        model_id: str,
+        embedding_fingerprint: EmbeddingFingerprint,
+        loader: Callable[[], EmbeddingModel],
+    ) -> None:
+        self._model_id = model_id
+        self._embedding_fingerprint = embedding_fingerprint
+        self._loader = loader
+        self._loaded: EmbeddingModel | None = None
+        self._lock = Lock()
+
+    @property
+    def model_id(self) -> str:
+        return self._model_id
+
+    @property
+    def embedding_fingerprint(self) -> EmbeddingFingerprint:
+        return self._embedding_fingerprint
+
+    def _model(self) -> EmbeddingModel:
+        with self._lock:
+            if self._loaded is None:
+                self._loaded = self._loader()
+            return self._loaded
+
+    def embed_documents(self, texts: tuple[str, ...]) -> np.ndarray:
+        return self._model().embed_documents(texts)
+
+    def embed_query(self, text: str) -> np.ndarray:
+        return self._model().embed_query(text)
 
 
 def production_embedding_fingerprint() -> EmbeddingFingerprint:

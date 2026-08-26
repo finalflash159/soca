@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import type { EngineFrame } from "./protocol";
-import { initialVoice, LEVEL_HISTORY, partialText, peakLevel, reduceVoice } from "./voice";
+import {
+  initialVoice,
+  LEVEL_HISTORY,
+  partialText,
+  peakLevel,
+  reduceVoice,
+  voicePhaseLabel,
+  type VoicePhase,
+} from "./voice";
 
 const voice = (type: string, extra: Record<string, unknown> = {}): EngineFrame =>
   ({ event: "voice", type, ...extra }) as EngineFrame;
@@ -42,6 +50,24 @@ describe("loop lifecycle", () => {
   });
 });
 
+describe("visible labels", () => {
+  it("uses consistent English names for every voice state", () => {
+    const labels: Record<VoicePhase, string> = {
+      off: "Off",
+      starting: "Starting",
+      idle: "Ready",
+      listening: "Listening",
+      transcribing: "Transcribing",
+      thinking: "Thinking",
+      speaking: "Speaking",
+    };
+
+    for (const [phase, label] of Object.entries(labels) as [VoicePhase, string][]) {
+      expect(voicePhaseLabel(phase)).toBe(label);
+    }
+  });
+});
+
 describe("levels", () => {
   it("appends rms readings from the engine", () => {
     const state = fold([
@@ -49,6 +75,17 @@ describe("levels", () => {
       voice("voice_level", { metadata: { rms: 0.5 } }),
     ]);
     expect(state.levels).toEqual([0.1, 0.5]);
+    expect(state.assistantLevels).toEqual([]);
+  });
+
+  it("keeps assistant output telemetry separate from microphone telemetry", () => {
+    const state = fold([
+      voice("voice_level", { metadata: { rms: 0.1, source: "microphone" } }),
+      voice("voice_level", { metadata: { rms: 0.5, source: "assistant" } }),
+    ]);
+
+    expect(state.levels).toEqual([0.1]);
+    expect(state.assistantLevels).toEqual([0.5]);
   });
 
   it("clamps out-of-range readings instead of trusting them", () => {
@@ -76,6 +113,19 @@ describe("levels", () => {
   it("resets the window once capture ends", () => {
     const state = fold([voice("voice_level", { metadata: { rms: 0.3 } }), voice("recorded")]);
     expect(state.levels).toEqual([]);
+  });
+
+  it("keeps a truthful no-speech outcome visible after capture ends", () => {
+    const state = fold([voice("recorded", { metadata: { speech_detected: false } })]);
+    expect(state.noSpeechDetected).toBe(true);
+  });
+
+  it("clears a no-speech outcome once ASR begins producing text", () => {
+    const state = fold([
+      voice("recorded", { metadata: { speech_detected: false } }),
+      voice("asr_partial", { metadata: { committed: "xin", tentative: " chào" } }),
+    ]);
+    expect(state.noSpeechDetected).toBe(false);
   });
 
   it("reports peak rather than mean", () => {

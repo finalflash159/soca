@@ -54,6 +54,17 @@ def test_entrypoint_accepts_the_engine_contract() -> None:
     assert parsed.session_persistence == "local_resumable"
 
 
+def test_run_dispatches_frozen_multiprocessing_before_the_engine(monkeypatch) -> None:
+    entrypoint = _entrypoint()
+    calls: list[str] = []
+
+    monkeypatch.setattr(entrypoint.multiprocessing, "freeze_support", lambda: calls.append("freeze"))
+    monkeypatch.setattr(entrypoint, "main", lambda: calls.append("main") or 0)
+
+    assert entrypoint.run() == 0
+    assert calls == ["freeze", "main"]
+
+
 def test_keyring_helper_uses_only_its_internal_contract(monkeypatch, capsys) -> None:
     entrypoint = _entrypoint()
 

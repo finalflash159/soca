@@ -1,24 +1,4 @@
-/**
- * Knowledge: the vault, its index, session memory, and the last retrieval.
- *
- * Rebuilt after four defects that all had the same shape — the engine reported
- * something and the client threw it away, so the screen showed less than was
- * known and offered actions that made no sense:
- *
- * 1. `status.knowledge_vault` is an object, and the reducer tested it with
- *    `typeof … === "string"`. The path never matched, so the panel claimed
- *    there was no vault while the engine was naming one.
- * 2. `initialized` was never read, so **Init was offered on an already
- *    initialised vault** — a button that recreates a scaffold that exists.
- * 3. `documents`, `chunks`, `sparse_state` and `dense_state` were reduced to
- *    one boolean, so a built index could only ever say "present".
- * 4. Build progress — phase and per-chunk counters, emitted on every step — was
- *    dropped, so an index build looked frozen for its whole duration.
- *
- * Ordering follows what a person asks, not how the engine is built: where are
- * my documents, are they searchable, what does the assistant remember, and only
- * then what did the last turn actually retrieve.
- */
+/** Knowledge source, retrieval index, session memory, and last retrieval. */
 
 import { BookOpen, Database, FolderOpen, Search } from "lucide-react";
 
@@ -27,13 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { IndexJob, KnowledgeState } from "@/engine/knowledge";
-import { evidenceSummary, indexJobRunning, memoryModeSummary } from "@/engine/knowledge";
+import { evidenceSummary, knowledgeSetupRunning, memoryModeSummary } from "@/engine/knowledge";
 import { cn } from "@/lib/utils";
 
 interface KnowledgePanelProps {
   knowledge: KnowledgeState;
   connected: boolean;
   onInit: () => void;
+  onInstallModel: () => void;
   onIndex: () => void;
   onRefreshMemory: () => void;
   onCompact: () => void;
@@ -46,6 +27,7 @@ function score(value: number | null | undefined): string {
 }
 
 const PHASE_LABEL: Record<string, string> = {
+  downloading: "Đang tải retrieval model",
   scanning: "Đang quét tài liệu",
   chunking: "Đang chia chunk",
   embedding: "Đang tạo embedding",
@@ -101,21 +83,21 @@ function VaultSection({
   connected,
   onInit,
 }: Pick<KnowledgePanelProps, "knowledge" | "connected" | "onInit">) {
-  const running = indexJobRunning(knowledge.indexJob);
+  const running = knowledgeSetupRunning(knowledge.indexJob);
   const vault = knowledge.vault;
   const initialized = vault?.initialized === true;
 
   return (
     <Section
       icon={FolderOpen}
-      title="Vault"
-      description="Thư mục markdown mà trợ lý được phép đọc."
+      title="Knowledge source"
+      description="Markdown files SoCa may retrieve from."
       actions={
         // Init only when there is something to initialise. Offering it on a
         // ready vault is what made the button unexplainable.
         !initialized ? (
           <Button size="sm" disabled={!connected || running} onClick={onInit}>
-            Tạo vault
+            Create structure
           </Button>
         ) : null
       }
@@ -124,16 +106,14 @@ function VaultSection({
         <p className="text-muted-foreground text-sm">Chưa nhận được trạng thái vault từ engine.</p>
       ) : (
         <div className="flex flex-col gap-3">
-          <Field label="Đường dẫn">
+          <Field label="Source folder">
             <div className="border-border bg-muted/40 flex h-10 items-center rounded-lg border px-3">
               <span className="truncate font-mono text-xs">{vault.path}</span>
             </div>
           </Field>
           {!initialized && (
             <p className="text-muted-foreground text-sm leading-6">
-              Thư mục này chưa có cấu trúc vault. “Tạo vault” dựng thư mục{" "}
-              <code className="bg-secondary rounded px-1 py-0.5 font-mono text-xs">wiki/</code> và
-              các file mẫu; nó không xoá gì sẵn có. Phải làm bước này trước khi dựng chỉ mục.
+              Create the folder structure before indexing. Existing files are kept.
             </p>
           )}
         </div>
@@ -145,31 +125,45 @@ function VaultSection({
 function IndexSection({
   knowledge,
   connected,
+  onInstallModel,
   onIndex,
-}: Pick<KnowledgePanelProps, "knowledge" | "connected" | "onIndex">) {
-  const running = indexJobRunning(knowledge.indexJob);
+}: Pick<KnowledgePanelProps, "knowledge" | "connected" | "onInstallModel" | "onIndex">) {
+  const running = knowledgeSetupRunning(knowledge.indexJob);
   const index = knowledge.index;
   const job = knowledge.indexJob;
   const initialized = knowledge.vault?.initialized === true;
+  const modelMissing = initialized && index?.denseState === "model_missing";
+  const modelDownloadRunning = job?.action === "model" && running;
 
   return (
     <Section
       icon={Database}
       title="Chỉ mục truy xuất"
-      description="Không có chỉ mục thì trợ lý không tìm được gì trong vault."
+      description="Dữ liệu ở lại trên máy; chỉ mục dùng để tìm đúng đoạn tài liệu khi trả lời."
       actions={
-        <Button
-          size="sm"
-          variant={index === null ? "default" : "outline"}
-          disabled={!connected || running || !initialized}
-          onClick={onIndex}
-        >
-          {running ? "Đang dựng…" : index === null ? "Dựng chỉ mục" : "Dựng lại"}
-        </Button>
+        modelMissing ? (
+          <Button size="sm" disabled={!connected || running} onClick={onInstallModel}>
+            {modelDownloadRunning ? "Đang tải…" : "Tải retrieval model"}
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant={index === null ? "default" : "outline"}
+            disabled={!connected || running || !initialized}
+            onClick={onIndex}
+          >
+            {running ? "Đang xử lý…" : index === null ? "Dựng chỉ mục" : "Dựng lại"}
+          </Button>
+        )
       }
     >
       {running && job !== null ? (
         <IndexProgress job={job} />
+      ) : modelMissing ? (
+        <p className="text-muted-foreground text-sm leading-6">
+          Tải retrieval model một lần trước khi dựng chỉ mục. SoCa sẽ kiểm tra artifact đã tải
+          trước khi dùng; không tự đổi sang model khác nếu tải thất bại.
+        </p>
       ) : index === null ? (
         <p className="text-muted-foreground text-sm leading-6">
           {initialized

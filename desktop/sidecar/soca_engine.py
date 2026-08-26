@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing
 import subprocess
 import sys
 from pathlib import Path
@@ -220,5 +221,12 @@ def main(argv: list[str] | None = None) -> int:
     )
 
 
+def run() -> int:
+    """Dispatch PyInstaller multiprocessing helpers before the engine CLI."""
+
+    multiprocessing.freeze_support()
+    return main()
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run())

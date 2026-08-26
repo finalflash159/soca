@@ -193,12 +193,22 @@ describe("voice profiles", () => {
       {
         event: "status",
         active_profile: "quiet",
-        profiles: [{ key: "quiet", status: "ok", asr: "a", tts: "t", voice: "v" }],
+        profiles: [
+          {
+            key: "quiet",
+            status: "ok",
+            asr: "a",
+            tts: "t",
+            voice: "v",
+            note: "selected profile is ready",
+          },
+        ],
       } as EngineFrame,
     ]);
 
     expect(state.activeProfile).toBe("quiet");
     expect(state.profiles[0].key).toBe("quiet");
+    expect(state.profiles[0].note).toBe("selected profile is ready");
   });
 });
 

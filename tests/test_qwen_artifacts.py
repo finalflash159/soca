@@ -11,6 +11,7 @@ import pytest
 from soca.asr.qwen_artifacts import (
     ARTIFACT_MANIFEST_SCHEMA_VERSION,
     QWEN_ARTIFACT_REGISTRY,
+    QWEN_ASR_MODEL_ROOT_ENV,
     QWEN_REFERENCE_ARTIFACT,
     QWEN_RELEASE_ARTIFACT,
     ArtifactRole,
@@ -153,6 +154,22 @@ def test_default_model_root_rejects_relative_xdg_data_home(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("XDG_DATA_HOME", "relative/data")
+
+    with pytest.raises(QwenArtifactManifestError, match="absolute"):
+        default_asr_model_root()
+
+
+def test_default_model_root_honors_explicit_qwen_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = tmp_path / "qwen-asr"
+    monkeypatch.setenv(QWEN_ASR_MODEL_ROOT_ENV, str(store))
+
+    assert default_asr_model_root() == store
+
+
+def test_explicit_qwen_store_rejects_relative_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(QWEN_ASR_MODEL_ROOT_ENV, "models/asr")
 
     with pytest.raises(QwenArtifactManifestError, match="absolute"):
         default_asr_model_root()

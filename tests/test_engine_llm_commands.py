@@ -235,6 +235,24 @@ def test_llm_select_persists_remote_config_and_emits_active_config() -> None:
     assert event["local_model_path"] is None
 
 
+def test_llm_select_persists_explicit_remote_data_policy() -> None:
+    capture, saved = _run(
+        [
+            {
+                "cmd": "llm_select",
+                "backend": "remote",
+                "provider": "groq",
+                "model": "llama-3.1-8b-instant",
+                "remote_data_collection": "allow",
+            }
+        ]
+    )
+
+    assert saved[-1].remote_data_collection == "allow"
+    event = [item for item in capture.events() if item["event"] == "llm_config"][-1]
+    assert event["remote_data_collection"] == "allow"
+
+
 def test_remote_readiness_is_independent_of_local_model_presence() -> None:
     capture, _ = _run(
         [

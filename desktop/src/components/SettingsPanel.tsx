@@ -1,16 +1,23 @@
 /** User-controlled appearance, session privacy, model, key, and voice settings. */
 
-import { AudioLines, Cpu, HardDrive, KeyRound, Palette } from "lucide-react";
+import { AudioLines, Cpu, FolderOpen, HardDrive, KeyRound, Palette } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 
 import { Field, Section } from "@/components/Page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { UpdaterPanel } from "@/components/UpdaterPanel";
-import type { LlmConfig, SettingsState } from "@/engine/settings";
+import {
+  isVoiceComponentReady,
+  modelPrice,
+  runtimeStateFor,
+  type LlmConfig,
+  type RuntimeComponent,
+  type SettingsState,
+} from "@/engine/settings";
 import type { SessionHistoryState } from "@/engine/session-history";
-import { modelPrice } from "@/engine/settings";
 import type { ThemeChoice } from "@/theme";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +31,7 @@ interface SettingsPanelProps {
   onLoadModels: (provider: string, query: string) => void;
   onSelectModel: (provider: string, modelId: string) => Promise<boolean>;
   onSelectProfile: (profileKey: string) => Promise<boolean>;
+  onSelectAudioInput: (device: string | null) => Promise<boolean>;
   /** Backend, output cap and reasoning all travel on the same `llm_select`. */
   onApplyGeneration: (change: {
     backend?: string;
@@ -31,15 +39,22 @@ interface SettingsPanelProps {
     model?: string;
     maxTokens?: number;
     reasoningEnabled?: boolean;
+    remoteDataCollection?: "deny" | "allow";
   }) => Promise<boolean>;
   modelRoot: { path: string; source: "managed" | "external" } | null;
   /** Returns an error message instead of hiding a failed native configuration change. */
   onSetModelRoot: (path: string | null) => Promise<string | null>;
+  qwenAsrModelRoot: { path: string; source: "managed" | "external" } | null;
+  qwenRuntimeRoot: { path: string; source: "managed" | "external" } | null;
+  onSetQwenAsrModelRoot: (path: string | null) => Promise<string | null>;
+  onSetQwenRuntimeRoot: (path: string | null) => Promise<string | null>;
   engineError: string | null;
   sessionHistory: SessionHistoryState;
   persistenceChangePending: boolean;
   onRequestSessionPersistence: (enabled: boolean) => void;
   onSetAutoOpenLast: (enabled: boolean) => void;
+  /** Set only when navigation redirected an unavailable microphone here. */
+  focusVoiceSetup?: boolean;
 }
 
 const INPUT =
@@ -51,6 +66,71 @@ function reasoningHint(config: LlmConfig): string {
   return config.effectiveReasoningEnabled
     ? "Suy luận đang có hiệu lực cho các lượt mới."
     : "Suy luận đang tắt cho các lượt mới.";
+}
+
+function profileName(profileKey: string): string {
+  switch (profileKey) {
+    case "baseline":
+      return "Standard voice";
+    case "qwen-release":
+      return "Qwen ASR — Release";
+    case "qwen-reference":
+      return "Qwen ASR — Reference";
+    default:
+      return profileKey;
+  }
+}
+
+function profileStatus(profile: SettingsState["profiles"][number]): string {
+  const { status } = profile;
+  if (status === "ok") return "Ready";
+  if (status === "missing" || status === "blocked") return "Needs setup";
+  if (status === "invalid") return "Unavailable";
+  if (status === "not_ready") return "Verification required";
+  return "Checking";
+}
+
+function voiceSetupMessage(component: RuntimeComponent | undefined): string {
+  if (component === undefined) return "Đang kiểm tra các thành phần thoại…";
+  if (component.status === "checking" || component.detail?.startsWith("Đang tải") === true) {
+    return `Đang xác minh ${component.label}…`;
+  }
+  switch (component.id) {
+    case "voice_asr":
+      if (component.status === "not_ready" && component.detail?.startsWith("confidence calibration")) {
+        return "Qwen ASR và model đã được xác minh; Voice đang chờ calibration tương ứng với runtime này.";
+      }
+      return "Qwen ASR chưa sẵn sàng cho profile đang chọn.";
+    case "voice_llm":
+      return "Model trả lời cho Voice chưa sẵn sàng.";
+    case "tts":
+      return "Giọng đọc trả lời chưa sẵn sàng.";
+    default:
+      return "A required voice component needs setup.";
+  }
+}
+
+function chatSetupMessage(config: LlmConfig): string {
+  return config.backend === "remote"
+    ? "The selected remote chat route needs setup."
+    : "An on-device chat model needs setup.";
+}
+
+function profileSummary(profile: SettingsState["profiles"][number]): string {
+  const summary =
+    profile.key === "qwen-release"
+      ? "Default Qwen ASR profile for local speech recognition."
+      : profile.key === "qwen-reference"
+        ? "Qwen ASR reference profile for local speech recognition."
+        : "Voice profile.";
+  if (profile.status === "ok") return summary;
+  if (profile.status === "invalid") {
+    return `${summary} Its Qwen runtime or immutable model store could not be verified.`;
+  }
+  if (profile.status === "not_ready") {
+    return `${summary} Its Qwen installation is verified, but the runtime still needs an approved calibration.`;
+  }
+  return `${summary} Required model files need setup.`;
 }
 
 /** A row of mutually exclusive choices, styled as one control. */
@@ -98,14 +178,20 @@ export function SettingsPanel({
   onLoadModels,
   onSelectModel,
   onSelectProfile,
+  onSelectAudioInput,
   onApplyGeneration,
   modelRoot,
   onSetModelRoot,
+  qwenAsrModelRoot,
+  qwenRuntimeRoot,
+  onSetQwenAsrModelRoot,
+  onSetQwenRuntimeRoot,
   sessionHistory,
   persistenceChangePending,
   onRequestSessionPersistence,
   onSetAutoOpenLast,
   engineError,
+  focusVoiceSetup = false,
 }: SettingsPanelProps) {
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [remoteSetup, setRemoteSetup] = useState(false);
@@ -118,7 +204,12 @@ export function SettingsPanel({
   const [modelRootDraft, setModelRootDraft] = useState("");
   const [modelRootPending, setModelRootPending] = useState(false);
   const [modelRootError, setModelRootError] = useState<string | null>(null);
+  const [qwenAsrModelRootDraft, setQwenAsrModelRootDraft] = useState("");
+  const [qwenRuntimeRootDraft, setQwenRuntimeRootDraft] = useState("");
+  const [qwenSetupPending, setQwenSetupPending] = useState<"model" | "runtime" | null>(null);
+  const [qwenSetupError, setQwenSetupError] = useState<string | null>(null);
   const lastEngineError = useRef<string | null>(engineError);
+  const voiceSetupRef = useRef<HTMLDivElement>(null);
 
   const config = settings.config;
   const provider =
@@ -128,10 +219,24 @@ export function SettingsPanel({
   // backend. During an explicit Local → Remote setup, show the controls before
   // committing the backend so the selection cannot inherit a local GGUF id.
   const isRemote = config?.backend === "remote";
+  const remoteDataCollection = config?.remoteDataCollection ?? "deny";
   const showRemoteSettings = isRemote || remoteSetup;
   const chatComponent = settings.runtimeComponents.find((component) => component.id === "chat_llm");
   const voiceComponents = settings.runtimeComponents.filter((component) =>
-    ["voice_asr", "voice_llm", "tts"].includes(component.id),
+    ["voice_asr", "voice_llm", "tts", "smart_turn"].includes(component.id),
+  );
+  const runtimeState = runtimeStateFor(config);
+  const voiceBlocker = voiceComponents.find(
+    (component) => !isVoiceComponentReady(component, config),
+  );
+  const voiceChecking = runtimeState === "checking" || voiceComponents.length !== 4;
+  const voiceReady = !voiceChecking && runtimeState === "ready" && voiceBlocker === undefined;
+  const qwenAsrComponent = voiceComponents.find((component) => component.id === "voice_asr");
+  const qwenCalibrationPending =
+    qwenAsrComponent?.status === "not_ready" &&
+    qwenAsrComponent.detail?.startsWith("confidence calibration") === true;
+  const qwenAsrVerified = qwenAsrComponent !== undefined && (
+    ["ok", "ready", "loaded", "configured"].includes(qwenAsrComponent.status) || qwenCalibrationPending
   );
 
   // The callbacks arrive as fresh closures on every render. Depending on their
@@ -179,6 +284,68 @@ export function SettingsPanel({
   }, [modelRoot?.path]);
 
   useEffect(() => {
+    setQwenAsrModelRootDraft(qwenAsrModelRoot?.path ?? "");
+  }, [qwenAsrModelRoot?.path]);
+
+  useEffect(() => {
+    setQwenRuntimeRootDraft(qwenRuntimeRoot?.path ?? "");
+  }, [qwenRuntimeRoot?.path]);
+
+  const applyModelRoot = async (path: string | null) => {
+    setModelRootPending(true);
+    setModelRootError(null);
+    const error = await onSetModelRoot(path);
+    setModelRootPending(false);
+    setModelRootError(error);
+  };
+
+  const chooseModelRoot = async () => {
+    setModelRootError(null);
+    try {
+      const selected = await open({
+        title: "Chọn thư mục model cho Voice",
+        directory: true,
+        multiple: false,
+        defaultPath: modelRootDraft.trim() || modelRoot?.path,
+      });
+      if (typeof selected !== "string") return;
+      setModelRootDraft(selected);
+      await applyModelRoot(selected);
+    } catch (error) {
+      setModelRootError(`Không thể mở hộp chọn thư mục: ${String(error)}`);
+    }
+  };
+
+  const applyQwenRoot = async (
+    kind: "model" | "runtime",
+    path: string | null,
+  ) => {
+    setQwenSetupPending(kind);
+    setQwenSetupError(null);
+    const error = await (kind === "model" ? onSetQwenAsrModelRoot(path) : onSetQwenRuntimeRoot(path));
+    setQwenSetupPending(null);
+    setQwenSetupError(error);
+  };
+
+  const chooseQwenRoot = async (kind: "model" | "runtime") => {
+    setQwenSetupError(null);
+    try {
+      const selected = await open({
+        title: kind === "model" ? "Choose the Qwen model store" : "Choose the Qwen worker runtime",
+        directory: true,
+        multiple: false,
+        defaultPath: kind === "model" ? qwenAsrModelRootDraft : qwenRuntimeRootDraft,
+      });
+      if (typeof selected !== "string") return;
+      if (kind === "model") setQwenAsrModelRootDraft(selected);
+      else setQwenRuntimeRootDraft(selected);
+      await applyQwenRoot(kind, selected);
+    } catch (error) {
+      setQwenSetupError(`Could not open the folder picker: ${String(error)}`);
+    }
+  };
+
+  useEffect(() => {
     if (engineError === lastEngineError.current) return;
     lastEngineError.current = engineError;
     if (engineError !== null && generationPending) {
@@ -195,6 +362,12 @@ export function SettingsPanel({
       setProfilePending(null);
     }
   }, [profilePending, settings.activeProfile]);
+
+  useEffect(() => {
+    if (focusVoiceSetup) {
+      voiceSetupRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+    }
+  }, [focusVoiceSetup]);
 
   const runGeneration = async (operation: () => Promise<boolean>) => {
     setGenerationPending(true);
@@ -307,34 +480,41 @@ export function SettingsPanel({
                 {generationError}
               </p>
             )}
-            {!config.runtimeReady && (
-              <p className="text-destructive text-sm" role="alert">
-                {config.runtimeReason ?? config.settingsError ?? "Runtime chưa sẵn sàng."}
-              </p>
-            )}
-
             <Field
-              label="Trạng thái runtime"
-              hint="Engine chỉ kiểm tra điều kiện khởi động ở đây; model được nạp khi bạn gửi lượt hoặc bật mic."
+              label="Trạng thái chat"
+              hint="Kiểm tra riêng route chat đang chọn. Thiết lập thoại ở phần bên dưới không chặn chat từ xa."
             >
-              {chatComponent === undefined ? (
-                <p className="text-muted-foreground text-sm">Đang kiểm tra runtime…</p>
-              ) : (
-                <div className="border-border flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm">
-                  <Badge variant={["ready", "loaded"].includes(chatComponent.status) ? "secondary" : "outline"}>
-                    {chatComponent.status}
-                  </Badge>
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs">{chatComponent.detail ?? chatComponent.label}</span>
+              <div className="border-border bg-muted/30 flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm">
+                <Badge variant={config.runtimeReady ? "secondary" : "outline"}>
+                  {runtimeState === "checking" ? "Checking" : config.runtimeReady ? "Ready" : "Needs setup"}
+                </Badge>
+                <div className="min-w-0 flex-1 text-xs leading-5">
+                  {runtimeState === "checking"
+                    ? "Đang xác minh model chat đã chọn."
+                    : config.runtimeReady
+                    ? isRemote
+                      ? "Remote chat đã được cấu hình. Route sẽ được xác nhận trong lượt chạy đầu tiên."
+                      : "On-device chat model is available."
+                    : chatSetupMessage(config)}
+                  {!config.runtimeReady && runtimeState !== "checking" &&
+                    (config.runtimeReason ?? config.settingsError ?? chatComponent?.detail) !== undefined && (
+                      <details className="text-muted-foreground mt-2 text-xs">
+                        <summary className="cursor-pointer select-none">Thông tin kỹ thuật</summary>
+                        <p className="mt-1 break-words font-mono leading-5">
+                          {config.runtimeReason ?? config.settingsError ?? chatComponent?.detail}
+                        </p>
+                      </details>
+                    )}
                 </div>
-              )}
+              </div>
             </Field>
 
             <Field
-              label="Nguồn"
+              label="Nơi xử lý"
               hint={
                 isRemote
-                  ? "Gọi API bên ngoài. Câu hỏi rời khỏi máy này."
-                  : "Chạy trên máy này. Model chỉ nạp khi dùng lần đầu, không nạp lúc khởi động."
+                  ? "Remote API. Requests leave this device."
+                  : "On-device. The model loads only when you use it."
               }
             >
               <Segmented
@@ -351,8 +531,8 @@ export function SettingsPanel({
                   void runGeneration(() => onApplyGeneration({ backend: "local" }));
                 }}
                 options={[
-                  { value: "remote", label: "Từ xa" },
-                  { value: "local", label: "Máy này" },
+                  { value: "remote", label: "Remote" },
+                  { value: "local", label: "On-device" },
                 ]}
               />
             </Field>
@@ -361,9 +541,9 @@ export function SettingsPanel({
               label="Model đang dùng"
               hint={
                 isRemote
-                  ? `Qua ${config.provider} · cửa sổ ngữ cảnh ${config.contextLength ?? "—"}`
+                  ? `Context window: ${config.contextLength ?? "—"}`
                   : config.localModelPath === null
-                    ? "Model local được chọn bởi profile đang hoạt động."
+                    ? "Model On-device được chọn bởi profile đang hoạt động."
                     : `Tệp đang được kiểm tra: ${config.localModelPath}`
               }
             >
@@ -374,61 +554,79 @@ export function SettingsPanel({
               </div>
             </Field>
 
-            {!showRemoteSettings && (
+            {isRemote && (
               <Field
-                label="Thư mục model local"
+                label="Dữ liệu gửi tới provider"
                 hint={
-                  modelRoot?.source === "external"
-                    ? "Đang dùng thư mục bạn đã chọn. Lưu thay đổi sẽ khởi động lại engine; dữ liệu không bị sao chép."
-                    : "Mặc định là kho dữ liệu riêng của SoCa. Chọn thư mục model đã có nếu bạn muốn dùng model hiện hữu mà không sao chép."
+                  remoteDataCollection === "deny"
+                    ? "Chỉ dùng endpoint không thu thập dữ liệu. Nếu model không có endpoint phù hợp, SoCa dừng rõ ràng thay vì tự đổi route."
+                    : "Provider có thể xử lý dữ liệu theo chính sách riêng. Chỉ chọn khi bạn đồng ý với chính sách đó."
                 }
-                htmlFor="local-model-root"
               >
-                <div className="flex gap-2">
-                  <input
-                    id="local-model-root"
-                    className={`${INPUT} font-mono text-xs`}
-                    value={modelRootDraft}
-                    disabled={!connected || modelRootPending}
-                    placeholder="/đường/dẫn/tới/models"
-                    onChange={(event) => setModelRootDraft(event.target.value)}
-                  />
-                  <Button
-                    className="h-10 shrink-0"
-                    disabled={!connected || modelRootPending || modelRootDraft.trim() === ""}
-                    onClick={async () => {
-                      setModelRootPending(true);
-                      setModelRootError(null);
-                      const error = await onSetModelRoot(modelRootDraft.trim());
-                      setModelRootPending(false);
-                      setModelRootError(error);
-                    }}
-                  >
-                    {modelRootPending ? "Đang áp dụng…" : "Dùng thư mục này"}
-                  </Button>
-                </div>
-                {modelRoot?.source === "external" && (
-                  <Button
-                    className="mt-2"
-                    size="sm"
-                    variant="outline"
-                    disabled={!connected || modelRootPending}
-                    onClick={async () => {
-                      setModelRootPending(true);
-                      setModelRootError(null);
-                      const error = await onSetModelRoot(null);
-                      setModelRootPending(false);
-                      setModelRootError(error);
-                    }}
-                  >
-                    Trở về kho SoCa
-                  </Button>
-                )}
-                {modelRootError !== null && (
-                  <p className="text-destructive mt-2 text-sm" role="alert">{modelRootError}</p>
-                )}
+                <Segmented
+                  value={remoteDataCollection}
+                  disabled={!connected || generationPending}
+                  onChange={(remoteDataCollection) =>
+                    void runGeneration(() => onApplyGeneration({ remoteDataCollection }))
+                  }
+                  options={[
+                    { value: "deny", label: "Không thu thập" },
+                    { value: "allow", label: "Theo provider" },
+                  ]}
+                />
               </Field>
             )}
+
+            <Field
+              label="Thư mục model Voice và On-device"
+              hint={
+                modelRoot?.source === "external"
+                  ? "Đang dùng thư mục bạn đã chọn cho Voice và model On-device. Lưu thay đổi sẽ khởi động lại engine; dữ liệu không bị sao chép."
+                  : "Kho riêng của SoCa hiện đang được dùng. Voice vẫn cần ASR và TTS ở đây, kể cả khi câu trả lời dùng Remote."
+              }
+              htmlFor="local-model-root"
+            >
+              <div className="flex flex-wrap gap-2">
+                <input
+                  id="local-model-root"
+                  className={`${INPUT} font-mono text-xs`}
+                  value={modelRootDraft}
+                  disabled={!connected || modelRootPending}
+                  placeholder="/đường/dẫn/tới/models"
+                  onChange={(event) => setModelRootDraft(event.target.value)}
+                />
+                <Button
+                  className="h-10 shrink-0"
+                  disabled={!connected || modelRootPending}
+                  variant="outline"
+                  onClick={() => void chooseModelRoot()}
+                >
+                  <FolderOpen className="size-4" />
+                  Chọn thư mục model…
+                </Button>
+                <Button
+                  className="h-10 shrink-0"
+                  disabled={!connected || modelRootPending || modelRootDraft.trim() === ""}
+                  onClick={() => void applyModelRoot(modelRootDraft.trim())}
+                >
+                  {modelRootPending ? "Đang áp dụng…" : "Dùng đường dẫn"}
+                </Button>
+              </div>
+              {modelRoot?.source === "external" && (
+                <Button
+                  className="mt-2"
+                  size="sm"
+                  variant="outline"
+                  disabled={!connected || modelRootPending}
+                  onClick={() => void applyModelRoot(null)}
+                >
+                  Trở về kho SoCa
+                </Button>
+              )}
+              {modelRootError !== null && (
+                <p className="text-destructive mt-2 text-sm" role="alert">{modelRootError}</p>
+              )}
+            </Field>
 
             <Field
               label="Giới hạn token đầu ra"
@@ -624,55 +822,187 @@ export function SettingsPanel({
         </Section>
       )}
 
-      <Section
-        icon={AudioLines}
-        title="Thoại"
-        description="Mỗi profile là một bộ ASR, TTS và giọng đọc đi liền nhau."
-      >
+      <div ref={voiceSetupRef}>
+        <Section
+          icon={AudioLines}
+          title="Thoại"
+          description="Chat và Voice được thiết lập riêng. Mở Voice để xem trạng thái; dùng phần này để hoàn tất các thành phần còn thiếu."
+        >
         <Field
-          label="Sẵn sàng thoại"
-          hint="ASR nhận tiếng nói trên máy; LLM theo đúng model đang chọn; TTS đọc câu trả lời."
+          label="Trạng thái thoại"
+          hint="Âm thanh luôn được thu và phát trên máy này."
         >
           {voiceComponents.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Đang kiểm tra ASR, LLM và TTS…</p>
+            <p className="text-muted-foreground text-sm">Đang kiểm tra các thành phần thoại…</p>
           ) : (
-            <ul className="border-border divide-border flex flex-col divide-y rounded-lg border">
-              {voiceComponents.map((component) => (
-                <li key={component.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
-                  <Badge variant={["ready", "loaded", "configured"].includes(component.status) ? "secondary" : "outline"}>
-                    {component.status}
-                  </Badge>
-                  <div className="min-w-0 flex-1">
-                    <p>{component.label}</p>
-                    {component.detail !== null && (
-                      <p className="text-muted-foreground truncate font-mono text-[10px]">{component.detail}</p>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <div className="border-border bg-muted/30 flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm">
+              <Badge variant={voiceReady ? "secondary" : "outline"}>
+                {voiceReady ? "Ready" : voiceChecking ? "Checking" : "Needs setup"}
+              </Badge>
+              <div className="min-w-0 flex-1 leading-5">
+                {voiceReady
+                  ? "Qwen ASR, model trả lời và giọng đọc đã sẵn sàng."
+                  : voiceChecking
+                    ? "Đang xác minh Voice. Bạn không cần chọn lại thư mục model."
+                    : voiceBlocker === undefined
+                    ? "Đang chờ trạng thái thoại hoàn chỉnh…"
+                    : voiceSetupMessage(voiceBlocker)}
+                {!voiceReady && !voiceChecking && voiceBlocker?.detail !== null && voiceBlocker?.detail !== undefined && (
+                  <details className="text-muted-foreground mt-2 text-xs">
+                    <summary className="cursor-pointer select-none">Thông tin kỹ thuật</summary>
+                    <p className="mt-1 break-words font-mono leading-5">{voiceBlocker.detail}</p>
+                  </details>
+                )}
+                {!voiceReady && !voiceChecking && voiceBlocker?.id === "voice_asr" && !qwenCalibrationPending && (
+                  <Button
+                    className="mt-3"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const input = document.getElementById("qwen-asr-model-root");
+                      input?.scrollIntoView({ behavior: "smooth", block: "center" });
+                      window.setTimeout(() => (input as HTMLInputElement | null)?.focus(), 250);
+                    }}
+                  >
+                    Thiết lập Qwen ASR
+                  </Button>
+                )}
+              </div>
+            </div>
           )}
         </Field>
         <Field
-          label="Profile"
-          hint="Đổi profile áp dụng cho lượt thoại tiếp theo, không cắt lượt đang chạy."
+          label="Microphone"
+          hint="Voice chỉ thu từ thiết bị này. Chọn “Theo hệ thống” để dùng microphone mặc định của macOS."
+          htmlFor="voice-audio-input"
+        >
+          <select
+            id="voice-audio-input"
+            className={INPUT}
+            disabled={!connected || settings.audioInput === null}
+            value={settings.audioInput?.selectedId ?? ""}
+            onChange={(event) => void onSelectAudioInput(event.target.value || null)}
+          >
+            <option value="">
+              Theo hệ thống{settings.audioInput?.selectedLabel ? ` — ${settings.audioInput.selectedLabel}` : ""}
+            </option>
+            {settings.audioInput?.devices.map((device) => (
+              <option key={device.id} value={device.id}>
+                {device.label}{device.isSystemDefault ? " — mặc định hệ thống" : ""}
+              </option>
+            ))}
+          </select>
+          {settings.audioInput === null && (
+            <p className="text-muted-foreground mt-2 text-xs">Đang kiểm tra microphone khả dụng…</p>
+          )}
+        </Field>
+        <Field
+          label="Qwen ASR"
+          hint="Qwen Release là bộ nhận diện bắt buộc. “Dùng thư mục” chỉ xác minh một bản Qwen đã có và khởi động lại engine; nó không tải, sao chép hoặc cài model."
+        >
+          <div className="border-border flex flex-col gap-3 rounded-lg border p-3">
+            {qwenAsrVerified && (
+              <div className="flex items-center gap-2 text-sm">
+                <Badge variant={qwenCalibrationPending ? "outline" : "secondary"}>
+                  {qwenCalibrationPending ? "Verification required" : "Sẵn sàng"}
+                </Badge>
+                <span>
+                  {qwenCalibrationPending
+                    ? "Qwen model và runtime đã được xác minh. Đừng chọn lại thư mục; microphone mở sau khi calibration được xác nhận."
+                    : "Qwen ASR đã được xác minh; không có tác vụ tải xuống đang chạy."}
+                </span>
+              </div>
+            )}
+            <details open={!qwenAsrVerified} className="group">
+              <summary className="cursor-pointer list-none text-sm font-medium marker:hidden">
+                {qwenAsrVerified ? "Thay đổi bản cài Qwen hiện có" : "Dùng bản cài Qwen hiện có"}
+              </summary>
+              <p className="text-muted-foreground mt-2 text-xs leading-5">
+                Màn hình này chưa tải model. Hai nút dưới đây chỉ lưu đường dẫn, kiểm tra chữ ký/receipt và khởi động lại engine. Vì vậy không có thanh tiến trình tải xuống.
+              </p>
+              <div className="mt-4 flex flex-col gap-4">
+            <div>
+              <p className="text-sm font-medium">Môi trường chạy Qwen</p>
+              <p className="text-muted-foreground mt-1 text-xs leading-5">
+                Chỉ dùng khi bạn đã cài Qwen trước đó: chọn thư mục <code>runtime/qwen-asr</code> có <code>uv.lock</code>, <code>.runtime-receipt.json</code> và <code>.venv</code>.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <input
+                  id="qwen-runtime-root"
+                  aria-label="Môi trường chạy Qwen"
+                  className={`${INPUT} min-w-0 flex-1 font-mono text-xs`}
+                  value={qwenRuntimeRootDraft}
+                  disabled={!connected || qwenSetupPending !== null}
+                  placeholder="/absolute/path/to/runtime/qwen-asr"
+                  onChange={(event) => setQwenRuntimeRootDraft(event.target.value)}
+                />
+                <Button type="button" variant="outline" disabled={!connected || qwenSetupPending !== null} onClick={() => void chooseQwenRoot("runtime")}>
+                  <FolderOpen className="size-4" /> Chọn runtime…
+                </Button>
+                <Button type="button" disabled={!connected || qwenSetupPending !== null || qwenRuntimeRootDraft.trim() === ""} onClick={() => void applyQwenRoot("runtime", qwenRuntimeRootDraft.trim())}>
+                  {qwenSetupPending === "runtime" ? "Đang kiểm tra…" : "Dùng thư mục này"}
+                </Button>
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-medium">Kho model Qwen</p>
+              <p className="text-muted-foreground mt-1 text-xs leading-5">
+                Chỉ dùng khi model đã có: chọn thư mục chứa <code>asr/receipts/qwen3_asr_0_6b.json</code>. SoCa không thay model ASR khi khởi động Voice.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <input
+                  id="qwen-asr-model-root"
+                  aria-label="Kho model Qwen"
+                  className={`${INPUT} min-w-0 flex-1 font-mono text-xs`}
+                  value={qwenAsrModelRootDraft}
+                  disabled={!connected || qwenSetupPending !== null}
+                  placeholder="/absolute/path/to/soca/models"
+                  onChange={(event) => setQwenAsrModelRootDraft(event.target.value)}
+                />
+                <Button type="button" variant="outline" disabled={!connected || qwenSetupPending !== null} onClick={() => void chooseQwenRoot("model")}>
+                  <FolderOpen className="size-4" /> Chọn kho model…
+                </Button>
+                <Button type="button" disabled={!connected || qwenSetupPending !== null || qwenAsrModelRootDraft.trim() === ""} onClick={() => void applyQwenRoot("model", qwenAsrModelRootDraft.trim())}>
+                  {qwenSetupPending === "model" ? "Đang kiểm tra…" : "Dùng thư mục này"}
+                </Button>
+              </div>
+            </div>
+            {qwenSetupError !== null && <p className="text-destructive text-xs" role="alert">{qwenSetupError}</p>}
+              </div>
+            </details>
+          </div>
+        </Field>
+        <Field
+          label="Cấu hình thoại"
+          hint="Profile chỉ áp dụng cho phiên thoại kế tiếp; chuyển profile không ngắt cuộc gọi đang diễn ra."
         >
           {settings.profiles.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Bấm “Tải lại” ở trên để nạp profile.</p>
+            <p className="text-muted-foreground text-sm">Tải lại cài đặt để xem voice profile.</p>
           ) : (
             <ul className="border-border divide-border flex flex-col divide-y rounded-lg border">
               {settings.profiles.map((profile) => (
                 <li key={profile.key} className="flex items-center gap-3 px-3 py-2.5 text-sm">
                   <Badge variant={settings.activeProfile === profile.key ? "secondary" : "outline"}>
-                    {settings.activeProfile === profile.key ? "đang dùng" : profile.status}
+                    {settings.activeProfile === profile.key
+                      ? profile.status === "ok"
+                        ? "Active"
+                        : "Active · Needs setup"
+                      : profileStatus(profile)}
                   </Badge>
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate font-mono text-xs">{profile.key}</span>
-                    <span className="text-muted-foreground truncate font-mono text-[10px]">
-                      {[profile.asr, profile.tts, profile.voice].filter(Boolean).join(" · ")}
-                    </span>
+                    <span className="truncate text-sm font-medium">{profileName(profile.key)}</span>
+                    <span className="text-muted-foreground text-xs leading-5">{profileSummary(profile)}</span>
+                    <details className="text-muted-foreground mt-1 text-[10px]">
+                      <summary className="cursor-pointer select-none">Thông tin kỹ thuật</summary>
+                      {profile.note !== null && profile.note !== undefined && (
+                        <p className="mt-1 break-words leading-5">{profile.note}</p>
+                      )}
+                      <p className="mt-1 break-words font-mono leading-5">
+                        {[profile.asr, profile.tts, profile.voice].filter(Boolean).join(" · ")}
+                      </p>
+                    </details>
                   </div>
-                  {settings.activeProfile !== profile.key && (
+                  {settings.activeProfile !== profile.key && profile.status === "ok" && (
                     <Button
                       size="sm"
                       variant="ghost"
@@ -682,7 +1012,7 @@ export function SettingsPanel({
                         if (!(await onSelectProfile(profile.key))) setProfilePending(null);
                       }}
                     >
-                      {profilePending === profile.key ? "Đang áp dụng…" : "Dùng"}
+                      {profilePending === profile.key ? "Đang áp dụng…" : "Chọn"}
                     </Button>
                   )}
                 </li>
@@ -690,7 +1020,8 @@ export function SettingsPanel({
             </ul>
           )}
         </Field>
-      </Section>
+        </Section>
+      </div>
     </div>
   );
 }

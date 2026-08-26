@@ -47,9 +47,66 @@ def _legacy_checkpoint(root: Path) -> None:
     SessionCheckpointStore(root).save(memory)
 
 
+def _verify_asr_calibration(sidecar: Path) -> None:
+    """Guard the data file that makes a provisioned PhoWhisper runtime usable."""
+    calibration = sidecar.parent / "_internal" / "data" / "asr" / "threshold_calibration.json"
+    try:
+        payload = json.loads(calibration.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            "frozen sidecar is missing readable ASR confidence calibration"
+        ) from exc
+    calibrations = payload.get("asr_confidence_by_model") if isinstance(payload, dict) else None
+    if not isinstance(calibrations, dict) or "phowhisper_small" not in calibrations:
+        raise RuntimeError("frozen sidecar ASR confidence calibration has an invalid schema")
+
+
+def _verify_qwen_calibration(sidecar: Path) -> None:
+    """Ensure the bundle carries the exact Qwen confidence records from source."""
+    bundled = sidecar.parent / "_internal" / "data" / "asr" / "qwen_confidence_calibration.json"
+    source = Path(__file__).resolve().parents[1] / "data" / "asr" / "qwen_confidence_calibration.json"
+    try:
+        bundled_bytes = bundled.read_bytes()
+        source_bytes = source.read_bytes()
+        payload = json.loads(bundled_bytes)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            "frozen sidecar is missing readable Qwen confidence calibration"
+        ) from exc
+    if bundled_bytes != source_bytes:
+        raise RuntimeError("frozen sidecar Qwen confidence calibration differs from source")
+    calibrations = payload.get("calibrations") if isinstance(payload, dict) else None
+    if not isinstance(calibrations, dict):
+        raise RuntimeError("frozen sidecar Qwen confidence calibration has an invalid schema")
+    model_keys = {
+        record.get("identity", {}).get("model_key")
+        for record in calibrations.values()
+        if isinstance(record, dict)
+    }
+    if model_keys != {"qwen3_asr_0_6b", "qwen3_asr_1_7b"}:
+        raise RuntimeError("frozen sidecar lacks the current Qwen calibration records")
+
+
+def _verify_voice_aec_resources(sidecar: Path) -> None:
+    """Ensure the first Voice click can load Silero's packaged VAD model."""
+    data = sidecar.parent / "_internal" / "silero_vad" / "data"
+    if not data.is_dir() or not any(data.iterdir()):
+        raise RuntimeError("frozen sidecar is missing the Silero VAD package data required by Voice")
+
+
+def _verify_smart_turn_resource(sidecar: Path) -> None:
+    model = sidecar.parent / "_internal" / "data" / "smart-turn-v3-onnx" / "smart-turn-v3.2-cpu.onnx"
+    if not model.is_file() or model.stat().st_size == 0:
+        raise RuntimeError("frozen sidecar is missing the Smart Turn model required by Voice")
+
+
 def verify(sidecar: Path) -> None:
     if not sidecar.is_file():
         raise RuntimeError(f"sidecar does not exist: {sidecar}")
+    _verify_asr_calibration(sidecar)
+    _verify_qwen_calibration(sidecar)
+    _verify_voice_aec_resources(sidecar)
+    _verify_smart_turn_resource(sidecar)
 
     with tempfile.TemporaryDirectory(prefix="soca-frozen-sidecar-") as temporary:
         root = Path(temporary)

@@ -149,7 +149,14 @@ npm ci
 npm test
 npm run package:sidecar
 npm run tauri:build -- --bundles app,dmg
+codesign --verify --deep --strict --verbose=4 \
+  src-tauri/target/release/bundle/macos/SoCa.app
 ```
+
+The tracked package config uses Tauri's macOS pseudo-identity `-` for a
+reproducible local ad-hoc signature. It is a Finder-install smoke gate only;
+the release workflow overlays its Apple Developer identity and must still
+notarize the public artifact.
 
 The independent runtime proof deliberately runs outside the source checkout:
 

@@ -232,7 +232,8 @@ class IndexCoordinator:
         )
 
     def inspect(self) -> dict[str, object]:
-        return self.catalog.inspect(self.spec)
+        fingerprint = embedding_fingerprint_for(self.model) if self.model is not None else None
+        return self.catalog.inspect(self.spec, embedding_fingerprint=fingerprint)
 
     def request_sync(self, reason: str = "manual") -> BuildReport:
         del reason

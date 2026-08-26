@@ -1,10 +1,12 @@
 mod engine;
+mod microphone;
 
 use tauri::{Manager, RunEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .manage(engine::EngineState::default())
@@ -16,6 +18,11 @@ pub fn run() {
             engine::engine_hello,
             engine::engine_model_root,
             engine::engine_set_model_root,
+            engine::engine_qwen_asr_model_root,
+            engine::engine_set_qwen_asr_model_root,
+            engine::engine_qwen_runtime_root,
+            engine::engine_set_qwen_runtime_root,
+            microphone::microphone_request_access,
         ]);
 
     // Unsigned package proofs deliberately have no updater public key or

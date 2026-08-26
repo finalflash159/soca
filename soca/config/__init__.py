@@ -1,5 +1,10 @@
 """Persistent, non-secret configuration for optional SoCa integrations."""
 
+from .audio_settings import (
+    default_audio_settings_path,
+    load_audio_input_device,
+    save_audio_input_device,
+)
 from .llm_settings import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_SETTINGS,
@@ -24,6 +29,9 @@ __all__ = [
     "MIN_MAX_TOKENS",
     "LlmSettings",
     "SecretStore",
+    "default_audio_settings_path",
+    "load_audio_input_device",
+    "save_audio_input_device",
     "load_settings",
     "save_settings",
     "DEFAULT_VOICE_PROFILE",

@@ -31,8 +31,11 @@ export type EngineCommand =
   | { cmd: "chat"; text: string }
   | { cmd: "voice_start"; max_turns?: number }
   | { cmd: "voice_stop" }
+  | { cmd: "audio_input_get" }
+  | { cmd: "audio_input_select"; device: string | null }
   | { cmd: "voice_profile_select"; [key: string]: unknown }
   | { cmd: "knowledge_init" }
+  | { cmd: "knowledge_model_install" }
   | { cmd: "knowledge_index" }
   | {
       cmd: "citation_preview";
@@ -226,6 +229,14 @@ export interface VoiceFrame {
   usage?: Record<string, unknown>;
 }
 
+export interface AudioInputFrame {
+  event: "audio_input";
+  selected_id: string | null;
+  selected_label: string | null;
+  uses_system_default: boolean;
+  devices: Array<{ id: string; label: string; is_system_default: boolean }>;
+}
+
 export interface StatusFrame {
   event: "status";
   active_profile?: string;
@@ -263,7 +274,7 @@ export interface KnowledgeSetupFrame {
    * These were missing from this type, so the client had no way to render a
    * build and showed a single unchanging line for its whole duration.
    */
-  phase?: "scanning" | "chunking" | "embedding" | "persisting" | "verifying" | "complete";
+  phase?: "downloading" | "scanning" | "chunking" | "embedding" | "persisting" | "verifying" | "complete" | "failed";
   completed_chunks?: number;
   total_chunks?: number;
   reused_chunks?: number;
@@ -282,7 +293,10 @@ export interface LlmConfigFrame {
   effective_max_tokens: number;
   effective_reasoning_enabled: boolean;
   reasoning_mandatory: boolean;
+  remote_data_collection?: "deny" | "allow";
   runtime_ready: boolean;
+  /** Whether the engine is still resolving a route, has a usable route, or is blocked. */
+  runtime_state?: "checking" | "ready" | "blocked";
   runtime_reason?: string | null;
   local_model_path?: string | null;
   settings_error: string | null;
@@ -298,6 +312,7 @@ export type EngineFrame =
   | HelloFrame
   | ChatFrame
   | VoiceFrame
+  | AudioInputFrame
   | StatusFrame
   | EngineErrorFrame
   | KnowledgeSetupFrame

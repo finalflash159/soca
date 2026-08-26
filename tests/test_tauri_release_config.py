@@ -52,3 +52,14 @@ def test_signed_release_workflow_enables_the_keyed_updater_feature() -> None:
     ).read_text(encoding="utf-8")
 
     assert "args: --config .tauri.release.json --features release-updater" in workflow
+
+
+def test_linux_package_workflow_keeps_the_cuda_driver_on_the_host() -> None:
+    workflow = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "desktop-package.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "linuxdeploy/releases/download/continuous/linuxdeploy-${arch}.AppImage" in workflow
+    assert "LINUXDEPLOY_EXCLUDED_LIBRARIES" in workflow
+    assert "libcuda.so*" in workflow
+    assert "XDG_CACHE_HOME: ${{ runner.temp }}/soca-cache" in workflow

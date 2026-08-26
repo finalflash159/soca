@@ -2,6 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .audio_input import (
+    AudioInputDevice,
+    AudioInputDeviceError,
+    audio_input_status,
+    list_audio_input_devices,
+    resolve_audio_input_device,
+)
 from .context_budget import (
     DEFAULT_CONTEXT_SAFETY_MARGIN_TOKENS,
     EngineTokenCounter,
@@ -245,6 +252,11 @@ __all__ = [
     "source_profile",
     "validate_route_fields",
     "EndpointConfig",
+    "AudioInputDevice",
+    "AudioInputDeviceError",
+    "audio_input_status",
+    "list_audio_input_devices",
+    "resolve_audio_input_device",
     "effective_endpoint_config",
     "GuardrailAction",
     "GuardrailEvent",

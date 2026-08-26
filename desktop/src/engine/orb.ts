@@ -21,7 +21,7 @@
  *    by "nén working memory". The `memory` turn phase is archive retrieval.
  */
 
-import type { EngineFrame, WorkflowFrame } from "./protocol";
+import type { EngineFrame, VoiceFrame, WorkflowFrame } from "./protocol";
 import { isChatFrame, isVoiceFrame, isWorkflowFrame } from "./protocol";
 
 export type OrbState =
@@ -93,8 +93,8 @@ function reduceWorkflow(activity: OrbActivity, frame: WorkflowFrame): OrbActivit
   return activity;
 }
 
-function reduceVoice(activity: OrbActivity, type: string): OrbActivity {
-  switch (type) {
+function reduceVoice(activity: OrbActivity, frame: VoiceFrame): OrbActivity {
+  switch (frame.type) {
     case "loading":
     case "warmup":
       return { ...activity, voiceLoading: true };
@@ -103,11 +103,17 @@ function reduceVoice(activity: OrbActivity, type: string): OrbActivity {
       // only `loop_started` means the microphone is actually open.
       return { ...activity, voiceLoading: false };
     case "recording":
-    case "voice_level":
     case "barge_in":
       // A barge-in hands the floor back to the user, so it is a listening state
       // even though it interrupts playback.
       return { ...activity, listening: true, speaking: false };
+    case "voice_level":
+      // Output-level telemetry arrives while SoCa speaks. It is not an input
+      // event and must never make the shared header/chat activity claim the
+      // microphone is listening.
+      return frame.metadata?.source === "assistant"
+        ? activity
+        : { ...activity, listening: true, speaking: false };
     case "recorded":
     case "transcribing":
       return { ...activity, listening: false };
@@ -148,7 +154,7 @@ export function reduceActivity(activity: OrbActivity, frame: EngineFrame): OrbAc
   }
 
   if (isVoiceFrame(frame)) {
-    return reduceVoice(activity, frame.type);
+    return reduceVoice(activity, frame);
   }
 
   if (isChatFrame(frame)) {
@@ -255,22 +261,22 @@ export function orbStateFor(activity: OrbActivity): OrbState {
 export function orbLabel(state: OrbState): string {
   switch (state) {
     case "listening":
-      return "Đang nghe";
+      return "Listening";
     case "solving":
-      return "Đang tính";
+      return "Thinking";
     case "searching":
-      return "Đang tra cứu";
+      return "Searching";
     case "working":
-      return "Đang chạy công cụ";
+      return "Processing";
     case "connecting":
-      return "Đang gọi nhà cung cấp";
+      return "Connecting";
     case "composing":
-      return "Đang trả lời";
+      return "Responding";
     case "weaving":
-      return "Đang nén bộ nhớ";
+      return "Compacting memory";
     case "shaping":
-      return "Đang dựng chỉ mục";
+      return "Indexing";
     case "breathing":
-      return "Đang rảnh";
+      return "Idle";
   }
 }
