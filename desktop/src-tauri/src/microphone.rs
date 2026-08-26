@@ -42,44 +42,57 @@ fn from_native_status(
     }
 }
 
-/// Request microphone permission from the actual macOS application bundle.
+/// Begin microphone authorization on the native application main thread.
 ///
-/// Tauri runs this command away from the WebView event loop, so waiting for the
-/// system sheet does not freeze the UI. The wait is bounded and no sidecar is
-/// launched unless macOS returns an explicit authorization result.
+/// TCC attributes the request to the GUI bundle which calls AVFoundation. The
+/// completion arrives asynchronously, so this function never blocks the main
+/// thread while macOS displays its consent sheet.
 #[cfg(target_os = "macos")]
-pub fn request_microphone_access() -> Result<MicrophonePermission, String> {
-    use std::sync::mpsc;
-    use std::time::Duration;
-
+fn begin_microphone_access(
+    sender: std::sync::mpsc::SyncSender<Result<MicrophonePermission, String>>,
+) {
     use block2::RcBlock;
     use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
 
     let audio_media_type = unsafe {
-        AVMediaTypeAudio
-            .ok_or_else(|| "macOS did not provide the audio media type.".to_string())?
+        AVMediaTypeAudio.ok_or_else(|| "macOS did not provide the audio media type.".to_string())
+    };
+    let Ok(audio_media_type) = audio_media_type else {
+        let _ = sender.send(Err(
+            "macOS did not provide the audio media type.".to_string()
+        ));
+        return;
     };
     let current = unsafe { AVCaptureDevice::authorizationStatusForMediaType(audio_media_type) };
     if current != AVAuthorizationStatus::NotDetermined {
-        return from_native_status(current);
+        let _ = sender.send(from_native_status(current));
+        return;
     }
 
-    let (sender, receiver) = mpsc::sync_channel(1);
     let completion = RcBlock::new(move |granted| {
-        // The receiver may already have timed out; the sender is intentionally
+        // The receiver may already have timed out; delivery is deliberately
         // best-effort because the system owns the completion timing.
-        let _ = sender.send(bool::from(granted));
+        let permission = if bool::from(granted) {
+            MicrophonePermission::Authorized
+        } else {
+            MicrophonePermission::Denied
+        };
+        let _ = sender.send(Ok(permission));
     });
     unsafe {
         AVCaptureDevice::requestAccessForMediaType_completionHandler(audio_media_type, &completion);
     }
+}
+
+#[cfg(target_os = "macos")]
+fn wait_for_microphone_access(
+    receiver: std::sync::mpsc::Receiver<Result<MicrophonePermission, String>>,
+) -> Result<MicrophonePermission, String> {
+    use std::sync::mpsc;
+    use std::time::Duration;
 
     match receiver.recv_timeout(Duration::from_secs(60)) {
-        Ok(true) => Ok(MicrophonePermission::Authorized),
-        Ok(false) => {
-            let final_status = unsafe { AVCaptureDevice::authorizationStatusForMediaType(audio_media_type) };
-            from_native_status(final_status)
-        }
+        Ok(result) => result,
         Err(mpsc::RecvTimeoutError::Timeout) => Err(
             "Microphone permission is still waiting for a response. Finish the macOS prompt, then try again."
                 .to_string(),
@@ -95,15 +108,32 @@ pub fn request_microphone_access() -> Result<MicrophonePermission, String> {
 /// audio stack. This preserves a single frontend contract without claiming a
 /// macOS-specific permission result elsewhere.
 #[cfg(not(target_os = "macos"))]
-pub fn request_microphone_access() -> Result<MicrophonePermission, String> {
+fn request_microphone_access() -> Result<MicrophonePermission, String> {
     Ok(MicrophonePermission::Authorized)
 }
 
 #[tauri::command]
-pub async fn microphone_request_access() -> Result<MicrophonePermission, String> {
-    tauri::async_runtime::spawn_blocking(request_microphone_access)
-        .await
-        .map_err(|error| format!("Microphone permission task failed: {error}"))?
+pub async fn microphone_request_access(
+    app: tauri::AppHandle,
+) -> Result<MicrophonePermission, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        app.run_on_main_thread(move || begin_microphone_access(sender))
+            .map_err(|error| {
+                format!("Could not start the microphone permission request: {error}")
+            })?;
+
+        return tauri::async_runtime::spawn_blocking(move || wait_for_microphone_access(receiver))
+            .await
+            .map_err(|error| format!("Microphone permission task failed: {error}"))?;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        request_microphone_access()
+    }
 }
 
 #[cfg(test)]
