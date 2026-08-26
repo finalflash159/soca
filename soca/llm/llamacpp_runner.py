@@ -203,7 +203,7 @@ class LocalLlamaCppLLM:
         temperature: float = 0.0,
         top_p: float = 1.0,
         inject_persona: bool = False,
-        zero_data_retention: bool = True,
+        zero_data_retention: bool | None = None,
     ) -> LLMResult:
         del schema_name, zero_data_retention
         self._validate_generation_args(user_msg, max_tokens, temperature, top_p)
