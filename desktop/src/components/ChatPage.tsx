@@ -10,10 +10,16 @@
 import { ChatView } from "@/components/ChatView";
 import { BrandMark } from "@/components/BrandMark";
 import { Composer } from "@/components/Composer";
+import { SessionContext } from "@/components/SessionContext";
 import type { ConversationState } from "@/engine/conversation";
 import type { Citation } from "@/engine/conversation";
 import type { CitationPreviewIndex } from "@/engine/citation-preview";
 import type { SlashCommand, VaultDocument } from "@/engine/documents";
+import type { SessionState } from "@/engine/session";
+import type {
+  SessionHistoryState,
+  SessionSummary,
+} from "@/engine/session-history";
 import { orbLabel, type OrbState } from "@/engine/orb";
 import { ThinkingOrb } from "thinking-orbs";
 
@@ -35,6 +41,14 @@ interface ChatPageProps {
   canLoadOlder: boolean;
   citationPreviews: CitationPreviewIndex;
   onRequestCitationPreview: (citation: Citation) => Promise<boolean>;
+  session: SessionState;
+  sessionHistory: SessionHistoryState;
+  sessionBusy: boolean;
+  onRefreshSession: () => void;
+  onOpenSession: (session: SessionSummary) => void;
+  onRenameSession: (session: SessionSummary, title: string) => void;
+  onDeleteSession: (session: SessionSummary) => void;
+  onLoadMoreSessions: () => void;
 }
 
 /** Time-of-day greeting. No name — the app does not reliably know one. */
@@ -70,13 +84,23 @@ export function ChatPage({
   canLoadOlder,
   citationPreviews,
   onRequestCitationPreview,
+  session,
+  sessionHistory,
+  sessionBusy,
+  onRefreshSession,
+  onOpenSession,
+  onRenameSession,
+  onDeleteSession,
+  onLoadMoreSessions,
 }: ChatPageProps) {
   const hasTurns = conversation.turns.length > 0;
   const lastTurn = conversation.turns[conversation.turns.length - 1];
   // A turn that has not produced text yet renders its own orb inline; anything
   // else that keeps the orb off `breathing` is background work.
   const liveTurnShowsOrb =
-    lastTurn !== undefined && lastTurn.finalText === null && lastTurn.streamedText === "";
+    lastTurn !== undefined &&
+    lastTurn.finalText === null &&
+    lastTurn.streamedText === "";
   const busyOutsideTurn = orbState !== "breathing" && !liveTurnShowsOrb;
 
   const composer = (
@@ -105,15 +129,33 @@ export function ChatPage({
             {greeting()}
           </h1>
           {composer}
+          <SessionContext
+            session={session}
+            history={sessionHistory}
+            connected={connected}
+            busy={sessionBusy}
+            onRefresh={onRefreshSession}
+            onOpenSession={onOpenSession}
+            onRenameSession={onRenameSession}
+            onDeleteSession={onDeleteSession}
+            onLoadMoreSessions={onLoadMoreSessions}
+            onOpenSessionSettings={onOpenSettings}
+          />
           {busyOutsideTurn && (
-            <p className="text-muted-foreground flex items-center justify-center gap-2 text-center text-xs" role="status">
+            <p
+              className="text-muted-foreground flex items-center justify-center gap-2 text-center text-xs"
+              role="status"
+            >
               <ThinkingOrb state={orbState} size={20} aria-hidden />
               {orbLabel(orbState)}
             </p>
           )}
           {!runtimeReady && (
-            <p className="text-muted-foreground text-center text-sm" role="status">
-              Chat needs setup. {" "}
+            <p
+              className="text-muted-foreground text-center text-sm"
+              role="status"
+            >
+              Chat needs setup.{" "}
               <button
                 type="button"
                 className="text-foreground font-medium underline-offset-4 hover:underline"
@@ -154,6 +196,18 @@ export function ChatPage({
           </div>
         )}
         <div className="mx-auto w-full max-w-2xl">{composer}</div>
+        <SessionContext
+          session={session}
+          history={sessionHistory}
+          connected={connected}
+          busy={sessionBusy}
+          onRefresh={onRefreshSession}
+          onOpenSession={onOpenSession}
+          onRenameSession={onRenameSession}
+          onDeleteSession={onDeleteSession}
+          onLoadMoreSessions={onLoadMoreSessions}
+          onOpenSessionSettings={onOpenSettings}
+        />
       </div>
     </>
   );
