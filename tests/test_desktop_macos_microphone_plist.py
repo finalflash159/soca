@@ -29,3 +29,16 @@ def test_macos_bundle_signs_the_audio_input_entitlement() -> None:
         entitlements = plistlib.load(source)
 
     assert entitlements["com.apple.security.device.audio-input"] is True
+
+
+def test_macos_workflows_verify_the_literal_entitlement_key() -> None:
+    """Dotted entitlement names must not be treated as nested plist key paths."""
+
+    root = Path(__file__).resolve().parents[1]
+    for workflow_name in ("desktop-package.yml", "desktop-release.yml"):
+        workflow = (root / ".github" / "workflows" / workflow_name).read_text(
+            encoding="utf-8"
+        )
+        assert "PlistBuddy" in workflow
+        assert "Print :com.apple.security.device.audio-input" in workflow
+        assert "plutil -extract com.apple.security.device.audio-input" not in workflow

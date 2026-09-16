@@ -124,9 +124,9 @@ pub async fn microphone_request_access(
                 format!("Could not start the microphone permission request: {error}")
             })?;
 
-        return tauri::async_runtime::spawn_blocking(move || wait_for_microphone_access(receiver))
+        tauri::async_runtime::spawn_blocking(move || wait_for_microphone_access(receiver))
             .await
-            .map_err(|error| format!("Microphone permission task failed: {error}"))?;
+            .map_err(|error| format!("Microphone permission task failed: {error}"))?
     }
 
     #[cfg(not(target_os = "macos"))]

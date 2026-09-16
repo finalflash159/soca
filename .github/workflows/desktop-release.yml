@@ -125,6 +125,7 @@ jobs:
           app=desktop/src-tauri/target/release/bundle/macos/SoCa.app
           test -f "$app/Contents/MacOS/soca-desktop"
           codesign --verify --deep --strict "$app"
-          codesign -d --entitlements :- "$app/Contents/MacOS/soca-desktop" 2>/dev/null \
-            | plutil -extract com.apple.security.device.audio-input raw - \
-            | grep -qx true
+          entitlements_file="$RUNNER_TEMP/soca-release-entitlements.plist"
+          codesign -d --entitlements :- "$app/Contents/MacOS/soca-desktop" \
+            > "$entitlements_file" 2>/dev/null
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' "$entitlements_file")" = true
