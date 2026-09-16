@@ -1,13 +1,31 @@
 /** Knowledge source, retrieval index, session memory, and last retrieval. */
 
-import { BookOpen, Database, FolderOpen, Search } from "lucide-react";
+import {
+  BookOpen,
+  ChevronRight,
+  Database,
+  FolderOpen,
+  Search,
+} from "lucide-react";
+import { useState } from "react";
 
 import { EmptyState, Field, Section, Stat } from "@/components/Page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { IndexJob, KnowledgeState } from "@/engine/knowledge";
-import { evidenceSummary, knowledgeSetupRunning, memoryModeSummary } from "@/engine/knowledge";
+import {
+  evidenceSummary,
+  knowledgeSetupRunning,
+  memoryModeSummary,
+} from "@/engine/knowledge";
 import { cn } from "@/lib/utils";
 
 interface KnowledgePanelProps {
@@ -46,12 +64,19 @@ const PHASE_LABEL: Record<string, string> = {
 function IndexProgress({ job }: { job: IndexJob }) {
   const done = job.completedChunks;
   const total = job.totalChunks;
-  const fraction = total !== null && total > 0 && done !== null ? Math.min(1, done / total) : null;
+  const fraction =
+    total !== null && total > 0 && done !== null
+      ? Math.min(1, done / total)
+      : null;
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-3 text-sm">
-        <span>{job.phase !== null ? (PHASE_LABEL[job.phase] ?? job.detail) : job.detail}</span>
+        <span>
+          {job.phase !== null
+            ? (PHASE_LABEL[job.phase] ?? job.detail)
+            : job.detail}
+        </span>
         {done !== null && total !== null && total > 0 && (
           <span className="text-muted-foreground font-mono text-xs tabular-nums">
             {done}/{total}
@@ -64,14 +89,19 @@ function IndexProgress({ job }: { job: IndexJob }) {
             "bg-primary h-full rounded-full",
             // With no total yet — the scanning phase — a fixed sliver that
             // pulses says "working" without claiming a position it cannot know.
-            fraction === null ? "w-1/4 animate-pulse" : "transition-[width] duration-300",
+            fraction === null
+              ? "w-1/4 animate-pulse"
+              : "transition-[width] duration-300",
           )}
-          style={fraction === null ? undefined : { width: `${fraction * 100}%` }}
+          style={
+            fraction === null ? undefined : { width: `${fraction * 100}%` }
+          }
         />
       </div>
       {(job.reusedChunks ?? 0) > 0 && (
         <p className="text-muted-foreground text-xs">
-          Dùng lại {job.reusedChunks} chunk chưa đổi · nhúng mới {job.embeddedChunks ?? 0}
+          Dùng lại {job.reusedChunks} chunk chưa đổi · nhúng mới{" "}
+          {job.embeddedChunks ?? 0}
         </p>
       )}
     </div>
@@ -90,30 +120,33 @@ function VaultSection({
   return (
     <Section
       icon={FolderOpen}
-      title="Knowledge source"
-      description="Markdown files SoCa may retrieve from."
+      title="Vault"
+      description="Thư mục Markdown mà SoCa được phép truy xuất khi trả lời."
       actions={
         // Init only when there is something to initialise. Offering it on a
         // ready vault is what made the button unexplainable.
         !initialized ? (
           <Button size="sm" disabled={!connected || running} onClick={onInit}>
-            Create structure
+            Tạo cấu trúc vault
           </Button>
         ) : null
       }
     >
       {vault === null ? (
-        <p className="text-muted-foreground text-sm">Chưa nhận được trạng thái vault từ engine.</p>
+        <p className="text-muted-foreground text-sm">
+          Chưa nhận được trạng thái vault từ engine.
+        </p>
       ) : (
         <div className="flex flex-col gap-3">
-          <Field label="Source folder">
+          <Field label="Thư mục vault">
             <div className="border-border bg-muted/40 flex h-10 items-center rounded-lg border px-3">
               <span className="truncate font-mono text-xs">{vault.path}</span>
             </div>
           </Field>
           {!initialized && (
             <p className="text-muted-foreground text-sm leading-6">
-              Create the folder structure before indexing. Existing files are kept.
+              Tạo cấu trúc trước khi dựng chỉ mục. File đang có sẽ được giữ
+              nguyên.
             </p>
           )}
         </div>
@@ -127,7 +160,10 @@ function IndexSection({
   connected,
   onInstallModel,
   onIndex,
-}: Pick<KnowledgePanelProps, "knowledge" | "connected" | "onInstallModel" | "onIndex">) {
+}: Pick<
+  KnowledgePanelProps,
+  "knowledge" | "connected" | "onInstallModel" | "onIndex"
+>) {
   const running = knowledgeSetupRunning(knowledge.indexJob);
   const index = knowledge.index;
   const job = knowledge.indexJob;
@@ -142,7 +178,11 @@ function IndexSection({
       description="Dữ liệu ở lại trên máy; chỉ mục dùng để tìm đúng đoạn tài liệu khi trả lời."
       actions={
         modelMissing ? (
-          <Button size="sm" disabled={!connected || running} onClick={onInstallModel}>
+          <Button
+            size="sm"
+            disabled={!connected || running}
+            onClick={onInstallModel}
+          >
             {modelDownloadRunning ? "Đang tải…" : "Tải retrieval model"}
           </Button>
         ) : (
@@ -152,7 +192,11 @@ function IndexSection({
             disabled={!connected || running || !initialized}
             onClick={onIndex}
           >
-            {running ? "Đang xử lý…" : index === null ? "Dựng chỉ mục" : "Dựng lại"}
+            {running
+              ? "Đang xử lý…"
+              : index === null
+                ? "Dựng chỉ mục"
+                : "Dựng lại"}
           </Button>
         )
       }
@@ -161,8 +205,9 @@ function IndexSection({
         <IndexProgress job={job} />
       ) : modelMissing ? (
         <p className="text-muted-foreground text-sm leading-6">
-          Tải retrieval model một lần trước khi dựng chỉ mục. SoCa sẽ kiểm tra artifact đã tải
-          trước khi dùng; không tự đổi sang model khác nếu tải thất bại.
+          Tải retrieval model một lần trước khi dựng chỉ mục. SoCa sẽ kiểm tra
+          artifact đã tải trước khi dùng; không tự đổi sang model khác nếu tải
+          thất bại.
         </p>
       ) : index === null ? (
         <p className="text-muted-foreground text-sm leading-6">
@@ -175,12 +220,16 @@ function IndexSection({
           <Stat label="Tài liệu">{index.documents}</Stat>
           <Stat label="Chunk">{index.chunks}</Stat>
           <Stat label="Tìm theo từ khoá">
-            <Badge variant={index.sparseState === "ready" ? "secondary" : "outline"}>
+            <Badge
+              variant={index.sparseState === "ready" ? "secondary" : "outline"}
+            >
               {index.sparseState}
             </Badge>
           </Stat>
           <Stat label="Tìm theo ngữ nghĩa">
-            <Badge variant={index.denseState === "ready" ? "secondary" : "outline"}>
+            <Badge
+              variant={index.denseState === "ready" ? "secondary" : "outline"}
+            >
               {index.denseState}
             </Badge>
           </Stat>
@@ -214,10 +263,20 @@ function MemorySection({
       description={memoryModeSummary(trace)}
       actions={
         <>
-          <Button size="sm" variant="ghost" disabled={!connected} onClick={onRefreshMemory}>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!connected}
+            onClick={onRefreshMemory}
+          >
             Tải lại
           </Button>
-          <Button size="sm" variant="outline" disabled={!connected} onClick={onCompact}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!connected}
+            onClick={onCompact}
+          >
             Nén
           </Button>
         </>
@@ -239,15 +298,16 @@ function MemorySection({
         </div>
       )}
 
-      {knowledge.memory?.summary !== undefined && knowledge.memory.summary !== "" && (
-        <Field label="Tóm tắt phiên">
-          <ScrollArea className="border-border h-28 rounded-lg border p-3">
-            <p className="text-muted-foreground text-sm leading-6 whitespace-pre-wrap">
-              {knowledge.memory.summary}
-            </p>
-          </ScrollArea>
-        </Field>
-      )}
+      {knowledge.memory?.summary !== undefined &&
+        knowledge.memory.summary !== "" && (
+          <Field label="Tóm tắt phiên">
+            <ScrollArea className="border-border h-28 rounded-lg border p-3">
+              <p className="text-muted-foreground text-sm leading-6 whitespace-pre-wrap">
+                {knowledge.memory.summary}
+              </p>
+            </ScrollArea>
+          </Field>
+        )}
 
       {/* The proposal inbox is rendered only when something is in it. Nothing in
           the production runtime creates proposals today, so an always-visible
@@ -256,13 +316,20 @@ function MemorySection({
         <Field label={`Đề xuất chờ duyệt (${proposals.length})`}>
           <ul className="border-border divide-border flex flex-col divide-y rounded-lg border">
             {proposals.map((proposal) => (
-              <li key={proposal.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
+              <li
+                key={proposal.id}
+                className="flex items-center gap-3 px-3 py-2.5 text-sm"
+              >
                 <Badge variant="outline">{proposal.kind}</Badge>
                 <span className="min-w-0 flex-1">{proposal.statement}</span>
                 <span className="text-muted-foreground font-mono text-[10px]">
                   {proposal.confidence.toFixed(2)}
                 </span>
-                <Button size="sm" disabled={!connected} onClick={() => onApprove(proposal.id)}>
+                <Button
+                  size="sm"
+                  disabled={!connected}
+                  onClick={() => onApprove(proposal.id)}
+                >
                   Duyệt
                 </Button>
                 <Button
@@ -281,7 +348,8 @@ function MemorySection({
 
       {knowledge.lastAction !== null && !knowledge.lastAction.ok && (
         <p className="text-destructive text-sm">
-          {knowledge.lastAction.action} thất bại · {knowledge.lastAction.errorCode ?? "không rõ"}
+          {knowledge.lastAction.action} thất bại ·{" "}
+          {knowledge.lastAction.errorCode ?? "không rõ"}
         </p>
       )}
     </Section>
@@ -302,8 +370,9 @@ function RetrievalSection({ knowledge }: { knowledge: KnowledgeState }) {
     return (
       <Section icon={Search} title="Truy xuất gần nhất">
         <p className="text-muted-foreground text-sm leading-6">
-          Chưa có lượt nào truy xuất. Một câu hỏi mà router xử lý thẳng thì không chạm tới vault —
-          bảng trống ở đây là bình thường, không phải lỗi.
+          Chưa có lượt nào truy xuất. Một câu hỏi mà router xử lý thẳng thì
+          không chạm tới vault — bảng trống ở đây là bình thường, không phải
+          lỗi.
         </p>
       </Section>
     );
@@ -325,10 +394,14 @@ function RetrievalSection({ knowledge }: { knowledge: KnowledgeState }) {
       {trace.evidence !== null && (
         <div className="flex flex-col gap-2">
           <Stat label="Điểm cao nhất">
-            <span className="font-mono text-xs">{score(trace.evidence.top_score)}</span>
+            <span className="font-mono text-xs">
+              {score(trace.evidence.top_score)}
+            </span>
           </Stat>
           <Stat label="Khoảng cách với hạng 2">
-            <span className="font-mono text-xs">{score(trace.evidence.margin)}</span>
+            <span className="font-mono text-xs">
+              {score(trace.evidence.margin)}
+            </span>
           </Stat>
           <Stat label="Đoạn khớp">
             {trace.evidence.hit_count ?? 0} nhận · {trace.rejectedCount} loại
@@ -344,7 +417,9 @@ function RetrievalSection({ knowledge }: { knowledge: KnowledgeState }) {
                 key={`${hit.path}-${index}`}
                 className="flex items-center gap-3 px-3 py-2 text-sm"
               >
-                <span className="min-w-0 flex-1 truncate font-mono text-xs">{hit.path}</span>
+                <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                  {hit.path}
+                </span>
                 <span className="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
                   {score(hit.score)}
                 </span>
@@ -354,6 +429,127 @@ function RetrievalSection({ knowledge }: { knowledge: KnowledgeState }) {
         </Field>
       ))}
     </Section>
+  );
+}
+
+type KnowledgeDetail = "vault" | "index" | "memory" | null;
+
+function KnowledgeOverview({ props }: { props: KnowledgePanelProps }) {
+  const [detail, setDetail] = useState<KnowledgeDetail>(null);
+  const { knowledge } = props;
+  const initialized = knowledge.vault?.initialized === true;
+  const indexed = knowledge.index !== null;
+  const running = knowledgeSetupRunning(knowledge.indexJob);
+
+  const cards: Array<{
+    id: Exclude<KnowledgeDetail, null>;
+    icon: typeof FolderOpen;
+    title: string;
+    status: string;
+    description: string;
+    tone: string;
+  }> = [
+    {
+      id: "vault",
+      icon: FolderOpen,
+      title: "Vault",
+      status: initialized ? "Sẵn sàng" : "Chưa tạo",
+      description: initialized
+        ? "Tài liệu Markdown được quản lý tại một thư mục riêng."
+        : "Tạo cấu trúc vault trước khi thêm tài liệu.",
+      tone: initialized ? "bg-emerald-400" : "bg-amber-400",
+    },
+    {
+      id: "index",
+      icon: Database,
+      title: "Chỉ mục",
+      status: running
+        ? "Đang xử lý"
+        : indexed
+          ? `${knowledge.index?.documents ?? 0} tài liệu`
+          : "Chưa dựng",
+      description: indexed
+        ? "Dùng để tìm đoạn tài liệu phù hợp khi trả lời."
+        : "Chỉ cần dựng sau khi vault đã sẵn sàng.",
+      tone: running
+        ? "bg-amber-400 animate-pulse"
+        : indexed
+          ? "bg-cyan-400"
+          : "bg-muted-foreground/50",
+    },
+    {
+      id: "memory",
+      icon: BookOpen,
+      title: "Bộ nhớ phiên",
+      status:
+        knowledge.memoryTrace?.recentTurnCount !== null &&
+        knowledge.memoryTrace?.recentTurnCount !== undefined
+          ? `${knowledge.memoryTrace.recentTurnCount} lượt gần đây`
+          : "Chưa có tóm tắt",
+      description: "Tóm tắt làm việc và đề xuất cần duyệt của phiên hiện tại.",
+      tone: "bg-violet-400",
+    },
+  ];
+
+  return (
+    <>
+      <div className="grid gap-2 md:grid-cols-3">
+        {cards.map((card) => (
+          <button
+            key={card.id}
+            type="button"
+            className="border-border bg-card hover:bg-muted/50 focus-visible:ring-ring flex min-h-28 flex-col gap-3 rounded-xl border p-4 text-left outline-none transition-colors focus-visible:ring-2"
+            onClick={() => setDetail(card.id)}
+          >
+            <div className="flex w-full items-center gap-2">
+              <card.icon className="size-4" aria-hidden="true" />
+              <span className="flex-1 text-sm font-medium">{card.title}</span>
+              <span
+                className={`${card.tone} size-2 rounded-full`}
+                aria-hidden="true"
+              />
+              <ChevronRight
+                className="text-muted-foreground size-4"
+                aria-hidden="true"
+              />
+            </div>
+            <div>
+              <p className="text-sm">{card.status}</p>
+              <p className="text-muted-foreground mt-1 text-xs leading-5">
+                {card.description}
+              </p>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <Dialog
+        open={detail !== null}
+        onOpenChange={(open) => !open && setDetail(null)}
+      >
+        <DialogContent className="max-h-[min(46rem,calc(100vh-2rem))] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {detail === "vault"
+                ? "Vault"
+                : detail === "index"
+                  ? "Chỉ mục truy xuất"
+                  : "Bộ nhớ phiên"}
+            </DialogTitle>
+            <DialogDescription>
+              {detail === "vault"
+                ? "Quản lý thư mục tài liệu mà SoCa được phép dùng làm nguồn kiến thức."
+                : detail === "index"
+                  ? "Tiến trình và trạng thái của chỉ mục truy xuất trên máy này."
+                  : "Thông tin làm việc của phiên hiện tại; nội dung chỉ được lưu khi bạn đã bật lưu phiên."}
+            </DialogDescription>
+          </DialogHeader>
+          {detail === "vault" && <VaultSection {...props} />}
+          {detail === "index" && <IndexSection {...props} />}
+          {detail === "memory" && <MemorySection {...props} />}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -367,16 +563,16 @@ export function KnowledgePanel(props: KnowledgePanelProps) {
         icon={FolderOpen}
         title="Chưa có dữ liệu kiến thức"
         description="Engine chưa báo trạng thái vault. Trang này hiện thư mục tài liệu, chỉ mục truy xuất và bộ nhớ phiên."
-        hint={props.connected ? "Đang chờ engine trả lời…" : "Engine chưa chạy."}
+        hint={
+          props.connected ? "Đang chờ engine trả lời…" : "Engine chưa chạy."
+        }
       />
     );
   }
 
   return (
-    <div className="divide-border flex flex-col divide-y">
-      <VaultSection {...props} />
-      <IndexSection {...props} />
-      <MemorySection {...props} />
+    <div className="flex flex-col gap-6">
+      <KnowledgeOverview props={props} />
       <RetrievalSection knowledge={knowledge} />
     </div>
   );

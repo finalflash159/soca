@@ -1,9 +1,17 @@
 /** Voice capture with the same durable transcript as chat. */
 
-import { Activity, Mic, MicOff, MessageSquareText, Settings2, X } from "lucide-react";
+import {
+  Activity,
+  Mic,
+  MicOff,
+  MessageSquareText,
+  Settings2,
+  X,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { SessionContext } from "@/components/SessionContext";
 import { VoiceHud } from "@/components/VoiceHud";
 import {
   VoiceOrb,
@@ -15,6 +23,11 @@ import { VoiceTranscript } from "@/components/VoiceTranscript";
 import type { Citation, ConversationState, Turn } from "@/engine/conversation";
 import type { CitationPreviewIndex } from "@/engine/citation-preview";
 import type { OrbState } from "@/engine/orb";
+import type { SessionState } from "@/engine/session";
+import type {
+  SessionHistoryState,
+  SessionSummary,
+} from "@/engine/session-history";
 import type { VoiceState } from "@/engine/voice";
 import { partialText } from "@/engine/voice";
 import { cn } from "@/lib/utils";
@@ -38,6 +51,15 @@ interface VoiceModeProps {
   onLeave: () => void;
   onLoadOlder: () => void;
   canLoadOlder: boolean;
+  session: SessionState;
+  sessionHistory: SessionHistoryState;
+  sessionBusy: boolean;
+  onRefreshSession: () => void;
+  onOpenSession: (session: SessionSummary) => void;
+  onRenameSession: (session: SessionSummary, title: string) => void;
+  onDeleteSession: (session: SessionSummary) => void;
+  onLoadMoreSessions: () => void;
+  onOpenSessionSettings: () => void;
 }
 
 /**
@@ -72,7 +94,10 @@ function LiveTurn({ voice, turn }: { voice: VoiceState; turn: Turn | null }) {
     return (
       <p className="max-w-2xl text-pretty text-center text-[17px] leading-8">
         {answer}
-        <span className="bg-primary ml-1 inline-block h-4 w-[2px] animate-pulse align-text-bottom" aria-hidden="true" />
+        <span
+          className="bg-primary ml-1 inline-block h-4 w-[2px] animate-pulse align-text-bottom"
+          aria-hidden="true"
+        />
       </p>
     );
   }
@@ -111,6 +136,15 @@ export function VoiceMode({
   onLeave,
   onLoadOlder,
   canLoadOlder,
+  session,
+  sessionHistory,
+  sessionBusy,
+  onRefreshSession,
+  onOpenSession,
+  onRenameSession,
+  onDeleteSession,
+  onLoadMoreSessions,
+  onOpenSessionSettings,
 }: VoiceModeProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
 
@@ -123,11 +157,9 @@ export function VoiceMode({
       if (event.key !== "Escape") {
         return;
       }
-      // Whoever is on top gets the key. Nothing in the app opens a dialog over
-      // this page today, but a command palette would, and ending the call
-      // because someone dismissed a palette is the kind of surprise that is
-      // cheaper to prevent than to notice later.
-      if (document.querySelector('[role="dialog"][data-state="open"]') !== null) {
+      // A settings, context, or saved-session dialog owns Escape while it is
+      // open. Base UI marks an open dialog with `data-open`.
+      if (document.querySelector('[role="dialog"][data-open]') !== null) {
         return;
       }
       leaveRef.current();
@@ -144,16 +176,21 @@ export function VoiceMode({
   // what has finished. One turn, one place on screen at a time.
   const newest = conversation.turns[conversation.turns.length - 1];
   const liveTurn =
-    newest !== undefined && newest.surface === "voice" && newest.finalText === null ? newest : null;
-  const settled = liveTurn === null ? conversation.turns : conversation.turns.slice(0, -1);
+    newest !== undefined &&
+    newest.surface === "voice" &&
+    newest.finalText === null
+      ? newest
+      : null;
+  const settled =
+    liveTurn === null ? conversation.turns : conversation.turns.slice(0, -1);
   const historyVisible = transcriptOpen && !detailsOpen && !immersive;
   const status = voiceOrbStatusFor(voiceOrbModeFor(voice, ready, checking));
 
   return (
-      <div
-        // Fills the page area. The sidebar and top bar are outside it, so
-        // settings, the engine health dot and the restart button stay one click
-        // away mid-call — this screen used to cover the window and hide them.
+    <div
+      // Fills the page area. The sidebar and top bar are outside it, so
+      // settings, the engine health dot and the restart button stay one click
+      // away mid-call — this screen used to cover the window and hide them.
       className="bg-background flex h-full w-full flex-col"
       role="region"
       aria-label="Chế độ thoại"
@@ -165,14 +202,31 @@ export function VoiceMode({
         )}
         data-voice-presentation={presentation}
       >
-        <VoiceOrb voice={voice} ready={ready} checking={checking} presentation={presentation} />
+        <VoiceOrb
+          voice={voice}
+          ready={ready}
+          checking={checking}
+          presentation={presentation}
+        />
 
-        <div className={cn("flex max-w-2xl flex-col items-center justify-start gap-3", immersive ? "min-h-0" : "min-h-20")}>
-          <p className="text-muted-foreground text-pretty text-center text-sm" role="status" aria-atomic="true">
+        <div
+          className={cn(
+            "flex max-w-2xl flex-col items-center justify-start gap-3",
+            immersive ? "min-h-0" : "min-h-20",
+          )}
+        >
+          <p
+            className="text-muted-foreground text-pretty text-center text-sm"
+            role="status"
+            aria-atomic="true"
+          >
             {status}
           </p>
           {!ready && checking ? (
-            <p className="text-muted-foreground max-w-md text-center text-sm leading-6" role="status">
+            <p
+              className="text-muted-foreground max-w-md text-center text-sm leading-6"
+              role="status"
+            >
               {setupSummary ?? "Đang xác minh Voice trên máy này…"}
             </p>
           ) : !ready ? (
@@ -183,12 +237,17 @@ export function VoiceMode({
                   : "Voice đang chờ xác nhận runtime"}
               </h2>
               <p className="text-muted-foreground mt-1 text-sm leading-6">
-                {setupSummary ?? "Voice đang kiểm tra các thành phần trên máy này."}
+                {setupSummary ??
+                  "Voice đang kiểm tra các thành phần trên máy này."}
               </p>
               {setupDetail !== null && (
                 <details className="text-muted-foreground mt-3 text-xs">
-                  <summary className="cursor-pointer select-none">Thông tin kỹ thuật</summary>
-                  <p className="mt-2 break-words font-mono leading-5">{setupDetail}</p>
+                  <summary className="cursor-pointer select-none">
+                    Thông tin kỹ thuật
+                  </summary>
+                  <p className="mt-2 break-words font-mono leading-5">
+                    {setupDetail}
+                  </p>
                 </details>
               )}
               {setupActionAvailable ? (
@@ -197,8 +256,12 @@ export function VoiceMode({
                   Mở thiết lập Voice
                 </Button>
               ) : (
-                <p className="text-muted-foreground mt-4 text-xs leading-5" role="status">
-                  Không cần chọn lại model hoặc runtime. Microphone sẽ được mở khi runtime đã được xác nhận.
+                <p
+                  className="text-muted-foreground mt-4 text-xs leading-5"
+                  role="status"
+                >
+                  Không cần chọn lại model hoặc runtime. Microphone sẽ được mở
+                  khi runtime đã được xác nhận.
                 </p>
               )}
             </div>
@@ -209,19 +272,35 @@ export function VoiceMode({
                   className="border-destructive/35 bg-destructive/5 w-full max-w-md rounded-xl border p-4 text-left"
                   role="alert"
                 >
-                  <h2 className="text-sm font-medium">Voice chưa thể bắt đầu</h2>
-                  <p className="text-muted-foreground mt-1 text-sm leading-6">{voice.error}</p>
+                  <h2 className="text-sm font-medium">
+                    Voice chưa thể bắt đầu
+                  </h2>
+                  <p className="text-muted-foreground mt-1 text-sm leading-6">
+                    {voice.error}
+                  </p>
                   <Button className="mt-4" size="sm" onClick={onToggleMic}>
                     Thử lại
                   </Button>
                 </div>
               ) : voice.noSpeechDetected ? (
-                <div className="border-border bg-muted/30 w-full max-w-md rounded-xl border p-4 text-left" role="status">
-                  <h2 className="text-sm font-medium">Chưa nhận được lời nói</h2>
+                <div
+                  className="border-border bg-muted/30 w-full max-w-md rounded-xl border p-4 text-left"
+                  role="status"
+                >
+                  <h2 className="text-sm font-medium">
+                    Chưa nhận được lời nói
+                  </h2>
                   <p className="text-muted-foreground mt-1 text-sm leading-6">
-                    Lượt thu gần nhất đã đến VAD nhưng không có speech. Kiểm tra quyền microphone và thiết bị đầu vào, rồi nói lại gần microphone.
+                    Lượt thu gần nhất đã đến VAD nhưng không có speech. Kiểm tra
+                    quyền microphone và thiết bị đầu vào, rồi nói lại gần
+                    microphone.
                   </p>
-                  <Button className="mt-4" size="sm" variant="outline" onClick={onOpenSetup}>
+                  <Button
+                    className="mt-4"
+                    size="sm"
+                    variant="outline"
+                    onClick={onOpenSetup}
+                  >
                     Kiểm tra microphone
                   </Button>
                 </div>
@@ -254,6 +333,20 @@ export function VoiceMode({
       )}
 
       <div className="shrink-0 px-6 pb-8">
+        {!immersive && (
+          <SessionContext
+            session={session}
+            history={sessionHistory}
+            connected={connected}
+            busy={sessionBusy}
+            onRefresh={onRefreshSession}
+            onOpenSession={onOpenSession}
+            onRenameSession={onRenameSession}
+            onDeleteSession={onDeleteSession}
+            onLoadMoreSessions={onLoadMoreSessions}
+            onOpenSessionSettings={onOpenSessionSettings}
+          />
+        )}
         <div className="border-border/70 bg-card mx-auto flex w-fit items-center gap-2 rounded-full border p-2">
           <Button
             size="sm"
@@ -268,7 +361,11 @@ export function VoiceMode({
             disabled={!connected || !ready}
             onClick={onToggleMic}
           >
-            {running ? <Mic className="size-5" /> : <MicOff className="size-5" />}
+            {running ? (
+              <Mic className="size-5" />
+            ) : (
+              <MicOff className="size-5" />
+            )}
           </Button>
 
           <Button
