@@ -27,14 +27,18 @@ const otherSessionId = "33333333-3333-4333-8333-333333333333";
 
 function emit(channel: string, payload: unknown): void {
   const listener = tauri.listeners.get(channel);
-  if (listener === undefined) throw new Error(`listener not attached for ${channel}`);
+  if (listener === undefined)
+    throw new Error(`listener not attached for ${channel}`);
   act(() => listener({ payload }));
 }
 
 function engineSendCommands(): Array<Record<string, unknown>> {
   return tauri.invoke.mock.calls
     .filter(([command]) => command === "engine_send")
-    .map(([, arguments_]) => (arguments_ as { command: Record<string, unknown> }).command);
+    .map(
+      ([, arguments_]) =>
+        (arguments_ as { command: Record<string, unknown> }).command,
+    );
 }
 
 async function renderReadyApp(): Promise<void> {
@@ -64,9 +68,18 @@ async function renderReadyApp(): Promise<void> {
     runtime_reason: null,
     settings_error: null,
   });
-  await waitFor(() => {
-    expect((screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement).disabled).toBe(false);
-  }, { timeout: 5_000 });
+  await waitFor(
+    () => {
+      expect(
+        (
+          screen.getByRole("textbox", {
+            name: "Message",
+          }) as HTMLTextAreaElement
+        ).disabled,
+      ).toBe(false);
+    },
+    { timeout: 5_000 },
+  );
 }
 
 function oldSnapshot(nextTurnCursor: number | null = null): EngineFrame {
@@ -120,10 +133,15 @@ beforeEach(() => {
   tauri.invoke.mockImplementation(async (command: string) =>
     command === "microphone_request_access" ? "authorized" : undefined,
   );
-  tauri.listen.mockImplementation(async (channel: string, callback: (event: { payload: unknown }) => void) => {
-    tauri.listeners.set(channel, callback);
-    return () => tauri.listeners.delete(channel);
-  });
+  tauri.listen.mockImplementation(
+    async (
+      channel: string,
+      callback: (event: { payload: unknown }) => void,
+    ) => {
+      tauri.listeners.set(channel, callback);
+      return () => tauri.listeners.delete(channel);
+    },
+  );
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
     value: () => ({
@@ -165,9 +183,13 @@ describe("desktop session lifecycle", () => {
   it("remembers an explicit desktop sidebar collapse without touching session data", async () => {
     await renderReadyApp();
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "Thu gọn thanh bên" }));
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Thu gọn thanh bên" }));
 
-    expect(window.localStorage.getItem(SIDEBAR_PREFERENCE_STORAGE_KEY)).toBe("collapsed");
+    expect(window.localStorage.getItem(SIDEBAR_PREFERENCE_STORAGE_KEY)).toBe(
+      "collapsed",
+    );
     expect(window.localStorage.getItem(PERSISTENCE_STORAGE_KEY)).toBeNull();
   });
 
@@ -205,14 +227,19 @@ describe("desktop session lifecycle", () => {
         expect.objectContaining({ options: expect.any(Object) }),
       );
     });
-    emit(STATUS_CHANNEL, { state: "failed", message: "engine already running" });
+    emit(STATUS_CHANNEL, {
+      state: "failed",
+      message: "engine already running",
+    });
 
     await user.click(screen.getByRole("button", { name: "Khởi động" }));
 
     await waitFor(() => {
       expect(tauri.invoke).toHaveBeenCalledWith("engine_stop");
       expect(
-        tauri.invoke.mock.calls.filter(([command]) => command === "engine_start"),
+        tauri.invoke.mock.calls.filter(
+          ([command]) => command === "engine_start",
+        ),
       ).toHaveLength(2);
     });
   });
@@ -223,25 +250,46 @@ describe("desktop session lifecycle", () => {
     emit(EVENT_CHANNEL, {
       event: "status",
       runtime_components: [
-        { id: "voice_asr", label: "Voice ASR", status: "missing", detail: "qwen-asr" },
-        { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote · openrouter:gpt" },
+        {
+          id: "voice_asr",
+          label: "Voice ASR",
+          status: "missing",
+          detail: "qwen-asr",
+        },
+        {
+          id: "voice_llm",
+          label: "Voice LLM",
+          status: "ready",
+          detail: "remote · openrouter:gpt",
+        },
         { id: "tts", label: "TTS", status: "missing", detail: "valtec" },
-        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+        {
+          id: "smart_turn",
+          label: "Smart Turn",
+          status: "configured",
+          detail: "bundled",
+        },
       ],
     });
 
     await user.click(screen.getByRole("button", { name: "Thoại" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Thiết lập Voice trước khi bật microphone")).not.toBeNull();
       expect(
-        screen.getByText("Qwen ASR chưa sẵn sàng."),
+        screen.getByText("Thiết lập Voice trước khi bật microphone"),
       ).not.toBeNull();
+      expect(screen.getByText("Qwen ASR chưa sẵn sàng.")).not.toBeNull();
     });
-    expect(screen.getByTestId("voice-orb").getAttribute("data-voice-orb-mode")).toBe("setup");
-    expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
+    expect(
+      screen.getByTestId("voice-orb").getAttribute("data-voice-orb-mode"),
+    ).toBe("setup");
+    expect(
+      engineSendCommands().some((command) => command.cmd === "voice_start"),
+    ).toBe(false);
 
-    await user.click(screen.getByRole("button", { name: "Mở thiết lập Voice" }));
+    await user.click(
+      screen.getByRole("button", { name: "Mở thiết lập Voice" }),
+    );
     await waitFor(() => {
       expect(screen.getByText("Trạng thái thoại")).not.toBeNull();
     });
@@ -263,10 +311,25 @@ describe("desktop session lifecycle", () => {
     emit(EVENT_CHANNEL, {
       event: "status",
       runtime_components: [
-        { id: "voice_asr", label: "Voice ASR", status: "ok", detail: "Qwen verified" },
-        { id: "voice_llm", label: "Voice LLM", status: "missing", detail: "catalog loading" },
+        {
+          id: "voice_asr",
+          label: "Voice ASR",
+          status: "ok",
+          detail: "Qwen verified",
+        },
+        {
+          id: "voice_llm",
+          label: "Voice LLM",
+          status: "missing",
+          detail: "catalog loading",
+        },
         { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
-        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+        {
+          id: "smart_turn",
+          label: "Smart Turn",
+          status: "configured",
+          detail: "bundled",
+        },
       ],
     });
 
@@ -275,8 +338,13 @@ describe("desktop session lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText("Đang chuẩn bị Voice…")).not.toBeNull();
     });
-    expect(screen.queryByRole("button", { name: "Mở thiết lập Voice" })).toBeNull();
-    expect((screen.getByRole("button", { name: "Bật mic" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: "Mở thiết lập Voice" }),
+    ).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "Bật mic" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
 
     emit(EVENT_CHANNEL, {
       event: "llm_config",
@@ -290,9 +358,14 @@ describe("desktop session lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect((screen.getByRole("button", { name: "Bật mic" }) as HTMLButtonElement).disabled).toBe(false);
+      expect(
+        (screen.getByRole("button", { name: "Bật mic" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
     });
-    expect(screen.queryByRole("button", { name: "Mở thiết lập Voice" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Mở thiết lập Voice" }),
+    ).toBeNull();
   });
 
   it("keeps a verified Qwen installation in Voice while calibration is pending", async () => {
@@ -301,22 +374,50 @@ describe("desktop session lifecycle", () => {
     emit(EVENT_CHANNEL, {
       event: "status",
       runtime_components: [
-        { id: "voice_asr", label: "Voice ASR", status: "not_ready", detail: "confidence calibration identity is not qualified" },
-        { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote · openrouter:gpt" },
+        {
+          id: "voice_asr",
+          label: "Voice ASR",
+          status: "not_ready",
+          detail: "confidence calibration identity is not qualified",
+        },
+        {
+          id: "voice_llm",
+          label: "Voice LLM",
+          status: "ready",
+          detail: "remote · openrouter:gpt",
+        },
         { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
-        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+        {
+          id: "smart_turn",
+          label: "Smart Turn",
+          status: "configured",
+          detail: "bundled",
+        },
       ],
     });
 
     await user.click(screen.getByRole("button", { name: "Thoại" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Voice đang chờ xác nhận runtime")).not.toBeNull();
-      expect(screen.getByText("Qwen ASR đã cài đặt, nhưng runtime này chưa có calibration được xác nhận.")).not.toBeNull();
+      expect(
+        screen.getByText("Voice đang chờ xác nhận runtime"),
+      ).not.toBeNull();
+      expect(
+        screen.getByText(
+          "Qwen ASR đã cài đặt, nhưng runtime này chưa có calibration được xác nhận.",
+        ),
+      ).not.toBeNull();
     });
-    expect(screen.queryByRole("button", { name: "Mở thiết lập Voice" })).toBeNull();
-    expect((screen.getByRole("button", { name: "Bật mic" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
+    expect(
+      screen.queryByRole("button", { name: "Mở thiết lập Voice" }),
+    ).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "Bật mic" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      engineSendCommands().some((command) => command.cmd === "voice_start"),
+    ).toBe(false);
   });
 
   it("uses the immersive orb only while the microphone is capturing", async () => {
@@ -325,17 +426,36 @@ describe("desktop session lifecycle", () => {
     emit(EVENT_CHANNEL, {
       event: "status",
       runtime_components: [
-        { id: "voice_asr", label: "Voice ASR", status: "ready", detail: "qwen" },
-        { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote" },
+        {
+          id: "voice_asr",
+          label: "Voice ASR",
+          status: "ready",
+          detail: "qwen",
+        },
+        {
+          id: "voice_llm",
+          label: "Voice LLM",
+          status: "ready",
+          detail: "remote",
+        },
         { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
-        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+        {
+          id: "smart_turn",
+          label: "Smart Turn",
+          status: "configured",
+          detail: "bundled",
+        },
       ],
     });
 
     await user.click(screen.getByRole("button", { name: "Thoại" }));
     emit(EVENT_CHANNEL, { event: "voice", type: "recording", metadata: {} });
     await waitFor(() => {
-      expect(screen.getByTestId("voice-orb").getAttribute("data-voice-orb-presentation")).toBe("immersive");
+      expect(
+        screen
+          .getByTestId("voice-orb")
+          .getAttribute("data-voice-orb-presentation"),
+      ).toBe("immersive");
     });
 
     emit(EVENT_CHANNEL, {
@@ -347,7 +467,11 @@ describe("desktop session lifecycle", () => {
 
     emit(EVENT_CHANNEL, { event: "voice", type: "recorded", metadata: {} });
     await waitFor(() => {
-      expect(screen.getByTestId("voice-orb").getAttribute("data-voice-orb-presentation")).toBe("compact");
+      expect(
+        screen
+          .getByTestId("voice-orb")
+          .getAttribute("data-voice-orb-presentation"),
+      ).toBe("compact");
       expect(screen.getByText("xin chào")).not.toBeNull();
     });
   });
@@ -358,17 +482,34 @@ describe("desktop session lifecycle", () => {
     emit(EVENT_CHANNEL, {
       event: "status",
       runtime_components: [
-        { id: "voice_asr", label: "Voice ASR", status: "ready", detail: "qwen" },
-        { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote" },
+        {
+          id: "voice_asr",
+          label: "Voice ASR",
+          status: "ready",
+          detail: "qwen",
+        },
+        {
+          id: "voice_llm",
+          label: "Voice LLM",
+          status: "ready",
+          detail: "remote",
+        },
         { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
-        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+        {
+          id: "smart_turn",
+          label: "Smart Turn",
+          status: "configured",
+          detail: "bundled",
+        },
       ],
     });
 
     await user.click(screen.getByRole("button", { name: "Thoại" }));
     await user.click(screen.getByRole("button", { name: "Bật mic" }));
     await waitFor(() => {
-      expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(true);
+      expect(
+        engineSendCommands().some((command) => command.cmd === "voice_start"),
+      ).toBe(true);
     });
 
     emit(EVENT_CHANNEL, {
@@ -379,13 +520,19 @@ describe("desktop session lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toContain("Voice chưa thể bắt đầu");
+      expect(screen.getByRole("alert").textContent).toContain(
+        "Voice chưa thể bắt đầu",
+      );
       expect(screen.getByRole("button", { name: "Thử lại" })).not.toBeNull();
     });
-    expect(screen.queryByText("Trợ lý tiếng Việt chạy trên máy bạn.")).toBeNull();
+    expect(
+      screen.queryByText("Trợ lý tiếng Việt chạy trên máy bạn."),
+    ).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Thử lại" }));
-    expect(engineSendCommands().filter((command) => command.cmd === "voice_start")).toHaveLength(2);
+    expect(
+      engineSendCommands().filter((command) => command.cmd === "voice_start"),
+    ).toHaveLength(2);
   });
 
   it("does not start the sidecar when macOS denies microphone access", async () => {
@@ -394,10 +541,25 @@ describe("desktop session lifecycle", () => {
     emit(EVENT_CHANNEL, {
       event: "status",
       runtime_components: [
-        { id: "voice_asr", label: "Voice ASR", status: "ready", detail: "qwen" },
-        { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote" },
+        {
+          id: "voice_asr",
+          label: "Voice ASR",
+          status: "ready",
+          detail: "qwen",
+        },
+        {
+          id: "voice_llm",
+          label: "Voice LLM",
+          status: "ready",
+          detail: "remote",
+        },
         { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
-        { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+        {
+          id: "smart_turn",
+          label: "Smart Turn",
+          status: "configured",
+          detail: "bundled",
+        },
       ],
     });
     tauri.invoke.mockImplementation(async (command: string) =>
@@ -410,7 +572,9 @@ describe("desktop session lifecycle", () => {
     await waitFor(() => {
       expect(screen.getByText(/SoCa cần quyền microphone/)).not.toBeNull();
     });
-    expect(engineSendCommands().some((command) => command.cmd === "voice_start")).toBe(false);
+    expect(
+      engineSendCommands().some((command) => command.cmd === "voice_start"),
+    ).toBe(false);
   });
 
   it("loads older transcript pages with the engine's exclusive sequence boundary", async () => {
@@ -422,7 +586,8 @@ describe("desktop session lifecycle", () => {
     await waitFor(() => {
       expect(
         engineSendCommands().some(
-          (command) => command.cmd === "session_turns" && command.before_sequence === 0,
+          (command) =>
+            command.cmd === "session_turns" && command.before_sequence === 0,
         ),
       ).toBe(true);
     });
@@ -441,7 +606,7 @@ describe("desktop session lifecycle", () => {
           status: "completed",
           terminal_status: "achieved",
         },
-        ...((oldSnapshot() as { turns: Array<Record<string, unknown>> }).turns),
+        ...(oldSnapshot() as { turns: Array<Record<string, unknown>> }).turns,
       ],
     });
 
@@ -457,11 +622,19 @@ describe("desktop session lifecycle", () => {
     emit(EVENT_CHANNEL, oldSnapshot());
     expect(screen.getByText("Câu hỏi trước đó")).not.toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Cuộc trò chuyện mới" }));
+    await user.click(
+      screen.getByRole("button", { name: "Cuộc trò chuyện mới" }),
+    );
     await waitFor(() => {
-      expect(engineSendCommands().some((command) => command.cmd === "session_create")).toBe(true);
+      expect(
+        engineSendCommands().some(
+          (command) => command.cmd === "session_create",
+        ),
+      ).toBe(true);
     });
-    const create = engineSendCommands().find((command) => command.cmd === "session_create");
+    const create = engineSendCommands().find(
+      (command) => command.cmd === "session_create",
+    );
     const requestId = create?.request_id;
     expect(typeof requestId).toBe("string");
 
@@ -490,7 +663,9 @@ describe("desktop session lifecycle", () => {
     emit(EVENT_CHANNEL, newSnapshot());
     await waitFor(() => {
       expect(screen.queryByText("Câu hỏi trước đó")).toBeNull();
-      expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Message" }));
+      expect(document.activeElement).toBe(
+        screen.getByRole("textbox", { name: "Message" }),
+      );
     });
   });
 
@@ -499,11 +674,19 @@ describe("desktop session lifecycle", () => {
     await renderReadyApp();
     emit(EVENT_CHANNEL, oldSnapshot());
 
-    await user.click(screen.getByRole("button", { name: "Cuộc trò chuyện mới" }));
+    await user.click(
+      screen.getByRole("button", { name: "Cuộc trò chuyện mới" }),
+    );
     await waitFor(() => {
-      expect(engineSendCommands().some((command) => command.cmd === "session_create")).toBe(true);
+      expect(
+        engineSendCommands().some(
+          (command) => command.cmd === "session_create",
+        ),
+      ).toBe(true);
     });
-    const create = engineSendCommands().find((command) => command.cmd === "session_create");
+    const create = engineSendCommands().find(
+      (command) => command.cmd === "session_create",
+    );
 
     emit(EVENT_CHANNEL, {
       event: "session_operation",
@@ -551,13 +734,24 @@ describe("desktop session lifecycle", () => {
       ],
     });
 
-    await user.click(screen.getByRole("button", { name: /thao tác cho phiên phiên cần xóa/i }));
-    await user.click(await screen.findByRole("menuitem", { name: /xóa vĩnh viễn/i }));
+    await user.click(screen.getByRole("button", { name: "Phiên đã lưu" }));
+    await user.click(
+      screen.getByRole("button", { name: /thao tác cho phiên phiên cần xóa/i }),
+    );
+    await user.click(
+      await screen.findByRole("menuitem", { name: /xóa vĩnh viễn/i }),
+    );
     await user.click(screen.getByRole("button", { name: "Xóa vĩnh viễn" }));
     await waitFor(() => {
-      expect(engineSendCommands().some((command) => command.cmd === "session_delete")).toBe(true);
+      expect(
+        engineSendCommands().some(
+          (command) => command.cmd === "session_delete",
+        ),
+      ).toBe(true);
     });
-    const deletion = engineSendCommands().find((command) => command.cmd === "session_delete");
+    const deletion = engineSendCommands().find(
+      (command) => command.cmd === "session_delete",
+    );
 
     emit(EVENT_CHANNEL, {
       event: "session_operation",
@@ -568,7 +762,10 @@ describe("desktop session lifecycle", () => {
       revision: null,
       error_code: null,
     });
-    expect((screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement).disabled).toBe(true);
+    expect(
+      (screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement)
+        .disabled,
+    ).toBe(true);
 
     emit(EVENT_CHANNEL, {
       event: "session_operation",
@@ -580,7 +777,13 @@ describe("desktop session lifecycle", () => {
       error_code: null,
     });
     await waitFor(() => {
-      expect((screen.getByRole("textbox", { name: "Message" }) as HTMLTextAreaElement).disabled).toBe(false);
+      expect(
+        (
+          screen.getByRole("textbox", {
+            name: "Message",
+          }) as HTMLTextAreaElement
+        ).disabled,
+      ).toBe(false);
       expect(screen.getByText("Câu hỏi trước đó")).not.toBeNull();
     });
   });
@@ -596,19 +799,29 @@ describe("desktop session lifecycle", () => {
     });
 
     await user.click(screen.getByRole("button", { name: "Cài đặt" }));
-    await user.click(await screen.findByRole("button", { name: "Bật lưu phiên" }));
-    expect(screen.getByRole("dialog").textContent).toContain("Bật lưu phiên trên máy?");
-    await user.click(screen.getByRole("button", { name: "Đồng ý và khởi động lại" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Bật lưu phiên" }),
+    );
+    expect(screen.getByRole("dialog").textContent).toContain(
+      "Bật lưu phiên trên máy?",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Đồng ý và khởi động lại" }),
+    );
 
     await waitFor(() => {
       expect(tauri.invoke).toHaveBeenCalledWith("engine_stop");
       expect(tauri.invoke).toHaveBeenCalledWith(
         "engine_start",
         expect.objectContaining({
-          options: expect.objectContaining({ args: ["--session-persistence", "local_resumable"] }),
+          options: expect.objectContaining({
+            args: ["--session-persistence", "local_resumable"],
+          }),
         }),
       );
     });
-    expect(window.localStorage.getItem(PERSISTENCE_STORAGE_KEY)).toBe("local_resumable");
+    expect(window.localStorage.getItem(PERSISTENCE_STORAGE_KEY)).toBe(
+      "local_resumable",
+    );
   });
 });

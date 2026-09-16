@@ -109,15 +109,35 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+async function openProviderSettings(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: /OpenRouter/i }));
+  return screen.findByRole("dialog", { name: "Thiết lập nhà cung cấp" });
+}
+
+async function openVoiceSettings(user: ReturnType<typeof userEvent.setup>) {
+  const trigger = screen
+    .getAllByRole("button")
+    .find((button) =>
+      /^(Thiết lập|Quản lý)$/.test(button.textContent?.trim() ?? ""),
+    );
+  if (trigger === undefined)
+    throw new Error("Voice settings trigger was not rendered");
+  await user.click(trigger);
+  return screen.findByRole("dialog", { name: "Thiết lập Voice" });
+}
+
 describe("SettingsPanel remote configuration", () => {
   it("opens remote setup without applying a local GGUF id as a remote model", async () => {
     const user = userEvent.setup();
     const { props } = renderPanel();
 
     await user.click(screen.getByRole("button", { name: "Remote" }));
+    const dialog = await openProviderSettings(user);
 
-    expect(screen.getByText(/chưa áp dụng — hãy chọn model remote/i)).toBeTruthy();
-    expect(screen.getByText(/chỉ chuyển sang remote sau khi/i)).toBeTruthy();
+    expect(dialog).toBeTruthy();
+    expect(
+      screen.getByText(/chọn model để dùng nhà cung cấp này/i),
+    ).toBeTruthy();
     expect(props.onApplyGeneration).not.toHaveBeenCalled();
   });
 
@@ -126,9 +146,13 @@ describe("SettingsPanel remote configuration", () => {
     const { props } = renderPanel();
 
     await user.click(screen.getByRole("button", { name: "Remote" }));
+    await openProviderSettings(user);
     await user.click(screen.getByRole("button", { name: "Chọn" }));
 
-    expect(props.onSelectModel).toHaveBeenCalledWith("openrouter", remoteModel.id);
+    expect(props.onSelectModel).toHaveBeenCalledWith(
+      "openrouter",
+      remoteModel.id,
+    );
   });
 
   it("shows remote readiness failure as configuration state, not as local model failure", () => {
@@ -136,7 +160,12 @@ describe("SettingsPanel remote configuration", () => {
       settings: {
         ...initialSettings,
         providers: [
-          { key: "openrouter", label: "OpenRouter", hasKey: true, hasPricingApi: true },
+          {
+            key: "openrouter",
+            label: "OpenRouter",
+            hasKey: true,
+            hasPricingApi: true,
+          },
         ],
         config: {
           ...localConfig,
@@ -154,7 +183,10 @@ describe("SettingsPanel remote configuration", () => {
 
     expect(screen.getByText("Đang xác minh model chat đã chọn.")).toBeTruthy();
     expect(screen.queryByText(/chưa tìm thấy model local/i)).toBeNull();
-    expect(screen.getByLabelText("Thư mục model Voice và On-device")).toBeTruthy();
+    expect(screen.queryByLabelText("Kho model Voice và On-device")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /OpenRouter.*Đang dùng/i }),
+    ).toBeTruthy();
   });
 
   it("lets a Remote user pick and apply an existing Voice model directory", async () => {
@@ -167,9 +199,14 @@ describe("SettingsPanel remote configuration", () => {
       },
     });
 
-    await user.click(screen.getByRole("button", { name: "Chọn thư mục model…" }));
+    await openVoiceSettings(user);
+    await user.click(
+      screen.getByRole("button", { name: "Chọn thư mục model…" }),
+    );
 
-    expect(nativeOpen).toHaveBeenCalledWith(expect.objectContaining({ directory: true, multiple: false }));
+    expect(nativeOpen).toHaveBeenCalledWith(
+      expect.objectContaining({ directory: true, multiple: false }),
+    );
     expect(props.onSetModelRoot).toHaveBeenCalledWith("/Volumes/models");
   });
 
@@ -178,34 +215,62 @@ describe("SettingsPanel remote configuration", () => {
     nativeOpen.mockRejectedValueOnce(new Error("permission denied"));
     const { props } = renderPanel();
 
-    await user.click(screen.getByRole("button", { name: "Chọn thư mục model…" }));
+    await openVoiceSettings(user);
+    await user.click(
+      screen.getByRole("button", { name: "Chọn thư mục model…" }),
+    );
 
-    expect((await screen.findByRole("alert")).textContent).toMatch(/không thể mở hộp chọn thư mục/i);
+    expect((await screen.findByRole("alert")).textContent).toMatch(
+      /không thể mở hộp chọn thư mục/i,
+    );
     expect(props.onSetModelRoot).not.toHaveBeenCalled();
   });
 
-  it("shows each voice dependency instead of presenting an unavailable microphone as ready", () => {
+  it("shows each voice dependency instead of presenting an unavailable microphone as ready", async () => {
+    const user = userEvent.setup();
     renderPanel({
       settings: {
         ...initialSettings,
         config: localConfig,
         runtimeComponents: [
-          { id: "chat_llm", label: "Chat LLM", status: "ready", detail: "local · chat.gguf" },
-          { id: "voice_asr", label: "Voice ASR", status: "missing", detail: "qwen-asr" },
-          { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote · openrouter:gpt" },
+          {
+            id: "chat_llm",
+            label: "Chat LLM",
+            status: "ready",
+            detail: "local · chat.gguf",
+          },
+          {
+            id: "voice_asr",
+            label: "Voice ASR",
+            status: "missing",
+            detail: "qwen-asr",
+          },
+          {
+            id: "voice_llm",
+            label: "Voice LLM",
+            status: "ready",
+            detail: "remote · openrouter:gpt",
+          },
           { id: "tts", label: "TTS", status: "missing", detail: "valtec" },
-          { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+          {
+            id: "smart_turn",
+            label: "Smart Turn",
+            status: "configured",
+            detail: "bundled",
+          },
         ],
       },
     });
 
+    await openVoiceSettings(user);
     expect(screen.getByText("Trạng thái thoại")).toBeTruthy();
     expect(
-      screen.getByText("Qwen ASR chưa sẵn sàng cho profile đang chọn."),
-    ).toBeTruthy();
+      screen.getAllByText("Qwen ASR chưa sẵn sàng cho profile đang chọn."),
+    ).toHaveLength(2);
   });
 
-  it("explains a Qwen validation failure and exposes its setup controls", () => {
+  it("explains a Qwen validation failure and exposes its setup controls", async () => {
+    const user = userEvent.setup();
     renderPanel({
       settings: {
         ...initialSettings,
@@ -225,6 +290,7 @@ describe("SettingsPanel remote configuration", () => {
       },
     });
 
+    await openVoiceSettings(user);
     expect(screen.getByText("Unavailable")).toBeTruthy();
     expect(screen.queryByText("invalid")).toBeNull();
     expect(screen.getByText(/runtime or immutable model store/i)).toBeTruthy();
@@ -233,24 +299,50 @@ describe("SettingsPanel remote configuration", () => {
     expect(screen.queryByRole("button", { name: "Chọn" })).toBeNull();
   });
 
-  it("does not send a verified Qwen installation back to folder setup while calibration is pending", () => {
+  it("does not send a verified Qwen installation back to folder setup while calibration is pending", async () => {
+    const user = userEvent.setup();
     renderPanel({
       settings: {
         ...initialSettings,
         config: localConfig,
         runtimeComponents: [
-          { id: "chat_llm", label: "Chat LLM", status: "ready", detail: "local · chat.gguf" },
-          { id: "voice_asr", label: "Voice ASR", status: "not_ready", detail: "confidence calibration identity is not qualified" },
-          { id: "voice_llm", label: "Voice LLM", status: "ready", detail: "remote · openrouter:gpt" },
+          {
+            id: "chat_llm",
+            label: "Chat LLM",
+            status: "ready",
+            detail: "local · chat.gguf",
+          },
+          {
+            id: "voice_asr",
+            label: "Voice ASR",
+            status: "not_ready",
+            detail: "confidence calibration identity is not qualified",
+          },
+          {
+            id: "voice_llm",
+            label: "Voice LLM",
+            status: "ready",
+            detail: "remote · openrouter:gpt",
+          },
           { id: "tts", label: "TTS", status: "ready", detail: "valtec" },
-          { id: "smart_turn", label: "Smart Turn", status: "configured", detail: "bundled" },
+          {
+            id: "smart_turn",
+            label: "Smart Turn",
+            status: "configured",
+            detail: "bundled",
+          },
         ],
       },
     });
 
-    expect(screen.getByText(/Qwen ASR và model đã được xác minh/i)).toBeTruthy();
+    await openVoiceSettings(user);
+    expect(
+      screen.getAllByText(/Qwen ASR và model đã được xác minh/i),
+    ).toHaveLength(2);
     expect(screen.getByText("Verification required")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Thiết lập Qwen ASR" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Thiết lập Qwen ASR" }),
+    ).toBeNull();
   });
 
   it("applies a chosen Qwen model store independently from general models", async () => {
@@ -258,8 +350,11 @@ describe("SettingsPanel remote configuration", () => {
     nativeOpen.mockResolvedValueOnce("/Volumes/qwen-models");
     const { props } = renderPanel();
 
+    await openVoiceSettings(user);
     await user.click(screen.getByRole("button", { name: "Chọn kho model…" }));
 
-    expect(props.onSetQwenAsrModelRoot).toHaveBeenCalledWith("/Volumes/qwen-models");
+    expect(props.onSetQwenAsrModelRoot).toHaveBeenCalledWith(
+      "/Volumes/qwen-models",
+    );
   });
 });

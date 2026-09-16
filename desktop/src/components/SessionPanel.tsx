@@ -1,15 +1,4 @@
-/**
- * Prompt budget and session usage.
- *
- * The engine has always answered `context` and `usage`; nothing rendered them,
- * so `/context` and `/usage` were commands that appeared to do nothing.
- *
- * The one rule that shapes this panel comes from `docs/18-engine-protocol.md`
- * §4: an estimated manifest must never be presented as observed usage. So the
- * basis is stated in the header rather than hidden, and the observed figures
- * stay blank until a provider reports them instead of falling back to the
- * estimate.
- */
+/** Context and usage disclosures for the active conversation. */
 
 import { PanelEmpty, PanelRow, PanelSection } from "@/components/PanelSection";
 import { Badge } from "@/components/ui/badge";
@@ -35,19 +24,19 @@ export function SessionPanel({ session, connected, onRefresh }: SessionPanelProp
   return (
     <div className="flex w-full flex-col gap-3">
       <PanelSection
-        title="Prompt budget"
+        title="Ngân sách ngữ cảnh"
         description={contextBasis(context)}
         status={
           context !== null && context.estimated ? <Badge variant="outline">ước lượng</Badge> : null
         }
         action={
           <Button size="sm" variant="ghost" disabled={!connected} onClick={onRefresh}>
-            Refresh
+            Cập nhật
           </Button>
         }
       >
         {context === null ? (
-          <PanelEmpty>Chưa nạp. Bấm Refresh hoặc gõ /context.</PanelEmpty>
+          <PanelEmpty>Chưa có số liệu. Bấm Cập nhật hoặc gõ /context.</PanelEmpty>
         ) : !context.ready ? (
           <p className="text-destructive text-xs">
             {context.error ?? "không dựng được manifest"}
@@ -64,10 +53,10 @@ export function SessionPanel({ session, connected, onRefresh }: SessionPanelProp
                 </span>
               </div>
             )}
-            <PanelRow label="context window">{tokens(context.modelContextTokens)}</PanelRow>
-            <PanelRow label="dành cho output">{tokens(context.outputReserveTokens)}</PanelRow>
-            <PanelRow label="còn cho động">{tokens(context.availableDynamicTokens)}</PanelRow>
-            <PanelRow label="provider đếm">
+            <PanelRow label="Cửa sổ ngữ cảnh">{tokens(context.modelContextTokens)}</PanelRow>
+            <PanelRow label="Dành cho phản hồi">{tokens(context.outputReserveTokens)}</PanelRow>
+            <PanelRow label="Còn cho nội dung mới">{tokens(context.availableDynamicTokens)}</PanelRow>
+            <PanelRow label="Provider báo cáo">
               {/* Null until a provider reports real counts — §4 forbids showing
                   the estimate in this slot. */}
               {context.providerPromptTokens === null ? (
@@ -98,27 +87,27 @@ export function SessionPanel({ session, connected, onRefresh }: SessionPanelProp
       )}
 
       <PanelSection
-        title="Usage"
+        title="Mức dùng"
         description="Cộng dồn từ lúc engine khởi động"
         action={
           <Button size="sm" variant="ghost" disabled={!connected} onClick={onRefresh}>
-            Refresh
+            Cập nhật
           </Button>
         }
       >
         {usage === null ? (
-          <PanelEmpty>Chưa nạp. Bấm Refresh hoặc gõ /usage.</PanelEmpty>
+          <PanelEmpty>Chưa có số liệu. Bấm Cập nhật hoặc gõ /usage.</PanelEmpty>
         ) : (
           <>
-            <PanelRow label="lượt">
+            <PanelRow label="Lượt">
               {usage.turns} ({usage.llmTurns} gọi LLM)
             </PanelRow>
-            <PanelRow label="prompt token">{tokens(usage.promptTokens)}</PanelRow>
-            <PanelRow label="completion token">{tokens(usage.completionTokens)}</PanelRow>
+            <PanelRow label="Token đầu vào">{tokens(usage.promptTokens)}</PanelRow>
+            <PanelRow label="Token phản hồi">{tokens(usage.completionTokens)}</PanelRow>
             <PanelRow label="TTFT trung bình">
               {usage.meanTtftMs === null ? "—" : `${Math.round(usage.meanTtftMs)} ms`}
             </PanelRow>
-            <PanelRow label="token/giây">
+            <PanelRow label="Token/giây">
               {usage.meanTokensPerSecond === null ? "—" : usage.meanTokensPerSecond.toFixed(1)}
             </PanelRow>
           </>

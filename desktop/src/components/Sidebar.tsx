@@ -3,7 +3,6 @@
 import {
   AudioLines,
   BookOpen,
-  Gauge,
   MessageSquare,
   PanelLeft,
   Plus,
@@ -13,11 +12,9 @@ import type { LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { SessionList } from "@/components/SessionList";
-import type { SessionHistoryState, SessionSummary } from "@/engine/session-history";
 import { cn } from "@/lib/utils";
 
-export type PageId = "chat" | "voice" | "knowledge" | "session" | "settings";
+export type PageId = "chat" | "voice" | "knowledge" | "settings";
 
 interface NavEntry {
   id: PageId;
@@ -29,7 +26,6 @@ const NAV: NavEntry[] = [
   { id: "chat", label: "Trò chuyện", icon: MessageSquare },
   { id: "voice", label: "Thoại", icon: AudioLines },
   { id: "knowledge", label: "Kiến thức", icon: BookOpen },
-  { id: "session", label: "Phiên", icon: Gauge },
   { id: "settings", label: "Cài đặt", icon: Settings },
 ];
 
@@ -37,37 +33,23 @@ interface SidebarProps {
   page: PageId;
   onNavigate: (page: PageId) => void;
   onNewConversation: () => void;
-  sessions: SessionHistoryState;
   voiceRunning: boolean;
-  connected: boolean;
-  sessionBusy: boolean;
   newConversationDisabled: boolean;
   onCollapse: () => void;
-  onOpenSession: (session: SessionSummary) => void;
-  onRenameSession: (session: SessionSummary, title: string) => void;
-  onDeleteSession: (session: SessionSummary) => void;
-  onLoadMoreSessions: () => void;
-  onOpenSessionSettings: () => void;
 }
 
 export function Sidebar({
   page,
   onNavigate,
   onNewConversation,
-  sessions,
   voiceRunning,
-  connected,
-  sessionBusy,
   newConversationDisabled,
   onCollapse,
-  onOpenSession,
-  onRenameSession,
-  onDeleteSession,
-  onLoadMoreSessions,
-  onOpenSessionSettings,
 }: SidebarProps) {
   const rootRef = useRef<HTMLElement>(null);
-  const [compact, setCompact] = useState(() => window.matchMedia("(max-width: 760px)").matches);
+  const [compact, setCompact] = useState(
+    () => window.matchMedia("(max-width: 760px)").matches,
+  );
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 760px)");
@@ -81,11 +63,12 @@ export function Sidebar({
     if (!compact) return;
     const root = rootRef.current;
     if (root === null) return;
-    const focusable = () => Array.from(
-      root.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ),
-    );
+    const focusable = () =>
+      Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
     const frame = window.requestAnimationFrame(() => focusable()[0]?.focus());
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -179,17 +162,6 @@ export function Sidebar({
           })}
         </ul>
       </nav>
-
-      <SessionList
-        history={sessions}
-        disabled={!connected || sessionBusy}
-        onOpen={onOpenSession}
-        onRename={onRenameSession}
-        onDelete={onDeleteSession}
-        onLoadMore={onLoadMoreSessions}
-        onOpenSettings={onOpenSessionSettings}
-      />
-
     </aside>
   );
 }
