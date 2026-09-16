@@ -64,3 +64,18 @@ def test_linux_package_workflow_keeps_the_cuda_driver_on_the_host() -> None:
     assert "LINUXDEPLOY_EXCLUDED_LIBRARIES" in workflow
     assert "libcuda.so*" in workflow
     assert "XDG_CACHE_HOME: ${{ runner.temp }}/soca-cache" in workflow
+
+
+def test_package_workflow_uploads_only_installable_artifacts() -> None:
+    workflow = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "desktop-package.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "          path: desktop/src-tauri/target/release/bundle/\n" not in workflow
+    assert "bundle/dmg/*.dmg" in workflow
+    assert "bundle/msi/*.msi" in workflow
+    assert "bundle/nsis/*.exe" in workflow
+    assert "bundle/appimage/*.AppImage" in workflow
+    assert "bundle/deb/*.deb" in workflow
+    assert "path: ${{ matrix.artifact_path }}" in workflow
+    assert "compression-level: 0" in workflow
