@@ -32,12 +32,19 @@ jobs:
           - name: macOS arm64
             runner: macos-14
             bundles: app,dmg
+            artifact_path: desktop/src-tauri/target/release/bundle/dmg/*.dmg
           - name: Windows x64
             runner: windows-2022
             bundles: msi,nsis
+            artifact_path: |
+              desktop/src-tauri/target/release/bundle/msi/*.msi
+              desktop/src-tauri/target/release/bundle/nsis/*.exe
           - name: Linux x64
             runner: ubuntu-22.04
             bundles: appimage,deb
+            artifact_path: |
+              desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+              desktop/src-tauri/target/release/bundle/deb/*.deb
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -133,5 +140,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: soca-${{ runner.os }}-${{ runner.arch }}
-          path: desktop/src-tauri/target/release/bundle/
+          path: ${{ matrix.artifact_path }}
           if-no-files-found: error
+          compression-level: 0
