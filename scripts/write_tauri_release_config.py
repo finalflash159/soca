@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 UPDATE_ENDPOINT = "https://github.com/finalflash159/soca/releases/latest/download/latest.json"
+MACOS_ENTITLEMENTS = "src-tauri/SoCa.entitlements"
 
 
 def release_config(environment: dict[str, str], *, platform: str) -> dict[str, object]:
@@ -24,7 +25,10 @@ def release_config(environment: dict[str, str], *, platform: str) -> dict[str, o
         identity = environment.get("APPLE_SIGNING_IDENTITY", "").strip()
         if not identity:
             raise ValueError("APPLE_SIGNING_IDENTITY is required for a macOS release")
-        bundle["macOS"] = {"signingIdentity": identity}
+        bundle["macOS"] = {
+            "signingIdentity": identity,
+            "entitlements": MACOS_ENTITLEMENTS,
+        }
     elif platform == "win32":
         thumbprint = environment.get("WINDOWS_CERTIFICATE_THUMBPRINT", "").strip()
         timestamp = environment.get("WINDOWS_TIMESTAMP_URL", "").strip()

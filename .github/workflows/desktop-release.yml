@@ -118,3 +118,14 @@ jobs:
           releaseBody: See RELEASE_NOTES.md in the source release for privacy, retention, install, and rollback information.
           releaseDraft: true
           prerelease: false
+      - name: Verify signed macOS microphone entitlement
+        if: matrix.platform == 'darwin'
+        shell: bash
+        run: |
+          app=desktop/src-tauri/target/release/bundle/macos/SoCa.app
+          test -f "$app/Contents/MacOS/soca-desktop"
+          codesign --verify --deep --strict "$app"
+          entitlements_file="$RUNNER_TEMP/soca-release-entitlements.plist"
+          codesign -d --entitlements :- "$app/Contents/MacOS/soca-desktop" \
+            > "$entitlements_file" 2>/dev/null
+          test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.device.audio-input' "$entitlements_file")" = true

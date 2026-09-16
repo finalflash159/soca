@@ -3,7 +3,8 @@
   "bundle": {
     "resources": ["resources/soca-engine/**/*"],
     "macOS": {
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "entitlements": "SoCa.entitlements"
     }
   }
 }
