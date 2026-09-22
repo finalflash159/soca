@@ -16,9 +16,10 @@
  *    open and no answer text has arrived; it becomes `composing` on the first
  *    `answer_delta`. With a local backend synthesis goes straight to
  *    `composing`.
- * 3. **Memory *lookup* is `searching`, not `weaving`.** `weaving` is reserved
- *    for compaction (`memory_compaction` running), which is what the plan means
- *    by "nén working memory". The `memory` turn phase is archive retrieval.
+ * 3. **Maintenance stays on its owning surface.** Knowledge indexing and
+ *    memory compaction do not alter the shared Chat orb; their progress and
+ *    failures are rendered on Knowledge instead. The `memory` turn phase is
+ *    archive retrieval, so it remains `searching`.
  */
 
 import type { EngineFrame, VoiceFrame, WorkflowFrame } from "./protocol";
@@ -30,9 +31,7 @@ export type OrbState =
   | "composing"
   | "listening"
   | "searching"
-  | "shaping"
   | "solving"
-  | "weaving"
   | "working";
 
 /** Everything the orb needs, derived from the frame stream. */
@@ -47,10 +46,6 @@ export interface OrbActivity {
   listening: boolean;
   /** True while TTS is producing or playing audio. */
   speaking: boolean;
-  /** True while working memory is being compacted. */
-  compacting: boolean;
-  /** True while a knowledge index build is in flight. */
-  indexing: boolean;
   /**
    * True while the voice runtime is loading, before the loop can hear anything.
    *
@@ -71,8 +66,6 @@ export const initialActivity: OrbActivity = {
   answering: false,
   listening: false,
   speaking: false,
-  compacting: false,
-  indexing: false,
   voiceLoading: false,
   backend: null,
 };
@@ -175,20 +168,6 @@ export function reduceActivity(activity: OrbActivity, frame: EngineFrame): OrbAc
       }
       return { ...activity, phase, turnOpen: true };
     }
-    case "memory_compaction": {
-      const status = typeof frame.status === "string" ? frame.status : "";
-      return {
-        ...activity,
-        compacting: status === "accepted" || status === "running",
-      };
-    }
-    case "knowledge_setup": {
-      if (frame.action !== "index") {
-        return activity;
-      }
-      const status = typeof frame.status === "string" ? frame.status : "";
-      return { ...activity, indexing: status !== "ok" && status !== "failed" };
-    }
     case "llm_config": {
       const backend = frame.backend === "remote" ? "remote" : "local";
       return { ...activity, backend };
@@ -213,10 +192,9 @@ const PHASE_STATE: Record<string, OrbState> = {
 /**
  * Resolve one orb state.
  *
- * Order matters and is not arbitrary: background jobs win over turn phases
- * because they are the longer-running, more surprising thing to hide, and voice
- * capture wins over everything because the user is mid-utterance and needs to
- * see that the mic is live.
+ * Order matters and is not arbitrary. This shared orb reports only the active
+ * conversation. Knowledge and memory maintenance own progress UI on the
+ * Knowledge surface, so they must not make Chat look busy.
  */
 export function orbStateFor(activity: OrbActivity): OrbState {
   if (activity.listening) {
@@ -226,12 +204,6 @@ export function orbStateFor(activity: OrbActivity): OrbState {
   // is the one state a user reads as "it is ignoring me".
   if (activity.voiceLoading) {
     return "working";
-  }
-  if (activity.indexing) {
-    return "shaping";
-  }
-  if (activity.compacting) {
-    return "weaving";
   }
   if (activity.speaking) {
     return "composing";
@@ -272,10 +244,6 @@ export function orbLabel(state: OrbState): string {
       return "Connecting";
     case "composing":
       return "Responding";
-    case "weaving":
-      return "Compacting memory";
-    case "shaping":
-      return "Indexing";
     case "breathing":
       return "Idle";
   }

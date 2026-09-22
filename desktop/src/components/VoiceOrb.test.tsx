@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
 
-import { perceptualVoiceLevel } from "./VoiceOrb";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { initialVoice } from "@/engine/voice";
+
+import { perceptualVoiceLevel, VoiceOrb } from "./VoiceOrb";
+
+afterEach(cleanup);
 
 describe("perceptualVoiceLevel", () => {
   it("keeps recorder silence visually still", () => {
@@ -18,5 +25,22 @@ describe("perceptualVoiceLevel", () => {
   it("is bounded and monotonic", () => {
     expect(perceptualVoiceLevel(0.01)).toBeGreaterThan(perceptualVoiceLevel(0.003));
     expect(perceptualVoiceLevel(1)).toBe(1);
+  });
+});
+
+describe("VoiceOrb surface", () => {
+  it("renders one clipped core image and a non-image halo", () => {
+    render(
+      <VoiceOrb
+        voice={{ ...initialVoice, phase: "listening", levels: [0.003] }}
+        ready
+        presentation="immersive"
+      />,
+    );
+
+    const orb = screen.getByTestId("voice-orb");
+    expect(orb.querySelectorAll("img")).toHaveLength(1);
+    expect(orb.querySelector(".voice-orb__aura")?.tagName).toBe("SPAN");
+    expect(orb.style.getPropertyValue("--voice-orb-level")).not.toBe("0");
   });
 });

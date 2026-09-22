@@ -66,8 +66,6 @@ describe("visible labels", () => {
       working: "Processing",
       connecting: "Connecting",
       composing: "Responding",
-      weaving: "Compacting memory",
-      shaping: "Indexing",
       breathing: "Idle",
     };
 
@@ -175,32 +173,29 @@ describe("voice", () => {
   });
 });
 
-describe("background jobs outrank turn phases", () => {
-  it("weaves while working memory compacts", () => {
+describe("surface-owned background jobs", () => {
+  it("keeps memory compaction out of the shared chat activity", () => {
     expect(
       stateAfter([
         progress("retrieval"),
         { event: "memory_compaction", status: "running" } as EngineFrame,
       ]),
-    ).toBe("weaving");
+    ).toBe("searching");
   });
 
-  it("stops weaving when compaction publishes", () => {
+  it("keeps an idle chat idle while memory compacts", () => {
     expect(
-      stateAfter([
-        { event: "memory_compaction", status: "running" } as EngineFrame,
-        { event: "memory_compaction", status: "published" } as EngineFrame,
-      ]),
+      stateAfter([{ event: "memory_compaction", status: "running" } as EngineFrame]),
     ).toBe("breathing");
   });
 
-  it("shapes while a knowledge index builds", () => {
+  it("keeps an index build out of the shared chat activity", () => {
     expect(
       stateAfter([
         progress("tool"),
         { event: "knowledge_setup", action: "index", status: "running" } as EngineFrame,
       ]),
-    ).toBe("shaping");
+    ).toBe("working");
   });
 
   it("ignores knowledge_setup for init, which is not an index build", () => {
@@ -209,9 +204,7 @@ describe("background jobs outrank turn phases", () => {
     ).toBe("breathing");
   });
 
-  it("lets mic capture outrank a background index build", () => {
-    // The user is mid-utterance; showing the index job instead would hide the
-    // one thing they need feedback on.
+  it("does not disturb microphone feedback during an index build", () => {
     expect(
       stateAfter([
         { event: "knowledge_setup", action: "index", status: "running" } as EngineFrame,

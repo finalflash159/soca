@@ -95,7 +95,10 @@ export function VoiceOrb({ voice, ready, checking = false, presentation }: Voice
       data-voice-orb-mode={mode}
       data-voice-orb-presentation={presentation}
     >
-      <img className="voice-orb__aura" src={voiceOrbAsset} alt="" aria-hidden="true" />
+      {/* A CSS halo avoids asking WebKit to blur the full square PNG surface.
+          That compositor path exposed the bitmap's rectangular layer in dark
+          mode even though the source pixels themselves are transparent. */}
+      <span className="voice-orb__aura" aria-hidden="true" />
       <div className="voice-orb__motion">
         <img className="voice-orb__core" src={voiceOrbAsset} alt="" aria-hidden="true" />
       </div>

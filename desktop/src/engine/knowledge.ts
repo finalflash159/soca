@@ -175,7 +175,7 @@ function str(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
-const TERMINAL_SETUP_STATUS = new Set(["ok", "failed", "ready"]);
+const TERMINAL_SETUP_STATUS = new Set(["ok", "failed", "ready", "busy"]);
 
 export function indexJobRunning(job: IndexJob | null): boolean {
   return job !== null && job.action === "index" && !TERMINAL_SETUP_STATUS.has(job.status);

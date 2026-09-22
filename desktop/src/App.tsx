@@ -638,7 +638,7 @@ export default function App() {
   };
 
   return (
-    <main className="bg-background flex h-screen w-screen overflow-hidden">
+    <main className="bg-background flex h-full min-h-0 w-full min-w-0 overflow-hidden">
       <a
         href="#main-content"
         className="bg-background text-foreground fixed top-2 left-2 z-[60] -translate-y-16 rounded-md border px-3 py-2 text-sm shadow-sm transition-transform focus:translate-y-0"
@@ -851,7 +851,10 @@ export default function App() {
           )}
 
           {page === "settings" && (
-            <div className="min-h-0 flex-1 overflow-auto">
+            <div
+              className="soca-scrollbar min-h-0 flex-1 overscroll-contain overflow-y-auto"
+              data-testid="settings-scroll-region"
+            >
               <PageBody>
                 <Suspense fallback={<PageLoading />}>
                   <SettingsPanel
