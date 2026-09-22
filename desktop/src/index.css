@@ -174,7 +174,9 @@
   }
 
   .voice-orb--immersive {
-    width: min(58vw, 26rem);
+    /* Width-only sizing overflowed short, wide windows. Reserve vertical room
+       for the status and controls as well as limiting the desktop width. */
+    width: clamp(11rem, min(58vw, calc(100dvh - 18rem)), 26rem);
   }
 
   .voice-orb__aura,
@@ -184,12 +186,18 @@
   }
 
   .voice-orb__aura {
-    width: 100%;
-    height: 100%;
-    opacity: calc(0.12 + var(--voice-orb-level) * 0.28);
-    filter: blur(calc(8px + var(--voice-orb-level) * 22px));
-    transform: scale(calc(1.04 + var(--voice-orb-level) * 0.16));
-    transition: opacity 100ms linear, filter 100ms linear, transform 100ms linear;
+    width: 116%;
+    height: 116%;
+    border-radius: 50%;
+    background: radial-gradient(
+      circle,
+      color-mix(in oklab, var(--primary) 32%, transparent) 0%,
+      color-mix(in oklab, var(--primary) 14%, transparent) 45%,
+      transparent 72%
+    );
+    opacity: calc(0.18 + var(--voice-orb-level) * 0.34);
+    transform: scale(calc(0.96 + var(--voice-orb-level) * 0.12));
+    transition: opacity 100ms linear, transform 100ms linear;
   }
 
   .voice-orb__motion {
@@ -197,25 +205,24 @@
     width: 100%;
     height: 100%;
     place-items: center;
+    border-radius: 50%;
+    overflow: hidden;
     transform: scaleX(calc(0.98 + var(--voice-orb-level) * 0.16)) scaleY(calc(0.98 + var(--voice-orb-level) * 0.22));
     transition: transform 90ms cubic-bezier(0.16, 1, 0.3, 1);
     will-change: transform;
   }
 
   .voice-orb__core {
+    display: block;
     width: 100%;
     height: 100%;
-    filter: saturate(0.92) brightness(0.96);
-    will-change: transform, filter;
+    border-radius: 50%;
+    clip-path: circle(49.8% at 50% 50%);
+    will-change: transform;
   }
 
   .voice-orb--listening .voice-orb__aura {
-    opacity: calc(0.16 + var(--voice-orb-level) * 0.44);
-    filter: blur(calc(10px + var(--voice-orb-level) * 30px));
-  }
-
-  .voice-orb--listening .voice-orb__core {
-    filter: saturate(calc(0.96 + var(--voice-orb-level) * 0.3)) brightness(calc(0.94 + var(--voice-orb-level) * 0.18));
+    opacity: calc(0.22 + var(--voice-orb-level) * 0.48);
   }
 
   .voice-orb--speaking .voice-orb__aura {
@@ -224,7 +231,6 @@
 
   .voice-orb--speaking .voice-orb__core {
     animation: voice-orb-assistant-drift 2.8s ease-in-out infinite;
-    filter: saturate(calc(0.9 + var(--voice-orb-level) * 0.24)) brightness(calc(0.98 + var(--voice-orb-level) * 0.14));
   }
 
   .voice-orb--thinking .voice-orb__core,
@@ -262,6 +268,12 @@
       transform: none;
       transition: none;
       animation: none;
+    }
+  }
+
+  @supports not (height: 100dvh) {
+    .voice-orb--immersive {
+      width: clamp(11rem, min(58vw, calc(100vh - 18rem)), 26rem);
     }
   }
 }
@@ -331,6 +343,14 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+  }
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
   }
   body {
     @apply bg-background text-foreground;

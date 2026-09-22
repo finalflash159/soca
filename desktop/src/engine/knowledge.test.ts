@@ -220,6 +220,22 @@ describe("index job", () => {
     expect(knowledgeSetupRunning(complete.indexJob)).toBe(false);
   });
 
+  it("treats a rejected concurrent setup request as terminal", () => {
+    const busy = fold([
+      {
+        event: "knowledge_setup",
+        action: "index",
+        status: "busy",
+        detail: "Another knowledge operation is already running.",
+        vault: "/v",
+        error_code: "knowledge_setup_busy",
+      } as EngineFrame,
+    ]);
+
+    expect(indexJobRunning(busy.indexJob)).toBe(false);
+    expect(knowledgeSetupRunning(busy.indexJob)).toBe(false);
+  });
+
   it("carries the error code through on failure", () => {
     const state = fold([
       {

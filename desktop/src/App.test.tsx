@@ -180,6 +180,60 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("desktop session lifecycle", () => {
+  it("keeps the shell and settings scroller bound to the live viewport", async () => {
+    const user = userEvent.setup();
+    await renderReadyApp();
+
+    const shell = document.querySelector("main");
+    expect(shell?.classList.contains("h-full")).toBe(true);
+    expect(shell?.classList.contains("h-screen")).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Cài đặt" }));
+    const scroller = await screen.findByTestId("settings-scroll-region");
+    expect(scroller.classList.contains("overflow-y-auto")).toBe(true);
+    expect(scroller.classList.contains("min-h-0")).toBe(true);
+  });
+
+  it("keeps index progress on Knowledge instead of presenting Chat as busy", async () => {
+    const user = userEvent.setup();
+    await renderReadyApp();
+
+    emit(EVENT_CHANNEL, {
+      event: "status",
+      knowledge_vault: {
+        path: "/tmp/soca-vault",
+        initialized: true,
+      },
+      knowledge_index: null,
+    });
+    emit(EVENT_CHANNEL, {
+      event: "knowledge_setup",
+      action: "index",
+      status: "running",
+      vault: "/tmp/soca-vault",
+      detail: "Đang tạo embedding…",
+      phase: "embedding",
+      completed_chunks: 25,
+      total_chunks: 100,
+      reused_chunks: 5,
+      embedded_chunks: 20,
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
+    });
+    expect(screen.queryByText("Indexing")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Kiến thức" }));
+
+    const operation = await screen.findByTestId("knowledge-active-operation");
+    expect(operation.textContent).toContain("Đang dựng chỉ mục");
+    const progress = screen.getByRole("progressbar", {
+      name: "Tiến trình dựng chỉ mục",
+    });
+    expect(progress.getAttribute("aria-valuenow")).toBe("25");
+  });
+
   it("remembers an explicit desktop sidebar collapse without touching session data", async () => {
     await renderReadyApp();
 

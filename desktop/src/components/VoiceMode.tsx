@@ -191,14 +191,14 @@ export function VoiceMode({
       // Fills the page area. The sidebar and top bar are outside it, so
       // settings, the engine health dot and the restart button stay one click
       // away mid-call — this screen used to cover the window and hide them.
-      className="bg-background flex h-full w-full flex-col"
+      className="bg-background flex h-full min-h-0 w-full flex-col overflow-hidden"
       role="region"
       aria-label="Chế độ thoại"
     >
       <div
         className={cn(
           "relative flex min-h-0 flex-col items-center justify-center px-6",
-          immersive ? "flex-1 gap-8 py-10" : "shrink-0 gap-4 py-7",
+          immersive ? "flex-1 gap-6 py-6" : "shrink-0 gap-4 py-7",
         )}
         data-voice-presentation={presentation}
       >
@@ -332,7 +332,7 @@ export function VoiceMode({
         </div>
       )}
 
-      <div className="shrink-0 px-6 pb-8">
+      <div className="shrink-0 px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         {!immersive && (
           <SessionContext
             session={session}

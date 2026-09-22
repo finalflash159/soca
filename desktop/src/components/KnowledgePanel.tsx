@@ -83,7 +83,20 @@ function IndexProgress({ job }: { job: IndexJob }) {
           </span>
         )}
       </div>
-      <div className="bg-secondary h-1.5 w-full overflow-hidden rounded-full">
+      <div
+        className="bg-secondary h-1.5 w-full overflow-hidden rounded-full"
+        role="progressbar"
+        aria-label={
+          job.action === "model"
+            ? "Tiến trình tải retrieval model"
+            : "Tiến trình dựng chỉ mục"
+        }
+        aria-valuemin={0}
+        aria-valuemax={fraction === null ? undefined : 100}
+        aria-valuenow={
+          fraction === null ? undefined : Math.round(fraction * 100)
+        }
+      >
         <div
           className={cn(
             "bg-primary h-full rounded-full",
@@ -255,6 +268,9 @@ function MemorySection({
 }: Omit<KnowledgePanelProps, "onInit" | "onIndex">) {
   const trace = knowledge.memoryTrace;
   const proposals = knowledge.proposals;
+  const compactionRunning =
+    knowledge.compaction?.status === "accepted" ||
+    knowledge.compaction?.status === "running";
 
   return (
     <Section
@@ -274,10 +290,10 @@ function MemorySection({
           <Button
             size="sm"
             variant="outline"
-            disabled={!connected}
+            disabled={!connected || compactionRunning}
             onClick={onCompact}
           >
-            Nén
+            {compactionRunning ? "Đang nén…" : "Nén"}
           </Button>
         </>
       }
@@ -295,6 +311,23 @@ function MemorySection({
               <Badge variant="secondary">{trace.backgroundStatus}</Badge>
             </Stat>
           )}
+        </div>
+      )}
+
+      {knowledge.compaction !== null && (
+        <div
+          className="border-border bg-muted/30 rounded-lg border px-3 py-2.5 text-sm"
+          role="status"
+          aria-live="polite"
+        >
+          <p className="font-medium">
+            {compactionRunning
+              ? "Đang nén bộ nhớ phiên"
+              : "Tác vụ nén gần nhất"}
+          </p>
+          <p className="text-muted-foreground mt-1 text-xs leading-5">
+            {knowledge.compaction.detail ?? knowledge.compaction.status}
+          </p>
         </div>
       )}
 
@@ -440,6 +473,18 @@ function KnowledgeOverview({ props }: { props: KnowledgePanelProps }) {
   const initialized = knowledge.vault?.initialized === true;
   const indexed = knowledge.index !== null;
   const running = knowledgeSetupRunning(knowledge.indexJob);
+  const activeJob = running ? knowledge.indexJob : null;
+  const operationIssue =
+    knowledge.indexJob?.status === "failed" ||
+    knowledge.indexJob?.status === "busy"
+      ? knowledge.indexJob
+      : null;
+  const vaultIssue = operationIssue?.action === "init";
+  const indexIssue =
+    operationIssue?.action === "model" || operationIssue?.action === "index";
+  const compactionRunning =
+    knowledge.compaction?.status === "accepted" ||
+    knowledge.compaction?.status === "running";
 
   const cards: Array<{
     id: Exclude<KnowledgeDetail, null>;
@@ -453,11 +498,19 @@ function KnowledgeOverview({ props }: { props: KnowledgePanelProps }) {
       id: "vault",
       icon: FolderOpen,
       title: "Vault",
-      status: initialized ? "Sẵn sàng" : "Chưa tạo",
+      status: vaultIssue
+        ? "Cần xử lý"
+        : initialized
+          ? "Sẵn sàng"
+          : "Chưa tạo",
       description: initialized
         ? "Tài liệu Markdown được quản lý tại một thư mục riêng."
         : "Tạo cấu trúc vault trước khi thêm tài liệu.",
-      tone: initialized ? "bg-emerald-400" : "bg-amber-400",
+      tone: vaultIssue
+        ? "bg-destructive"
+        : initialized
+          ? "bg-emerald-400"
+          : "bg-amber-400",
     },
     {
       id: "index",
@@ -465,29 +518,37 @@ function KnowledgeOverview({ props }: { props: KnowledgePanelProps }) {
       title: "Chỉ mục",
       status: running
         ? "Đang xử lý"
-        : indexed
-          ? `${knowledge.index?.documents ?? 0} tài liệu`
-          : "Chưa dựng",
+        : indexIssue
+          ? "Cần xử lý"
+          : indexed
+            ? `${knowledge.index?.documents ?? 0} tài liệu`
+            : "Chưa dựng",
       description: indexed
         ? "Dùng để tìm đoạn tài liệu phù hợp khi trả lời."
         : "Chỉ cần dựng sau khi vault đã sẵn sàng.",
       tone: running
         ? "bg-amber-400 animate-pulse"
-        : indexed
-          ? "bg-cyan-400"
-          : "bg-muted-foreground/50",
+        : indexIssue
+          ? "bg-destructive"
+          : indexed
+            ? "bg-cyan-400"
+            : "bg-muted-foreground/50",
     },
     {
       id: "memory",
       icon: BookOpen,
       title: "Bộ nhớ phiên",
       status:
-        knowledge.memoryTrace?.recentTurnCount !== null &&
-        knowledge.memoryTrace?.recentTurnCount !== undefined
-          ? `${knowledge.memoryTrace.recentTurnCount} lượt gần đây`
-          : "Chưa có tóm tắt",
+        compactionRunning
+          ? "Đang nén"
+          : knowledge.memoryTrace?.recentTurnCount !== null &&
+              knowledge.memoryTrace?.recentTurnCount !== undefined
+            ? `${knowledge.memoryTrace.recentTurnCount} lượt gần đây`
+            : "Chưa có tóm tắt",
       description: "Tóm tắt làm việc và đề xuất cần duyệt của phiên hiện tại.",
-      tone: "bg-violet-400",
+      tone: compactionRunning
+        ? "bg-amber-400 animate-pulse"
+        : "bg-violet-400",
     },
   ];
 
@@ -522,6 +583,58 @@ function KnowledgeOverview({ props }: { props: KnowledgePanelProps }) {
           </button>
         ))}
       </div>
+
+      {activeJob !== null && (
+        <div
+          className="border-border bg-card rounded-xl border px-4 py-3"
+          role="status"
+          aria-live="polite"
+          data-testid="knowledge-active-operation"
+        >
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-sm font-medium">
+              {activeJob.action === "model"
+                ? "Đang chuẩn bị retrieval model"
+                : "Đang dựng chỉ mục"}
+            </p>
+            <Badge variant="outline">Đang chạy</Badge>
+          </div>
+          <IndexProgress job={activeJob} />
+        </div>
+      )}
+
+      {operationIssue !== null && (
+        <div
+          className="border-destructive/30 bg-destructive/5 rounded-xl border px-4 py-3"
+          role="alert"
+          data-testid="knowledge-operation-error"
+        >
+          <p className="text-sm font-medium">
+            {operationIssue.action === "init"
+              ? "Không thể tạo cấu trúc vault"
+              : operationIssue.action === "model"
+                ? "Không thể chuẩn bị retrieval model"
+                : "Không thể dựng chỉ mục"}
+          </p>
+          <p className="text-muted-foreground mt-1 text-xs leading-5">
+            {operationIssue.detail}
+            {operationIssue.errorCode !== null
+              ? ` · ${operationIssue.errorCode}`
+              : ""}
+          </p>
+        </div>
+      )}
+
+      {compactionRunning && (
+        <p
+          className="border-border bg-card rounded-xl border px-4 py-3 text-sm"
+          role="status"
+          aria-live="polite"
+        >
+          Đang nén bộ nhớ phiên. Bạn có thể tiếp tục xem tài liệu trong lúc tác
+          vụ chạy.
+        </p>
+      )}
 
       <Dialog
         open={detail !== null}

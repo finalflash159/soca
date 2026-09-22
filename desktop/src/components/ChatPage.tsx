@@ -95,8 +95,8 @@ export function ChatPage({
 }: ChatPageProps) {
   const hasTurns = conversation.turns.length > 0;
   const lastTurn = conversation.turns[conversation.turns.length - 1];
-  // A turn that has not produced text yet renders its own orb inline; anything
-  // else that keeps the orb off `breathing` is background work.
+  // A turn that has not produced text yet renders its own orb inline. The
+  // shared activity reducer intentionally excludes Knowledge maintenance.
   const liveTurnShowsOrb =
     lastTurn !== undefined &&
     lastTurn.finalText === null &&
@@ -186,9 +186,8 @@ export function ChatPage({
         />
       </div>
       <div className="bg-background z-20 flex shrink-0 flex-col gap-2 px-6 pb-5">
-        {/* Work that happens outside a turn — an index build, a memory
-            compaction — has no message to sit inside, so the orb reports it
-            here. A live turn shows its own orb in the transcript. */}
+        {/* A live turn shows its own orb in the transcript. Any other
+            conversation activity stays beside the composer. */}
         {busyOutsideTurn && (
           <div className="text-muted-foreground mx-auto flex w-full max-w-2xl items-center gap-2 text-xs">
             <ThinkingOrb state={orbState} size={20} aria-hidden />
